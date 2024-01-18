@@ -1,7 +1,7 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, DomainCoreApi,
+    Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, DomainCoreApi,
 };
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
@@ -189,6 +189,17 @@ where
             self,
             Default::default(),
             moment,
+        )
+    }
+
+    pub fn construct_consensus_chain_byte_fee_extrinsic(
+        &self,
+        consensus_chain_byte_fee: Balance,
+    ) -> Result<Block::Extrinsic, ApiError> {
+        <Self as DomainCoreApi<Block>>::construct_consensus_chain_byte_fee_extrinsic(
+            self,
+            Default::default(),
+            consensus_chain_byte_fee,
         )
     }
 

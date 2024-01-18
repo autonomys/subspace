@@ -25,12 +25,12 @@ use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
 use pallet_evm::{
@@ -52,7 +52,7 @@ use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
     IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Verify,
+    ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -142,7 +142,19 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         len: usize,
     ) -> Option<TransactionValidity> {
         match self {
-            RuntimeCall::Ethereum(call) => call.validate_self_contained(info, dispatch_info, len),
+            RuntimeCall::Ethereum(call) => {
+                // Ensure the caller can pay the consensus chain storage fee
+                let consensus_storage_fee =
+                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
+                let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+                    Runtime,
+                >>::withdraw_fee(info, consensus_storage_fee.into());
+                if withdraw_res.is_err() {
+                    return Some(Err(InvalidTransaction::Payment.into()));
+                }
+
+                call.validate_self_contained(info, dispatch_info, len)
+            }
             _ => None,
         }
     }
@@ -155,6 +167,21 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
     ) -> Option<Result<(), TransactionValidityError>> {
         match self {
             RuntimeCall::Ethereum(call) => {
+                // Withdraw the consensus chain storage fee from the caller and record
+                // it in the `BlockFees`
+                let consensus_storage_fee =
+                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
+                match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
+                    info,
+                    consensus_storage_fee.into(),
+                ) {
+                    Ok(None) => {}
+                    Ok(Some(paid_consensus_storage_fee)) => {
+                        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
+                    }
+                    Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
+                }
+
                 call.pre_dispatch_self_contained(info, dispatch_info, len)
             }
             _ => None,
@@ -297,33 +324,28 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
-impl pallet_operator_rewards::Config for Runtime {
-    type Balance = Balance;
-}
-
-/// `ActualPaidFeesHandler` used to collect all the fee in `pallet_operator_rewards`
-pub struct ActualPaidFeesHandler;
-
-impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
-    fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
-        // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
-        for fee in fees_then_tips {
-            OperatorRewards::note_operator_rewards(fee.peek());
-        }
-    }
-}
-
 parameter_types! {
-    pub const TransactionByteFee: Balance = 1;
     pub const OperationalFeeMultiplier: u8 = 5;
+    pub const DomainChainByteFee: Balance = 1;
+}
+
+impl pallet_block_fees::Config for Runtime {
+    type Balance = Balance;
+    type DomainChainByteFee = DomainChainByteFee;
+}
+
+pub struct FinalDomainTransactionByteFee;
+impl Get<Balance> for FinalDomainTransactionByteFee {
+    fn get() -> Balance {
+        BlockFees::final_domain_transaction_byte_fee()
+    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction =
-        pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
+    type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = IdentityFee<Balance>;
-    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = ();
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
@@ -337,8 +359,18 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         (maybe_signer, dispatch_info)
     }
 
-    fn on_storage_fees_charged(charged_fees: Balance) {
-        OperatorRewards::note_operator_rewards(charged_fees)
+    fn on_storage_fees_charged(charged_fees: Balance, tx_size: u32) {
+        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee() * Balance::from(tx_size);
+
+        let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
+        {
+            (charged_fees, Zero::zero())
+        } else {
+            (consensus_storage_fee, charged_fees - consensus_storage_fee)
+        };
+
+        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee);
+        BlockFees::note_domain_execution_fee(paid_domain_fee);
     }
 }
 
@@ -366,7 +398,7 @@ pub struct OnXDMRewards;
 
 impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     fn on_xdm_rewards(rewards: Balance) {
-        OperatorRewards::note_operator_rewards(rewards)
+        BlockFees::note_domain_execution_fee(rewards)
     }
 }
 
@@ -466,7 +498,7 @@ type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
-// `pallet_operator_rewards`
+// `pallet_block_fees`
 pub struct EVMCurrencyAdapter;
 
 impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
@@ -487,7 +519,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     ) -> Self::LiquidityInfo {
         if already_withdrawn.is_some() {
             // Record the evm actual transaction fee
-            OperatorRewards::note_operator_rewards(corrected_fee.as_u128());
+            BlockFees::note_domain_execution_fee(corrected_fee.as_u128());
         }
 
         <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
@@ -596,7 +628,7 @@ construct_runtime!(
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
-        OperatorRewards: pallet_operator_rewards = 91,
+        BlockFees: pallet_block_fees = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -936,8 +968,8 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_rewards() -> Balance {
-            OperatorRewards::block_rewards()
+        fn block_fees() -> domain_runtime_primitives::BlockFees<Balance> {
+            BlockFees::collected_block_fees()
         }
 
         fn block_digest() -> Digest {
@@ -946,6 +978,12 @@ impl_runtime_apis! {
 
         fn block_weight() -> Weight {
             System::block_weight().total()
+        }
+
+        fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
+            )
         }
     }
 
@@ -1185,6 +1223,10 @@ impl_runtime_apis! {
 
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
+            BlockFees::consensus_chain_byte_fee()
         }
     }
 }

@@ -333,7 +333,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
                     operator_ids,
-                    rewards: execution_receipt.total_rewards,
+                    // TODO: also distribute the `storage_fee`
+                    rewards: execution_receipt.block_fees.domain_execution_fee,
                     invalid_bundle_authors,
                 }));
             }

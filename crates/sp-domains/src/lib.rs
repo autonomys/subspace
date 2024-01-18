@@ -34,6 +34,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
+use domain_runtime_primitives::BlockFees;
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -424,8 +425,9 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     ///
     /// Used for verifying fraud proofs.
     pub execution_trace_root: H256,
-    /// All SSC rewards for this ER to be shared across operators.
-    pub total_rewards: Balance,
+    /// Compute and Domain storage fees are shared across operators and Consensus
+    /// storage fees are given to the consensus block author.
+    pub block_fees: BlockFees<Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
@@ -478,7 +480,7 @@ impl<
         Hash: Encode + Default,
         DomainNumber: Encode + Zero,
         DomainHash: Clone + Encode + Default,
-        Balance: Encode + Zero,
+        Balance: Encode + Zero + Default,
     > ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.
@@ -502,7 +504,7 @@ impl<
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
-            total_rewards: Zero::zero(),
+            block_fees: Default::default(),
         }
     }
 
@@ -538,7 +540,7 @@ impl<
             final_state_root: Default::default(),
             execution_trace,
             execution_trace_root,
-            total_rewards: Zero::zero(),
+            block_fees: Default::default(),
         }
     }
 }
@@ -1027,6 +1029,10 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
+
+        /// Reture the consensus chain byte fee that will used to charge the domain transaction for consensus
+        /// chain storage fee
+        fn consensus_chain_byte_fee() -> Balance;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

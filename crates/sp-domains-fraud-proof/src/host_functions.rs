@@ -131,6 +131,26 @@ where
             .map(|ext| ext.encode())
     }
 
+    fn derive_consensus_chain_byte_fee_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+    ) -> Option<Vec<u8>> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let consensus_chain_byte_fee = runtime_api
+            .consensus_chain_byte_fee(consensus_block_hash.into())
+            .ok()?;
+
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+
+        domain_stateless_runtime
+            .construct_consensus_chain_byte_fee_extrinsic(consensus_chain_byte_fee)
+            .ok()
+            .map(|ext| ext.encode())
+    }
+
     fn get_domain_bundle_body(
         &self,
         consensus_block_hash: H256,
@@ -362,6 +382,13 @@ where
                 .map(|domain_timestamp_extrinsic| {
                     FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
                         domain_timestamp_extrinsic,
+                    )
+                }),
+            FraudProofVerificationInfoRequest::ConsensusChainByteFeeExtrinsic(domain_id) => self
+                .derive_consensus_chain_byte_fee_extrinsic(consensus_block_hash, domain_id)
+                .map(|consensus_chain_byte_fee_extrinsic| {
+                    FraudProofVerificationInfoResponse::ConsensusChainByteFeeExtrinsic(
+                        consensus_chain_byte_fee_extrinsic,
                     )
                 }),
             FraudProofVerificationInfoRequest::DomainBundleBody {

@@ -5,8 +5,8 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::utils::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::Hash;
-use domain_test_primitives::TimestampApi;
+use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
@@ -30,11 +30,11 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
+    InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, Zero};
 use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
@@ -851,7 +851,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     // We get the receipt of target bundle
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let valid_receipt = bundle.unwrap().into_receipt();
-    assert_eq!(valid_receipt.execution_trace.len(), 4);
+    assert_eq!(valid_receipt.execution_trace.len(), 5);
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
 
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
@@ -1020,12 +1020,12 @@ async fn test_apply_extrinsic_proof_inherent_ext_creation_and_verification_shoul
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_apply_extrinsic_proof_normal_ext_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 2).await
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 3).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 3).await
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 4).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1037,7 +1037,7 @@ async fn test_short_trace_for_inherent_apply_extrinsic_proof_creation_and_verifi
 #[tokio::test(flavor = "multi_thread")]
 async fn test_short_trace_for_normal_ext_apply_extrinsic_proof_creation_and_verification_should_work(
 ) {
-    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Shorter, 2).await
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Shorter, 3).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1052,8 +1052,9 @@ async fn test_long_trace_for_finalize_block_proof_creation_and_verification_shou
 /// 4 trace roots in total, passing the `mismatch_trace_index` as:
 /// - 0 to test the `initialize_block` state transition
 /// - 1 to test the `apply_extrinsic` state transition with the inherent timestamp extrinsic
-/// - 2 to test the `apply_extrinsic` state transition with regular domain extrinsic
-/// - 3 to test the `finalize_block` state transition
+/// - 2 to test the `apply_extrinsic` state transition with the inherent `set_consensus_chain_byte_fee` extrinsic
+/// - 3 to test the `apply_extrinsic` state transition with regular domain extrinsic
+/// - 4 to test the `finalize_block` state transition
 /// TraceDiffType can be passed as `TraceDiffType::Shorter`, `TraceDiffType::Longer`
 /// and `TraceDiffType::Mismatch`
 async fn test_invalid_state_transition_proof_creation_and_verification(
@@ -1126,7 +1127,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        assert_eq!(receipt.execution_trace.len(), 4);
+        assert_eq!(receipt.execution_trace.len(), 5);
 
         match trace_diff_type {
             TraceDiffType::Longer => {
@@ -1188,15 +1189,16 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                         proof.execution_phase,
                         ExecutionPhase::InitializeBlock
                     )),
-                    // 1 for the inherent timestamp extrinsic, 2 for the above `transfer_allow_death` extrinsic
-                    1 | 2 => assert!(matches!(
+                    // 1 for the inherent timestamp extrinsic, 1 for the inherent `set_consensus_chain_byte_fee`
+                    // extrinsic, 3 for the above `transfer_allow_death` extrinsic
+                    1..=3 => assert!(matches!(
                         proof.execution_phase,
                         ExecutionPhase::ApplyExtrinsic {
                             mismatch: ApplyExtrinsicMismatch::StateRoot(trace_index),
                             ..
                         } if trace_index == mismatch_trace_index
                     )),
-                    3 => assert!(matches!(
+                    4 => assert!(matches!(
                         proof.execution_phase,
                         ExecutionPhase::FinalizeBlock {
                             mismatch: FinalizeBlockMismatch::StateRoot
@@ -1844,7 +1846,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_invalid_total_rewards_proof_creation() {
+async fn test_invalid_block_fees_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -1900,7 +1902,7 @@ async fn test_invalid_total_rewards_proof_creation() {
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.total_rewards = Default::default();
+        receipt.block_fees = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -1927,7 +1929,7 @@ async fn test_invalid_total_rewards_proof_creation() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp,
-            FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { .. })
+            FraudProof::InvalidBlockFees(InvalidBlockFeesProof { .. })
         )
     });
 
@@ -2322,20 +2324,20 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // domain block body should have 3 extrinsics
-    // timestamp inherent, successful transfer, failed transfer
+    // timestamp inherent, `consensus_chain_byte_fee` inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
-    assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
+    assert_eq!(domain_block_extrinsics.unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
-    // + post_finalize_block_root
+    // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
     let er = bundle.receipt();
-    assert_eq!(er.execution_trace.len(), 5);
-    assert_eq!(er.execution_trace[4], er.final_state_root);
+    assert_eq!(er.execution_trace.len(), 6);
+    assert_eq!(er.execution_trace[5], er.final_state_root);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2422,18 +2424,18 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // timestamp inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
-    assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 3);
+    assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
-    // + post_finalize_block_root
+    // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
     let er = bundle.sealed_header.header.receipt;
 
-    assert_eq!(er.execution_trace.len(), 5);
-    assert_eq!(er.execution_trace[4], er.final_state_root);
+    assert_eq!(er.execution_trace.len(), 6);
+    assert_eq!(er.execution_trace[5], er.final_state_root);
 
     let header = alice.client.header(best_hash).unwrap().unwrap();
     assert_eq!(
@@ -3397,7 +3399,9 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     let tx = alice.construct_extrinsic_with_tip(
         alice.account_nonce(),
         tip,
-        frame_system::Call::remark { remark: vec![] },
+        frame_system::Call::remark {
+            remark: vec![1; 10 * 1024],
+        },
     );
     alice
         .send_extrinsic(tx)
@@ -3413,20 +3417,28 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     let consensus_block_hash = ferdie.client.info().best_hash;
 
     // Produce one more bundle, this bundle should contains the ER of the previous bundle
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.unwrap().into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
 
     // Transaction fee (including the tip) is deducted from alice's account
     let alice_free_balance_changes =
         pre_alice_free_balance - alice.free_balance(Alice.to_account_id());
     assert!(alice_free_balance_changes >= tip);
 
+    let domain_block_fees = alice
+        .client
+        .runtime_api()
+        .block_fees(receipt.domain_block_hash)
+        .unwrap();
+
     // All the transaction fee is collected as operator reward
-    assert_eq!(alice_free_balance_changes, receipt.total_rewards);
+    assert_eq!(
+        alice_free_balance_changes,
+        domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
+    );
+    assert_eq!(domain_block_fees, receipt.block_fees);
+    assert!(!domain_block_fees.consensus_storage_fee.is_zero());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -3670,7 +3682,7 @@ async fn test_bad_receipt_chain() {
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.total_rewards = 100;
+        receipt.domain_block_hash = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -3728,7 +3740,7 @@ async fn test_bad_receipt_chain() {
         let mut opaque_bundle = bundle;
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
-        receipt.total_rewards = 100;
+        receipt.domain_block_hash = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -3747,7 +3759,7 @@ async fn test_bad_receipt_chain() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp,
-            FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { .. })
+            FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
         ) && fp.targeted_bad_receipt_hash() == Some(parent_bad_receipt_hash)
     });
 
@@ -3766,4 +3778,62 @@ async fn test_bad_receipt_chain() {
     for er_hash in [parent_bad_receipt_hash, bad_receipt_hash] {
         assert!(!ferdie.does_receipt_exist(er_hash).unwrap());
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_chain() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // The domain transaction byte is non-zero on the consensus chain genesis but
+    // it is zero in the domain chain genesis
+    let consensus_chain_byte_fee = ferdie
+        .client
+        .runtime_api()
+        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
+        .unwrap();
+    let operator_consensus_chain_byte_fee = alice
+        .client
+        .runtime_api()
+        .consensus_chain_byte_fee(alice.client.info().best_hash)
+        .unwrap();
+    assert!(operator_consensus_chain_byte_fee.is_zero());
+    assert!(!consensus_chain_byte_fee.is_zero());
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The domain transaction byte of the domain chain should be updated to the consensus chain's
+    // through the inherent extrinsic of domain block #1
+    let consensus_chain_byte_fee = ferdie
+        .client
+        .runtime_api()
+        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
+        .unwrap();
+    let operator_consensus_chain_byte_fee = alice
+        .client
+        .runtime_api()
+        .consensus_chain_byte_fee(alice.client.info().best_hash)
+        .unwrap();
+    assert_eq!(consensus_chain_byte_fee, operator_consensus_chain_byte_fee);
 }

@@ -2604,6 +2604,7 @@ dependencies = [
  "sc-executor",
  "sc-executor-common",
  "sp-api",
+ "sp-block-fees",
  "sp-blockchain",
  "sp-core",
  "sp-domains",
@@ -3275,6 +3276,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-base-fee",
+ "pallet-block-fees",
  "pallet-domain-id",
  "pallet-ethereum",
  "pallet-evm",
@@ -3283,7 +3285,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3325,6 +3326,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-base-fee",
+ "pallet-block-fees",
  "pallet-domain-id",
  "pallet-ethereum",
  "pallet-evm",
@@ -3333,7 +3335,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -7373,6 +7374,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-block-fees"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "frame-support",
+ "frame-system",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-block-fees",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-domain-id"
 version = "0.1.0"
 dependencies = [
@@ -7397,6 +7413,7 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
+ "pallet-block-fees",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -7590,18 +7607,6 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-operator-rewards"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
  "sp-runtime",
  "sp-std",
 ]
@@ -10840,6 +10845,17 @@ dependencies = [
  "sp-api",
  "sp-inherents",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "sp-block-fees"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "domain-runtime-primitives",
+ "parity-scale-codec",
+ "sp-inherents",
  "sp-std",
 ]
 

@@ -325,6 +325,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to derive domain timestamp extrinsic")
     )]
     FailedToDeriveDomainTimestampExtrinsic,
+    /// Failed to derive consensus chain byte fee extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive consensus chain byte fee extrinsic")
+    )]
+    FailedToDeriveConsensusChainByteFeeExtrinsic,
     /// Failed to derive domain set code extrinsic
     #[cfg_attr(
         feature = "thiserror",
@@ -436,7 +442,7 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     InvalidTransaction(InvalidTransactionProof<HeaderHashFor<DomainHeader>>),
     BundleEquivocation(BundleEquivocationProof<Number, Hash, DomainHeader>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof<HeaderHashFor<DomainHeader>>),
-    InvalidTotalRewards(InvalidTotalRewardsProof<HeaderHashFor<DomainHeader>>),
+    InvalidBlockFees(InvalidBlockFeesProof<HeaderHashFor<DomainHeader>>),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
     ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
@@ -463,7 +469,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
-            Self::InvalidTotalRewards(proof) => proof.domain_id(),
+            Self::InvalidBlockFees(proof) => proof.domain_id(),
             Self::InvalidExtrinsicsRoot(proof) => proof.domain_id,
             Self::InvalidBundles(proof) => proof.domain_id,
             Self::ValidBundle(proof) => proof.domain_id,
@@ -482,7 +488,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
                 bad_receipt_hash, ..
             } => Some(*bad_receipt_hash),
             Self::InvalidExtrinsicsRoot(proof) => Some(proof.bad_receipt_hash),
-            Self::InvalidTotalRewards(proof) => Some(proof.bad_receipt_hash()),
+            Self::InvalidBlockFees(proof) => Some(proof.bad_receipt_hash()),
             Self::ValidBundle(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidBundles(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidDomainBlockHash(proof) => Some(proof.bad_receipt_hash),
@@ -606,9 +612,9 @@ pub struct ImproperTransactionSortitionProof<ReceiptHash> {
     pub bad_receipt_hash: ReceiptHash,
 }
 
-/// Represents an invalid total rewards proof.
+/// Represents an invalid block fees proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidTotalRewardsProof<ReceiptHash> {
+pub struct InvalidBlockFeesProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -651,7 +657,7 @@ pub struct InvalidExtrinsicsRootProof<ReceiptHash> {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
 }
 
-impl<ReceiptHash: Copy> InvalidTotalRewardsProof<ReceiptHash> {
+impl<ReceiptHash: Copy> InvalidBlockFeesProof<ReceiptHash> {
     pub(crate) fn domain_id(&self) -> DomainId {
         self.domain_id
     }
@@ -663,10 +669,10 @@ impl<ReceiptHash: Copy> InvalidTotalRewardsProof<ReceiptHash> {
 
 //TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
 
-/// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
+/// This is a representation of actual Block Fees storage in pallet-block-fees.
 /// Any change in key or value there should be changed here accordingly.
-pub fn operator_block_rewards_final_key() -> Vec<u8> {
-    frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
+pub fn operator_block_fees_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
         .to_vec()
 }
 
