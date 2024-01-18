@@ -6,7 +6,6 @@ use frame_benchmarking::v2::*;
 mod benchmarks {
     use crate::{Call, Config, Pallet};
     use frame_system::RawOrigin;
-    use sp_std::vec;
 
     #[benchmark]
     fn set_enable_domains() {
