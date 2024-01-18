@@ -12,20 +12,20 @@ use fc_rpc::EthConfig;
 use fc_storage::overrides_handle;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;
+use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StorageProvider};
-use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
 use sc_service::BasePath;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
-use sp_api::{ApiExt, BlockT, CallApiAt, ConstructRuntimeApi, Core, ProvideRuntimeApi};
+use sp_api::{ApiExt, CallApiAt, ConstructRuntimeApi, Core, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_inherents::CreateInherentDataProviders;
-use sp_runtime::codec::{Decode, Encode};
+use sp_runtime::traits::Block as BlockT;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -55,29 +55,21 @@ impl<CT, EC> EthProvider<CT, EC> {
     }
 }
 
-impl<Block, RuntimeApi, ExecutorDispatch, CT, EC>
-    BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
+impl<Block, RuntimeApi, CT, EC> BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
     for EthProvider<CT, EC>
 where
     Block: BlockT,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi:
         ApiExt<Block> + Core<Block> + BlockBuilder<Block> + EthereumRuntimeRPCApi<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     type BI = FrontierBlockImport<
         Block,
-        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
+        Arc<FullClient<Block, RuntimeApi>>,
+        FullClient<Block, RuntimeApi>,
     >;
 
-    fn block_import(
-        &self,
-        client: Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-    ) -> Self::BI {
+    fn block_import(&self, client: Arc<FullClient<Block, RuntimeApi>>) -> Self::BI {
         FrontierBlockImport::new(client.clone(), client)
     }
 }

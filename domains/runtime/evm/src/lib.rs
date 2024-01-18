@@ -41,7 +41,6 @@ use pallet_evm::{
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::storage::StateVersion;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -64,8 +63,6 @@ use sp_runtime::{
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate};
 
@@ -221,36 +218,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
     state_version: 0,
+    extrinsic_state_version: 1,
 };
-
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
-
-/// EVM domain executor instance.
-#[cfg(feature = "std")]
-pub struct ExecutorDispatch;
-
-#[cfg(feature = "std")]
-impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        native_version()
-    }
-}
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -262,7 +231,6 @@ parameter_types! {
     // the lazy contract deletion.
     pub RuntimeBlockLength: BlockLength = maximum_block_length();
     pub RuntimeBlockWeights: BlockWeights = block_weights();
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
 impl frame_system::Config for Runtime {
@@ -270,6 +238,8 @@ impl frame_system::Config for Runtime {
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
+    /// The aggregated `RuntimeTask` type.
+    type RuntimeTask = RuntimeTask;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = IdentityLookup<AccountId>;
     /// The type for storing how many extrinsics an account has signed.
@@ -310,7 +280,6 @@ impl frame_system::Config for Runtime {
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -328,6 +297,7 @@ parameter_types! {
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
     /// The type for recording an account's balance.
     type Balance = Balance;
@@ -556,6 +526,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
 
 parameter_types! {
     pub const GasLimitPovSizeRatio: u64 = 4;
+    pub const SuicideQuickClearLimit: u32 = 0;
 }
 
 impl pallet_evm::Config for Runtime {
@@ -577,6 +548,7 @@ impl pallet_evm::Config for Runtime {
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
     type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
+    type SuicideQuickClearLimit = SuicideQuickClearLimit;
     type Timestamp = Timestamp;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
 }

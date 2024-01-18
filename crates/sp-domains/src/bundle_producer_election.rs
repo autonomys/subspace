@@ -2,7 +2,7 @@ use crate::{DomainId, OperatorPublicKey, ProofOfElection, StakeWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
-use sp_core::sr25519::vrf::{VrfOutput, VrfSignature, VrfTranscript};
+use sp_core::sr25519::vrf::{VrfPreOutput, VrfSignature, VrfTranscript};
 use subspace_core_primitives::Blake3Hash;
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
@@ -37,18 +37,18 @@ pub fn calculate_threshold(
         * operator_stake
 }
 
-pub fn is_below_threshold(vrf_output: &VrfOutput, threshold: u128) -> bool {
-    let vrf_output = u128::from_le_bytes(
+pub fn is_below_threshold(vrf_output: &VrfPreOutput, threshold: u128) -> bool {
+    let vrf_pre_output = u128::from_le_bytes(
         vrf_output
             .0
             .to_bytes()
             .split_at(core::mem::size_of::<u128>())
             .0
             .try_into()
-            .expect("Slice splitted from VrfOutput must fit into u128; qed"),
+            .expect("Slice splitted from VrfPreOutput must fit into u128; qed"),
     );
 
-    vrf_output < threshold
+    vrf_pre_output < threshold
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -94,7 +94,7 @@ pub fn check_proof_of_election<CHash>(
     let threshold =
         calculate_threshold(operator_stake, total_domain_stake, bundle_slot_probability);
 
-    if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+    if !is_below_threshold(&proof_of_election.vrf_signature.pre_output, threshold) {
         return Err(ProofOfElectionError::ThresholdUnsatisfied);
     }
 

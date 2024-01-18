@@ -26,7 +26,7 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::{BlockT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -34,7 +34,7 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::pin::pin;
 use std::sync::Arc;

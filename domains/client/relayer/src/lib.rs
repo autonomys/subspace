@@ -7,7 +7,7 @@ use cross_domain_message_gossip::Message as GossipMessage;
 use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::scale_info::TypeInfo;
+use scale_info::TypeInfo;
 use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{

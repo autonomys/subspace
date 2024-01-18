@@ -8,10 +8,11 @@ use crate::{
     OperatorStatus, Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::RocksDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
@@ -75,11 +76,6 @@ frame_support::construct_runtime!(
 type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u64;
-
-parameter_types! {
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
-}
-
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -87,6 +83,7 @@ impl frame_system::Config for Test {
     type DbWeight = RocksDbWeight;
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
+    type RuntimeTask = RuntimeTask;
     type Nonce = u64;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
@@ -104,7 +101,6 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -159,12 +155,17 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
     }
 }
 
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
 parameter_types! {
     pub const MaxHolds: u32 = 10;
     pub const ExistentialDeposit: Balance = 1;
 }
 
 impl pallet_balances::Config for Test {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ();
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
@@ -391,6 +392,7 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
         apis: Default::default(),
         transaction_version: 1,
         state_version: 0,
+        extrinsic_state_version: 0,
     };
 
     let mut ext = new_test_ext();

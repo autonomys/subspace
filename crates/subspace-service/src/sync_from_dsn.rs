@@ -5,21 +5,19 @@ mod segment_header_downloader;
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
-use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
-use sp_api::{BlockT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_runtime::traits::{CheckedSub, NumberFor};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use sp_runtime::Saturating;
 use std::future::Future;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -56,7 +54,7 @@ pub(super) fn create_observer_and_worker<Block, AS, Client>(
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_target_block_number: Arc<AtomicU32>,
-    sync_mode: Arc<Atomic<SyncMode>>,
+    pause_sync: Arc<AtomicBool>,
     kzg: Kzg,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
@@ -88,7 +86,7 @@ where
             client.as_ref(),
             import_queue_service.as_mut(),
             sync_target_block_number,
-            sync_mode,
+            pause_sync,
             rx,
             &kzg,
         )
@@ -219,7 +217,7 @@ async fn create_worker<Block, AS, IQS, Client>(
     client: &Client,
     import_queue_service: &mut IQS,
     sync_target_block_number: Arc<AtomicU32>,
-    sync_mode: Arc<Atomic<SyncMode>>,
+    pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
     kzg: &Kzg,
 ) -> Result<(), sc_service::Error>
@@ -260,9 +258,9 @@ where
     );
 
     // Node starts as offline, we'll wait for it to go online shrtly after
-    let mut initial_sync_mode = Some(sync_mode.swap(SyncMode::Paused, Ordering::AcqRel));
+    let mut initial_pause_sync = Some(pause_sync.swap(true, Ordering::AcqRel));
     while let Some(reason) = notifications.next().await {
-        let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::AcqRel);
+        let prev_pause_sync = pause_sync.swap(true, Ordering::AcqRel);
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
@@ -306,8 +304,8 @@ where
             }
         }
 
-        sync_mode.store(
-            initial_sync_mode.take().unwrap_or(prev_sync_mode),
+        pause_sync.store(
+            initial_pause_sync.take().unwrap_or(prev_pause_sync),
             Ordering::Release,
         );
 

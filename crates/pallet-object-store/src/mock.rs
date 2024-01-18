@@ -1,6 +1,5 @@
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
-use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
@@ -14,10 +13,6 @@ frame_support::construct_runtime!(
     }
 );
 
-parameter_types! {
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
-}
-
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -25,6 +20,7 @@ impl frame_system::Config for Test {
     type DbWeight = ();
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
+    type RuntimeTask = RuntimeTask;
     type Nonce = u64;
     type Hash = H256;
     type Hashing = BlakeTwo256;
@@ -42,7 +38,6 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {

@@ -1,10 +1,9 @@
 use crate::commands::run::shared::RpcOptions;
-use crate::commands::run::substrate::Cors;
 use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use sc_cli::{
-    generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, TelemetryParams,
-    TransactionPoolParams, RPC_DEFAULT_PORT,
+    generate_node_name, Cors, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods,
+    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};

@@ -44,12 +44,7 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
             let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
             evm_domain_runtime::RuntimeGenesisConfig {
-                system: evm_domain_runtime::SystemConfig {
-                    code: evm_domain_runtime::WASM_BINARY
-                        .expect("WASM binary was not build, please build it!")
-                        .to_vec(),
-                    ..Default::default()
-                },
+                system: evm_domain_runtime::SystemConfig::default(),
                 sudo: evm_domain_runtime::SudoConfig {
                     key: Some(sudo_account),
                 },
@@ -92,6 +87,7 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
         None,
         None,
         None,
+        evm_domain_runtime::WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
@@ -172,7 +168,6 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         ChainType::Development,
         move || {
             subspace_genesis_config(
-                wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
@@ -211,12 +206,13 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         None,
         // Extensions
         NoExtension::None,
+        // Code
+        wasm_binary,
     ))
 }
 
 /// Configure initial storage state for FRAME modules.
 fn subspace_genesis_config(
-    wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
@@ -235,11 +231,7 @@ fn subspace_genesis_config(
     } = genesis_params;
 
     subspace_runtime::RuntimeGenesisConfig {
-        system: subspace_runtime::SystemConfig {
-            // Add Wasm runtime to storage.
-            code: wasm_binary.to_vec(),
-            ..Default::default()
-        },
+        system: subspace_runtime::SystemConfig::default(),
         balances: subspace_runtime::BalancesConfig { balances },
         transaction_payment: Default::default(),
         sudo: subspace_runtime::SudoConfig {

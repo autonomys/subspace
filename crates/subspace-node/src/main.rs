@@ -27,17 +27,15 @@ use crate::cli::{Cli, SubspaceCliPlaceholder};
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
+use domain_service::HostFunctions as DomainHostFunctions;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
-use sc_executor::NativeExecutionDispatch;
 use sc_service::{Configuration, PartialComponents};
 use sp_core::crypto::Ss58AddressFormat;
-use sp_io::SubstrateHostFunctions;
-use sp_wasm_interface::ExtendedHostFunctions;
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
+use subspace_runtime::{Block, RuntimeApi};
+use subspace_service::HostFunctions;
 use tracing::warn;
 
 #[global_allocator]
@@ -140,7 +138,7 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
@@ -158,7 +156,7 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
@@ -177,7 +175,7 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
@@ -197,7 +195,7 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
@@ -219,7 +217,7 @@ fn main() -> Result<(), Error> {
                     backend,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
@@ -249,20 +247,14 @@ fn main() -> Result<(), Error> {
                             );
                         }
 
-                        cmd.run::<Block, ExtendedHostFunctions<
-                            SubstrateHostFunctions,
-                            <ExecutorDispatch as NativeExecutionDispatch>::ExtendHostFunctions,
-                        >>(config)
+                        cmd.run::<Block, HostFunctions>(config)
                     }
                     BenchmarkCmd::Block(cmd) => {
-                        let PartialComponents { client, .. } = subspace_service::new_partial::<
-                            PosTable,
-                            RuntimeApi,
-                            ExecutorDispatch,
-                        >(
-                            &config,
-                            &derive_pot_external_entropy(&config, None)?,
-                        )?;
+                        let PartialComponents { client, .. } =
+                            subspace_service::new_partial::<PosTable, RuntimeApi>(
+                                &config,
+                                &derive_pot_external_entropy(&config, None)?,
+                            )?;
 
                         cmd.run(client)
                     }
@@ -275,7 +267,7 @@ fn main() -> Result<(), Error> {
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
-                        } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                        } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                             &config,
                             &derive_pot_external_entropy(&config, None)?,
                         )?;
@@ -349,10 +341,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, ExtendedHostFunctions<
-                                SubstrateHostFunctions,
-                                <EVMDomainExecutorDispatch as NativeExecutionDispatch>::ExtendHostFunctions,
-                            >>(domain_config)
+                            cmd.run::<DomainBlock, DomainHostFunctions>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }
@@ -374,8 +363,8 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                    let executor: sc_executor::NativeElseWasmExecutor<EVMDomainExecutorDispatch> =
-                        sc_service::new_native_or_wasm_executor(&domain_config);
+                    let executor =
+                        sc_service::new_wasm_executor::<DomainHostFunctions>(&domain_config);
 
                     let (client, _, _, _) = sc_service::new_full_parts::<
                         DomainBlock,

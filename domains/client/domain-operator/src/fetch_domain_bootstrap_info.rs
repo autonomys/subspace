@@ -1,9 +1,9 @@
 use futures::StreamExt;
 use sc_client_api::{BlockchainEvents, ImportNotifications};
-use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainInstanceData, DomainsApi, DomainsDigestItem};
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 
 #[derive(Debug)]
 pub struct BootstrapResult<CBlock: BlockT> {

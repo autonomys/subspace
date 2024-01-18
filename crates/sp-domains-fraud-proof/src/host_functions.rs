@@ -9,13 +9,13 @@ use domain_runtime_primitives::{
 };
 use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
-use sp_api::{BlockT, HashT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
-use sp_runtime::traits::Header as HeaderT;
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;

@@ -24,7 +24,7 @@ use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -36,7 +36,7 @@ use sp_consensus_subspace::{
     ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
     SubspaceJustification,
 };
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{DigestItem, Justifications};
 use std::iter;
 use std::marker::PhantomData;

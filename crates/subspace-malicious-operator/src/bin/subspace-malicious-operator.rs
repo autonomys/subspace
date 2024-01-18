@@ -33,7 +33,7 @@ use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstan
 use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
+use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
 use subspace_service::dsn::DsnConfig;
 
@@ -90,9 +90,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
-    // Force UTC logs for Subspace node
-    cli.run.shared_params.use_utc_log_time = true;
+    let cli = Cli::from_args();
 
     let runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
@@ -212,18 +210,17 @@ fn main() -> Result<(), Error> {
                 timekeeper_cpu_cores: Default::default(),
             };
 
-            let partial_components = subspace_service::new_partial::<
-                PosTable,
-                RuntimeApi,
-                ExecutorDispatch,
-            >(&consensus_chain_config, &pot_external_entropy)
+            let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
+                &consensus_chain_config,
+                &pot_external_entropy,
+            )
             .map_err(|error| {
                 sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
             })?;
 
             let keystore = partial_components.keystore_container.keystore();
 
-            let consensus_chain_node = subspace_service::new_full::<PosTable, _, _>(
+            let consensus_chain_node = subspace_service::new_full::<PosTable, _>(
                 consensus_chain_config,
                 partial_components,
                 true,
@@ -364,8 +361,9 @@ fn main() -> Result<(), Error> {
 
             let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                 .build::<Block, _, _>(
-                    consensus_chain_node.network_service.clone(),
-                    consensus_chain_node.sync_service.clone(),
+                    consensus_chain_node.network_service,
+                    consensus_chain_node.cdm_gossip_notification_service,
+                    consensus_chain_node.sync_service,
                 );
 
             consensus_chain_node

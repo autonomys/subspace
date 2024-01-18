@@ -10,7 +10,7 @@ use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, Opera
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi};
 use domain_service::providers::DefaultProvider;
-use domain_service::FullClient;
+use domain_service::{FullClient, RuntimeExecutor};
 use domain_test_primitives::OnchainStateApi;
 use evm_domain_test_runtime;
 use evm_domain_test_runtime::AccountId as AccountId20;
@@ -19,7 +19,6 @@ use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
-use sc_executor::NativeExecutionDispatch;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
@@ -27,14 +26,14 @@ use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_core::{Decode, Encode, H256};
 use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::Dispatchable;
+use sp_runtime::traits::{Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -66,22 +65,16 @@ impl FromKeyring for AccountId20 {
 /// The backend type used by the test service.
 pub type Backend = TFullBackend<Block>;
 
-type Client<RuntimeApi, ExecutorDispatch> = FullClient<Block, RuntimeApi, ExecutorDispatch>;
+type Client<RuntimeApi> = FullClient<Block, RuntimeApi>;
 
 /// Domain executor for the test service.
-pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOperator<
-    Block,
-    CBlock,
-    subspace_test_client::Client,
-    RuntimeApi,
-    ExecutorDispatch,
->;
+pub type DomainOperator<RuntimeApi> =
+    domain_service::DomainOperator<Block, CBlock, subspace_test_client::Client, RuntimeApi>;
 
 /// A generic domain node instance used for testing.
-pub struct DomainNode<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
+pub struct DomainNode<Runtime, RuntimeApi, AccountId>
 where
-    RuntimeApi:
-        ConstructRuntimeApi<Block, Client<RuntimeApi, ExecutorDispatch>> + Send + Sync + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, Client<RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
@@ -93,7 +86,6 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, NumberFor<Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
     AccountId: Encode + Decode + FromKeyring,
 {
     /// The domain id
@@ -105,11 +97,11 @@ where
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
-    pub client: Arc<Client<RuntimeApi, ExecutorDispatch>>,
+    pub client: Arc<Client<RuntimeApi>>,
     /// Client backend.
     pub backend: Arc<Backend>,
     /// Code executor.
-    pub code_executor: Arc<sc_executor::NativeElseWasmExecutor<ExecutorDispatch>>,
+    pub code_executor: Arc<RuntimeExecutor>,
     /// Network service.
     pub network_service: Arc<NetworkService<Block, H256>>,
     /// Sync service.
@@ -120,22 +112,20 @@ where
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Domain oeprator.
-    pub operator: DomainOperator<RuntimeApi, ExecutorDispatch>,
+    pub operator: DomainOperator<RuntimeApi>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<ChainTxPoolMsg>,
     _phantom_data: PhantomData<(Runtime, AccountId)>,
 }
 
-impl<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
-    DomainNode<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
+impl<Runtime, RuntimeApi, AccountId> DomainNode<Runtime, RuntimeApi, AccountId>
 where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     crate::BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
     u64: From<BlockNumberFor<Runtime>>,
-    RuntimeApi:
-        ConstructRuntimeApi<Block, Client<RuntimeApi, ExecutorDispatch>> + Send + Sync + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, Client<RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
@@ -149,7 +139,6 @@ where
         + RelayerApi<Block, NumberFor<Block>>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
     AccountId: DeserializeOwned
         + Encode
         + Decode
@@ -240,21 +229,12 @@ where
             maybe_operator_id,
         };
 
-        let domain_node = domain_service::new_full::<
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            RuntimeApi,
-            ExecutorDispatch,
-            AccountId,
-            _,
-            _,
-        >(domain_params)
-        .await
-        .expect("failed to build domain node");
+        let domain_node =
+            domain_service::new_full::<_, _, _, _, _, _, RuntimeApi, AccountId, _, _>(
+                domain_params,
+            )
+            .await
+            .expect("failed to build domain node");
 
         let domain_service::NewFull {
             task_manager,
@@ -470,28 +450,9 @@ impl DomainNodeBuilder {
     }
 }
 
-/// Evm domain executor instance.
-pub struct EVMDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for EVMDomainExecutorDispatch {
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        evm_domain_test_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        evm_domain_test_runtime::native_version()
-    }
-}
-
 /// The evm domain node
-pub type EvmDomainNode = DomainNode<
-    evm_domain_test_runtime::Runtime,
-    evm_domain_test_runtime::RuntimeApi,
-    EVMDomainExecutorDispatch,
-    AccountId20,
->;
+pub type EvmDomainNode =
+    DomainNode<evm_domain_test_runtime::Runtime, evm_domain_test_runtime::RuntimeApi, AccountId20>;
 
 /// The evm domain client
-pub type EvmDomainClient = Client<evm_domain_test_runtime::RuntimeApi, EVMDomainExecutorDispatch>;
+pub type EvmDomainClient = Client<evm_domain_test_runtime::RuntimeApi>;

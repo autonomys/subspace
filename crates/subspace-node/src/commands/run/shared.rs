@@ -1,6 +1,5 @@
-use crate::commands::run::substrate::Cors;
 use clap::Parser;
-use sc_cli::{RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN};
+use sc_cli::{Cors, RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Options for RPC
