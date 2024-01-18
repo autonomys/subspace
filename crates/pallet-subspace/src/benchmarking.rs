@@ -19,7 +19,6 @@ mod benchmarks {
     use sp_core::Get;
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
-    use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::{
         ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotOutput, SegmentHeader,

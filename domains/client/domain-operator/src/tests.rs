@@ -3448,7 +3448,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     );
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -3465,29 +3465,45 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
         .into()
     };
 
-    // Fork A
+    // submit a remark from alice
+    let alice_account_nonce = alice.account_nonce();
+    let tx = alice.construct_extrinsic(
+        alice_account_nonce,
+        frame_system::Call::remark {
+            remark: vec![0u8; 8],
+        },
+    );
+    alice
+        .send_extrinsic(tx)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Fork A with bundle that contains above transaction
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    // Include one more extrinsic in fork A such that we can have a different consensus block
-    let remark_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        frame_system::Call::remark { remark: vec![0; 8] }.into(),
-    )
-    .into();
     let consensus_block_hash_fork_a = ferdie
         .produce_block_with_slot_at(
             slot,
             common_block_hash,
-            Some(vec![bundle_to_tx(bundle.clone().unwrap()), remark_tx]),
+            Some(vec![bundle_to_tx(bundle.clone().unwrap())]),
         )
         .await
         .unwrap();
 
     // Fork B
+    let bundle = {
+        let mut opaque_bundle = bundle.unwrap();
+        opaque_bundle.extrinsics = vec![];
+        opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+            sp_domains::EMPTY_EXTRINSIC_ROOT;
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        opaque_bundle
+    };
+
     let consensus_block_hash_fork_b = ferdie
-        .produce_block_with_slot_at(
-            slot,
-            common_block_hash,
-            Some(vec![bundle_to_tx(bundle.unwrap())]),
-        )
+        .produce_block_with_slot_at(slot, common_block_hash, Some(vec![bundle_to_tx(bundle)]))
         .await
         .unwrap();
     // Produce one more consensus block to make fork B the best fork and trigger processing
@@ -3535,15 +3551,11 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
         consensus_block_hash_fork_b
     );
 
-    // The domain block headers should have the same `parent_hash` and `extrinsics_root`
+    // The domain block headers should have the same `parent_hash`
     // but different digest and `state_root` (because digest is stored on chain)
     assert_eq!(
         domain_block_header_fork_a.parent_hash(),
         domain_block_header_fork_b.parent_hash()
-    );
-    assert_eq!(
-        domain_block_header_fork_a.extrinsics_root(),
-        domain_block_header_fork_b.extrinsics_root()
     );
     assert_ne!(
         domain_block_header_fork_a.digest(),
