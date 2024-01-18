@@ -184,7 +184,7 @@ mod pallet {
         /// Initiates transfer of funds from account on src_chain to account on dst_chain.
         /// Funds are burned on src_chain first and are minted on dst_chain using Messenger.
         #[pallet::call_index(0)]
-        #[pallet::weight((T::WeightInfo::transfer(), Pays::No))]
+        #[pallet::weight(T::WeightInfo::transfer())]
         pub fn transfer(
             origin: OriginFor<T>,
             dst_location: Location,
