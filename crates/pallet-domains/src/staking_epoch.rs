@@ -1,10 +1,10 @@
 //! Staking epoch transition for domain
 use crate::pallet::{
     Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
-    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount,
+    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
-    calculate_withdraw_share_ssc, do_convert_previous_epoch_deposits, DomainEpoch,
+    do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
     Error as TransitionError, OperatorStatus, SharePrice,
 };
 use crate::{
@@ -314,9 +314,6 @@ pub(crate) fn mint_funds<T: Config>(
 pub(crate) fn do_finalize_slashed_operators<T: Config>(
     domain_id: DomainId,
 ) -> Result<(), TransitionError> {
-    let domain_staking_summary =
-        DomainStakingSummary::<T>::get(domain_id).ok_or(TransitionError::DomainNotInitialized)?;
-    let domain_epoch = (domain_id, domain_staking_summary.current_epoch_index).into();
     for operator_id in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
         Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
             // take the operator so this operator info is removed once we slash the operator.
@@ -343,34 +340,37 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                         T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
                     // convert any previous epoch deposits
-                    do_convert_previous_epoch_deposits::<T>(
-                        operator_id,
-                        &mut deposit,
-                        domain_epoch,
-                    )?;
+                    do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
 
                     // there maybe some withdrawals that are initiated in this epoch where operator was slashed
                     // then collect and include them to find the final stake amount
                     let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-                        calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone());
+                        Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                            .map(|mut withdrawal| {
+                                do_convert_previous_epoch_withdrawal::<T>(
+                                    operator_id,
+                                    &mut withdrawal,
+                                )?;
+                                Ok((
+                                    withdrawal.total_withdrawal_amount,
+                                    withdrawal
+                                        .withdrawal_in_shares
+                                        .map(|(_, _, shares)| shares)
+                                        .unwrap_or_default(),
+                                ))
+                            })
+                            .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
 
                     // include all the known shares and shares that were withdrawn in the current epoch
-                    let nominator_shares = if shares_withdrew_in_current_epoch.is_zero() {
-                        deposit.known.shares
-                    } else {
-                        deposit
-                            .known
-                            .shares
-                            .checked_add(&shares_withdrew_in_current_epoch)
-                            .ok_or(TransitionError::ShareOverflow)?
-                    };
+                    let nominator_shares = deposit
+                        .known
+                        .shares
+                        .checked_add(&shares_withdrew_in_current_epoch)
+                        .ok_or(TransitionError::ShareOverflow)?;
 
                     // current staked amount
-                    let nominator_staked_amount = if share_price.is_one() {
-                        nominator_shares.into()
-                    } else {
-                        share_price.shares_to_stake::<T>(nominator_shares)
-                    };
+                    let nominator_staked_amount =
+                        share_price.shares_to_stake::<T>(nominator_shares);
 
                     // do not slash the deposit that is not staked yet
                     let amount_to_slash_in_holding = locked_amount

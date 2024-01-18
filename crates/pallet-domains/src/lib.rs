@@ -169,7 +169,6 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
-    use sp_std::collections::vec_deque::VecDeque;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -410,7 +409,7 @@ mod pallet {
         OperatorId,
         Identity,
         NominatorId<T>,
-        VecDeque<Withdrawal<T::Share, DomainBlockNumberFor<T>>>,
+        Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
         OptionQuery,
     >;
 
