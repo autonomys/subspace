@@ -31,7 +31,7 @@ subspace-runtime-primitives = { version = "0.1.0", default-features = false, pat
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 
 [dev-dependencies]
-env_logger = "0.10.0"
+env_logger = "0.10.2"
 futures = "0.3.29"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subspace" }

@@ -90,6 +90,8 @@ inherits = "release"
 lto = "fat"
 
 [patch.crates-io]
+# TODO: Switch to release once v1.0.0-alpha.2 or newer is out
+hwlocality = { git = "https://github.com/HadrienG2/hwlocality", rev = "0f248573bcad584960fe20293c826203a265b833" }
 # TODO: Switch to stable release once https://github.com/paritytech/substrate-bip39/pull/20 is published
 substrate-bip39 = { git = "https://github.com/paritytech/substrate-bip39", rev = "03f02a7225d9bc5add92b7657790ee1ac8ab90a4" }
 

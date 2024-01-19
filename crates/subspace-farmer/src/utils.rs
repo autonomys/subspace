@@ -167,12 +167,8 @@ impl CpuCoreSet {
         if let Some(topology) = &self.topology {
             use hwlocality::cpu::binding::CpuBindingFlags;
             use hwlocality::cpu::cpuset::CpuSet;
+            use hwlocality::current_thread_id;
             use hwlocality::ffi::PositiveInt;
-
-            #[cfg(not(windows))]
-            let thread_id = unsafe { libc::pthread_self() };
-            #[cfg(windows)]
-            let thread_id = unsafe { windows_sys::Win32::System::Threading::GetCurrentThread() };
 
             // load the cpuset for the given core index.
             let cpu_cores = CpuSet::from_iter(
@@ -182,7 +178,7 @@ impl CpuCoreSet {
             );
 
             if let Err(error) =
-                topology.bind_thread_cpu(thread_id, &cpu_cores, CpuBindingFlags::empty())
+                topology.bind_thread_cpu(current_thread_id(), &cpu_cores, CpuBindingFlags::empty())
             {
                 warn!(%error, ?cpu_cores, "Failed to pin thread to CPU cores")
             }

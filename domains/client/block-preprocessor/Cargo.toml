@@ -32,7 +32,7 @@ sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/polka
 sp-version = { version = "22.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-tracing = "0.1.37"
+tracing = "0.1.40"
 
 [dev-dependencies]
 sp-keyring = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
