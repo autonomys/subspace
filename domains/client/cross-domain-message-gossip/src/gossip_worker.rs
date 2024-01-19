@@ -113,7 +113,7 @@ pub struct GossipWorker<Block: BlockT, Network> {
 }
 
 /// Returns the network configuration for cross chain message gossip.
-pub fn cdm_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn NotificationService>) {
+pub fn xdm_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn NotificationService>) {
     let (mut cfg, notification_service) = NonDefaultSetConfig::new(
         PROTOCOL_NAME.into(),
         Vec::new(),

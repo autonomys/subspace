@@ -36,7 +36,7 @@ use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
-use cross_domain_message_gossip::cdm_gossip_peers_set_config;
+use cross_domain_message_gossip::xdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -587,7 +587,7 @@ where
     /// Network service.
     pub network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     /// Cross-domain gossip notification service.
-    pub cdm_gossip_notification_service: Box<dyn NotificationService>,
+    pub xdm_gossip_notification_service: Box<dyn NotificationService>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
@@ -761,9 +761,9 @@ where
         .map_err(Error::BlockRelay)?,
     );
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
-    let (cdm_gossip_notification_config, cdm_gossip_notification_service) =
-        cdm_gossip_peers_set_config();
-    net_config.add_notification_protocol(cdm_gossip_notification_config);
+    let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
+        xdm_gossip_peers_set_config();
+    net_config.add_notification_protocol(xdm_gossip_notification_config);
     let (pot_gossip_notification_config, pot_gossip_notification_service) =
         pot_gossip_peers_set_config();
     net_config.add_notification_protocol(pot_gossip_notification_config);
@@ -1068,7 +1068,7 @@ where
         client,
         select_chain,
         network_service,
-        cdm_gossip_notification_service,
+        xdm_gossip_notification_service,
         sync_service,
         rpc_handlers,
         backend,

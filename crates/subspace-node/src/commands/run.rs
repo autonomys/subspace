@@ -209,7 +209,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                     .build::<Block, _, _>(
                         consensus_chain_node.network_service.clone(),
-                        consensus_chain_node.cdm_gossip_notification_service,
+                        consensus_chain_node.xdm_gossip_notification_service,
                         consensus_chain_node.sync_service.clone(),
                     );
 

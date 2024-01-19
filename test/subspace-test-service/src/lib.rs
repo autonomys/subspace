@@ -19,7 +19,7 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use codec::{Decode, Encode};
-use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorkerBuilder};
+use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
 use futures::{select, Future, FutureExt, StreamExt};
@@ -233,7 +233,7 @@ pub struct MockConsensusNode {
     /// Network service.
     pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
     /// Cross-domain gossip notification service.
-    pub cdm_gossip_notification_service: Option<Box<dyn NotificationService>>,
+    pub xdm_gossip_notification_service: Option<Box<dyn NotificationService>>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
@@ -309,9 +309,9 @@ impl MockConsensusNode {
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
         let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
-        let (cdm_gossip_notification_config, cdm_gossip_notification_service) =
-            cdm_gossip_peers_set_config();
-        net_config.add_notification_protocol(cdm_gossip_notification_config);
+        let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
+            xdm_gossip_peers_set_config();
+        net_config.add_notification_protocol(xdm_gossip_notification_config);
 
         let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
             sc_service::build_network(sc_service::BuildNetworkParams {
@@ -359,7 +359,7 @@ impl MockConsensusNode {
             transaction_pool,
             select_chain,
             network_service,
-            cdm_gossip_notification_service: Some(cdm_gossip_notification_service),
+            xdm_gossip_notification_service: Some(xdm_gossip_notification_service),
             sync_service,
             rpc_handlers,
             network_starter: Some(network_starter),
@@ -396,9 +396,9 @@ impl MockConsensusNode {
             .expect("gossip message worker have not started yet");
         let cross_domain_message_gossip_worker = xdm_gossip_worker_builder.build::<Block, _, _>(
             self.network_service.clone(),
-            self.cdm_gossip_notification_service
+            self.xdm_gossip_notification_service
                 .take()
-                .expect("CDM gossip notification service must be used only once"),
+                .expect("XDM gossip notification service must be used only once"),
             self.sync_service.clone(),
         );
         self.task_manager
