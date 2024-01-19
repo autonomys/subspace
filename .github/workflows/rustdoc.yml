@@ -46,7 +46,7 @@ jobs:
 
       # Build the rust crate docs
       - name: Build Documentation
-        run: cargo doc --all --no-deps --lib
+        run: cargo -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
