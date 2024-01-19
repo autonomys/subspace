@@ -4577,8 +4577,7 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "hwlocality"
 version = "1.0.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6020affad7f95b46f12607a8714aa70bd02c8df3b3abf9ef5c8cd2f7ae57a033"
+source = "git+https://github.com/HadrienG2/hwlocality?rev=0f248573bcad584960fe20293c826203a265b833#0f248573bcad584960fe20293c826203a265b833"
 dependencies = [
  "arrayvec",
  "bitflags 2.4.2",
@@ -4588,13 +4587,13 @@ dependencies = [
  "libc",
  "num_enum",
  "thiserror",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
 name = "hwlocality-sys"
 version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88ecc1a90eeca65f95f08a7d32132cd4d35c9ee95ed89e32d0342a4bf7b5d644"
+source = "git+https://github.com/HadrienG2/hwlocality?rev=0f248573bcad584960fe20293c826203a265b833#0f248573bcad584960fe20293c826203a265b833"
 dependencies = [
  "autotools",
  "cmake",
@@ -11477,7 +11476,6 @@ dependencies = [
  "hex",
  "hwlocality",
  "jsonrpsee",
- "libc",
  "libmimalloc-sys",
  "lru 0.12.1",
  "mimalloc",
@@ -11508,7 +11506,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.18",
  "ulid",
- "windows-sys 0.52.0",
  "zeroize",
 ]
 

@@ -62,12 +62,6 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
 zeroize = "1.7.0"
 
-[target.'cfg(not(windows))'.dependencies]
-libc = "0.2.152"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = "0.52.0"
-
 [features]
 default = ["numa"]
 numa = ["dep:hwlocality"]
