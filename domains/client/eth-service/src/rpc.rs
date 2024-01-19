@@ -4,9 +4,8 @@ use fc_rpc::{
     Eth, EthApiServer, EthDevSigner, EthFilter, EthFilterApiServer, EthPubSub, EthPubSubApiServer,
     EthSigner, Net, NetApiServer, Web3, Web3ApiServer,
 };
-pub use fc_rpc::{EthBlockDataCacheTask, EthConfig, StorageOverride};
+pub use fc_rpc::{EthBlockDataCacheTask, EthConfig};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
-pub use fc_storage::overrides_handle;
 use fc_storage::OverrideHandle;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;

@@ -1,5 +1,3 @@
-pub use fc_consensus::FrontierBlockImport;
-pub use fc_db::kv::frontier_database_dir;
 use fc_mapping_sync::kv::MappingSyncWorker;
 use fc_mapping_sync::SyncStrategy;
 use fc_rpc::{EthTask, OverrideHandle};

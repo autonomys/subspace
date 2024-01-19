@@ -386,9 +386,11 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     let maybe_pending_deposit = deposit.pending.take();
     // if it is one of the previous domain epoch, then calculate shares for the epoch and update known deposit
     deposit.pending = if let Some(PendingDeposit {
-                                                effective_domain_epoch,
-                                                amount,
-                                            }) = maybe_pending_deposit && let Some(epoch_share_price) = OperatorEpochSharePrice::<T>::get(operator_id, effective_domain_epoch)
+        effective_domain_epoch,
+        amount,
+    }) = maybe_pending_deposit
+        && let Some(epoch_share_price) =
+            OperatorEpochSharePrice::<T>::get(operator_id, effective_domain_epoch)
     {
         let new_shares = epoch_share_price.stake_to_shares::<T>(amount);
         deposit.known.shares = deposit
@@ -411,21 +413,24 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     withdrawal: &mut Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
 ) -> Result<(), Error> {
     let withdrawal_in_shares = withdrawal.withdrawal_in_shares.take();
-    withdrawal.withdrawal_in_shares =
-        if let Some((domain_epoch, domain_block_number, shares)) = withdrawal_in_shares && let Some(epoch_share_price) = OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch){
-            let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
-            withdrawal.total_withdrawal_amount = withdrawal
-                .total_withdrawal_amount
-                .checked_add(&withdrawal_amount)
-                .ok_or(Error::BalanceOverflow)?;
-            let (domain_id, _) = domain_epoch.deconstruct();
-            withdrawal
-                .withdrawals
-                .push_back((domain_id, domain_block_number, withdrawal_amount));
-            None
-        } else {
-            withdrawal_in_shares
-        };
+    withdrawal.withdrawal_in_shares = if let Some((domain_epoch, domain_block_number, shares)) =
+        withdrawal_in_shares
+        && let Some(epoch_share_price) =
+            OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch)
+    {
+        let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
+        withdrawal.total_withdrawal_amount = withdrawal
+            .total_withdrawal_amount
+            .checked_add(&withdrawal_amount)
+            .ok_or(Error::BalanceOverflow)?;
+        let (domain_id, _) = domain_epoch.deconstruct();
+        withdrawal
+            .withdrawals
+            .push_back((domain_id, domain_block_number, withdrawal_amount));
+        None
+    } else {
+        withdrawal_in_shares
+    };
 
     Ok(())
 }
@@ -836,7 +841,10 @@ pub(crate) fn do_unlock_funds<T: Config>(
             *maybe_withdrawal = None;
             // if there is no deposit or pending deposits, then clean up the deposit state as well
             Deposits::<T>::mutate_exists(operator_id, nominator_id, |maybe_deposit| {
-                if let Some(deposit) = maybe_deposit && deposit.known.shares.is_zero() && deposit.pending.is_none() {
+                if let Some(deposit) = maybe_deposit
+                    && deposit.known.shares.is_zero()
+                    && deposit.pending.is_none()
+                {
                     *maybe_deposit = None
                 }
             });

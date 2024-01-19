@@ -231,11 +231,7 @@ impl FromStr for DiskFarm {
 
             match key {
                 "path" => {
-                    plot_directory.replace(
-                        PathBuf::try_from(value).map_err(|error| {
-                            format!("Failed to parse `path` \"{value}\": {error}")
-                        })?,
-                    );
+                    plot_directory.replace(PathBuf::from(value));
                 }
                 "size" => {
                     allocated_plotting_space.replace(

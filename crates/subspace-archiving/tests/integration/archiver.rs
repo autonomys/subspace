@@ -276,7 +276,7 @@ fn archiver() {
 
     // Check archived bytes for block with index `2` in each archived segment
     {
-        let archived_segment = archived_segments.get(0).unwrap();
+        let archived_segment = archived_segments.first().unwrap();
         let last_archived_block = archived_segment.segment_header.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
         assert_eq!(last_archived_block.partial_archived(), Some(108352733));
@@ -360,7 +360,7 @@ fn archiver() {
 
     // Archived segment should fit exactly into the last archived segment (rare case)
     {
-        let archived_segment = archived_segments.get(0).unwrap();
+        let archived_segment = archived_segments.first().unwrap();
         let last_archived_block = archived_segment.segment_header.last_archived_block();
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.partial_archived(), None);
