@@ -1032,7 +1032,7 @@ impl_runtime_apis! {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> DomainNumber {
+        fn oldest_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
             Domains::oldest_receipt_number(domain_id)
         }
 

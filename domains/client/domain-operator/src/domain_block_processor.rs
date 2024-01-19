@@ -759,12 +759,17 @@ where
             .consensus_client
             .runtime_api()
             .head_receipt_number(consensus_block_hash, self.domain_id)?;
-        let oldest_receipt_number = self
+        let oldest_receipt_number = match self
             .consensus_client
             .runtime_api()
-            .oldest_receipt_number(consensus_block_hash, self.domain_id)?;
+            .oldest_receipt_number(consensus_block_hash, self.domain_id)?
+        {
+            Some(er_number) => er_number,
+            // Early return if there is no non-confirmed ER exist
+            None => return Ok(None),
+        };
 
-        while !to_check.is_zero() && oldest_receipt_number < to_check {
+        while !to_check.is_zero() && oldest_receipt_number <= to_check {
             let onchain_receipt_hash = self
                 .consensus_client
                 .runtime_api()

@@ -1860,11 +1860,21 @@ impl<T: Config> Pallet<T> {
         HeadReceiptNumber::<T>::get(domain_id)
     }
 
-    /// Returns the block number of oldest execution receipt.
-    // FIXME: the `oldest_receipt_number` may not be correct if fraud proof is submitted
-    // and bad ER were pruned, see https://github.com/subspace/subspace/issues/2354
-    pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
+    /// Returns the block number of oldest existing execution receipt, return `None` means there is
+    /// no non-confirmed ER exist or submitted yet.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
+        let oldest_nonconfirmed_er_number =
+            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
+
+        if BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some() {
+            Some(oldest_nonconfirmed_er_number)
+        } else {
+            // The `oldest_nonconfirmed_er_number` ER may not exist if
+            // - The domain just started and no ER submitted yet
+            // - The oldest ER just pruned by fraud proof and no new ER submitted yet
+            // - When using consensus block to derive the challenge period forward (unimplemented yet)
+            None
+        }
     }
 
     /// Returns the block tree pruning depth.
