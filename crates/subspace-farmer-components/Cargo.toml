@@ -16,17 +16,17 @@ include = [
 bench = false
 
 [dependencies]
-async-lock = "2.8.0"
-async-trait = "0.1.73"
+async-lock = "3.3.0"
+async-trait = "0.1.77"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 fs2 = "0.4.3"
 futures = "0.3.29"
 hex = "0.4.3"
-libc = "0.2.146"
-parity-scale-codec = "3.6.5"
+libc = "0.2.152"
+parity-scale-codec = "3.6.9"
 rand = "0.8.5"
-rayon = "1.8.0"
+rayon = "1.8.1"
 schnorrkel = "0.11.4"
 serde = { version = "1.0.195", features = ["derive"] }
 static_assertions = "1.1.0"
@@ -35,9 +35,9 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.48"
-tokio = { version = "1.34.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
-tracing = "0.1.37"
+thiserror = "1.0.56"
+tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
+tracing = "0.1.40"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.9"
