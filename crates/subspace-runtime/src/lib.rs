@@ -484,7 +484,7 @@ impl pallet_sudo::Config for Runtime {
 
 parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 18;
-    pub SelfChainId: ChainId = ChainId::Consensus;
+    pub const SelfChainId: ChainId = ChainId::Consensus;
 }
 
 pub struct DomainInfo;
