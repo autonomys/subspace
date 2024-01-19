@@ -11585,7 +11585,6 @@ dependencies = [
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
- "actix-web",
  "async-mutex",
  "async-trait",
  "backoff",
