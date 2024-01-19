@@ -1036,10 +1036,6 @@ impl_runtime_apis! {
             Domains::oldest_receipt_number(domain_id)
         }
 
-        fn block_tree_pruning_depth() -> DomainNumber {
-            Domains::block_tree_pruning_depth()
-        }
-
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             Domains::domain_block_limit(domain_id)
         }

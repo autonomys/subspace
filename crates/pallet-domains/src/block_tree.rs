@@ -4,7 +4,7 @@ use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
     DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
-    InboxedBundleAuthor, ReceiptHashFor,
+    InboxedBundleAuthor, LatestConfirmedDomainBlockNumber, ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -106,15 +106,15 @@ pub(crate) fn execution_receipt_type<T: Config>(
     let receipt_number = execution_receipt.domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
+    let latest_confirmed_domain_block_number =
+        LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
 
     match receipt_number.cmp(&next_receipt_number) {
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
         Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
         Ordering::Less => {
-            // Reject receipt that already pruned/confirmed
-            let oldest_receipt_number =
-                head_receipt_number.saturating_sub(T::BlockTreePruningDepth::get());
-            if receipt_number < oldest_receipt_number {
+            // Reject receipt that already confirmed
+            if receipt_number <= latest_confirmed_domain_block_number {
                 return ReceiptType::Rejected(RejectedReceiptType::Pruned);
             }
 

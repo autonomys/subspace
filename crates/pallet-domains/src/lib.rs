@@ -59,7 +59,7 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
+use sp_runtime::traits::{Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -1877,11 +1877,6 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    /// Returns the block tree pruning depth.
-    pub fn block_tree_pruning_depth() -> DomainBlockNumberFor<T> {
-        T::BlockTreePruningDepth::get()
-    }
-
     /// Returns the domain block limit of the given domain.
     pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
         DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
@@ -1897,10 +1892,10 @@ impl<T: Config> Pallet<T> {
             return true;
         }
 
+        // Start from the oldest non-confirmed ER to the head domain number
+        let mut to_check =
+            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
         let head_number = HeadDomainNumber::<T>::get(domain_id);
-        let mut to_check = head_number
-            .checked_sub(&T::BlockTreePruningDepth::get())
-            .unwrap_or(Zero::zero());
 
         while to_check <= head_number {
             if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {
