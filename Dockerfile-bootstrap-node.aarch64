@@ -54,7 +54,7 @@ RUN \
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++-9-multilib
 
 RUN \
-    /root/.cargo/bin/cargo build \
+    /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \

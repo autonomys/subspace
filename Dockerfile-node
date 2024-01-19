@@ -43,7 +43,7 @@ COPY test /code/test
 ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
 
 RUN \
-    /root/.cargo/bin/cargo build \
+    /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \

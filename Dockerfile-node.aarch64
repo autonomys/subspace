@@ -51,7 +51,7 @@ RUN \
         libc6-dev-arm64-cross
 
 RUN \
-    /root/.cargo/bin/cargo build \
+    /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \
