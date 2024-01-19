@@ -580,7 +580,7 @@ where
         match GossipProof::decode(&mut data) {
             Ok(proof) => {
                 let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
-                let current_slot = Slot::from(u64::from(next_slot_input.slot) - 1);
+                let current_slot = next_slot_input.slot - Slot::from(1);
 
                 if proof.slot < current_slot {
                     trace!(

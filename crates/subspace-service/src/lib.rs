@@ -341,14 +341,14 @@ where
                     if quick_verification {
                         pot_verifier.try_is_output_valid(
                             pot_input,
-                            Slot::from(slot - u64::from(parent_slot)),
+                            Slot::from(slot) - parent_slot,
                             proof_of_time,
                             pot_parameters.next_parameters_change(),
                         )
                     } else {
                         pot_verifier.is_output_valid(
                             pot_input,
-                            Slot::from(slot - u64::from(parent_slot)),
+                            Slot::from(slot) - parent_slot,
                             proof_of_time,
                             pot_parameters.next_parameters_change(),
                         )

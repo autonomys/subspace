@@ -417,7 +417,7 @@ where
             // Ensure proof of time is valid according to parent block
             if !self.pot_verifier.is_output_valid(
                 pot_input,
-                Slot::from(u64::from(slot) - u64::from(parent_slot)),
+                slot - parent_slot,
                 proof_of_time,
                 parent_pot_parameters.next_parameters_change(),
             ) {
