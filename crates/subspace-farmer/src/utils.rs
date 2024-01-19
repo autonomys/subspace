@@ -18,7 +18,9 @@ use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::{debug, warn};
+use tracing::debug;
+#[cfg(feature = "numa")]
+use tracing::warn;
 
 /// Joins async join handle on drop
 pub struct AsyncJoinOnDrop<T> {
