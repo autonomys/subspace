@@ -39,7 +39,7 @@ parking_lot = "0.12.1"
 prometheus-client = "0.22.0"
 rand = "0.8.5"
 rayon = "1.8.0"
-schnorrkel = "0.9.1"
+schnorrkel = "0.11.4"
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 static_assertions = "1.1.0"
@@ -52,7 +52,7 @@ subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-substrate-bip39 = "0.4.4"
+substrate-bip39 = "0.4.5"
 supports-color = "2.0.0"
 tempfile = "3.8.0"
 thiserror = "1.0.48"

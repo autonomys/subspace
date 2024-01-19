@@ -89,6 +89,10 @@ panic = "unwind"
 inherits = "release"
 lto = "fat"
 
+[patch.crates-io]
+# TODO: Switch to stable release once https://github.com/paritytech/substrate-bip39/pull/20 is published
+substrate-bip39 = { git = "https://github.com/paritytech/substrate-bip39", rev = "03f02a7225d9bc5add92b7657790ee1ac8ab90a4" }
+
 # Reason: We need to patch substrate dependency of frontier to our fork
 # TODO: Remove if/when we are using upstream substrate instead of fork
 [patch."https://github.com/paritytech/polkadot-sdk.git"]

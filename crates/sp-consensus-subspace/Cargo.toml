@@ -17,7 +17,7 @@ async-trait = { version = "0.1.73", optional = true }
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false }
 log = { version = "0.4.20", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
+schnorrkel = { version = "0.11.4", default-features = false }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-application-crypto = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
