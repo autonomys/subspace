@@ -18,7 +18,7 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
+schnorrkel = { version = "0.11.4", default-features = false }
 sp-arithmetic = { version = "16.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", default-features = false }
