@@ -5,7 +5,8 @@ use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_domains::InvalidBundleType;
-use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
+use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion, Zero};
+use sp_runtime::Saturating;
 use subspace_core_primitives::BlockNumber;
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
@@ -35,6 +36,10 @@ const LATEST_CONSENSUS_HASH: &[u8] = b"latest_consensus_hash";
 const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
 /// Prune the execution receipts when they reach this number.
+///
+/// NOTE: `PRUNING_DEPTH` must larger than the consensus chain `ConfirmationDepthK` to avoid
+/// accidentally delete non-confirmed ER from consensus forks that can potentially become the
+/// best fork in the future
 const PRUNING_DEPTH: BlockNumber = 1000;
 
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
@@ -59,7 +64,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 /// too old.
 pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
-    head_receipt_number: NumberFor<Block>,
+    oldest_receipt_number: Option<NumberFor<Block>>,
     execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
@@ -78,15 +83,20 @@ where
 
     let first_saved_receipt =
         load_decode::<_, NumberFor<CBlock>>(backend, EXECUTION_RECEIPT_START)?
-            .unwrap_or(block_number);
+            .unwrap_or(Zero::zero());
 
     let mut new_first_saved_receipt = first_saved_receipt;
 
     let mut keys_to_delete = vec![];
 
-    if let Some(delete_receipts_to) = head_receipt_number
-        .saturated_into::<BlockNumber>()
-        .checked_sub(PRUNING_DEPTH)
+    // Delete ER that have comfirned long time ago, also see the comment of `PRUNING_DEPTH`
+    if let Some(delete_receipts_to) = oldest_receipt_number
+        .map(|oldest_receipt_number| oldest_receipt_number.saturating_sub(One::one()))
+        .and_then(|latest_confirmed_receipt_number| {
+            latest_confirmed_receipt_number
+                .saturated_into::<BlockNumber>()
+                .checked_sub(PRUNING_DEPTH)
+        })
     {
         new_first_saved_receipt = Into::<NumberFor<CBlock>>::into(delete_receipts_to) + One::one();
         for receipt_to_delete in first_saved_receipt.saturated_into()..=delete_receipts_to {
@@ -205,15 +215,6 @@ where
     )
 }
 
-// TODO: Unlock once domain test infra is workable again.
-#[allow(dead_code)]
-pub(super) fn target_receipt_is_pruned(
-    head_receipt_number: BlockNumber,
-    target_block: BlockNumber,
-) -> bool {
-    head_receipt_number.saturating_sub(target_block) >= PRUNING_DEPTH
-}
-
 #[derive(Encode, Decode, Debug, PartialEq)]
 pub(super) enum BundleMismatchType {
     // The invalid bundle is mismatch
@@ -229,7 +230,9 @@ pub(super) enum BundleMismatchType {
 mod tests {
     use super::*;
     use domain_test_service::evm_domain_test_runtime::Block;
+    use parking_lot::Mutex;
     use sp_core::hash::H256;
+    use std::collections::HashMap;
     use subspace_runtime_primitives::{Balance, BlockNumber, Hash};
     use subspace_test_runtime::Block as CBlock;
 
@@ -252,12 +255,40 @@ mod tests {
         }
     }
 
-    // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
-    // TODO: Un-ignore once test client is fixed and working again on Windows
+    #[derive(Default)]
+    struct TestClient(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
+
+    impl AuxStore for TestClient {
+        fn insert_aux<
+            'a,
+            'b: 'a,
+            'c: 'a,
+            I: IntoIterator<Item = &'a (&'c [u8], &'c [u8])>,
+            D: IntoIterator<Item = &'a &'b [u8]>,
+        >(
+            &self,
+            insert: I,
+            delete: D,
+        ) -> sp_blockchain::Result<()> {
+            let mut map = self.0.lock();
+            for d in delete {
+                map.remove(&d.to_vec());
+            }
+            for (k, v) in insert {
+                map.insert(k.to_vec(), v.to_vec());
+            }
+            Ok(())
+        }
+
+        fn get_aux(&self, key: &[u8]) -> sp_blockchain::Result<Option<Vec<u8>>> {
+            Ok(self.0.lock().get(key).cloned())
+        }
+    }
+
     #[test]
-    #[ignore]
     fn normal_prune_execution_receipt_works() {
-        let client = substrate_test_runtime_client::new();
+        let block_tree_pruning_depth = 256;
+        let client = TestClient::default();
 
         let receipt_start = || {
             load_decode::<_, BlockNumber>(&client, EXECUTION_RECEIPT_START.to_vec().as_slice())
@@ -272,81 +303,88 @@ mod tests {
             .unwrap()
         };
 
+        let target_receipt_is_pruned = |number: BlockNumber| hashes_at(number).is_none();
+
         let receipt_at = |consensus_block_hash: Hash| {
             load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
-        let write_receipt_at = |number: BlockNumber, receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, CBlock>(
-                &client,
-                number - 1, // Ideally, the receipt of previous block has been included when writing the receipt of current block.
-                receipt,
-            )
-            .unwrap()
+        let write_receipt_at = |oldest_receipt_number: Option<BlockNumber>,
+                                receipt: &ExecutionReceipt| {
+            write_execution_receipt::<_, Block, CBlock>(&client, oldest_receipt_number, receipt)
+                .unwrap()
         };
 
         assert_eq!(receipt_start(), None);
 
-        // Create PRUNING_DEPTH receipts.
-        let block_hash_list = (1..=PRUNING_DEPTH)
+        // Create as many ER as before any ER being pruned yet
+        let receipt_count = PRUNING_DEPTH + block_tree_pruning_depth - 1;
+        let block_hash_list = (1..=receipt_count)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
                 let consensus_block_hash = receipt.consensus_block_hash;
-                write_receipt_at(block_number, &receipt);
+                let oldest_receipt_number = block_number
+                    .checked_sub(block_tree_pruning_depth)
+                    .map(|n| n + 1);
+                write_receipt_at(oldest_receipt_number, &receipt);
                 assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
                 assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
-                assert_eq!(receipt_start(), Some(1));
+                // No ER have been pruned yet
+                assert_eq!(receipt_start(), Some(0));
                 consensus_block_hash
             })
             .collect::<Vec<_>>();
 
-        assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
+        assert_eq!(receipt_start(), Some(0));
+        assert!(!target_receipt_is_pruned(1));
 
-        // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is PRUNING_DEPTH.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
+        // Create `receipt_count + 1` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 1`.
+        let receipt = create_execution_receipt(receipt_count + 1);
         assert!(receipt_at(receipt.consensus_block_hash).is_none());
-        write_receipt_at(PRUNING_DEPTH + 1, &receipt);
+        write_receipt_at(Some(PRUNING_DEPTH + 1), &receipt);
+        assert!(receipt_at(receipt.consensus_block_hash).is_some());
+        assert_eq!(receipt_start(), Some(1));
+
+        // Create `receipt_count + 2` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 2`.
+        let receipt = create_execution_receipt(receipt_count + 2);
+        write_receipt_at(Some(PRUNING_DEPTH + 2), &receipt);
         assert!(receipt_at(receipt.consensus_block_hash).is_some());
 
-        // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is PRUNING_DEPTH + 1.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
-        write_receipt_at(PRUNING_DEPTH + 2, &receipt);
-        assert!(receipt_at(receipt.consensus_block_hash).is_some());
-
-        // ER of block #1 should be pruned.
+        // ER of block #1 should be pruned, its block number mapping should be pruned as well.
         assert!(receipt_at(block_hash_list[0]).is_none());
-        // block number mapping should be pruned as well.
         assert!(hashes_at(1).is_none());
-        assert!(target_receipt_is_pruned(PRUNING_DEPTH + 1, 1));
+        assert!(target_receipt_is_pruned(1));
         assert_eq!(receipt_start(), Some(2));
 
-        // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is PRUNING_DEPTH + 2.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
+        // Create `receipt_count + 3` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 3`.
+        let receipt = create_execution_receipt(receipt_count + 3);
         let consensus_block_hash1 = receipt.consensus_block_hash;
-        write_receipt_at(PRUNING_DEPTH + 3, &receipt);
+        write_receipt_at(Some(PRUNING_DEPTH + 3), &receipt);
         assert!(receipt_at(consensus_block_hash1).is_some());
         // ER of block #2 should be pruned.
         assert!(receipt_at(block_hash_list[1]).is_none());
-        assert!(target_receipt_is_pruned(PRUNING_DEPTH + 2, 2));
-        assert!(!target_receipt_is_pruned(PRUNING_DEPTH + 2, 3));
+        assert!(target_receipt_is_pruned(2));
+        assert!(!target_receipt_is_pruned(3));
         assert_eq!(receipt_start(), Some(3));
 
-        // Multiple hashes attached to the block #(PRUNING_DEPTH + 3)
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
+        // Multiple hashes attached to the block #`receipt_count + 3`
+        let receipt = create_execution_receipt(receipt_count + 3);
         let consensus_block_hash2 = receipt.consensus_block_hash;
-        write_receipt_at(PRUNING_DEPTH + 3, &receipt);
+        write_receipt_at(Some(PRUNING_DEPTH + 3), &receipt);
         assert!(receipt_at(consensus_block_hash2).is_some());
         assert_eq!(
-            hashes_at(PRUNING_DEPTH + 3),
+            hashes_at(receipt_count + 3),
             Some(vec![consensus_block_hash1, consensus_block_hash2])
         );
+        // No ER pruned since the `oldest_receipt_number` is the same
+        assert!(!target_receipt_is_pruned(3));
+        assert_eq!(receipt_start(), Some(3));
     }
 
-    // TODO: Un-ignore once test client is fixed and working again on Windows
     #[test]
-    #[ignore]
-    fn execution_receipts_should_be_kept_against_head_receipt_number() {
-        let client = substrate_test_runtime_client::new();
+    fn execution_receipts_should_be_kept_against_oldest_receipt_number() {
+        let block_tree_pruning_depth = 256;
+        let client = TestClient::default();
 
         let receipt_start = || {
             load_decode::<_, BlockNumber>(&client, EXECUTION_RECEIPT_START.to_vec().as_slice())
@@ -365,60 +403,67 @@ mod tests {
             load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
-        let write_receipt_at = |head_receipt_number: BlockNumber, receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, CBlock>(&client, head_receipt_number, receipt)
+        let write_receipt_at = |oldest_receipt_number: Option<BlockNumber>,
+                                receipt: &ExecutionReceipt| {
+            write_execution_receipt::<_, Block, CBlock>(&client, oldest_receipt_number, receipt)
                 .unwrap()
         };
 
+        let target_receipt_is_pruned = |number: BlockNumber| hashes_at(number).is_none();
+
         assert_eq!(receipt_start(), None);
 
-        // Create PRUNING_DEPTH receipts, head_receipt_number is 0, i.e., no receipt
-        // has ever been included on consensus chain.
-        let block_hash_list = (1..=PRUNING_DEPTH)
+        // Create as many ER as before any ER being pruned yet, `oldest_receipt_number` is `Some(1)`,
+        // i.e., no receipt has ever been confirmed/pruned on consensus chain.
+        let receipt_count = PRUNING_DEPTH + block_tree_pruning_depth - 1;
+
+        let block_hash_list = (1..=receipt_count)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
                 let consensus_block_hash = receipt.consensus_block_hash;
-                write_receipt_at(0, &receipt);
+                write_receipt_at(Some(One::one()), &receipt);
                 assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
                 assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
-                assert_eq!(receipt_start(), Some(1));
+                // No ER have been pruned yet
+                assert_eq!(receipt_start(), Some(0));
                 consensus_block_hash
             })
             .collect::<Vec<_>>();
 
-        assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
+        assert_eq!(receipt_start(), Some(0));
+        assert!(!target_receipt_is_pruned(1));
 
-        // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is 0.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
+        // Create `receipt_count + 1` receipt, `oldest_receipt_number` is `Some(1)`.
+        let receipt = create_execution_receipt(receipt_count + 1);
         assert!(receipt_at(receipt.consensus_block_hash).is_none());
-        write_receipt_at(0, &receipt);
+        write_receipt_at(Some(One::one()), &receipt);
 
-        // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is 0.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
-        write_receipt_at(0, &receipt);
+        // Create `receipt_count + 2` receipt, `oldest_receipt_number` is `Some(1)`.
+        let receipt = create_execution_receipt(receipt_count + 2);
+        write_receipt_at(Some(One::one()), &receipt);
 
-        // ER of block #1 should not be pruned even the size of stored receipts exceeds the pruning depth.
+        // ER of block #1 and its block number mapping should not be pruned even the size of stored
+        // receipts exceeds the pruning depth.
         assert!(receipt_at(block_hash_list[0]).is_some());
-        // block number mapping for #1 should not be pruned neither.
         assert!(hashes_at(1).is_some());
-        assert!(!target_receipt_is_pruned(0, 1));
-        assert_eq!(receipt_start(), Some(1));
+        assert!(!target_receipt_is_pruned(1));
+        assert_eq!(receipt_start(), Some(0));
 
-        // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is 0.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
-        write_receipt_at(0, &receipt);
+        // Create `receipt_count + 3` receipt, `oldest_receipt_number` is `Some(1)`.
+        let receipt = create_execution_receipt(receipt_count + 3);
+        write_receipt_at(Some(One::one()), &receipt);
 
-        // Create PRUNING_DEPTH + 4 receipt, head_receipt_number is PRUNING_DEPTH + 3.
-        let receipt = create_execution_receipt(PRUNING_DEPTH + 4);
+        // Create `receipt_count + 4` receipt, `oldest_receipt_number` is `Some(PRUNING_DEPTH + 4)`.
+        let receipt = create_execution_receipt(receipt_count + 4);
         write_receipt_at(
-            PRUNING_DEPTH + 3, // Now assuming all the missing receipts are included.
+            Some(PRUNING_DEPTH + 4), // Now assuming all the missing receipts are confirmed.
             &receipt,
         );
         assert!(receipt_at(block_hash_list[0]).is_none());
         // receipt and block number mapping for [1, 2, 3] should be pruned.
         (1..=3).for_each(|pruned| {
             assert!(hashes_at(pruned).is_none());
-            assert!(target_receipt_is_pruned(PRUNING_DEPTH + 3, pruned));
+            assert!(target_receipt_is_pruned(pruned));
         });
         assert_eq!(receipt_start(), Some(4));
     }

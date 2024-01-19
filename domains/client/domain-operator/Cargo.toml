@@ -55,5 +55,4 @@ sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/polk
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-core-primitives" }
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
-substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 tempfile = "3.8.0"

@@ -267,11 +267,6 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        let head_receipt_number = self
-            .consensus_client
-            .runtime_api()
-            .head_receipt_number(consensus_block_hash, self.domain_id)?;
-
         let maybe_preprocess_result = self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?;
@@ -289,11 +284,8 @@ where
                 "Skip building new domain block, no bundles and runtime upgrade for this domain \
                     in consensus block #{consensus_block_number:?},{consensus_block_hash}"
             );
-            self.domain_block_processor.on_consensus_block_processed(
-                consensus_block_hash,
-                None,
-                head_receipt_number,
-            )?;
+            self.domain_block_processor
+                .on_consensus_block_processed(consensus_block_hash, None)?;
             return Ok(None);
         };
 
@@ -311,6 +303,10 @@ where
             )
             .await?;
 
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_block_hash, self.domain_id)?;
         assert!(
             domain_block_result.header_number > head_receipt_number,
             "Domain chain number must larger than the head number of the receipt chain \
@@ -341,11 +337,8 @@ where
             );
         }
 
-        self.domain_block_processor.on_consensus_block_processed(
-            consensus_block_hash,
-            Some(domain_block_result),
-            head_receipt_number,
-        )?;
+        self.domain_block_processor
+            .on_consensus_block_processed(consensus_block_hash, Some(domain_block_result))?;
 
         let post_block_execution_took = start
             .elapsed()

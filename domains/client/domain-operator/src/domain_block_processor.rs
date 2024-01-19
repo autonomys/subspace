@@ -510,7 +510,6 @@ where
         &self,
         consensus_block_hash: CBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, CBlock>>,
-        head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
         let domain_hash = match domain_block_result {
             Some(DomainBlockResult {
@@ -518,9 +517,13 @@ where
                 header_number: _,
                 execution_receipt,
             }) => {
+                let oldest_receipt_number = self
+                    .consensus_client
+                    .runtime_api()
+                    .oldest_receipt_number(consensus_block_hash, self.domain_id)?;
                 crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(
                     &*self.client,
-                    head_receipt_number,
+                    oldest_receipt_number,
                     &execution_receipt,
                 )?;
 
