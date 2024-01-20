@@ -193,7 +193,7 @@ mod pallet {
             let sender = ensure_signed(origin)?;
 
             // burn transfer amount
-            T::Currency::withdraw(
+            let _imbalance = T::Currency::withdraw(
                 &sender,
                 amount,
                 WithdrawReasons::TRANSFER,
@@ -266,7 +266,7 @@ mod pallet {
             let account_id = T::AccountIdConverter::try_convert_back(req.receiver.account_id)
                 .ok_or(Error::<T>::InvalidAccountId)?;
 
-            T::Currency::deposit_creating(&account_id, req.amount);
+            let _imbalance = T::Currency::deposit_creating(&account_id, req.amount);
             frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
                 Event::<T>::IncomingTransferSuccessful {
                     chain_id: src_chain_id,
@@ -314,7 +314,7 @@ mod pallet {
                     let account_id =
                         T::AccountIdConverter::try_convert_back(transfer.sender.account_id)
                             .ok_or(Error::<T>::InvalidAccountId)?;
-                    T::Currency::deposit_creating(&account_id, transfer.amount);
+                    let _imbalance = T::Currency::deposit_creating(&account_id, transfer.amount);
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferFailed {

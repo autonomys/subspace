@@ -1,5 +1,4 @@
 use crate::OperatorPublicKey;
-use blake2::digest::typenum::U32;
 use blake2::digest::FixedOutput;
 use blake2::{Blake2b, Digest};
 use parity_scale_codec::{Decode, Encode};
@@ -27,12 +26,12 @@ pub struct Witness {
 }
 
 #[derive(Clone)]
-pub struct Blake2b256Algorithm(Blake2b<U32>);
+pub struct Blake2b256Algorithm;
 
 impl Default for Blake2b256Algorithm {
     #[inline]
     fn default() -> Self {
-        Self(Blake2b::new())
+        Self
     }
 }
 

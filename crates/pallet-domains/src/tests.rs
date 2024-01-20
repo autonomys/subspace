@@ -1023,7 +1023,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         );
 
         let bad_receipt_at = 8;
-        let valid_bundle_digests = vec![ValidBundleDigest {
+        let valid_bundle_digests = [ValidBundleDigest {
             bundle_index: 0,
             bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
         }];

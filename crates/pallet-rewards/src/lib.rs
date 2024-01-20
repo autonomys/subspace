@@ -113,7 +113,7 @@ impl<T: Config> Pallet<T> {
         // Block author may equivocate, in which case they'll not be present here
         if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
             let reward = T::BlockReward::get();
-            T::Currency::deposit_creating(&block_author, reward);
+            let _imbalance = T::Currency::deposit_creating(&block_author, reward);
             T::OnReward::on_reward(block_author.clone(), reward);
 
             Self::deposit_event(Event::BlockReward {
@@ -127,7 +127,7 @@ impl<T: Config> Pallet<T> {
         let reward = T::VoteReward::get();
 
         for voter in T::FindVotingRewardAddresses::find_voting_reward_addresses() {
-            T::Currency::deposit_creating(&voter, reward);
+            let _imbalance = T::Currency::deposit_creating(&voter, reward);
             T::OnReward::on_reward(voter.clone(), reward);
 
             Self::deposit_event(Event::VoteReward { voter, reward });

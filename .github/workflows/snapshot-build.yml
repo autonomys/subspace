@@ -191,25 +191,19 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build farmer (Linux and Windows)
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+        run: |
+          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
         if: runner.os != 'macOS'
 
       # We build macOS without `numa` feature, primarily because of https://github.com/HadrienG2/hwlocality/issues/31
       - name: Build farmer (macOS)
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --no-default-features
+        run: |
+          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --no-default-features
         if: runner.os == 'macOS'
 
       - name: Build node
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
+        run: |
+          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
 
       - name: Sign Application (macOS)
         run: |

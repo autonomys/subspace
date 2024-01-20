@@ -13,7 +13,8 @@ use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
-use core::simd::{Simd, SimdUint};
+use core::simd::num::SimdUint;
+use core::simd::Simd;
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;

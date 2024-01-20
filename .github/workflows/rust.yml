@@ -52,10 +52,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: cargo fmt
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
   cargo-clippy:
     strategy:
@@ -104,10 +101,8 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: cargo clippy
-        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # @v1.0.7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --locked --all-targets --features "runtime-benchmarks" -- -D warnings
+        run: |
+          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features "runtime-benchmarks" -- -D warnings
 
   cargo-docs:
     runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
@@ -131,7 +126,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check Documentation
-        run: cargo doc --locked --all --no-deps --lib
+        run: cargo -Zgitoxide -Zgit doc --locked --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links"
 
@@ -187,7 +182,5 @@ jobs:
           tool: cargo-nextest
 
       - name: cargo nextest run --locked
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: nextest
-          args: run --locked
+        run: |
+          cargo -Zgitoxide -Zgit nextest run --locked
