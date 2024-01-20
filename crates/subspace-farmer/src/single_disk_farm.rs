@@ -539,21 +539,36 @@ type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
 /// Details about sector currently being plotted
-pub struct SectorPlottingDetails {
-    /// Sector index
-    pub sector_index: SectorIndex,
-    /// Progress so far in % (not including this sector)
-    pub progress: f32,
-    /// Whether sector is being replotted
-    pub replotting: bool,
-    /// Whether this is the last sector queued so far
-    pub last_queued: bool,
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorPlottingDetails {
+    /// Starting plotting of a sector
+    Starting {
+        /// Progress so far in % (not including this sector)
+        progress: f32,
+        /// Whether sector is being replotted
+        replotting: bool,
+        /// Whether this is the last sector queued so far
+        last_queued: bool,
+    },
+    /// Finished plotting
+    Finished {
+        /// Information about plotted sector
+        plotted_sector: PlottedSector,
+        /// Information about old plotted sector that was replaced
+        old_plotted_sector: Option<PlottedSector>,
+    },
+}
+
+/// Various sector updates
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorUpdate {
+    /// Sector is is being plotted
+    Plotting(SectorPlottingDetails),
 }
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotting: Handler<SectorPlottingDetails>,
-    sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
+    sector_update: Handler<(SectorIndex, SectorUpdate)>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -1313,17 +1328,9 @@ impl SingleDiskFarm {
         self.piece_reader.clone()
     }
 
-    /// Subscribe to sector plotting notification
-    pub fn on_sector_plotting(&self, callback: HandlerFn<SectorPlottingDetails>) -> HandlerId {
-        self.handlers.sector_plotting.add(callback)
-    }
-
-    /// Subscribe to notification about plotted sectors
-    pub fn on_sector_plotted(
-        &self,
-        callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
-    ) -> HandlerId {
-        self.handlers.sector_plotted.add(callback)
+    /// Subscribe to sector updates
+    pub fn on_sector_update(&self, callback: HandlerFn<(SectorIndex, SectorUpdate)>) -> HandlerId {
+        self.handlers.sector_update.add(callback)
     }
 
     /// Subscribe to new solution notification

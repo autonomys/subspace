@@ -22,7 +22,7 @@ use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::single_disk_farm::{
-    SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
+    SectorPlottingDetails, SectorUpdate, SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
@@ -635,10 +635,8 @@ where
 
             // Collect newly plotted pieces
             let on_plotted_sector_callback =
-                move |(plotted_sector, maybe_old_plotted_sector): &(
-                    PlottedSector,
-                    Option<PlottedSector>,
-                )| {
+                move |plotted_sector: &PlottedSector,
+                      maybe_old_plotted_sector: &Option<PlottedSector>| {
                     let _span_guard = span.enter();
 
                     {
@@ -647,7 +645,7 @@ where
                             .as_mut()
                             .expect("Initial value was populated above; qed");
 
-                        if let Some(old_plotted_sector) = maybe_old_plotted_sector {
+                        if let Some(old_plotted_sector) = &maybe_old_plotted_sector {
                             readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
                         }
                         readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
@@ -655,7 +653,15 @@ where
                 };
 
             single_disk_farm
-                .on_sector_plotted(Arc::new(on_plotted_sector_callback))
+                .on_sector_update(Arc::new(move |(_sector_index, sector_state)| {
+                    if let SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+                        plotted_sector,
+                        old_plotted_sector,
+                    }) = sector_state
+                    {
+                        on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                    }
+                }))
                 .detach();
 
             single_disk_farm.run()
