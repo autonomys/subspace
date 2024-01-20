@@ -313,9 +313,6 @@ where
             ));
         }
 
-        // Inform others that this sector is being modified
-        modifying_sector_index.write().await.replace(sector_index);
-
         let sector;
         let sector_metadata;
         let plotted_sector;
@@ -385,6 +382,9 @@ where
 
             plotting_result?
         };
+
+        // Inform others that this sector is being modified
+        modifying_sector_index.write().await.replace(sector_index);
 
         {
             handlers.sector_update.call_simple(&(
