@@ -19,7 +19,7 @@ use std::ops::Range;
 use std::pin::pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
@@ -193,6 +193,8 @@ where
             .sector_update
             .call_simple(&(sector_index, sector_state));
 
+        let start = Instant::now();
+
         // This `loop` is a workaround for edge-case in local setup if expiration is configured to
         // 1. In that scenario we get replotting notification essentially straight from block import
         // pipeline of the node, before block is imported. This can result in subsequent request for
@@ -231,6 +233,13 @@ where
                     .await
                     .map_err(plotting::PlottingError::from)?;
 
+                handlers.sector_update.call_simple(&(
+                    sector_index,
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
+                ));
+
+                let start = Instant::now();
+
                 let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                     public_key: &public_key,
                     sector_index,
@@ -243,13 +252,21 @@ where
                     pieces_in_sector,
                 });
 
-                (downloading_permit, downloaded_sector_fut.await?)
+                let downloaded_sector = downloaded_sector_fut.await?;
+
+                handlers.sector_update.call_simple(&(
+                    sector_index,
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(start.elapsed())),
+                ));
+
+                (downloading_permit, downloaded_sector)
             };
 
         // Initiate downloading of pieces for the next segment index if already known
         if let Some(sector_index) = next_segment_index_hint {
             let piece_getter = piece_getter.clone();
             let downloading_semaphore = Arc::clone(&downloading_semaphore);
+            let handlers = Arc::clone(&handlers);
             let kzg = kzg.clone();
 
             maybe_next_downloaded_sector_fut.replace(AsyncJoinOnDrop::new(
@@ -259,6 +276,13 @@ where
                             .acquire_owned()
                             .await
                             .map_err(plotting::PlottingError::from)?;
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
+                        ));
+
+                        let start = Instant::now();
 
                         let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                             public_key: &public_key,
@@ -272,7 +296,16 @@ where
                             pieces_in_sector,
                         });
 
-                        Ok((downloading_permit, downloaded_sector_fut.await?))
+                        let downloaded_sector = downloaded_sector_fut.await?;
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(
+                                start.elapsed(),
+                            )),
+                        ));
+
+                        Ok((downloading_permit, downloaded_sector))
                     }
                     .in_current_span(),
                 ),
@@ -292,6 +325,13 @@ where
                 tokio::task::block_in_place(|| {
                     let mut sector = Vec::new();
                     let mut sector_metadata = Vec::new();
+
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
+                    ));
+
+                    let start = Instant::now();
 
                     let plotted_sector = {
                         let plot_sector_fut = pin!(encode_sector::<PosTable>(
@@ -318,6 +358,11 @@ where
                         })?
                     };
 
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(start.elapsed())),
+                    ));
+
                     Ok((sector, sector_metadata, table_generator, plotted_sector))
                 })
             };
@@ -341,11 +386,25 @@ where
             plotting_result?
         };
 
-        plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
-        metadata_file.write_all_at(
-            &sector_metadata,
-            RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
-        )?;
+        {
+            handlers.sector_update.call_simple(&(
+                sector_index,
+                SectorUpdate::Plotting(SectorPlottingDetails::Writing),
+            ));
+
+            let start = Instant::now();
+
+            plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
+            metadata_file.write_all_at(
+                &sector_metadata,
+                RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
+            )?;
+
+            handlers.sector_update.call_simple(&(
+                sector_index,
+                SectorUpdate::Plotting(SectorPlottingDetails::Wrote(start.elapsed())),
+            ));
+        }
 
         if sector_index + 1 > metadata_header.plotted_sector_count {
             metadata_header.plotted_sector_count = sector_index + 1;
@@ -406,6 +465,7 @@ where
         let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
             plotted_sector,
             old_plotted_sector: maybe_old_plotted_sector,
+            time: start.elapsed(),
         });
         handlers
             .sector_update

@@ -550,12 +550,26 @@ pub enum SectorPlottingDetails {
         /// Whether this is the last sector queued so far
         last_queued: bool,
     },
+    /// Downloading sector pieces
+    Downloading,
+    /// Downloaded sector pieces
+    Downloaded(Duration),
+    /// Encoding sector pieces
+    Encoding,
+    /// Encoded sector pieces
+    Encoded(Duration),
+    /// Writing sector
+    Writing,
+    /// Wrote sector
+    Wrote(Duration),
     /// Finished plotting
     Finished {
         /// Information about plotted sector
         plotted_sector: PlottedSector,
         /// Information about old plotted sector that was replaced
         old_plotted_sector: Option<PlottedSector>,
+        /// How much time it took to plot a sector
+        time: Duration,
     },
 }
 
