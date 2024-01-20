@@ -661,6 +661,7 @@ where
                     if let SectorUpdate::Plotting(SectorPlottingDetails::Finished {
                         plotted_sector,
                         old_plotted_sector,
+                        ..
                     }) = sector_state
                     {
                         on_plotted_sector_callback(plotted_sector, old_plotted_sector);
