@@ -573,11 +573,27 @@ pub enum SectorPlottingDetails {
     },
 }
 
+/// Details about sector expiration
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorExpirationDetails {
+    /// Sector expiration became known
+    Determined {
+        /// Segment index at which sector expires
+        expires_at: SegmentIndex,
+    },
+    /// Sector will expire at the next segment index and should be replotted
+    AboutToExpire,
+    /// Sector already expired
+    Expired,
+}
+
 /// Various sector updates
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum SectorUpdate {
     /// Sector is is being plotted
     Plotting(SectorPlottingDetails),
+    /// Sector expiration information updated
+    Expiration(SectorExpirationDetails),
 }
 
 #[derive(Default, Debug)]
@@ -1011,6 +1027,7 @@ impl SingleDiskFarm {
             last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
             min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
             node_client: node_client.clone(),
+            handlers: Arc::clone(&handlers),
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             initial_plotting_finished: farming_delay_sender,

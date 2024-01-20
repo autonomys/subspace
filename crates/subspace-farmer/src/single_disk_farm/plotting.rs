@@ -1,6 +1,6 @@
 use crate::single_disk_farm::{
-    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails, SectorUpdate,
-    RESERVED_PLOT_METADATA,
+    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorExpirationDetails,
+    SectorPlottingDetails, SectorUpdate, RESERVED_PLOT_METADATA,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -482,6 +482,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) last_archived_segment_index: SegmentIndex,
     pub(super) min_sector_lifetime: HistorySize,
     pub(super) node_client: NC,
+    pub(super) handlers: Arc<Handlers>,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
     pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
@@ -503,6 +504,7 @@ where
         last_archived_segment_index,
         min_sector_lifetime,
         node_client,
+        handlers,
         sectors_metadata,
         sectors_to_plot_sender,
         initial_plotting_finished,
@@ -550,6 +552,7 @@ where
         target_sector_count,
         min_sector_lifetime,
         &node_client,
+        &handlers,
         sectors_metadata,
         &last_archived_segment,
         archived_segments_receiver,
@@ -695,6 +698,7 @@ async fn send_plotting_notifications<NC>(
     target_sector_count: SectorIndex,
     min_sector_lifetime: HistorySize,
     node_client: &NC,
+    handlers: &Handlers,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
@@ -771,6 +775,18 @@ where
                         %expires_at,
                         "Sector expires soon #1, scheduling replotting"
                     );
+
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Expiration(
+                            if expires_at <= archived_segment_header.segment_index() {
+                                SectorExpirationDetails::Expired
+                            } else {
+                                SectorExpirationDetails::AboutToExpire
+                            },
+                        ),
+                    ));
+
                     // Time to replot
                     sectors_to_replot.push(SectorToReplot {
                         sector_index,
@@ -827,24 +843,35 @@ where
                                 metadata; qed",
                         );
 
+                    let expires_at = expiration_history_size.segment_index();
+
                     trace!(
                         %sector_index,
                         %history_size,
-                        sector_expire_at = %expiration_history_size.segment_index(),
+                        sector_expire_at = %expires_at,
                         "Determined sector expiration segment index"
                     );
                     // +1 means we will start replotting a bit before it actually expires to avoid
                     // storing expired sectors
-                    if expiration_history_size.segment_index()
-                        <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
-                    {
-                        let expires_at = expiration_history_size.segment_index();
+                    if expires_at <= (archived_segment_header.segment_index() + SegmentIndex::ONE) {
                         debug!(
                             %sector_index,
                             %history_size,
                             %expires_at,
                             "Sector expires soon #2, scheduling replotting"
                         );
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Expiration(
+                                if expires_at <= archived_segment_header.segment_index() {
+                                    SectorExpirationDetails::Expired
+                                } else {
+                                    SectorExpirationDetails::AboutToExpire
+                                },
+                            ),
+                        ));
+
                         // Time to replot
                         sectors_to_replot.push(SectorToReplot {
                             sector_index,
@@ -854,12 +881,19 @@ where
                         trace!(
                             %sector_index,
                             %history_size,
-                            sector_expire_at = %expiration_history_size.segment_index(),
+                            sector_expire_at = %expires_at,
                             "Sector expires later, remembering sector expiration"
                         );
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Expiration(SectorExpirationDetails::Determined {
+                                expires_at,
+                            }),
+                        ));
+
                         // Store expiration so we don't have to recalculate it later
-                        sectors_expire_at
-                            .insert(sector_index, expiration_history_size.segment_index());
+                        sectors_expire_at.insert(sector_index, expires_at);
                     }
                 }
             }
