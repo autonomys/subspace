@@ -1,5 +1,5 @@
 use crate::single_disk_farm::{
-    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails,
+    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails, SectorUpdate,
     RESERVED_PLOT_METADATA,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
@@ -184,14 +184,14 @@ where
             info!(%sector_index, "Plotting sector ({progress:.2}% complete)");
         }
 
+        let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
+            progress,
+            replotting,
+            last_queued,
+        });
         handlers
-            .sector_plotting
-            .call_simple(&SectorPlottingDetails {
-                sector_index,
-                progress,
-                replotting,
-                last_queued,
-            });
+            .sector_update
+            .call_simple(&(sector_index, sector_state));
 
         // This `loop` is a workaround for edge-case in local setup if expiration is configured to
         // 1. In that scenario we get replotting notification essentially straight from block import
@@ -403,9 +403,13 @@ where
             }
         }
 
+        let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+            plotted_sector,
+            old_plotted_sector: maybe_old_plotted_sector,
+        });
         handlers
-            .sector_plotted
-            .call_simple(&(plotted_sector, maybe_old_plotted_sector));
+            .sector_update
+            .call_simple(&(sector_index, sector_state));
     }
 
     Ok(())
