@@ -114,7 +114,9 @@ pub(crate) fn execution_receipt_type<T: Config>(
         Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
         Ordering::Less => {
             // Reject receipt that already confirmed
-            if receipt_number <= latest_confirmed_domain_block_number {
+            if !latest_confirmed_domain_block_number.is_zero()
+                && receipt_number <= latest_confirmed_domain_block_number
+            {
                 return ReceiptType::Rejected(RejectedReceiptType::Pruned);
             }
 
