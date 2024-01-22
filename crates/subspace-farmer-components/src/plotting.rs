@@ -10,7 +10,7 @@ use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
 use std::error::Error;
 use std::mem;
@@ -97,7 +97,7 @@ impl PieceGetter for ArchivedHistorySegment {
 }
 
 /// Information about sector that was plotted
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct PlottedSector {
     /// Sector ID
     pub sector_id: SectorId,
