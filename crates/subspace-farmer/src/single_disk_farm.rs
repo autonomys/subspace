@@ -539,21 +539,66 @@ type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
 /// Details about sector currently being plotted
-pub struct SectorPlottingDetails {
-    /// Sector index
-    pub sector_index: SectorIndex,
-    /// Progress so far in % (not including this sector)
-    pub progress: f32,
-    /// Whether sector is being replotted
-    pub replotting: bool,
-    /// Whether this is the last sector queued so far
-    pub last_queued: bool,
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorPlottingDetails {
+    /// Starting plotting of a sector
+    Starting {
+        /// Progress so far in % (not including this sector)
+        progress: f32,
+        /// Whether sector is being replotted
+        replotting: bool,
+        /// Whether this is the last sector queued so far
+        last_queued: bool,
+    },
+    /// Downloading sector pieces
+    Downloading,
+    /// Downloaded sector pieces
+    Downloaded(Duration),
+    /// Encoding sector pieces
+    Encoding,
+    /// Encoded sector pieces
+    Encoded(Duration),
+    /// Writing sector
+    Writing,
+    /// Wrote sector
+    Wrote(Duration),
+    /// Finished plotting
+    Finished {
+        /// Information about plotted sector
+        plotted_sector: PlottedSector,
+        /// Information about old plotted sector that was replaced
+        old_plotted_sector: Option<PlottedSector>,
+        /// How much time it took to plot a sector
+        time: Duration,
+    },
+}
+
+/// Details about sector expiration
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorExpirationDetails {
+    /// Sector expiration became known
+    Determined {
+        /// Segment index at which sector expires
+        expires_at: SegmentIndex,
+    },
+    /// Sector will expire at the next segment index and should be replotted
+    AboutToExpire,
+    /// Sector already expired
+    Expired,
+}
+
+/// Various sector updates
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorUpdate {
+    /// Sector is is being plotted
+    Plotting(SectorPlottingDetails),
+    /// Sector expiration information updated
+    Expiration(SectorExpirationDetails),
 }
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotting: Handler<SectorPlottingDetails>,
-    sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
+    sector_update: Handler<(SectorIndex, SectorUpdate)>,
     solution: Handler<SolutionResponse>,
     plot_audited: Handler<AuditEvent>,
 }
@@ -984,6 +1029,7 @@ impl SingleDiskFarm {
             last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
             min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
             node_client: node_client.clone(),
+            handlers: Arc::clone(&handlers),
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             initial_plotting_finished: farming_delay_sender,
@@ -1316,17 +1362,9 @@ impl SingleDiskFarm {
         self.piece_reader.clone()
     }
 
-    /// Subscribe to sector plotting notification
-    pub fn on_sector_plotting(&self, callback: HandlerFn<SectorPlottingDetails>) -> HandlerId {
-        self.handlers.sector_plotting.add(callback)
-    }
-
-    /// Subscribe to notification about plotted sectors
-    pub fn on_sector_plotted(
-        &self,
-        callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
-    ) -> HandlerId {
-        self.handlers.sector_plotted.add(callback)
+    /// Subscribe to sector updates
+    pub fn on_sector_update(&self, callback: HandlerFn<(SectorIndex, SectorUpdate)>) -> HandlerId {
+        self.handlers.sector_update.add(callback)
     }
 
     /// Subscribe to notification about audited plots
