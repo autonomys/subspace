@@ -175,7 +175,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    enable_non_root_calls: true,
+                    enable_non_root_calls: false,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
                 GenesisDomainParams {
@@ -284,7 +284,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    enable_non_root_calls: true,
+                    enable_non_root_calls: false,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
                 GenesisDomainParams {
