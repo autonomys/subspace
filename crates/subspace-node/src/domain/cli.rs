@@ -39,12 +39,13 @@ use std::net::SocketAddr;
 use std::path::Path;
 use subspace_runtime::Block;
 
-/// Sub-commands supported by the executor.
+/// Sub-commands supported by the operator.
 #[derive(Debug, clap::Subcommand)]
 #[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
-    /// Insert key into domain's keystore
-    InsertKey(InsertDomainKeyOptions),
+    /// Domain key management
+    #[clap(subcommand)]
+    Key(DomainKey),
 
     /// Export the state of a given block into a chain spec.
     ExportState(sc_cli::ExportStateCmd),
@@ -61,6 +62,12 @@ pub enum Subcommand {
 
     /// The `export-execution-receipt` command used to get the ER from the auxiliary storage of the operator client
     ExportExecutionReceipt(ExportExecutionReceiptCmd),
+}
+
+#[derive(Debug, clap::Subcommand)]
+pub enum DomainKey {
+    /// Insert key into domain's keystore
+    Insert(InsertDomainKeyOptions),
 }
 
 #[derive(Debug, Parser)]

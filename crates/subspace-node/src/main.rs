@@ -24,6 +24,7 @@ mod cli;
 mod domain;
 
 use crate::cli::{Cli, SubspaceCliPlaceholder};
+use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -311,7 +312,7 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Cli::Domain(domain_cmd) => match domain_cmd {
-            DomainSubcommand::InsertKey(insert_domain_key_options) => {
+            DomainSubcommand::Key(DomainKey::Insert(insert_domain_key_options)) => {
                 commands::insert_domain_key(insert_domain_key_options)?;
             }
             DomainSubcommand::Benchmark(cmd) => {
