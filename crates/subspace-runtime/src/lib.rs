@@ -70,7 +70,8 @@ use sp_messenger::messages::{
     ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, NumberFor,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, Keccak256,
+    NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -654,6 +655,23 @@ impl orml_vesting::Config for Runtime {
     type BlockNumberProvider = System;
 }
 
+mod mmr {
+    use super::Runtime;
+    pub use pallet_mmr::primitives::*;
+
+    pub type Leaf = <<Runtime as pallet_mmr::Config>::LeafData as LeafDataProvider>::LeafData;
+    pub type Hashing = <Runtime as pallet_mmr::Config>::Hashing;
+    pub type Hash = <Hashing as sp_runtime::traits::Hash>::Output;
+}
+
+impl pallet_mmr::Config for Runtime {
+    const INDEXING_PREFIX: &'static [u8] = mmr::INDEXING_PREFIX;
+    type Hashing = Keccak256;
+    type LeafData = pallet_mmr::ParentNumberAndHash<Runtime>;
+    type OnNewRoot = ();
+    type WeightInfo = ();
+}
+
 construct_runtime!(
     pub struct Runtime {
         System: frame_system = 0,
@@ -672,6 +690,8 @@ construct_runtime!(
         RuntimeConfigs: pallet_runtime_configs = 14,
 
         Vesting: orml_vesting = 13,
+
+        Mmr: pallet_mmr = 30,
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
@@ -1172,6 +1192,52 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
             crate::domains::extract_fraud_proofs(domain_id, extrinsics)
+        }
+    }
+
+    impl mmr::MmrApi<Block, Hash, BlockNumber> for Runtime {
+        fn mmr_root() -> Result<mmr::Hash, mmr::Error> {
+            Ok(Mmr::mmr_root())
+        }
+
+        fn mmr_leaf_count() -> Result<mmr::LeafIndex, mmr::Error> {
+            Ok(Mmr::mmr_leaves())
+        }
+
+        fn generate_proof(
+            block_numbers: Vec<BlockNumber>,
+            best_known_block_number: Option<BlockNumber>,
+        ) -> Result<(Vec<mmr::EncodableOpaqueLeaf>, mmr::Proof<mmr::Hash>), mmr::Error> {
+            Mmr::generate_proof(block_numbers, best_known_block_number).map(
+                |(leaves, proof)| {
+                    (
+                        leaves
+                            .into_iter()
+                            .map(|leaf| mmr::EncodableOpaqueLeaf::from_leaf(&leaf))
+                            .collect(),
+                        proof,
+                    )
+                },
+            )
+        }
+
+        fn verify_proof(leaves: Vec<mmr::EncodableOpaqueLeaf>, proof: mmr::Proof<mmr::Hash>)
+            -> Result<(), mmr::Error>
+        {
+            let leaves = leaves.into_iter().map(|leaf|
+                leaf.into_opaque_leaf()
+                .try_decode()
+                .ok_or(mmr::Error::Verify)).collect::<Result<Vec<mmr::Leaf>, mmr::Error>>()?;
+            Mmr::verify_leaves(leaves, proof)
+        }
+
+        fn verify_proof_stateless(
+            root: mmr::Hash,
+            leaves: Vec<mmr::EncodableOpaqueLeaf>,
+            proof: mmr::Proof<mmr::Hash>
+        ) -> Result<(), mmr::Error> {
+            let nodes = leaves.into_iter().map(|leaf|mmr::DataOrHash::Data(leaf.into_opaque_leaf())).collect();
+            pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(root, nodes, proof)
         }
     }
 

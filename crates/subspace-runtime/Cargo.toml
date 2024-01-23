@@ -28,6 +28,7 @@ orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-messenger = { version = "0.1.0", path = "../../domains/pallets/messenger", default-features = false }
+pallet-mmr = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
@@ -49,6 +50,7 @@ sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domain
 sp-domains-fraud-proof = { version = "0.1.0", default-features = false, path = "../sp-domains-fraud-proof" }
 sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false, version = "4.0.0-dev" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../domains/primitives/messenger" }
+sp-mmr-primitives = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
@@ -83,6 +85,7 @@ std = [
     "pallet-balances/std",
     "pallet-domains/std",
     "pallet-messenger/std",
+    "pallet-mmr/std",
     "pallet-offences-subspace/std",
     "pallet-rewards/std",
     "pallet-runtime-configs/std",
@@ -105,6 +108,7 @@ std = [
     "sp-inherents/std",
     "sp-io/std",
     "sp-messenger/std",
+    "sp-mmr-primitives/std",
     "sp-objects/std",
     "sp-offchain/std",
     "sp-runtime/std",

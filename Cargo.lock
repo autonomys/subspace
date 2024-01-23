@@ -1637,6 +1637,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckb-merkle-mountain-range"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ccb671c5921be8a84686e6212ca184cb1d7c51cadcdbfcbd1cc3f042f5dfb8"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "clap"
 version = "4.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7293,6 +7302,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-mmr"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-object-store"
 version = "0.1.0"
 dependencies = [
@@ -10945,6 +10972,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-mmr-primitives"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "ckb-merkle-mountain-range",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-core",
+ "sp-debug-derive",
+ "sp-runtime",
+ "sp-std",
+ "thiserror",
+]
+
+[[package]]
 name = "sp-objects"
 version = "0.1.0"
 dependencies = [
@@ -11762,6 +11807,7 @@ dependencies = [
  "pallet-balances",
  "pallet-domains",
  "pallet-messenger",
+ "pallet-mmr",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-runtime-configs",
@@ -11785,6 +11831,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
@@ -11926,6 +11973,7 @@ dependencies = [
  "pallet-balances",
  "pallet-domains",
  "pallet-messenger",
+ "pallet-mmr",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-subspace",
@@ -11947,6 +11995,7 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-inherents",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
