@@ -420,31 +420,13 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
     pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
-}
-
-pub struct CreditSupply;
-
-impl Get<Balance> for CreditSupply {
-    fn get() -> Balance {
-        Balances::total_issuance()
-    }
-}
-
-pub struct TotalSpacePledged;
-
-impl Get<u128> for TotalSpacePledged {
-    fn get() -> u128 {
+    pub CreditSupply: Balance = Balances::total_issuance();
+    pub TotalSpacePledged: u128 = {
         let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
         sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
-    }
-}
-
-pub struct BlockchainHistorySize;
-
-impl Get<u128> for BlockchainHistorySize {
-    fn get() -> u128 {
-        u128::from(Subspace::archived_history_size())
-    }
+    };
+    pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
+    pub DynamicCostOfStorage: bool = RuntimeConfigs::enable_dynamic_cost_of_storage();
 }
 
 impl pallet_transaction_fees::Config for Runtime {
@@ -457,6 +439,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
+    type DynamicCostOfStorage = DynamicCostOfStorage;
     type WeightInfo = ();
 }
 

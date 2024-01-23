@@ -1,4 +1,4 @@
-use crate::{Balances, Runtime, RuntimeCall, RuntimeConfigs, TransactionFees};
+use crate::{Balances, Runtime, RuntimeCall, TransactionFees};
 use codec::Encode;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use pallet_balances::NegativeImbalance;
@@ -10,11 +10,7 @@ pub struct TransactionByteFee;
 
 impl Get<Balance> for TransactionByteFee {
     fn get() -> Balance {
-        if RuntimeConfigs::enable_dynamic_cost_of_storage() {
-            TransactionFees::transaction_byte_fee()
-        } else {
-            1
-        }
+        TransactionFees::transaction_byte_fee()
     }
 }
 

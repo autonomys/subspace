@@ -108,6 +108,9 @@ mod pallet {
 
         type FindBlockRewardAddress: FindBlockRewardAddress<Self::AccountId>;
 
+        /// Whether dynamic cost of storage should be used
+        type DynamicCostOfStorage: Get<bool>;
+
         type WeightInfo: WeightInfo;
     }
 
@@ -313,6 +316,10 @@ where
     /// return the next `transaction_byte_fee` value for validating extrinsic to be
     /// included in the next block
     pub fn transaction_byte_fee() -> BalanceOf<T> {
+        if !T::DynamicCostOfStorage::get() {
+            return BalanceOf::<T>::from(1);
+        }
+
         if IsDuringBlockExecution::<T>::get() {
             TransactionByteFee::<T>::get().current
         } else {
