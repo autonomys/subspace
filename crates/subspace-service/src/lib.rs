@@ -1055,6 +1055,7 @@ where
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
             let transaction_pool = transaction_pool.clone();
             let chain_spec = config.base.chain_spec.cloned_box();
+            let backend = backend.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
@@ -1071,6 +1072,7 @@ where
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
+                    backend: backend.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
