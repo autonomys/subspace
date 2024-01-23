@@ -82,9 +82,6 @@ substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/su
 
 [features]
 default = []
-do-not-enforce-cost-of-storage = [
-    "subspace-runtime/do-not-enforce-cost-of-storage"
-]
 runtime-benchmarks = [
     "domain-service/runtime-benchmarks",
     "evm-domain-runtime/runtime-benchmarks",

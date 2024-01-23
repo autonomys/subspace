@@ -136,6 +136,7 @@ struct GenesisParams {
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
+    enable_dynamic_cost_of_storage: bool,
     enable_balance_transfers: bool,
     confirmation_depth_k: u32,
 }
@@ -184,6 +185,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
+                    enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
                     confirmation_depth_k: 5,
                 },
@@ -226,6 +228,7 @@ fn subspace_genesis_config(
         allow_authoring_by,
         pot_slot_iterations,
         enable_domains,
+        enable_dynamic_cost_of_storage,
         enable_balance_transfers,
         confirmation_depth_k,
     } = genesis_params;
@@ -248,6 +251,7 @@ fn subspace_genesis_config(
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
+            enable_dynamic_cost_of_storage,
             enable_balance_transfers,
             confirmation_depth_k,
         },
