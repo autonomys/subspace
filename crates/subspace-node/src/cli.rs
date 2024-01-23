@@ -17,9 +17,9 @@
 use crate::chain_spec;
 use crate::commands::{RunOptions, WipeOptions};
 use clap::Parser;
+use sc_chain_spec::GenericChainSpec;
 use sc_cli::SubstrateCli;
 use sc_service::ChainSpec;
-use sc_subspace_chain_specs::ConsensusChainSpec;
 
 /// Commands for working with a node.
 #[derive(Debug, Parser)]
@@ -103,7 +103,7 @@ impl SubstrateCli for SubspaceCliPlaceholder {
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
-            path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+            path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
         Ok(Box::new(chain_spec))

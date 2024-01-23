@@ -9772,14 +9772,6 @@ dependencies = [
 [[package]]
 name = "sc-subspace-chain-specs"
 version = "0.1.0"
-dependencies = [
- "sc-chain-spec",
- "sc-service",
- "sc-telemetry",
- "serde",
- "sp-core",
- "sp-runtime",
-]
 
 [[package]]
 name = "sc-sysinfo"

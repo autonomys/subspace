@@ -14,7 +14,7 @@ use evm_domain_runtime::{
     AccountId as AccountId20, RuntimeGenesisConfig as EvmRuntimeGenesisConfig,
 };
 use futures::StreamExt;
-use sc_chain_spec::{ChainType, Properties};
+use sc_chain_spec::{ChainType, GenericChainSpec, Properties};
 use sc_cli::{
     Cors, KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
@@ -26,7 +26,6 @@ use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, Tr
 use sc_network::NetworkPeers;
 use sc_service::config::KeystoreConfig;
 use sc_service::Configuration;
-use sc_subspace_chain_specs::ExecutionChainSpec;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::crypto::SecretString;
@@ -190,7 +189,9 @@ pub(super) fn create_domain_configuration(
     }
 
     // Derive domain chain spec from consensus chain spec
-    let chain_spec = ExecutionChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    let chain_spec = GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_genesis(
         // Name
         &format!(
             "{} Domain {}",
