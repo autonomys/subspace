@@ -12,14 +12,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 /// Options used for keystore
 #[derive(Debug, Parser)]
-pub(super) struct KeystoreOptions<const SURI_REQUIRED: bool> {
-    /// Operator secret key URI to insert into keystore.
-    ///
-    /// Example: "//Alice".
-    ///
-    /// If the value is a file, the file content is used as URI.
-    #[arg(long, required = SURI_REQUIRED)]
-    pub(super) keystore_suri: Option<SecretString>,
+pub(super) struct KeystoreOptions {
     /// Use interactive shell for entering the password used by the keystore.
     #[arg(long, conflicts_with_all = &["keystore_password", "keystore_password_filename"])]
     pub(super) keystore_password_interactive: bool,

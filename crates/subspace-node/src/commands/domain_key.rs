@@ -2,11 +2,12 @@ use crate::commands::shared::{init_logger, store_key_in_keystore, KeystoreOption
 use clap::Parser;
 use sc_cli::{Error, KeystoreParams};
 use sc_service::config::KeystoreConfig;
+use sp_core::crypto::SecretString;
 use sp_domains::DomainId;
 use std::path::PathBuf;
 use tracing::info;
 
-/// Options for running a node
+/// Options for inserting domain key
 #[derive(Debug, Parser)]
 pub struct InsertDomainKeyOptions {
     /// Base path where to store node files
@@ -15,9 +16,16 @@ pub struct InsertDomainKeyOptions {
     /// ID of the domain to store key for
     #[arg(long, required = true)]
     domain_id: DomainId,
+    /// Operator secret key URI to insert into keystore.
+    ///
+    /// Example: "//Alice".
+    ///
+    /// If the value is a file, the file content is used as URI.
+    #[arg(long, required = true)]
+    keystore_suri: SecretString,
     /// Options for domain keystore
     #[clap(flatten)]
-    keystore_options: KeystoreOptions<true>,
+    keystore_options: KeystoreOptions,
 }
 
 pub fn insert_domain_key(options: InsertDomainKeyOptions) -> Result<(), Error> {
@@ -26,6 +34,7 @@ pub fn insert_domain_key(options: InsertDomainKeyOptions) -> Result<(), Error> {
     let InsertDomainKeyOptions {
         base_path,
         domain_id,
+        keystore_suri,
         keystore_options,
     } = options;
     let domain_path = base_path.join("domains").join(domain_id.to_string());
@@ -38,10 +47,6 @@ pub fn insert_domain_key(options: InsertDomainKeyOptions) -> Result<(), Error> {
     };
 
     let keystore_config = keystore_params.keystore_config(&domain_path)?;
-
-    let Some(keystore_suri) = keystore_options.keystore_suri else {
-        unreachable!("--keystore-suri is set to required; qed");
-    };
 
     let (path, password) = match &keystore_config {
         KeystoreConfig::Path { path, password, .. } => (path.clone(), password.clone()),
