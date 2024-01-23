@@ -3,6 +3,8 @@ mod run;
 mod shared;
 mod wipe;
 
-pub use domain_key::{insert_domain_key, InsertDomainKeyOptions};
+pub use domain_key::{
+    create_domain_key, insert_domain_key, CreateDomainKeyOptions, InsertDomainKeyOptions,
+};
 pub use run::{run, RunOptions};
 pub use wipe::{wipe, WipeOptions};

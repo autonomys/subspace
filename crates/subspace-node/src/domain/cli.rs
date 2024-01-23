@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::commands::InsertDomainKeyOptions;
+use crate::commands::{CreateDomainKeyOptions, InsertDomainKeyOptions};
 use crate::domain::evm_chain_spec;
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -66,6 +66,8 @@ pub enum Subcommand {
 
 #[derive(Debug, clap::Subcommand)]
 pub enum DomainKey {
+    /// Create key and import into domain's keystore
+    Create(CreateDomainKeyOptions),
     /// Insert key into domain's keystore
     Insert(InsertDomainKeyOptions),
 }

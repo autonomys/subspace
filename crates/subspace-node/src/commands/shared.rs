@@ -2,7 +2,8 @@ use clap::Parser;
 use sc_cli::Error;
 use sc_keystore::LocalKeystore;
 use sp_core::crypto::{ExposeSecret, SecretString};
-use sp_core::Pair;
+use sp_core::sr25519::Pair;
+use sp_core::Pair as PairT;
 use sp_domains::KEY_TYPE;
 use sp_keystore::Keystore;
 use std::path::PathBuf;
@@ -25,20 +26,26 @@ pub(super) struct KeystoreOptions {
     pub(super) keystore_password_filename: Option<PathBuf>,
 }
 
-pub(super) fn store_key_in_keystore(
-    keystore_path: PathBuf,
-    password: Option<SecretString>,
+pub(super) fn derive_keypair(
     suri: &SecretString,
-) -> Result<(), Error> {
-    let keypair_result = sp_core::sr25519::Pair::from_string(
+    password: &Option<SecretString>,
+) -> Result<Pair, Error> {
+    let keypair_result = Pair::from_string(
         suri.expose_secret(),
         password
             .as_ref()
             .map(|password| password.expose_secret().as_str()),
     );
 
-    let keypair =
-        keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))?;
+    keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))
+}
+
+pub(super) fn store_key_in_keystore(
+    keystore_path: PathBuf,
+    suri: &SecretString,
+    password: Option<SecretString>,
+) -> Result<(), Error> {
+    let keypair = derive_keypair(suri, &password)?;
 
     LocalKeystore::open(keystore_path, password)?
         .insert(KEY_TYPE, suri.expose_secret(), &keypair.public())

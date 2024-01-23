@@ -300,7 +300,7 @@ pub(super) fn create_domain_configuration(
                 }
             };
 
-            store_key_in_keystore(path, password, &keystore_suri)?;
+            store_key_in_keystore(path, &keystore_suri, password)?;
         }
 
         keystore_config

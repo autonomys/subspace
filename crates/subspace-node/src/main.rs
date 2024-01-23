@@ -312,6 +312,9 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Cli::Domain(domain_cmd) => match domain_cmd {
+            DomainSubcommand::Key(DomainKey::Create(create_domain_key_options)) => {
+                commands::create_domain_key(create_domain_key_options)?;
+            }
             DomainSubcommand::Key(DomainKey::Insert(insert_domain_key_options)) => {
                 commands::insert_domain_key(insert_domain_key_options)?;
             }
