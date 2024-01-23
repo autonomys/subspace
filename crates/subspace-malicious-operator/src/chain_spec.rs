@@ -1,8 +1,8 @@
 use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, Precompiles};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainSpec, ChainType, NoExtension};
-use sc_subspace_chain_specs::{ConsensusChainSpec, ExecutionChainSpec};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
@@ -17,7 +17,7 @@ use subspace_runtime::{
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
-pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
+pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
     let endowed_accounts = [
         // Alith key
         AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
@@ -30,7 +30,9 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
     ];
     let sudo_account = endowed_accounts[0];
 
-    ExecutionChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Development",
         // ID
@@ -97,7 +99,7 @@ pub fn create_domain_spec(
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let mut chain_spec = match chain_id {
         "dev" => domain_dev_config(),
-        path => ExecutionChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
+        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
     };
@@ -108,7 +110,7 @@ pub fn create_domain_spec(
 pub fn load_domain_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
         "dev" => domain_dev_config(),
-        path => ExecutionChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
+        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
     };
@@ -147,7 +149,7 @@ struct GenesisDomainParams {
     raw_genesis_storage: Vec<u8>,
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
+pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
     let wasm_binary = subspace_runtime::WASM_BINARY
         .ok_or_else(|| "Development wasm not available".to_string())?;
 
@@ -160,7 +162,9 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         raw_genesis.encode()
     };
 
-    Ok(ConsensusChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    Ok(GenericChainSpec::from_genesis(
         // Name
         "Subspace development",
         // ID

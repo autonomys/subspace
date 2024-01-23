@@ -22,13 +22,13 @@ mod malicious_bundle_tamper;
 pub mod malicious_domain_instance_starter;
 
 use clap::Parser;
+use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
     generate_node_name, ChainSpec, CliConfiguration, Role, RunCmd as SubstrateRunCmd, RunCmd,
     SubstrateCli,
 };
 use sc_service::config::{KeystoreConfig, NetworkConfiguration};
 use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
-use sc_subspace_chain_specs::ConsensusChainSpec;
 use sp_domains::DomainId;
 
 /// Subspace Cli.
@@ -87,7 +87,7 @@ impl SubstrateCli for Cli {
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let chain_spec = match id {
             "dev" => crate::chain_spec::dev_config()?,
-            path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+            path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
         Ok(Box::new(chain_spec))

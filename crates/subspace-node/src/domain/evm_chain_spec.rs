@@ -22,12 +22,10 @@ use evm_domain_runtime::{
     SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::ExecutionChainSpec;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
-
-pub type ChainSpec = ExecutionChainSpec<RuntimeGenesisConfig>;
 
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId> {
@@ -45,8 +43,10 @@ fn get_dev_accounts() -> Vec<AccountId> {
 
 pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Development",
         // ID
@@ -66,8 +66,10 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
 
 pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3g EVM Domain",
         // ID
@@ -92,8 +94,10 @@ pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>
 
 pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Subspace Devnet EVM Domain",
         // ID
@@ -121,7 +125,7 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
         "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
         "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
-        path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }

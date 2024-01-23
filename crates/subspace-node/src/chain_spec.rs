@@ -22,8 +22,9 @@ use crate::chain_spec_utils::{
 use crate::domain::evm_chain_spec::{self, SpecId};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::{ConsensusChainSpec, DEVNET_CHAIN_SPEC};
+use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -107,8 +108,10 @@ struct GenesisDomainParams {
     operator_signing_key: OperatorPublicKey,
 }
 
-pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    Ok(ConsensusChainSpec::from_genesis(
+pub fn gemini_3g_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    Ok(GenericChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3g",
         // ID
@@ -213,16 +216,18 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
     ))
 }
 
-pub fn gemini_3g_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
+pub fn gemini_3g_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
     unimplemented!("Please use release prefixed with gemini-3g")
 }
 
-pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC.as_bytes())
+pub fn devnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    GenericChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC.as_bytes())
 }
 
-pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    Ok(ConsensusChainSpec::from_genesis(
+pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    Ok(GenericChainSpec::from_genesis(
         // Name
         "Subspace Dev network",
         // ID
@@ -319,10 +324,12 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
     ))
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
+pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
-    Ok(ConsensusChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    Ok(GenericChainSpec::from_genesis(
         // Name
         "Subspace development",
         // ID
