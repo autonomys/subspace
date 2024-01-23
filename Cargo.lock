@@ -11215,6 +11215,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-subspace-mmr"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-blockchain",
+ "sp-core",
+ "sp-externalities",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-timestamp"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -11955,6 +11969,7 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
+ "sp-subspace-mmr",
  "sp-timestamp",
  "sp-transaction-pool",
  "static_assertions",
@@ -12086,6 +12101,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
+ "sp-subspace-mmr",
  "sp-timestamp",
  "subspace-core-primitives",
  "subspace-runtime-primitives",

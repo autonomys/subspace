@@ -94,6 +94,7 @@ use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
+use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
@@ -198,6 +199,7 @@ pub type HostFunctions = (
     sp_io::SubstrateHostFunctions,
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
+    sp_subspace_mmr::HostFunctions,
 );
 
 /// Host functions required for Subspace
@@ -207,6 +209,7 @@ pub type HostFunctions = (
     frame_benchmarking::benchmarking::HostFunctions,
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
+    sp_subspace_mmr::HostFunctions,
 );
 
 /// Runtime executor for Subspace
@@ -363,6 +366,10 @@ where
                 self.client.clone(),
                 self.executor.clone(),
             ),
+        )));
+
+        exts.register(SubspaceMmrExtension::new(Arc::new(
+            SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.client.clone()),
         )));
 
         exts
