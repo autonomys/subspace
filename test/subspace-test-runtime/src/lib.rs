@@ -84,7 +84,6 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, Hash, Moment, Nonce, Signature, MIN_REPLICATION_FACTOR,
-    STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -356,11 +355,6 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = MaxHolds;
 }
 
-parameter_types! {
-    pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
-    pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
-}
-
 pub struct CreditSupply;
 
 impl Get<Balance> for CreditSupply {
@@ -394,8 +388,6 @@ impl Get<u128> for BlockchainHistorySize {
 impl pallet_transaction_fees::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
-    type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
-    type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
     type BlockchainHistorySize = BlockchainHistorySize;
