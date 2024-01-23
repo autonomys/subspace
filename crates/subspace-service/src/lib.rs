@@ -89,6 +89,7 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
+use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
@@ -100,12 +101,12 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{BlockNumber, PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -633,7 +634,8 @@ where
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
-        + ObjectsApi<Block>,
+        + ObjectsApi<Block>
+        + MmrApi<Block, Hash, BlockNumber>,
 {
     let PartialComponents {
         client,
@@ -654,6 +656,7 @@ where
         mut telemetry,
     } = other;
 
+    let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
     let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
@@ -895,6 +898,19 @@ where
             })
             .run(client.clone(), task_manager.spawn_handle())
             .boxed(),
+        );
+    }
+
+    // mmr offchain indexer
+    if offchain_indexing_enabled {
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "mmr-gadget",
+            None,
+            mmr_gadget::MmrGadget::start(
+                client.clone(),
+                backend.clone(),
+                sp_mmr_primitives::INDEXING_PREFIX.to_vec(),
+            ),
         );
     }
 

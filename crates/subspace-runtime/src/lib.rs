@@ -1195,7 +1195,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl mmr::MmrApi<Block, Hash, BlockNumber> for Runtime {
+    impl mmr::MmrApi<Block, mmr::Hash, BlockNumber> for Runtime {
         fn mmr_root() -> Result<mmr::Hash, mmr::Error> {
             Ok(Mmr::mmr_root())
         }

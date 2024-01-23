@@ -6523,6 +6523,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mmr-gadget"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "futures",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sc-offchain",
+ "sp-api",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-beefy",
+ "sp-core",
+ "sp-mmr-primitives",
+ "sp-runtime",
+]
+
+[[package]]
 name = "mockall"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10574,6 +10593,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-consensus-beefy"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "lazy_static",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-io",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+ "strum 0.24.1",
+]
+
+[[package]]
 name = "sp-consensus-grandpa"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -11872,6 +11910,7 @@ dependencies = [
  "futures",
  "hex",
  "jsonrpsee",
+ "mmr-gadget",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -11911,6 +11950,7 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",

@@ -23,6 +23,7 @@ frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "h
 futures = "0.3.29"
 hex = "0.4.3"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
+mmr-gadget = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.1"
@@ -61,6 +62,7 @@ sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-domains-fraud-proof = { version = "0.1.0", path = "../sp-domains-fraud-proof" }
 sp-externalities = { version = "0.19.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-io = { version = "23.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-mmr-primitives = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
