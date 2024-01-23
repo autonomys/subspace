@@ -36,7 +36,6 @@ pub trait WeightInfo {
 	fn enable_solution_range_adjustment() -> Weight;
 	fn vote() -> Weight;
 	fn enable_rewards() -> Weight;
-	fn enable_storage_access() -> Weight;
 	fn enable_authoring_by_anyone() -> Weight;
 }
 
@@ -117,16 +116,6 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		// Minimum execution time: 6_000_000 picoseconds.
 		Weight::from_parts(6_000_000, 1533)
 			.saturating_add(T::DbWeight::get().reads(1_u64))
-			.saturating_add(T::DbWeight::get().writes(1_u64))
-	}
-	/// Storage: Subspace IsStorageAccessEnabled (r:0 w:1)
-	/// Proof Skipped: Subspace IsStorageAccessEnabled (max_values: Some(1), max_size: None, mode: Measured)
-	fn enable_storage_access() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 2_000_000 picoseconds.
-		Weight::from_parts(3_000_000, 0)
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
 	/// Storage: Subspace RootPlotPublicKey (r:1 w:0)
@@ -222,16 +211,6 @@ impl WeightInfo for () {
 		// Minimum execution time: 6_000_000 picoseconds.
 		Weight::from_parts(6_000_000, 1533)
 			.saturating_add(RocksDbWeight::get().reads(1_u64))
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
-	}
-	/// Storage: Subspace IsStorageAccessEnabled (r:0 w:1)
-	/// Proof Skipped: Subspace IsStorageAccessEnabled (max_values: Some(1), max_size: None, mode: Measured)
-	fn enable_storage_access() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 2_000_000 picoseconds.
-		Weight::from_parts(3_000_000, 0)
 			.saturating_add(RocksDbWeight::get().writes(1_u64))
 	}
 	/// Storage: Subspace RootPlotPublicKey (r:1 w:0)

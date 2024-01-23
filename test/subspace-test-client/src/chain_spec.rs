@@ -114,7 +114,6 @@ fn create_genesis_config(
         },
         subspace: SubspaceConfig {
             enable_rewards_at: EnableRewardsAt::Manually,
-            enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
             pot_slot_iterations: NonZeroU32::new(50_000_000).expect("Not zero; qed"),
             phantom: PhantomData,

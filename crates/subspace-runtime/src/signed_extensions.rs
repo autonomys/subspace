@@ -1,4 +1,4 @@
-use crate::{Runtime, RuntimeCall, RuntimeConfigs, Subspace, Sudo};
+use crate::{Runtime, RuntimeCall, RuntimeConfigs, Sudo};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
@@ -28,7 +28,7 @@ impl SignedExtension for CheckStorageAccess {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        if Subspace::is_storage_access_enabled() || Some(who) == Sudo::key().as_ref() {
+        if RuntimeConfigs::enable_non_root_calls() || Some(who) == Sudo::key().as_ref() {
             Ok(ValidTransaction::default())
         } else {
             InvalidTransaction::BadSigner.into()

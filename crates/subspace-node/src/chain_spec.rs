@@ -93,12 +93,12 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
     enable_rewards_at: EnableRewardsAt<BlockNumber>,
-    enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
     enable_dynamic_cost_of_storage: bool,
     enable_balance_transfers: bool,
+    enable_non_root_calls: bool,
     confirmation_depth_k: u32,
 }
 
@@ -164,7 +164,6 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
-                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
                         FarmerPublicKey::unchecked_from(hex_literal::hex!(
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
@@ -176,6 +175,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
+                    enable_non_root_calls: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
                 GenesisDomainParams {
@@ -279,12 +279,12 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
-                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
+                    enable_non_root_calls: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
                 GenesisDomainParams {
@@ -346,12 +346,12 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 vec![],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
-                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
+                    enable_non_root_calls: true,
                     confirmation_depth_k: 5,
                 },
                 GenesisDomainParams {
@@ -396,12 +396,12 @@ fn subspace_genesis_config(
 ) -> RuntimeGenesisConfig {
     let GenesisParams {
         enable_rewards_at,
-        enable_storage_access,
         allow_authoring_by,
         pot_slot_iterations,
         enable_domains,
         enable_dynamic_cost_of_storage,
         enable_balance_transfers,
+        enable_non_root_calls,
         confirmation_depth_k,
     } = genesis_params;
 
@@ -434,7 +434,6 @@ fn subspace_genesis_config(
         },
         subspace: SubspaceConfig {
             enable_rewards_at,
-            enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,
             phantom: PhantomData,
@@ -444,6 +443,7 @@ fn subspace_genesis_config(
             enable_domains,
             enable_dynamic_cost_of_storage,
             enable_balance_transfers,
+            enable_non_root_calls,
             confirmation_depth_k,
         },
         domains: DomainsConfig {
