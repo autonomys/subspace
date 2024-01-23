@@ -703,9 +703,13 @@ mod mmr {
 impl pallet_mmr::Config for Runtime {
     const INDEXING_PREFIX: &'static [u8] = mmr::INDEXING_PREFIX;
     type Hashing = Keccak256;
-    type LeafData = pallet_mmr::ParentNumberAndHash<Runtime>;
-    type OnNewRoot = ();
+    type LeafData = SubspaceMmr;
+    type OnNewRoot = SubspaceMmr;
     type WeightInfo = ();
+}
+
+impl pallet_subspace_mmr::Config for Runtime {
+    type MmrRootHash = mmr::Hash;
 }
 
 construct_runtime!(
@@ -727,6 +731,7 @@ construct_runtime!(
         Vesting: orml_vesting = 7,
 
         Mmr: pallet_mmr = 30,
+        SubspaceMmr: pallet_subspace_mmr = 31,
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains

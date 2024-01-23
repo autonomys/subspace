@@ -7452,6 +7452,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-subspace-mmr"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+ "sp-subspace-mmr",
+]
+
+[[package]]
 name = "pallet-sudo"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -11864,6 +11880,7 @@ dependencies = [
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",
+ "pallet-subspace-mmr",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-fees",
@@ -12032,6 +12049,7 @@ dependencies = [
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-subspace",
+ "pallet-subspace-mmr",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-fees",

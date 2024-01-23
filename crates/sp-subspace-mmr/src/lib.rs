@@ -19,12 +19,15 @@
 
 #[cfg(feature = "std")]
 pub mod host_functions;
-pub mod runtime_interface;
+mod runtime_interface;
+pub use runtime_interface::subspace_mmr_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::subspace_mmr_runtime_interface::HostFunctions;
 
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
+use sp_runtime::generic::OpaqueDigestItemId;
+use sp_runtime::DigestItem;
 
 /// MMR leaf structure
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -42,4 +45,29 @@ pub struct LeafDataV0<BlockNumber, Hash> {
     pub state_root: Hash,
     /// Can be used to prove block body
     pub extrinsics_root: Hash,
+}
+
+/// MMR specific digest item.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+pub enum MmrDigestItem<MmrRootHash: Codec> {
+    NewMmrRoot(MmrRootHash),
+}
+
+/// MMR specific digest items interface.
+pub trait MmrDigest<MmrRootHash> {
+    fn new_mmr_root(root: MmrRootHash) -> Self;
+    fn as_new_mmr_root(&self) -> Option<MmrRootHash>;
+}
+
+impl<MmrRootHash: Codec> MmrDigest<MmrRootHash> for DigestItem {
+    fn new_mmr_root(root: MmrRootHash) -> Self {
+        DigestItem::Other(MmrDigestItem::NewMmrRoot(root).encode())
+    }
+
+    fn as_new_mmr_root(&self) -> Option<MmrRootHash> {
+        match self.try_to::<MmrDigestItem<MmrRootHash>>(OpaqueDigestItemId::Other) {
+            Some(MmrDigestItem::NewMmrRoot(root)) => Some(root),
+            _ => None,
+        }
+    }
 }

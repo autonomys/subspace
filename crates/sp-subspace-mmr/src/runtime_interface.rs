@@ -20,7 +20,7 @@ pub trait SubspaceMmrRuntimeInterface {
 }
 
 /// Leaf data sent back from host function.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
 pub struct LeafData {
     pub state_root: H256,
     pub extrinsics_root: H256,

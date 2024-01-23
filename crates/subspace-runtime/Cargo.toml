@@ -33,6 +33,7 @@ pallet-offences-subspace = { version = "0.1.0", default-features = false, path =
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["serde"], path = "../pallet-subspace" }
+pallet-subspace-mmr = { version = "0.1.0", default-features = false, path = "../pallet-subspace-mmr" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-transaction-fees = { version = "0.1.0", default-features = false, path = "../pallet-transaction-fees" }
@@ -90,6 +91,7 @@ std = [
     "pallet-rewards/std",
     "pallet-runtime-configs/std",
     "pallet-subspace/std",
+    "pallet-subspace-mmr/std",
     "pallet-sudo/std",
     "pallet-timestamp/std",
     "pallet-transaction-fees/std",
