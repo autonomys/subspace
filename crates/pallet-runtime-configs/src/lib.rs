@@ -33,15 +33,25 @@ mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
-    /// Whether to disable the calls in pallet-domains.
+    /// Whether to enable calls in pallet-domains.
     #[pallet::storage]
     #[pallet::getter(fn enable_domains)]
     pub type EnableDomains<T> = StorageValue<_, bool, ValueQuery>;
 
-    /// Whether to disable the normal balances transfer calls.
+    /// Whether to enable dynamic cost of storage.
+    #[pallet::storage]
+    #[pallet::getter(fn enable_dynamic_cost_of_storage)]
+    pub type EnableDynamicCostOfStorage<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Whether to enable balances transfers.
     #[pallet::storage]
     #[pallet::getter(fn enable_balance_transfers)]
     pub type EnableBalanceTransfers<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Whether to enable calls from non-root account.
+    #[pallet::storage]
+    #[pallet::getter(fn enable_non_root_calls)]
+    pub type EnableNonRootCalls<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
     pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
@@ -54,8 +64,15 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
+        /// Whether to enable domains
         pub enable_domains: bool,
+        /// Whether to enable dynamic cost of storage (if `false` cost per byte is equal to 1)
+        pub enable_dynamic_cost_of_storage: bool,
+        /// Whether to enable balance transfers
         pub enable_balance_transfers: bool,
+        /// Whether to enable calls from non-root account
+        pub enable_non_root_calls: bool,
+        /// Confirmation depth k to use in the archiving process
         pub confirmation_depth_k: BlockNumberFor<T>,
     }
 
@@ -64,7 +81,9 @@ mod pallet {
         fn default() -> Self {
             Self {
                 enable_domains: false,
+                enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
+                enable_non_root_calls: false,
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
             }
         }
@@ -75,7 +94,9 @@ mod pallet {
         fn build(&self) {
             let Self {
                 enable_domains,
+                enable_dynamic_cost_of_storage,
                 enable_balance_transfers,
+                enable_non_root_calls,
                 confirmation_depth_k,
             } = self;
 
@@ -85,7 +106,9 @@ mod pallet {
             );
 
             <EnableDomains<T>>::put(enable_domains);
+            <EnableDynamicCostOfStorage<T>>::put(enable_dynamic_cost_of_storage);
             <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
+            <EnableNonRootCalls<T>>::put(enable_non_root_calls);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
         }
     }
@@ -103,8 +126,22 @@ mod pallet {
             Ok(())
         }
 
-        /// Enable or disable balance transfers for all users.
+        /// Enable or disable dynamic cost of storage.
         #[pallet::call_index(1)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_enable_dynamic_cost_of_storage())]
+        pub fn set_enable_dynamic_cost_of_storage(
+            origin: OriginFor<T>,
+            enable_dynamic_cost_of_storage: bool,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            EnableBalanceTransfers::<T>::put(enable_dynamic_cost_of_storage);
+
+            Ok(())
+        }
+
+        /// Enable or disable balance transfers for all users.
+        #[pallet::call_index(2)]
         #[pallet::weight(<T as Config>::WeightInfo::set_enable_balance_transfers())]
         pub fn set_enable_balance_transfers(
             origin: OriginFor<T>,
@@ -113,6 +150,20 @@ mod pallet {
             ensure_root(origin)?;
 
             EnableBalanceTransfers::<T>::put(enable_balance_transfers);
+
+            Ok(())
+        }
+
+        /// Enable or disable calls from non-root users.
+        #[pallet::call_index(3)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_enable_non_root_calls())]
+        pub fn set_enable_non_root_calls(
+            origin: OriginFor<T>,
+            enable_non_root_calls: bool,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            EnableNonRootCalls::<T>::put(enable_non_root_calls);
 
             Ok(())
         }

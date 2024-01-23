@@ -132,4 +132,3 @@ runtime-benchmarks = [
     "pallet-utility/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
 ]
-do-not-enforce-cost-of-storage = []

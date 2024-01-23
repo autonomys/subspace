@@ -10,11 +10,7 @@ pub struct TransactionByteFee;
 
 impl Get<Balance> for TransactionByteFee {
     fn get() -> Balance {
-        if cfg!(feature = "do-not-enforce-cost-of-storage") {
-            1
-        } else {
-            TransactionFees::transaction_byte_fee()
-        }
+        TransactionFees::transaction_byte_fee()
     }
 }
 

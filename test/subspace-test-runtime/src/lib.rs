@@ -64,8 +64,8 @@ use sp_messenger::messages::{
     ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf,
-    NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstBool, Convert,
+    DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -401,6 +401,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
+    type DynamicCostOfStorage = ConstBool<{ !cfg!(feature = "do-not-enforce-cost-of-storage") }>;
     type WeightInfo = ();
 }
 
@@ -408,11 +409,7 @@ pub struct TransactionByteFee;
 
 impl Get<Balance> for TransactionByteFee {
     fn get() -> Balance {
-        if cfg!(feature = "do-not-enforce-cost-of-storage") {
-            1
-        } else {
-            TransactionFees::transaction_byte_fee()
-        }
+        TransactionFees::transaction_byte_fee()
     }
 }
 

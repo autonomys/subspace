@@ -282,8 +282,6 @@ pub mod pallet {
     {
         /// When rewards should be enabled.
         pub enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
-        /// Whether storage access should be enabled.
-        pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
         /// Number of iterations for proof of time per slot
@@ -324,7 +322,6 @@ pub mod pallet {
                     // Nothing to do in this case
                 }
             }
-            IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
             match &self.allow_authoring_by {
                 AllowAuthoringBy::Anyone => {
                     AllowAuthoringByAnyone::<T>::put(true);
@@ -490,11 +487,6 @@ pub mod pallet {
     #[pallet::storage]
     pub type BlockRandomness<T> = StorageValue<_, Randomness>;
 
-    /// Enable storage access for all users.
-    #[pallet::storage]
-    #[pallet::getter(fn is_storage_access_enabled)]
-    pub(super) type IsStorageAccessEnabled<T> = StorageValue<_, bool, ValueQuery>;
-
     /// Allow block authoring by anyone or just root.
     #[pallet::storage]
     pub(super) type AllowAuthoringByAnyone<T> = StorageValue<_, bool, ValueQuery>;
@@ -604,17 +596,6 @@ pub mod pallet {
 
         /// Enable storage access for all users.
         #[pallet::call_index(5)]
-        #[pallet::weight(<T as Config>::WeightInfo::enable_storage_access())]
-        pub fn enable_storage_access(origin: OriginFor<T>) -> DispatchResult {
-            ensure_root(origin)?;
-
-            IsStorageAccessEnabled::<T>::put(true);
-
-            Ok(())
-        }
-
-        /// Enable storage access for all users.
-        #[pallet::call_index(6)]
         #[pallet::weight(<T as Config>::WeightInfo::enable_authoring_by_anyone())]
         pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;

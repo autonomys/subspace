@@ -135,14 +135,6 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn enable_storage_access() {
-        #[extrinsic_call]
-        _(RawOrigin::Root);
-
-        assert!(Pallet::<T>::is_storage_access_enabled());
-    }
-
-    #[benchmark]
     fn enable_authoring_by_anyone() {
         #[extrinsic_call]
         _(RawOrigin::Root);
