@@ -114,6 +114,7 @@ impl DiskPieceCache {
         let file = &self.inner.file;
         let mut element = vec![0; Self::element_size()];
 
+        // TODO: Stop early on first missing entry
         (0..self.inner.num_elements).map(move |offset| {
             match Self::read_piece_internal(file, offset, &mut element) {
                 Ok(maybe_piece_index) => (Offset(offset), maybe_piece_index),
