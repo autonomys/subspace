@@ -20,7 +20,7 @@ use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::BlockBackend;
-use sp_api::{HashT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
@@ -29,7 +29,7 @@ use sp_domains::{
     InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
 use sp_state_machine::LayoutV1;
 use std::collections::VecDeque;
 use std::marker::PhantomData;

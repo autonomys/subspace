@@ -26,6 +26,7 @@ fn test_set_code() {
         apis: Default::default(),
         transaction_version: 1,
         state_version: 0,
+        extrinsic_state_version: 0,
     };
     let read_runtime_version = ReadRuntimeVersion(version.encode());
 

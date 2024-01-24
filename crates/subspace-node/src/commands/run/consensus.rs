@@ -1,16 +1,15 @@
 use crate::commands::run::shared::RpcOptions;
-use crate::commands::run::substrate::Cors;
 use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
+use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, TelemetryParams,
-    TransactionPoolParams, RPC_DEFAULT_PORT,
+    generate_node_name, Cors, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods,
+    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
 use sc_service::Configuration;
 use sc_storage_monitor::StorageMonitorParams;
-use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -358,7 +357,7 @@ pub(super) fn create_consensus_chain_configuration(
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
         Some("dev") => chain_spec::dev_config()?,
-        Some(path) => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        Some(path) => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         None => {
             return Err(Error::Other(
                 "Chain must be provided unless --dev mode is used".to_string(),

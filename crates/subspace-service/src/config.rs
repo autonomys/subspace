@@ -1,5 +1,4 @@
 use crate::dsn::DsnConfig;
-use atomic::Atomic;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
@@ -17,6 +16,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
@@ -137,7 +137,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 // Substrate's default
                 max_blocks_per_request: 64,
                 // Substrate's default, full mode
-                sync_mode: Arc::new(Atomic::new(SyncMode::Full)),
+                sync_mode: SyncMode::Full,
+                pause_sync: Arc::new(AtomicBool::new(false)),
                 // Substrate's default
                 enable_dht_random_walk: true,
                 // Substrate's default

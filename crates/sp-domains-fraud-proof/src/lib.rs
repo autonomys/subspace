@@ -42,11 +42,10 @@ pub use host_functions::{
 pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
-use sp_api::scale_info::TypeInfo;
-use sp_api::HeaderT;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::{DomainId, OperatorId};
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
@@ -88,6 +87,9 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
+    /// Domain `set_consensus_chain_byte_fee` extrinsic using the `consensus_chain_byte_fee` at a given
+    /// consensus block hash.
+    ConsensusChainByteFeeExtrinsic(DomainId),
     /// The body of domain bundle included in a given consensus block at a given index
     DomainBundleBody {
         domain_id: DomainId,
@@ -157,6 +159,9 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
+    /// Encoded domain `set_consensus_chain_byte_fee` extrinsic using the `consensus_chain_byte_fee` at a
+    /// given consensus block hash.
+    ConsensusChainByteFeeExtrinsic(Vec<u8>),
     /// Domain block body fetch from a specific consensus block body
     DomainBundleBody(Vec<OpaqueExtrinsic>),
     /// The domain runtime code
@@ -191,6 +196,13 @@ impl FraudProofVerificationInfoResponse {
     pub fn into_domain_timestamp_extrinsic(self) -> Option<Vec<u8>> {
         match self {
             Self::DomainTimestampExtrinsic(timestamp_extrinsic) => Some(timestamp_extrinsic),
+            _ => None,
+        }
+    }
+
+    pub fn into_consensus_chain_byte_fee_extrinsic(self) -> Option<Vec<u8>> {
+        match self {
+            Self::ConsensusChainByteFeeExtrinsic(ext) => Some(ext),
             _ => None,
         }
     }

@@ -11,7 +11,7 @@ use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
 use futures::{select, StreamExt};
 use sc_client_api::BlockchainEvents;
-use sc_network::PeerId;
+use sc_network::{NotificationService, PeerId};
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -73,12 +73,15 @@ where
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
     SO: SyncOracle + Clone + Send + Sync + 'static,
 {
+    // TODO: Struct for arguments
+    #[allow(clippy::too_many_arguments)]
     pub fn new<Network, GossipSync>(
         is_timekeeper: bool,
         timekeeper_cpu_cores: HashSet<usize>,
         client: Arc<Client>,
         pot_verifier: PotVerifier,
         network: Network,
+        notification_service: Box<dyn NotificationService>,
         sync: Arc<GossipSync>,
         sync_oracle: SO,
     ) -> Result<(Self, PotGossipWorker<Block>, PotSlotInfoStream), ApiError>
@@ -166,6 +169,7 @@ where
             pot_verifier,
             Arc::clone(&state),
             network,
+            notification_service,
             sync,
             sync_oracle.clone(),
         );

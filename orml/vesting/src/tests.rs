@@ -164,7 +164,7 @@ fn add_new_vesting_schedule_merges_with_current_locked_balance_and_until() {
         ));
 
         assert_eq!(
-            PalletBalances::locks(BOB).get(0),
+            PalletBalances::locks(BOB).first(),
             Some(&BalanceLock {
                 id: VESTING_LOCK_ID,
                 amount: 17u64,
@@ -348,7 +348,7 @@ fn claim_for_works() {
         assert_ok!(Vesting::claim_for(RuntimeOrigin::signed(ALICE), BOB));
 
         assert_eq!(
-            PalletBalances::locks(BOB).get(0),
+            PalletBalances::locks(BOB).first(),
             Some(&BalanceLock {
                 id: VESTING_LOCK_ID,
                 amount: 20u64,
@@ -411,7 +411,7 @@ fn update_vesting_schedules_works() {
         // empty vesting schedules cleanup the storage and unlock the fund
         assert!(VestingSchedules::<Runtime>::contains_key(BOB));
         assert_eq!(
-            PalletBalances::locks(BOB).get(0),
+            PalletBalances::locks(BOB).first(),
             Some(&BalanceLock {
                 id: VESTING_LOCK_ID,
                 amount: 10u64,

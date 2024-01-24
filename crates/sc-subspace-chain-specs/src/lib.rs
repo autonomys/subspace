@@ -14,20 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Chain specification data structures tailored for Subspace.
-
-mod utils;
-
-pub use utils::SerializableChainSpec;
-
-use sc_chain_spec::NoExtension;
+//! Consensus chain specifications for Subspace.
 
 /// Devnet chain spec
 pub const DEVNET_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-devnet.json");
-
-/// Specialized `ChainSpec` for the consensus runtime.
-pub type ConsensusChainSpec<GenesisConfig> = SerializableChainSpec<GenesisConfig>;
-
-/// Specialized `ChainSpec` for the execution runtime.
-pub type ExecutionChainSpec<ExecutionGenesisConfig, Ext = NoExtension> =
-    SerializableChainSpec<ExecutionGenesisConfig, Ext>;

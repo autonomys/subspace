@@ -1,5 +1,3 @@
-pub use fc_consensus::FrontierBlockImport;
-pub use fc_db::kv::frontier_database_dir;
 use fc_mapping_sync::kv::MappingSyncWorker;
 use fc_mapping_sync::SyncStrategy;
 use fc_rpc::{EthTask, OverrideHandle};
@@ -8,10 +6,10 @@ use futures::{future, StreamExt};
 use sc_client_api::{BlockchainEvents, StorageProvider};
 use sc_network_sync::SyncingService;
 use sc_service::error::Error as ServiceError;
-use sp_api::{BlockT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_runtime::traits::{NumberFor, Zero};
+use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

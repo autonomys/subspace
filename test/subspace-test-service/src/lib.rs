@@ -19,13 +19,13 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use codec::{Decode, Encode};
-use cross_domain_message_gossip::GossipWorkerBuilder;
+use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
-use futures::{select, Future, FutureExt, StreamExt};
+use futures::{Future, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
-use sc_block_builder::BlockBuilderProvider;
+use sc_block_builder::BlockBuilderBuilder;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{BlockBackend, ExecutorProvider};
 use sc_consensus::block_import::{
@@ -34,9 +34,8 @@ use sc_consensus::block_import::{
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
-use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
-use sc_network::multiaddr;
+use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
     WasmtimeInstantiationStrategy,
@@ -47,7 +46,7 @@ use sc_service::{
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
@@ -63,7 +62,9 @@ use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::{BlockId, Digest};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
+};
 use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
@@ -76,8 +77,8 @@ use subspace_core_primitives::{Randomness, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::transaction_pool::FullPool;
-use subspace_service::FullSelectChain;
-use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
+use subspace_service::{FullSelectChain, RuntimeExecutor};
+use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 
 type FraudProofFor<Block, DomainBlock> =
@@ -224,13 +225,15 @@ pub struct MockConsensusNode {
     /// Backend.
     pub backend: Arc<Backend>,
     /// Code executor.
-    pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
+    pub executor: RuntimeExecutor,
     /// Transaction pool.
     pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
     pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Cross-domain gossip notification service.
+    pub xdm_gossip_notification_service: Option<Box<dyn NotificationService>>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
@@ -241,7 +244,7 @@ pub struct MockConsensusNode {
     next_slot: u64,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
-    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Randomness)>>,
+    new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, Randomness)>>,
     /// The acknowledgement sender subscribers
     #[allow(clippy::type_complexity)]
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
@@ -276,7 +279,7 @@ impl MockConsensusNode {
         );
         let _enter = span.enter();
 
-        let executor = sc_service::new_native_or_wasm_executor(&config);
+        let executor = sc_service::new_wasm_executor(&config);
 
         let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
@@ -305,7 +308,10 @@ impl MockConsensusNode {
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
-        let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+        let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+        let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
+            xdm_gossip_peers_set_config();
+        net_config.add_notification_protocol(xdm_gossip_notification_config);
 
         let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
             sc_service::build_network(sc_service::BuildNetworkParams {
@@ -353,6 +359,7 @@ impl MockConsensusNode {
             transaction_pool,
             select_chain,
             network_service,
+            xdm_gossip_notification_service: Some(xdm_gossip_notification_service),
             sync_service,
             rpc_handlers,
             network_starter: Some(network_starter),
@@ -387,8 +394,13 @@ impl MockConsensusNode {
             .xdm_gossip_worker_builder
             .take()
             .expect("gossip message worker have not started yet");
-        let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
-            .build::<Block, _, _>(self.network_service.clone(), self.sync_service.clone());
+        let cross_domain_message_gossip_worker = xdm_gossip_worker_builder.build::<Block, _, _>(
+            self.network_service.clone(),
+            self.xdm_gossip_notification_service
+                .take()
+                .expect("XDM gossip notification service must be used only once"),
+            self.sync_service.clone(),
+        );
         self.task_manager
             .spawn_essential_handle()
             .spawn_essential_blocking(
@@ -443,8 +455,8 @@ impl MockConsensusNode {
     }
 
     /// Subscribe the new slot notification
-    pub fn new_slot_notification_stream(&mut self) -> TracingUnboundedReceiver<(Slot, Randomness)> {
-        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
+    pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, Randomness)> {
+        let (tx, rx) = mpsc::unbounded();
         self.new_slot_notification_subscribers.push(tx);
         rx
     }
@@ -536,7 +548,7 @@ impl MockConsensusNode {
     pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, PoolError> {
         self.transaction_pool
             .submit_one(
-                &BlockId::Hash(self.client.info().best_hash),
+                self.client.info().best_hash,
                 TransactionSource::External,
                 tx,
             )
@@ -626,29 +638,11 @@ impl MockConsensusNode {
         &self,
         parent_number: NumberFor<Block>,
     ) -> Vec<<Block as BlockT>::Extrinsic> {
-        let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
-        let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
-        let pending_iterator = select! {
-            res = t1 => res,
-            _ = t2 => {
-                tracing::warn!(
-                    "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-                    parent_number,
-                );
-                self.transaction_pool.ready()
-            }
-        };
-        let pushing_duration = time::Duration::from_micros(500);
-        let start = time::Instant::now();
-        let mut extrinsics = Vec::new();
-        for pending_tx in pending_iterator {
-            if start.elapsed() >= pushing_duration {
-                break;
-            }
-            let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
-        }
-        extrinsics
+        self.transaction_pool
+            .ready_at(parent_number)
+            .await
+            .map(|pending_tx| pending_tx.data().clone())
+            .collect()
     }
 
     async fn mock_inherent_data(slot: Slot) -> Result<InherentData, Box<dyn Error>> {
@@ -686,11 +680,16 @@ impl MockConsensusNode {
         parent_hash: <Block as BlockT>::Hash,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
-        let digest = self.mock_subspace_digest(slot);
+        let inherent_digest = self.mock_subspace_digest(slot);
 
         let inherent_data = Self::mock_inherent_data(slot).await?;
 
-        let mut block_builder = self.client.new_block_at(parent_hash, digest, false)?;
+        let mut block_builder = BlockBuilderBuilder::new(self.client.as_ref())
+            .on_parent_block(parent_hash)
+            .fetch_parent_block_number(self.client.as_ref())?
+            .with_inherent_digests(inherent_digest)
+            .build()
+            .expect("Creates new block builder");
 
         let inherent_txns = block_builder.create_inherents(inherent_data)?;
 

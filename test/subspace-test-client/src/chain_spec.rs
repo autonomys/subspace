@@ -2,7 +2,7 @@
 
 use crate::domain_chain_spec::testnet_evm_genesis;
 use codec::Encode;
-use sc_chain_spec::ChainType;
+use sc_chain_spec::{ChainType, GenericChainSpec};
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType};
@@ -37,13 +37,14 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 /// Local testnet config (multivalidator Alice + Bob).
 pub fn subspace_local_testnet_config() -> TestChainSpec {
     let wasm_binary = WASM_BINARY.expect("Development wasm not available");
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
     TestChainSpec::from_genesis(
         "Local Testnet",
         "local_testnet",
         ChainType::Local,
         || {
             create_genesis_config(
-                wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
@@ -70,31 +71,41 @@ pub fn subspace_local_testnet_config() -> TestChainSpec {
         None,
         None,
         Default::default(),
+        wasm_binary,
     )
 }
 
 /// Configure initial storage state for FRAME modules.
 fn create_genesis_config(
-    wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> RuntimeGenesisConfig {
     let raw_genesis_storage = {
-        let domain_genesis_config = testnet_evm_genesis();
-        let storage = domain_genesis_config
+        // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+        #[allow(deprecated)]
+        let domain_chain_spec = GenericChainSpec::<_, _, ()>::from_genesis(
+            "",
+            "",
+            ChainType::Development,
+            testnet_evm_genesis,
+            Vec::new(),
+            None,
+            None,
+            None,
+            None,
+            None::<()>,
+            evm_domain_test_runtime::WASM_BINARY.expect("Development wasm not available"),
+        );
+        let storage = domain_chain_spec
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");
         let raw_genesis = RawGenesis::from_storage(storage);
         raw_genesis.encode()
     };
     RuntimeGenesisConfig {
-        system: SystemConfig {
-            // Add Wasm runtime to storage.
-            code: wasm_binary.to_vec(),
-            ..Default::default()
-        },
+        system: SystemConfig::default(),
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
         sudo: SudoConfig {
@@ -103,7 +114,6 @@ fn create_genesis_config(
         },
         subspace: SubspaceConfig {
             enable_rewards_at: EnableRewardsAt::Manually,
-            enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
             pot_slot_iterations: NonZeroU32::new(50_000_000).expect("Not zero; qed"),
             phantom: PhantomData,

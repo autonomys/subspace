@@ -180,6 +180,24 @@ pub struct DecodeExtrinsicError(pub String);
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
+#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
+pub struct BlockFees<Balance> {
+    /// The consensus chain storage fee
+    pub consensus_storage_fee: Balance,
+    /// The domain execution fee including the storage and compute fee on domain chain,
+    /// tip, and the XDM reward.
+    pub domain_execution_fee: Balance,
+}
+
+impl<Balance> BlockFees<Balance> {
+    pub fn new(domain_execution_fee: Balance, consensus_storage_fee: Balance) -> Self {
+        BlockFees {
+            consensus_storage_fee,
+            domain_execution_fee,
+        }
+    }
+}
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -230,6 +248,9 @@ sp_api::decl_runtime_apis! {
         /// Returns an encoded extrinsic to set timestamp.
         fn construct_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
 
+        /// Returns an encoded extrinsic to set domain transaction byte fee.
+        fn construct_consensus_chain_byte_fee_extrinsic(consensus_chain_byte_fee: Balance) -> Block::Extrinsic;
+
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
@@ -253,7 +274,7 @@ sp_api::decl_runtime_apis! {
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
 
         /// The accumulated transaction fee of all transactions included in the block
-        fn block_rewards() -> Balance;
+        fn block_fees() -> BlockFees<Balance>;
 
         /// Return the block digest
         fn block_digest() -> Digest;

@@ -1,6 +1,6 @@
 use crate::single_disk_farm::{
-    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails,
-    RESERVED_PLOT_METADATA,
+    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorExpirationDetails,
+    SectorPlottingDetails, SectorUpdate, RESERVED_PLOT_METADATA,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -19,7 +19,7 @@ use std::ops::Range;
 use std::pin::pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
@@ -184,14 +184,16 @@ where
             info!(%sector_index, "Plotting sector ({progress:.2}% complete)");
         }
 
+        let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
+            progress,
+            replotting,
+            last_queued,
+        });
         handlers
-            .sector_plotting
-            .call_simple(&SectorPlottingDetails {
-                sector_index,
-                progress,
-                replotting,
-                last_queued,
-            });
+            .sector_update
+            .call_simple(&(sector_index, sector_state));
+
+        let start = Instant::now();
 
         // This `loop` is a workaround for edge-case in local setup if expiration is configured to
         // 1. In that scenario we get replotting notification essentially straight from block import
@@ -231,6 +233,13 @@ where
                     .await
                     .map_err(plotting::PlottingError::from)?;
 
+                handlers.sector_update.call_simple(&(
+                    sector_index,
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
+                ));
+
+                let start = Instant::now();
+
                 let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                     public_key: &public_key,
                     sector_index,
@@ -243,13 +252,21 @@ where
                     pieces_in_sector,
                 });
 
-                (downloading_permit, downloaded_sector_fut.await?)
+                let downloaded_sector = downloaded_sector_fut.await?;
+
+                handlers.sector_update.call_simple(&(
+                    sector_index,
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(start.elapsed())),
+                ));
+
+                (downloading_permit, downloaded_sector)
             };
 
         // Initiate downloading of pieces for the next segment index if already known
         if let Some(sector_index) = next_segment_index_hint {
             let piece_getter = piece_getter.clone();
             let downloading_semaphore = Arc::clone(&downloading_semaphore);
+            let handlers = Arc::clone(&handlers);
             let kzg = kzg.clone();
 
             maybe_next_downloaded_sector_fut.replace(AsyncJoinOnDrop::new(
@@ -259,6 +276,13 @@ where
                             .acquire_owned()
                             .await
                             .map_err(plotting::PlottingError::from)?;
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
+                        ));
+
+                        let start = Instant::now();
 
                         let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                             public_key: &public_key,
@@ -272,16 +296,22 @@ where
                             pieces_in_sector,
                         });
 
-                        Ok((downloading_permit, downloaded_sector_fut.await?))
+                        let downloaded_sector = downloaded_sector_fut.await?;
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(
+                                start.elapsed(),
+                            )),
+                        ));
+
+                        Ok((downloading_permit, downloaded_sector))
                     }
                     .in_current_span(),
                 ),
                 true,
             ));
         }
-
-        // Inform others that this sector is being modified
-        modifying_sector_index.write().await.replace(sector_index);
 
         let sector;
         let sector_metadata;
@@ -292,6 +322,13 @@ where
                 tokio::task::block_in_place(|| {
                     let mut sector = Vec::new();
                     let mut sector_metadata = Vec::new();
+
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
+                    ));
+
+                    let start = Instant::now();
 
                     let plotted_sector = {
                         let plot_sector_fut = pin!(encode_sector::<PosTable>(
@@ -318,6 +355,11 @@ where
                         })?
                     };
 
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(start.elapsed())),
+                    ));
+
                     Ok((sector, sector_metadata, table_generator, plotted_sector))
                 })
             };
@@ -341,11 +383,28 @@ where
             plotting_result?
         };
 
-        plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
-        metadata_file.write_all_at(
-            &sector_metadata,
-            RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
-        )?;
+        // Inform others that this sector is being modified
+        modifying_sector_index.write().await.replace(sector_index);
+
+        {
+            handlers.sector_update.call_simple(&(
+                sector_index,
+                SectorUpdate::Plotting(SectorPlottingDetails::Writing),
+            ));
+
+            let start = Instant::now();
+
+            plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
+            metadata_file.write_all_at(
+                &sector_metadata,
+                RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
+            )?;
+
+            handlers.sector_update.call_simple(&(
+                sector_index,
+                SectorUpdate::Plotting(SectorPlottingDetails::Wrote(start.elapsed())),
+            ));
+        }
 
         if sector_index + 1 > metadata_header.plotted_sector_count {
             metadata_header.plotted_sector_count = sector_index + 1;
@@ -403,9 +462,14 @@ where
             }
         }
 
+        let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+            plotted_sector,
+            old_plotted_sector: maybe_old_plotted_sector,
+            time: start.elapsed(),
+        });
         handlers
-            .sector_plotted
-            .call_simple(&(plotted_sector, maybe_old_plotted_sector));
+            .sector_update
+            .call_simple(&(sector_index, sector_state));
     }
 
     Ok(())
@@ -418,6 +482,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) last_archived_segment_index: SegmentIndex,
     pub(super) min_sector_lifetime: HistorySize,
     pub(super) node_client: NC,
+    pub(super) handlers: Arc<Handlers>,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
     pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
@@ -439,6 +504,7 @@ where
         last_archived_segment_index,
         min_sector_lifetime,
         node_client,
+        handlers,
         sectors_metadata,
         sectors_to_plot_sender,
         initial_plotting_finished,
@@ -486,6 +552,7 @@ where
         target_sector_count,
         min_sector_lifetime,
         &node_client,
+        &handlers,
         sectors_metadata,
         &last_archived_segment,
         archived_segments_receiver,
@@ -631,6 +698,7 @@ async fn send_plotting_notifications<NC>(
     target_sector_count: SectorIndex,
     min_sector_lifetime: HistorySize,
     node_client: &NC,
+    handlers: &Handlers,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
@@ -707,6 +775,18 @@ where
                         %expires_at,
                         "Sector expires soon #1, scheduling replotting"
                     );
+
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Expiration(
+                            if expires_at <= archived_segment_header.segment_index() {
+                                SectorExpirationDetails::Expired
+                            } else {
+                                SectorExpirationDetails::AboutToExpire
+                            },
+                        ),
+                    ));
+
                     // Time to replot
                     sectors_to_replot.push(SectorToReplot {
                         sector_index,
@@ -763,24 +843,35 @@ where
                                 metadata; qed",
                         );
 
+                    let expires_at = expiration_history_size.segment_index();
+
                     trace!(
                         %sector_index,
                         %history_size,
-                        sector_expire_at = %expiration_history_size.segment_index(),
+                        sector_expire_at = %expires_at,
                         "Determined sector expiration segment index"
                     );
                     // +1 means we will start replotting a bit before it actually expires to avoid
                     // storing expired sectors
-                    if expiration_history_size.segment_index()
-                        <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
-                    {
-                        let expires_at = expiration_history_size.segment_index();
+                    if expires_at <= (archived_segment_header.segment_index() + SegmentIndex::ONE) {
                         debug!(
                             %sector_index,
                             %history_size,
                             %expires_at,
                             "Sector expires soon #2, scheduling replotting"
                         );
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Expiration(
+                                if expires_at <= archived_segment_header.segment_index() {
+                                    SectorExpirationDetails::Expired
+                                } else {
+                                    SectorExpirationDetails::AboutToExpire
+                                },
+                            ),
+                        ));
+
                         // Time to replot
                         sectors_to_replot.push(SectorToReplot {
                             sector_index,
@@ -790,12 +881,19 @@ where
                         trace!(
                             %sector_index,
                             %history_size,
-                            sector_expire_at = %expiration_history_size.segment_index(),
+                            sector_expire_at = %expires_at,
                             "Sector expires later, remembering sector expiration"
                         );
+
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Expiration(SectorExpirationDetails::Determined {
+                                expires_at,
+                            }),
+                        ));
+
                         // Store expiration so we don't have to recalculate it later
-                        sectors_expire_at
-                            .insert(sector_index, expiration_history_size.segment_index());
+                        sectors_expire_at.insert(sector_index, expires_at);
                     }
                 }
             }

@@ -16,9 +16,7 @@
 //! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(array_windows)]
-#![feature(associated_type_bounds)]
-#![feature(let_chains)]
+#![feature(array_windows, associated_type_bounds, let_chains, variant_count)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -54,13 +52,13 @@ use sp_domains::{
     OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
+    FraudProof, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
 };
 use sp_domains_fraud_proof::verification::{
-    verify_bundle_equivocation_fraud_proof, verify_invalid_bundles_fraud_proof,
-    verify_invalid_domain_block_hash_fraud_proof,
+    verify_bundle_equivocation_fraud_proof, verify_invalid_block_fees_fraud_proof,
+    verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
+    verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -173,7 +171,6 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
-    use sp_std::collections::vec_deque::VecDeque;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -422,7 +419,7 @@ mod pallet {
         OperatorId,
         Identity,
         NominatorId<T>,
-        VecDeque<Withdrawal<T::Share, DomainBlockNumberFor<T>>>,
+        Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
         OptionQuery,
     >;
 
@@ -608,8 +605,8 @@ mod pallet {
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
-        /// Invalid fraud proof since total rewards are not mismatched.
-        InvalidTotalRewardsFraudProof,
+        /// Invalid fraud proof since block fees are not mismatched.
+        InvalidBlockFeesFraudProof,
         /// Invalid domain block hash fraud proof.
         InvalidDomainBlockHashFraudProof,
         /// Invalid domain extrinsic fraud proof
@@ -1663,10 +1660,8 @@ impl<T: Config> Pallet<T> {
             );
 
             match fraud_proof {
-                FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof {
-                    storage_proof, ..
-                }) => {
-                    verify_invalid_total_rewards_fraud_proof::<
+                FraudProof::InvalidBlockFees(InvalidBlockFeesProof { storage_proof, .. }) => {
+                    verify_invalid_block_fees_fraud_proof::<
                         T::Block,
                         DomainBlockNumberFor<T>,
                         T::DomainHash,
@@ -1676,9 +1671,9 @@ impl<T: Config> Pallet<T> {
                     .map_err(|err| {
                         log::error!(
                             target: "runtime::domains",
-                            "Total rewards proof verification failed: {err:?}"
+                            "Block fees proof verification failed: {err:?}"
                         );
-                        FraudProofError::InvalidTotalRewardsFraudProof
+                        FraudProofError::InvalidBlockFeesFraudProof
                     })?;
                 }
                 FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {

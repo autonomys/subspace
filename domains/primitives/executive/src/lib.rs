@@ -2,7 +2,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
-use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
+#[cfg(feature = "std")]
+use sp_inherents::{Error, InherentData};
+use sp_inherents::{InherentIdentifier, IsFatalError};
+#[cfg(feature = "std")]
 use sp_std::result::Result;
 use sp_std::vec::Vec;
 

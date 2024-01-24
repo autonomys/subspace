@@ -22,12 +22,10 @@ use evm_domain_runtime::{
     SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::ExecutionChainSpec;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
-
-pub type ChainSpec = ExecutionChainSpec<RuntimeGenesisConfig>;
 
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId> {
@@ -45,8 +43,10 @@ fn get_dev_accounts() -> Vec<AccountId> {
 
 pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Development",
         // ID
@@ -59,13 +59,17 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
         None,
         Some(chain_spec_properties()),
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
 pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3g EVM Domain",
         // ID
@@ -83,13 +87,17 @@ pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>
         Some(chain_spec_properties()),
         // Extensions
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
 pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
+) -> GenericChainSpec<RuntimeGenesisConfig> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Subspace Devnet EVM Domain",
         // ID
@@ -107,19 +115,22 @@ pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
         Some(chain_spec_properties()),
         // Extensions
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
-        path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
+        path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum SpecId {
     Dev,
     Gemini,
@@ -172,12 +183,7 @@ fn testnet_genesis(
     let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
     RuntimeGenesisConfig {
-        system: SystemConfig {
-            code: WASM_BINARY
-                .expect("WASM binary was not build, please build it!")
-                .to_vec(),
-            ..Default::default()
-        },
+        system: SystemConfig::default(),
         sudo: SudoConfig {
             key: maybe_sudo_account,
         },

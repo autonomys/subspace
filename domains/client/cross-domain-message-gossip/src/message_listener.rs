@@ -5,7 +5,6 @@ use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_blockchain::HeaderBackend;
 use sp_messenger::messages::ChainId;
 use sp_runtime::codec::Decode;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
@@ -55,7 +54,7 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener, CNe
             }
         };
 
-        let at = BlockId::Hash(client.info().best_hash);
+        let at = client.info().best_hash;
         tracing::debug!(
             target: LOG_TARGET,
             "Submitting extrinsic to tx pool at block: {:?}",
@@ -63,7 +62,7 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener, CNe
         );
 
         let tx_pool_res = tx_pool
-            .submit_one(&at, TransactionSource::External, ext)
+            .submit_one(at, TransactionSource::External, ext)
             .await;
 
         if let Err(err) = tx_pool_res {

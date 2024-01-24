@@ -5,11 +5,10 @@
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof};
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
-use sp_api::{BlockT, HeaderT};
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_consensus_slots::Slot;
 use sp_domains::SealedBundleHeader;
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
@@ -188,7 +187,7 @@ mod test {
                     final_state_root: Default::default(),
                     execution_trace: vec![],
                     execution_trace_root: Default::default(),
-                    total_rewards: 0,
+                    block_fees: Default::default(),
                 },
                 estimated_bundle_weight: Default::default(),
                 bundle_extrinsics_root: Default::default(),

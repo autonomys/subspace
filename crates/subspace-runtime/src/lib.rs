@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_option, const_trait_impl)]
+#![feature(const_option, const_trait_impl, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -32,13 +32,16 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 pub use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
+use frame_support::traits::{
+    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, VariantCount,
+};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
@@ -47,14 +50,13 @@ use frame_system::EnsureNever;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
-use sp_api::{impl_runtime_apis, BlockT};
+use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
     Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -67,14 +69,14 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
-use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, Convert, NumberFor};
+use sp_runtime::traits::{
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, NumberFor,
+};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -84,14 +86,18 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
-    STORAGE_FEES_ESCROW_BLOCK_TAX,
+    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
+
+// The domain storage fee multiplier used to charge a higher storage fee to the domain
+// transaction to even out the duplicated/illegal domain transaction storage cost, which
+// can not be eliminated right now.
+const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 3;
 
 /// How many pieces one sector is supposed to contain (max)
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
@@ -108,45 +114,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
     state_version: 0,
+    extrinsic_state_version: 0,
 };
-
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
-
-/// Executor dispatch for subspace runtime
-#[cfg(feature = "std")]
-pub struct ExecutorDispatch;
-
-#[cfg(feature = "std")]
-impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = (
-        frame_benchmarking::benchmarking::HostFunctions,
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = (
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        native_version()
-    }
-}
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
@@ -276,7 +245,6 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 pub type SS58Prefix = ConstU16<2254>;
@@ -297,6 +265,8 @@ impl frame_system::Config for Runtime {
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
+    /// The aggregated `RuntimeTask` type.
+    type RuntimeTask = RuntimeTask;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
@@ -334,7 +304,6 @@ impl frame_system::Config for Runtime {
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -419,12 +388,17 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     }
 }
 
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
 parameter_types! {
     // TODO: revisit this
     pub const MaxHolds: u32 = 100;
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
@@ -443,45 +417,24 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-    pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
-    pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
-}
-
-pub struct CreditSupply;
-
-impl Get<Balance> for CreditSupply {
-    fn get() -> Balance {
-        Balances::total_issuance()
-    }
-}
-
-pub struct TotalSpacePledged;
-
-impl Get<u128> for TotalSpacePledged {
-    fn get() -> u128 {
+    pub CreditSupply: Balance = Balances::total_issuance();
+    pub TotalSpacePledged: u128 = {
         let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
         sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
-    }
-}
-
-pub struct BlockchainHistorySize;
-
-impl Get<u128> for BlockchainHistorySize {
-    fn get() -> u128 {
-        u128::from(Subspace::archived_history_size())
-    }
+    };
+    pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
+    pub DynamicCostOfStorage: bool = RuntimeConfigs::enable_dynamic_cost_of_storage();
 }
 
 impl pallet_transaction_fees::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
-    type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
-    type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
+    type DynamicCostOfStorage = DynamicCostOfStorage;
     type WeightInfo = ();
 }
 
@@ -509,7 +462,7 @@ impl pallet_sudo::Config for Runtime {
 
 parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 18;
-    pub SelfChainId: ChainId = ChainId::Consensus;
+    pub const SelfChainId: ChainId = ChainId::Consensus;
 }
 
 pub struct DomainInfo;
@@ -1105,6 +1058,10 @@ impl_runtime_apis! {
 
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
             Domains::receipt_hash(domain_id, domain_number)
+        }
+
+        fn consensus_chain_byte_fee() -> Balance {
+            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
     }
 

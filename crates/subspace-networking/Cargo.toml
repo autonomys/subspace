@@ -17,11 +17,10 @@ include = [
 
 [dependencies]
 async-mutex = "1.4.0"
-actix-web = "4.4.0"
-async-trait = "0.1.73"
+async-trait = "0.1.77"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.5.0"
-clap = { version = "4.4.3", features = ["color", "derive"] }
+clap = { version = "4.4.18", features = ["color", "derive"] }
 derive_more = "0.99.17"
 either = "1.8.1"
 event-listener-primitives = "2.0.1"
@@ -29,23 +28,23 @@ fs2 = "0.4.3"
 futures = "0.3.29"
 futures-timer = "3.0.2"
 hex = "0.4.3"
-lru = "0.11.0"
-memmap2 = "0.7.1"
+lru = "0.12.1"
+memmap2 = "0.9.3"
 nohash-hasher = "0.2.0"
-parity-scale-codec = "3.6.5"
+parity-scale-codec = "3.6.9"
 parking_lot = "0.12.1"
 pin-project = "1.1.3"
 prometheus-client = "0.22.0"
 rand = "0.8.5"
-serde = { version = "1.0.183", features = ["derive"] }
-serde_json = "1.0.106"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
-thiserror = "1.0.48"
-tokio = { version = "1.34.0", features = ["macros", "parking_lot", "rt-multi-thread", "sync", "time"] }
-tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"]}
-unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
+thiserror = "1.0.56"
+tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"]}
+unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
 void = "1.0.2"
 
 [dependencies.libp2p]

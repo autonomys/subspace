@@ -1,4 +1,3 @@
-use actix_web::rt::signal;
 use futures::channel::oneshot;
 use futures::{select, FutureExt, StreamExt};
 use libp2p::metrics::Metrics;
@@ -10,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::{Config, Node};
+use tokio::signal;
 use tokio::time::sleep;
 use tracing::{error, info};
 

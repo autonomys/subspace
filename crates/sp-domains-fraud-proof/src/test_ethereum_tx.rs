@@ -10,7 +10,8 @@ use rlp::RlpStream;
 use sp_core::{keccak_256, H256, U256};
 
 parameter_types! {
-    pub const ChainId: u64 = 42;
+    // `490000` is the genesis evm domain chain id
+    pub const ChainId: u64 = 490000;
 }
 
 pub struct LegacyUnsignedTransaction {

@@ -8,10 +8,11 @@ use crate::{
     OperatorStatus, Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::RocksDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
@@ -30,8 +31,8 @@ use sp_domains::{
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
+    FraudProof, InvalidBlockFeesProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -68,17 +69,13 @@ frame_support::construct_runtime!(
         Balances: pallet_balances,
         Domains: pallet_domains,
         DomainExecutive: domain_pallet_executive,
+        BlockFees: pallet_block_fees,
     }
 );
 
 type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u64;
-
-parameter_types! {
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
-}
-
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -86,6 +83,7 @@ impl frame_system::Config for Test {
     type DbWeight = RocksDbWeight;
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
+    type RuntimeTask = RuntimeTask;
     type Nonce = u64;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
@@ -103,7 +101,6 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -158,12 +155,17 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
     }
 }
 
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
 parameter_types! {
     pub const MaxHolds: u32 = 10;
     pub const ExistentialDeposit: Balance = 1;
 }
 
 impl pallet_balances::Config for Test {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ();
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
@@ -189,6 +191,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
+    pub const DomainChainByteFee: Balance = 1;
 }
 
 pub struct MockRandomness;
@@ -253,7 +256,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFee
         (None, DispatchInfo::default())
     }
 
-    fn on_storage_fees_charged(_charged_fees: Balance) {}
+    fn on_storage_fees_charged(_charged_fees: Balance, _tx_size: u32) {}
 }
 
 impl domain_pallet_executive::Config for Test {
@@ -262,6 +265,11 @@ impl domain_pallet_executive::Config for Test {
     type Currency = Balances;
     type LengthToFee = IdentityFee<Balance>;
     type ExtrinsicStorageFees = ExtrinsicStorageFees;
+}
+
+impl pallet_block_fees::Config for Test {
+    type Balance = Balance;
+    type DomainChainByteFee = DomainChainByteFee;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -300,6 +308,17 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     UncheckedExtrinsic::new_unsigned(
                         pallet_timestamp::Call::<Test>::set {
                             now: self.timestamp,
+                        }
+                        .into(),
+                    )
+                    .encode(),
+                )
+            }
+            FraudProofVerificationInfoRequest::ConsensusChainByteFeeExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::ConsensusChainByteFeeExtrinsic(
+                    UncheckedExtrinsic::new_unsigned(
+                        pallet_block_fees::Call::<Test>::set_next_consensus_chain_byte_fee {
+                            transaction_byte_fee: Default::default(),
                         }
                         .into(),
                     )
@@ -384,6 +403,7 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
         apis: Default::default(),
         transaction_version: 1,
         state_version: 0,
+        extrinsic_state_version: 0,
     };
 
     let mut ext = new_test_ext();
@@ -425,10 +445,10 @@ pub(crate) fn create_dummy_receipt(
         consensus_block_number: block_number,
         consensus_block_hash,
         inboxed_bundles,
-        final_state_root: Default::default(),
+        final_state_root: *execution_trace.last().unwrap_or(&Default::default()),
         execution_trace,
         execution_trace_root,
-        total_rewards: 0,
+        block_fees: Default::default(),
     }
 }
 
@@ -914,7 +934,7 @@ fn test_invalid_fraud_proof() {
 }
 
 #[test]
-fn test_invalid_total_rewards_fraud_proof() {
+fn test_invalid_block_fees_fraud_proof() {
     let creator = 0u64;
     let operator_id = 1u64;
     let head_domain_number = 10;
@@ -933,11 +953,22 @@ fn test_invalid_total_rewards_fraud_proof() {
         let bad_receipt_hash = domain_block
             .execution_receipt
             .hash::<DomainHashingFor<Test>>();
-        let (fraud_proof, root) = generate_invalid_total_rewards_fraud_proof::<Test>(
+        let (fraud_proof, root) = generate_invalid_block_fees_fraud_proof::<Test>(
             domain_id,
             bad_receipt_hash,
             // set different reward in the storage and generate proof for that value
-            domain_block.execution_receipt.total_rewards + 1,
+            domain_runtime_primitives::BlockFees::new(
+                domain_block
+                    .execution_receipt
+                    .block_fees
+                    .domain_execution_fee
+                    + 1,
+                domain_block
+                    .execution_receipt
+                    .block_fees
+                    .consensus_storage_fee
+                    + 1,
+            ),
         );
         domain_block.execution_receipt.final_state_root = root;
         BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
@@ -948,23 +979,23 @@ fn test_invalid_total_rewards_fraud_proof() {
 type FraudProofFor<T> =
     FraudProof<BlockNumberFor<T>, <T as frame_system::Config>::Hash, <T as Config>::DomainHeader>;
 
-fn generate_invalid_total_rewards_fraud_proof<T: Config>(
+fn generate_invalid_block_fees_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHashFor<T>,
-    rewards: BalanceOf<T>,
+    block_fees: domain_runtime_primitives::BlockFees<BalanceOf<T>>,
 ) -> (FraudProofFor<T>, T::Hash) {
-    let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
+    let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
         let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
-        trie.insert(&storage_key, &rewards.encode()).unwrap();
+        trie.insert(&storage_key, &block_fees.encode()).unwrap();
     };
 
     let backend = TrieBackendBuilder::new(mdb, root).build();
     let (root, storage_proof) = storage_proof_for_key::<T, _>(backend, StorageKey(storage_key));
     (
-        FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof {
+        FraudProof::InvalidBlockFees(InvalidBlockFeesProof {
             domain_id,
             bad_receipt_hash,
             storage_proof,
@@ -998,7 +1029,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         );
 
         let bad_receipt_at = 8;
-        let valid_bundle_digests = vec![ValidBundleDigest {
+        let valid_bundle_digests = [ValidBundleDigest {
             bundle_index: 0,
             bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
         }];

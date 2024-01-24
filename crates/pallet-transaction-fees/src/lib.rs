@@ -24,7 +24,7 @@ mod default_weights;
 use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
 use frame_support::sp_runtime::SaturatedConversion;
-use frame_support::traits::{Currency, Get};
+use frame_support::traits::{tokens, Currency, Get};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -42,13 +42,29 @@ pub trait WeightInfo {
 struct CollectedFees<Balance: Codec> {
     storage: Balance,
     compute: Balance,
-    // TODO: Split tips for storage and compute proportionally?
     tips: Balance,
+}
+
+#[derive(Encode, Decode, TypeInfo)]
+struct BlockTransactionByteFee<Balance: Codec> {
+    // The value of `transaction_byte_fee` for the current block
+    current: Balance,
+    // The value of `transaction_byte_fee` for the next block
+    next: Balance,
+}
+
+impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balance> {
+    fn default() -> Self {
+        BlockTransactionByteFee {
+            current: Balance::max_value(),
+            next: Balance::max_value(),
+        }
+    }
 }
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, CollectedFees, WeightInfo};
+    use super::{BalanceOf, BlockTransactionByteFee, CollectedFees, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
@@ -63,16 +79,6 @@ mod pallet {
         /// impacts storage fees.
         #[pallet::constant]
         type MinReplicationFactor: Get<u16>;
-
-        /// How much (ratio) of storage fees escrow should be given to farmer each block as a
-        /// reward.
-        #[pallet::constant]
-        type StorageFeesEscrowBlockReward: Get<(u64, u64)>;
-
-        /// How much (ratio) of storage fees collected in a block should be put into storage fees
-        /// escrow (with remaining issued to farmer immediately).
-        #[pallet::constant]
-        type StorageFeesEscrowBlockTax: Get<(u64, u64)>;
 
         /// How many credits there is in circulation.
         #[pallet::constant]
@@ -91,31 +97,41 @@ mod pallet {
 
         type FindBlockRewardAddress: FindBlockRewardAddress<Self::AccountId>;
 
+        /// Whether dynamic cost of storage should be used
+        type DynamicCostOfStorage: Get<bool>;
+
         type WeightInfo: WeightInfo;
     }
 
-    /// Escrow of storage fees, a portion of it is released to the block author on every block
-    /// and portion of storage fees goes back into this pot.
+    /// The value of `transaction_byte_fee` for both the current and the next block.
+    ///
+    /// The `next` value of `transaction_byte_fee` is updated at block finalization and used to
+    /// validate extrinsic to be included in the next block, the value is move to `current` at
+    /// block initialization and used to execute extrinsic in the current block. Together it
+    /// ensure we use the same value for both validating and executing the extrinsic.
+    ///
+    /// NOTE: both the `current` and `next` value is set to the default `Balance::max_value` in
+    /// the genesis block which means there will be no signed extrinsic included in block #1.
     #[pallet::storage]
-    #[pallet::getter(fn storage_fees_escrow)]
-    pub(super) type CollectedStorageFeesEscrow<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+    pub(super) type TransactionByteFee<T> =
+        StorageValue<_, BlockTransactionByteFee<BalanceOf<T>>, ValueQuery>;
 
-    /// Temporary value (cleared at block finalization) which contains cached value of
-    /// `TransactionByteFee` for current block.
+    /// Temporary value (cleared at block finalization) used to determine if the `transaction_byte_fee`
+    /// is used to validate extrinsic or execute extrinsic.
     #[pallet::storage]
-    pub(super) type TransactionByteFee<T> = StorageValue<_, BalanceOf<T>>;
+    pub(super) type IsDuringBlockExecution<T: Config> = StorageValue<_, bool, ValueQuery>;
 
     /// Temporary value (cleared at block finalization) which contains current block author, so we
-    /// can issue rewards during block finalization.
+    /// can issue fees during block finalization.
     #[pallet::storage]
     pub(super) type BlockAuthor<T: Config> = StorageValue<_, T::AccountId>;
 
     /// Temporary value (cleared at block finalization) which contains current block fees, so we can
-    /// issue rewards during block finalization.
+    /// issue fees during block finalization.
     #[pallet::storage]
     pub(super) type CollectedBlockFees<T: Config> = StorageValue<_, CollectedFees<BalanceOf<T>>>;
 
-    /// Pallet rewards for issuing rewards to block producers.
+    /// Pallet transaction fees for issuing fees to block authors.
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
@@ -124,33 +140,27 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Storage fees escrow change.
-        StorageFeesEscrowChange {
-            /// State of storage fees escrow before block execution.
-            before: BalanceOf<T>,
-            /// State of storage fees escrow after block execution.
-            after: BalanceOf<T>,
-        },
         /// Storage fees.
-        StorageFeesReward {
-            /// Receiver of the storage fees.
+        #[codec(index = 0)]
+        BlockFees {
+            /// Block author that received the fees.
             who: T::AccountId,
             /// Amount of collected storage fees.
-            amount: BalanceOf<T>,
-        },
-        /// Compute fees.
-        ComputeFeesReward {
-            /// Receiver of the compute fees.
-            who: T::AccountId,
+            storage: BalanceOf<T>,
             /// Amount of collected compute fees.
-            amount: BalanceOf<T>,
-        },
-        /// Tips.
-        TipsReward {
-            /// Receiver of the tip.
-            who: T::AccountId,
+            compute: BalanceOf<T>,
             /// Amount of collected tips.
-            amount: BalanceOf<T>,
+            tips: BalanceOf<T>,
+        },
+        /// Fees burned due to equivocated block author.
+        #[codec(index = 1)]
+        BurnedBlockFees {
+            /// Amount of burned storage fees.
+            storage: BalanceOf<T>,
+            /// Amount of burned compute fees.
+            compute: BalanceOf<T>,
+            /// Amount of burned tips.
+            tips: BalanceOf<T>,
         },
     }
 
@@ -185,97 +195,69 @@ where
             compute: BalanceOf::<T>::zero(),
             tips: BalanceOf::<T>::zero(),
         });
+
+        // Update the `current` value to the `next`
+        TransactionByteFee::<T>::mutate(|transaction_byte_fee| {
+            transaction_byte_fee.current = transaction_byte_fee.next
+        });
+        IsDuringBlockExecution::<T>::set(true);
     }
 
-    // TODO: Fees will be split between farmers and executors in the future
     fn do_finalize(_n: BlockNumberFor<T>) {
-        TransactionByteFee::<T>::take();
+        // Update the value for the next `transaction_byte_fee`
+        TransactionByteFee::<T>::mutate(|transaction_byte_fee| {
+            transaction_byte_fee.next = Self::calculate_transaction_byte_fee()
+        });
+        IsDuringBlockExecution::<T>::take();
 
         let collected_fees = CollectedBlockFees::<T>::take()
             .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
 
-        // Block author may equivocate, in which case they'll not be present here
-        if let Some(block_author) = BlockAuthor::<T>::take() {
-            let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
-            let mut storage_fees_escrow = original_storage_fees_escrow;
+        let total = collected_fees.storage + collected_fees.compute + collected_fees.tips;
 
-            // Take a portion of storage fees escrow as a farmer reward.
-            let storage_fees_escrow_reward = storage_fees_escrow
-                / T::StorageFeesEscrowBlockReward::get().1.into()
-                * T::StorageFeesEscrowBlockReward::get().0.into();
-            storage_fees_escrow -= storage_fees_escrow_reward;
-
-            // Take a portion of storage fees collected in this block as a farmer reward.
-            let collected_storage_fees_reward = collected_fees.storage
-                / T::StorageFeesEscrowBlockTax::get().1.into()
-                * (T::StorageFeesEscrowBlockTax::get().1 - T::StorageFeesEscrowBlockTax::get().0)
-                    .into();
-            storage_fees_escrow += collected_fees.storage - collected_storage_fees_reward;
-
-            // Update storage fees escrow.
-            if storage_fees_escrow != original_storage_fees_escrow {
-                CollectedStorageFeesEscrow::<T>::put(storage_fees_escrow);
-                Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
-                    before: original_storage_fees_escrow,
-                    after: storage_fees_escrow,
-                });
-            }
-
-            // Issue storage fees reward.
-            let storage_fees_reward = storage_fees_escrow_reward + collected_storage_fees_reward;
-            if !storage_fees_reward.is_zero() {
-                T::Currency::deposit_creating(&block_author, storage_fees_reward);
-                Self::deposit_event(Event::<T>::StorageFeesReward {
+        if !total.is_zero() {
+            // Block author may equivocate, in which case they'll not be present here
+            if let Some(block_author) = BlockAuthor::<T>::take() {
+                let _imbalance = T::Currency::deposit_creating(&block_author, total);
+                Self::deposit_event(Event::<T>::BlockFees {
                     who: block_author.clone(),
-                    amount: storage_fees_reward,
+                    storage: collected_fees.storage,
+                    compute: collected_fees.compute,
+                    tips: collected_fees.tips,
                 });
-            }
-
-            // Issue compute fees reward.
-            if !collected_fees.compute.is_zero() {
-                T::Currency::deposit_creating(&block_author, collected_fees.compute);
-                Self::deposit_event(Event::<T>::ComputeFeesReward {
-                    who: block_author.clone(),
-                    amount: collected_fees.compute,
-                });
-            }
-
-            // Issue tips reward.
-            if !collected_fees.tips.is_zero() {
-                T::Currency::deposit_creating(&block_author, collected_fees.tips);
-                Self::deposit_event(Event::<T>::TipsReward {
-                    who: block_author,
-                    amount: collected_fees.tips,
-                });
-            }
-        } else {
-            // If farmer equivocated, all fees go into storage escrow.
-            let original_storage_fees_escrow = CollectedStorageFeesEscrow::<T>::get();
-            let mut storage_fees_escrow = original_storage_fees_escrow;
-
-            storage_fees_escrow += collected_fees.storage;
-            storage_fees_escrow += collected_fees.compute;
-            storage_fees_escrow += collected_fees.tips;
-
-            CollectedStorageFeesEscrow::<T>::put(storage_fees_escrow);
-
-            if original_storage_fees_escrow != storage_fees_escrow {
-                Self::deposit_event(Event::<T>::StorageFeesEscrowChange {
-                    before: original_storage_fees_escrow,
-                    after: storage_fees_escrow,
-                });
+            } else {
+                // If farmer equivocated, fees are burned
+                let amount = collected_fees.storage + collected_fees.compute + collected_fees.tips;
+                if !amount.is_zero() {
+                    Self::deposit_event(Event::<T>::BurnedBlockFees {
+                        storage: collected_fees.storage,
+                        compute: collected_fees.compute,
+                        tips: collected_fees.tips,
+                    });
+                }
             }
         }
     }
 
+    /// Return the current `transaction_byte_fee` value for executing extrinsic and
+    /// return the next `transaction_byte_fee` value for validating extrinsic to be
+    /// included in the next block
     pub fn transaction_byte_fee() -> BalanceOf<T> {
-        if let Some(transaction_byte_fee) = TransactionByteFee::<T>::get() {
-            return transaction_byte_fee;
+        if !T::DynamicCostOfStorage::get() {
+            return BalanceOf::<T>::from(1);
         }
 
+        if IsDuringBlockExecution::<T>::get() {
+            TransactionByteFee::<T>::get().current
+        } else {
+            TransactionByteFee::<T>::get().next
+        }
+    }
+
+    pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {
         let credit_supply = T::CreditSupply::get();
 
-        let transaction_byte_fee = match T::TotalSpacePledged::get().checked_sub(
+        match T::TotalSpacePledged::get().checked_sub(
             T::BlockchainHistorySize::get()
                 .saturating_mul(u128::from(T::MinReplicationFactor::get())),
         ) {
@@ -283,12 +265,7 @@ where
                 credit_supply / BalanceOf::<T>::saturated_from(free_space)
             }
             _ => credit_supply,
-        };
-
-        // Cache value for this block.
-        TransactionByteFee::<T>::put(transaction_byte_fee);
-
-        transaction_byte_fee
+        }
     }
 
     pub fn note_transaction_fees(

@@ -41,8 +41,8 @@ use frame_support::storage::with_storage_layer;
 use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::traits::{
-    EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
-    OnRuntimeUpgrade,
+    BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
+    OnFinalize, OnIdle, OnInitialize, OnRuntimeUpgrade,
 };
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
@@ -67,7 +67,7 @@ pub trait ExtrinsicStorageFees<T: Config> {
     /// Extracts signer from given extrinsic and its dispatch info.
     fn extract_signer(xt: ExtrinsicOf<T>) -> (Option<AccountIdOf<T>>, DispatchInfo);
     /// Hook to note operator rewards for charged storage fees.
-    fn on_storage_fees_charged(charged_fees: BalanceOf<T>);
+    fn on_storage_fees_charged(charged_fees: BalanceOf<T>, tx_size: u32);
 }
 
 type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
@@ -222,6 +222,7 @@ impl<
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
+            + BeforeAllRuntimeMigrations
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>
@@ -259,6 +260,7 @@ impl<
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
+            + BeforeAllRuntimeMigrations
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>
@@ -477,7 +479,6 @@ where
                 }
 
                 // charge signer for extrinsic storage
-                // TODO: charge user for the storage of extrinsic on consensus chain
                 if let Some(signer) = maybe_signer {
                     let storage_fees = ExecutiveConfig::LengthToFee::weight_to_fee(
                         &Weight::from_parts(encoded.len() as u64, 0),
@@ -493,7 +494,10 @@ where
                     );
 
                     if let Ok(charged_fees) = maybe_charged_fees {
-                        ExecutiveConfig::ExtrinsicStorageFees::on_storage_fees_charged(charged_fees)
+                        ExecutiveConfig::ExtrinsicStorageFees::on_storage_fees_charged(
+                            charged_fees,
+                            encoded.len() as u32,
+                        )
                     }
                 }
 

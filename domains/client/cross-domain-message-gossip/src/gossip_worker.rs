@@ -2,7 +2,7 @@ use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
-use sc_network::{NetworkPeers, PeerId};
+use sc_network::{NetworkPeers, NotificationService, PeerId};
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
     ValidatorContext,
@@ -70,6 +70,7 @@ impl GossipWorkerBuilder {
     pub fn build<Block, Network, GossipSync>(
         self,
         network: Network,
+        notification_service: Box<dyn NotificationService>,
         sync: Arc<GossipSync>,
     ) -> GossipWorker<Block, Network>
     where
@@ -87,6 +88,7 @@ impl GossipWorkerBuilder {
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
+            notification_service,
             PROTOCOL_NAME,
             gossip_validator.clone(),
             None,
@@ -111,10 +113,16 @@ pub struct GossipWorker<Block: BlockT, Network> {
 }
 
 /// Returns the network configuration for cross chain message gossip.
-pub fn cdm_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(PROTOCOL_NAME.into(), 5 * 1024 * 1024);
+pub fn xdm_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn NotificationService>) {
+    let (mut cfg, notification_service) = NonDefaultSetConfig::new(
+        PROTOCOL_NAME.into(),
+        Vec::new(),
+        5 * 1024 * 1024,
+        None,
+        Default::default(),
+    );
     cfg.allow_non_reserved(25, 25);
-    cfg
+    (cfg, notification_service)
 }
 
 /// Cross chain message topic.

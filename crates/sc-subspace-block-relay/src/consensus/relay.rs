@@ -222,11 +222,11 @@ where
     Block: BlockT,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    async fn download_block(
+    async fn download_blocks(
         &self,
         who: PeerId,
         request: BlockRequest<Block>,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+    ) -> Result<Result<(Vec<u8>, ProtocolName), RequestFailure>, oneshot::Canceled> {
         let full_download = request.max.map_or(false, |max_blocks| max_blocks > 1);
         let ret = if full_download {
             self.full_download(who, request.clone()).await
@@ -236,7 +236,7 @@ where
         match ret {
             Ok(blocks) => {
                 self.metrics.on_download::<Block>(&blocks);
-                Ok(Ok(blocks.encode()))
+                Ok(Ok((blocks.encode(), self.protocol_name.clone())))
             }
             Err(error) => {
                 debug!(

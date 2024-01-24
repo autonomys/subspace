@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-ARG RUSTC_VERSION=nightly-2023-10-16
+ARG RUSTC_VERSION=nightly-2024-01-19
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
@@ -41,7 +41,7 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
-    /root/.cargo/bin/cargo build \
+    /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \

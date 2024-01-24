@@ -1,8 +1,8 @@
 use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, Precompiles};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
+use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainSpec, ChainType, NoExtension};
-use sc_subspace_chain_specs::{ConsensusChainSpec, ExecutionChainSpec};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
@@ -17,7 +17,7 @@ use subspace_runtime::{
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
-pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
+pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
     let endowed_accounts = [
         // Alith key
         AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
@@ -30,7 +30,9 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
     ];
     let sudo_account = endowed_accounts[0];
 
-    ExecutionChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    GenericChainSpec::from_genesis(
         // Name
         "Development",
         // ID
@@ -44,12 +46,7 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
             let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
             evm_domain_runtime::RuntimeGenesisConfig {
-                system: evm_domain_runtime::SystemConfig {
-                    code: evm_domain_runtime::WASM_BINARY
-                        .expect("WASM binary was not build, please build it!")
-                        .to_vec(),
-                    ..Default::default()
-                },
+                system: evm_domain_runtime::SystemConfig::default(),
                 sudo: evm_domain_runtime::SudoConfig {
                     key: Some(sudo_account),
                 },
@@ -92,6 +89,7 @@ pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGene
         None,
         None,
         None,
+        evm_domain_runtime::WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
@@ -101,7 +99,7 @@ pub fn create_domain_spec(
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let mut chain_spec = match chain_id {
         "dev" => domain_dev_config(),
-        path => ExecutionChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
+        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
     };
@@ -112,7 +110,7 @@ pub fn create_domain_spec(
 pub fn load_domain_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
         "dev" => domain_dev_config(),
-        path => ExecutionChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
+        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
     };
@@ -136,11 +134,12 @@ fn get_account_id_from_seed(seed: &'static str) -> AccountId32 {
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
     enable_rewards_at: EnableRewardsAt<BlockNumber>,
-    enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
+    enable_dynamic_cost_of_storage: bool,
     enable_balance_transfers: bool,
+    enable_non_root_calls: bool,
     confirmation_depth_k: u32,
 }
 
@@ -151,7 +150,7 @@ struct GenesisDomainParams {
     raw_genesis_storage: Vec<u8>,
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
+pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
     let wasm_binary = subspace_runtime::WASM_BINARY
         .ok_or_else(|| "Development wasm not available".to_string())?;
 
@@ -164,7 +163,9 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         raw_genesis.encode()
     };
 
-    Ok(ConsensusChainSpec::from_genesis(
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
+    Ok(GenericChainSpec::from_genesis(
         // Name
         "Subspace development",
         // ID
@@ -172,7 +173,6 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         ChainType::Development,
         move || {
             subspace_genesis_config(
-                wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
@@ -185,11 +185,12 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
                 vec![],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
-                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
+                    enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
+                    enable_non_root_calls: true,
                     confirmation_depth_k: 5,
                 },
                 GenesisDomainParams {
@@ -211,12 +212,13 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
         None,
         // Extensions
         NoExtension::None,
+        // Code
+        wasm_binary,
     ))
 }
 
 /// Configure initial storage state for FRAME modules.
 fn subspace_genesis_config(
-    wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
@@ -226,20 +228,17 @@ fn subspace_genesis_config(
 ) -> subspace_runtime::RuntimeGenesisConfig {
     let GenesisParams {
         enable_rewards_at,
-        enable_storage_access,
         allow_authoring_by,
         pot_slot_iterations,
         enable_domains,
+        enable_dynamic_cost_of_storage,
         enable_balance_transfers,
+        enable_non_root_calls,
         confirmation_depth_k,
     } = genesis_params;
 
     subspace_runtime::RuntimeGenesisConfig {
-        system: subspace_runtime::SystemConfig {
-            // Add Wasm runtime to storage.
-            code: wasm_binary.to_vec(),
-            ..Default::default()
-        },
+        system: subspace_runtime::SystemConfig::default(),
         balances: subspace_runtime::BalancesConfig { balances },
         transaction_payment: Default::default(),
         sudo: subspace_runtime::SudoConfig {
@@ -248,7 +247,6 @@ fn subspace_genesis_config(
         },
         subspace: SubspaceConfig {
             enable_rewards_at,
-            enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,
             phantom: PhantomData,
@@ -256,7 +254,9 @@ fn subspace_genesis_config(
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
+            enable_dynamic_cost_of_storage,
             enable_balance_transfers,
+            enable_non_root_calls,
             confirmation_depth_k,
         },
         domains: DomainsConfig {

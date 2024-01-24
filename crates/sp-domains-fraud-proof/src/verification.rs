@@ -8,6 +8,7 @@ use crate::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use codec::{Decode, Encode};
+use domain_runtime_primitives::BlockFees;
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
@@ -72,6 +73,13 @@ where
     .map(|resp| resp.into_domain_set_code_extrinsic())
     .ok_or(VerificationError::FailedToDeriveDomainSetCodeExtrinsic)?;
 
+    let consensus_chain_byte_fee_extrinsic = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::ConsensusChainByteFeeExtrinsic(*domain_id),
+    )
+    .and_then(|resp| resp.into_consensus_chain_byte_fee_extrinsic())
+    .ok_or(VerificationError::FailedToDeriveConsensusChainByteFeeExtrinsic)?;
+
     let bad_receipt_valid_bundle_digests = bad_receipt.valid_bundle_digests();
     if valid_bundle_digests.len() != bad_receipt_valid_bundle_digests.len() {
         return Err(VerificationError::InvalidBundleDigest);
@@ -99,6 +107,8 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
+    // NOTE: the order of the inherent extrinsic MUST aligned with the
+    // `domain-block-preprocessor::CreateInherentDataProvider`
     if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
         maybe_domain_set_code_extrinsic
     {
@@ -107,6 +117,11 @@ where
         >(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);
     }
+
+    let transaction_byte_fee_extrinsic = ExtrinsicDigest::new::<
+        LayoutV1<HeaderHashingFor<DomainHeader>>,
+    >(consensus_chain_byte_fee_extrinsic);
+    ordered_extrinsics.push_front(transaction_byte_fee_extrinsic);
 
     let timestamp_extrinsic = ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
         domain_timestamp_extrinsic,
@@ -294,8 +309,8 @@ where
     Ok(())
 }
 
-/// Verifies invalid total rewards fraud proof.
-pub fn verify_invalid_total_rewards_fraud_proof<
+/// Verifies invalid block fees fraud proof.
+pub fn verify_invalid_block_fees_fraud_proof<
     CBlock,
     DomainNumber,
     DomainHash,
@@ -316,18 +331,19 @@ where
     Balance: PartialEq + Decode,
     DomainHashing: Hasher<Out = DomainHash>,
 {
-    let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
+    let storage_key = StorageKey(crate::fraud_proof::operator_block_fees_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_rewards = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Balance>(
-        &bad_receipt.final_state_root,
-        storage_proof,
-        storage_key,
-    )
-    .map_err(|_| VerificationError::InvalidStorageProof)?;
+    let block_fees =
+        StorageProofVerifier::<DomainHashing>::get_decoded_value::<BlockFees<Balance>>(
+            &bad_receipt.final_state_root,
+            storage_proof,
+            storage_key,
+        )
+        .map_err(|_| VerificationError::InvalidStorageProof)?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.total_rewards == total_rewards {
+    if bad_receipt.block_fees == block_fees {
         return Err(VerificationError::InvalidProof);
     }
 

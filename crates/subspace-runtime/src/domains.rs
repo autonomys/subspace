@@ -1,8 +1,8 @@
 use crate::{Balance, Block, Domains, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
-use sp_api::{BlockT, NumberFor};
 use sp_domains::DomainId;
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_std::vec::Vec;
 
 pub(crate) fn extract_successful_bundles(

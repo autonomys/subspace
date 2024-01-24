@@ -175,6 +175,7 @@ where
 {
     type InherentDataProviders = (
         sp_timestamp::InherentDataProvider,
+        sp_block_fees::InherentDataProvider,
         sp_executive::InherentDataProvider,
     );
 
@@ -204,6 +205,15 @@ where
         let runtime_upgrade_provider =
             sp_executive::InherentDataProvider::new(maybe_runtime_upgrade_code);
 
-        Ok((timestamp_provider, runtime_upgrade_provider))
+        let consensus_chain_byte_fee =
+            runtime_api.consensus_chain_byte_fee(consensus_block_hash)?;
+        let storage_price_provider =
+            sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
+
+        Ok((
+            timestamp_provider,
+            storage_price_provider,
+            runtime_upgrade_provider,
+        ))
     }
 }

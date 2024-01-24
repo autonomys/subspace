@@ -13,7 +13,7 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
@@ -22,7 +22,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_domains_fraud_proof::FraudProofApi;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{Digest, Saturating};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
@@ -381,7 +381,7 @@ where
 
         // Get the accumulated transaction fee of all transactions included in the block
         // and used as the operator reward
-        let total_rewards = self.client.runtime_api().block_rewards(header_hash)?;
+        let block_fees = self.client.runtime_api().block_fees(header_hash)?;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
@@ -395,7 +395,7 @@ where
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
-            total_rewards,
+            block_fees,
         };
 
         Ok(DomainBlockResult {
@@ -905,14 +905,10 @@ where
                 });
         }
 
-        if bad_receipt.total_rewards != local_receipt.total_rewards {
+        if bad_receipt.block_fees != local_receipt.block_fees {
             return self
                 .fraud_proof_generator
-                .generate_invalid_total_rewards_proof(
-                    self.domain_id,
-                    &local_receipt,
-                    bad_receipt_hash,
-                )
+                .generate_invalid_block_fees_proof(self.domain_id, &local_receipt, bad_receipt_hash)
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate invalid block rewards fraud proof: {err}"
@@ -968,7 +964,7 @@ mod tests {
             final_state_root: Default::default(),
             execution_trace: sp_std::vec![],
             execution_trace_root: Default::default(),
-            total_rewards: Zero::zero(),
+            block_fees: Default::default(),
         }
     }
 

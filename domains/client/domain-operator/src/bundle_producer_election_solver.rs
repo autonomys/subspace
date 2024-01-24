@@ -93,7 +93,7 @@ where
                         bundle_slot_probability,
                     );
 
-                    if is_below_threshold(&vrf_signature.output, threshold) {
+                    if is_below_threshold(&vrf_signature.pre_output, threshold) {
                         let proof_of_election = ProofOfElection {
                             domain_id,
                             slot_number: slot.into(),

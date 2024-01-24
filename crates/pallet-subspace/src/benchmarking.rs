@@ -19,7 +19,6 @@ mod benchmarks {
     use sp_core::Get;
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
-    use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::{
         ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotOutput, SegmentHeader,
@@ -133,14 +132,6 @@ mod benchmarks {
         );
 
         assert_eq!(EnableRewards::<T>::get(), Some(100u32.into()));
-    }
-
-    #[benchmark]
-    fn enable_storage_access() {
-        #[extrinsic_call]
-        _(RawOrigin::Root);
-
-        assert!(Pallet::<T>::is_storage_access_enabled());
     }
 
     #[benchmark]
