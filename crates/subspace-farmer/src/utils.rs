@@ -11,9 +11,10 @@ use futures::channel::oneshot::Canceled;
 use futures::future::Either;
 use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroUsize, ParseIntError};
 use std::ops::Deref;
 use std::pin::{pin, Pin};
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
@@ -221,6 +222,25 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
         #[cfg(feature = "numa")]
         topology: None,
     }]
+}
+
+/// Parse space-separated set of groups of CPU cores (individual cores are coma-separated) into
+/// vector of CPU core sets that can be used for creation of plotting/replotting thread pools.
+pub fn parse_cpu_cores_sets(s: &str) -> Result<Vec<CpuCoreSet>, ParseIntError> {
+    s.split(' ')
+        .map(|s| {
+            let cores = s
+                .split(',')
+                .map(usize::from_str)
+                .collect::<Result<Vec<usize>, _>>()?;
+
+            Ok(CpuCoreSet {
+                cores,
+                #[cfg(feature = "numa")]
+                topology: hwlocality::Topology::new().map(std::sync::Arc::new).ok(),
+            })
+        })
+        .collect()
 }
 
 /// Thread indices for each thread pool
