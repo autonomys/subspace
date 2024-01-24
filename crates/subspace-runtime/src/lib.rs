@@ -86,8 +86,7 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
-    STORAGE_FEES_ESCROW_BLOCK_TAX,
+    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -418,8 +417,6 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-    pub const StorageFeesEscrowBlockReward: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_REWARD;
-    pub const StorageFeesEscrowBlockTax: (u64, u64) = STORAGE_FEES_ESCROW_BLOCK_TAX;
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
         let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
@@ -432,8 +429,6 @@ parameter_types! {
 impl pallet_transaction_fees::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
-    type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
-    type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
     type CreditSupply = CreditSupply;
     type TotalSpacePledged = TotalSpacePledged;
     type BlockchainHistorySize = BlockchainHistorySize;

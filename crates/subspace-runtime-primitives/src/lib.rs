@@ -28,13 +28,6 @@ pub use subspace_core_primitives::BlockNumber;
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
 pub const MIN_REPLICATION_FACTOR: u16 = 50;
-/// How much (ratio) of storage fees escrow should be given to farmer each block as a reward.
-// TODO: Proper value here
-pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 10000);
-/// How much (ratio) of storage fees collected in a block should be put into storage fees escrow
-/// (with remaining issued to farmer immediately).
-// TODO: Proper value here
-pub const STORAGE_FEES_ESCROW_BLOCK_TAX: (u64, u64) = (1, 10);
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;
