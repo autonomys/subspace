@@ -1032,8 +1032,8 @@ impl_runtime_apis! {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
-            Domains::oldest_receipt_number(domain_id)
+        fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::oldest_unconfirmed_receipt_number(domain_id)
         }
 
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {

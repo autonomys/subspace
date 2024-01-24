@@ -87,7 +87,7 @@ mod benchmarks {
             (block_tree_pruning_depth + 1).into()
         );
         assert_eq!(
-            Domains::<T>::oldest_receipt_number(domain_id),
+            Domains::<T>::oldest_unconfirmed_receipt_number(domain_id),
             Some(1u32.into())
         );
     }

@@ -64,7 +64,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 /// too old.
 pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
-    oldest_receipt_number: Option<NumberFor<Block>>,
+    oldest_unconfirmed_receipt_number: Option<NumberFor<Block>>,
     execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
@@ -90,8 +90,10 @@ where
     let mut keys_to_delete = vec![];
 
     // Delete ER that have comfirned long time ago, also see the comment of `PRUNING_DEPTH`
-    if let Some(delete_receipts_to) = oldest_receipt_number
-        .map(|oldest_receipt_number| oldest_receipt_number.saturating_sub(One::one()))
+    if let Some(delete_receipts_to) = oldest_unconfirmed_receipt_number
+        .map(|oldest_unconfirmed_receipt_number| {
+            oldest_unconfirmed_receipt_number.saturating_sub(One::one())
+        })
         .and_then(|latest_confirmed_receipt_number| {
             latest_confirmed_receipt_number
                 .saturated_into::<BlockNumber>()
@@ -309,10 +311,14 @@ mod tests {
             load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
-        let write_receipt_at = |oldest_receipt_number: Option<BlockNumber>,
+        let write_receipt_at = |oldest_unconfirmed_receipt_number: Option<BlockNumber>,
                                 receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, CBlock>(&client, oldest_receipt_number, receipt)
-                .unwrap()
+            write_execution_receipt::<_, Block, CBlock>(
+                &client,
+                oldest_unconfirmed_receipt_number,
+                receipt,
+            )
+            .unwrap()
         };
 
         assert_eq!(receipt_start(), None);
@@ -323,10 +329,10 @@ mod tests {
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
                 let consensus_block_hash = receipt.consensus_block_hash;
-                let oldest_receipt_number = block_number
+                let oldest_unconfirmed_receipt_number = block_number
                     .checked_sub(block_tree_pruning_depth)
                     .map(|n| n + 1);
-                write_receipt_at(oldest_receipt_number, &receipt);
+                write_receipt_at(oldest_unconfirmed_receipt_number, &receipt);
                 assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
                 assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
                 // No ER have been pruned yet
@@ -338,14 +344,14 @@ mod tests {
         assert_eq!(receipt_start(), Some(0));
         assert!(!target_receipt_is_pruned(1));
 
-        // Create `receipt_count + 1` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 1`.
+        // Create `receipt_count + 1` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 1`.
         let receipt = create_execution_receipt(receipt_count + 1);
         assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(Some(PRUNING_DEPTH + 1), &receipt);
         assert!(receipt_at(receipt.consensus_block_hash).is_some());
         assert_eq!(receipt_start(), Some(1));
 
-        // Create `receipt_count + 2` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 2`.
+        // Create `receipt_count + 2` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 2`.
         let receipt = create_execution_receipt(receipt_count + 2);
         write_receipt_at(Some(PRUNING_DEPTH + 2), &receipt);
         assert!(receipt_at(receipt.consensus_block_hash).is_some());
@@ -356,7 +362,7 @@ mod tests {
         assert!(target_receipt_is_pruned(1));
         assert_eq!(receipt_start(), Some(2));
 
-        // Create `receipt_count + 3` receipt, `oldest_receipt_number` is `PRUNING_DEPTH + 3`.
+        // Create `receipt_count + 3` receipt, `oldest_unconfirmed_receipt_number` is `PRUNING_DEPTH + 3`.
         let receipt = create_execution_receipt(receipt_count + 3);
         let consensus_block_hash1 = receipt.consensus_block_hash;
         write_receipt_at(Some(PRUNING_DEPTH + 3), &receipt);
@@ -376,13 +382,13 @@ mod tests {
             hashes_at(receipt_count + 3),
             Some(vec![consensus_block_hash1, consensus_block_hash2])
         );
-        // No ER pruned since the `oldest_receipt_number` is the same
+        // No ER pruned since the `oldest_unconfirmed_receipt_number` is the same
         assert!(!target_receipt_is_pruned(3));
         assert_eq!(receipt_start(), Some(3));
     }
 
     #[test]
-    fn execution_receipts_should_be_kept_against_oldest_receipt_number() {
+    fn execution_receipts_should_be_kept_against_oldest_unconfirmed_receipt_number() {
         let block_tree_pruning_depth = 256;
         let client = TestClient::default();
 
@@ -403,17 +409,21 @@ mod tests {
             load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
-        let write_receipt_at = |oldest_receipt_number: Option<BlockNumber>,
+        let write_receipt_at = |oldest_unconfirmed_receipt_number: Option<BlockNumber>,
                                 receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, CBlock>(&client, oldest_receipt_number, receipt)
-                .unwrap()
+            write_execution_receipt::<_, Block, CBlock>(
+                &client,
+                oldest_unconfirmed_receipt_number,
+                receipt,
+            )
+            .unwrap()
         };
 
         let target_receipt_is_pruned = |number: BlockNumber| hashes_at(number).is_none();
 
         assert_eq!(receipt_start(), None);
 
-        // Create as many ER as before any ER being pruned yet, `oldest_receipt_number` is `Some(1)`,
+        // Create as many ER as before any ER being pruned yet, `oldest_unconfirmed_receipt_number` is `Some(1)`,
         // i.e., no receipt has ever been confirmed/pruned on consensus chain.
         let receipt_count = PRUNING_DEPTH + block_tree_pruning_depth - 1;
 
@@ -433,12 +443,12 @@ mod tests {
         assert_eq!(receipt_start(), Some(0));
         assert!(!target_receipt_is_pruned(1));
 
-        // Create `receipt_count + 1` receipt, `oldest_receipt_number` is `Some(1)`.
+        // Create `receipt_count + 1` receipt, `oldest_unconfirmed_receipt_number` is `Some(1)`.
         let receipt = create_execution_receipt(receipt_count + 1);
         assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(Some(One::one()), &receipt);
 
-        // Create `receipt_count + 2` receipt, `oldest_receipt_number` is `Some(1)`.
+        // Create `receipt_count + 2` receipt, `oldest_unconfirmed_receipt_number` is `Some(1)`.
         let receipt = create_execution_receipt(receipt_count + 2);
         write_receipt_at(Some(One::one()), &receipt);
 
@@ -449,11 +459,11 @@ mod tests {
         assert!(!target_receipt_is_pruned(1));
         assert_eq!(receipt_start(), Some(0));
 
-        // Create `receipt_count + 3` receipt, `oldest_receipt_number` is `Some(1)`.
+        // Create `receipt_count + 3` receipt, `oldest_unconfirmed_receipt_number` is `Some(1)`.
         let receipt = create_execution_receipt(receipt_count + 3);
         write_receipt_at(Some(One::one()), &receipt);
 
-        // Create `receipt_count + 4` receipt, `oldest_receipt_number` is `Some(PRUNING_DEPTH + 4)`.
+        // Create `receipt_count + 4` receipt, `oldest_unconfirmed_receipt_number` is `Some(PRUNING_DEPTH + 4)`.
         let receipt = create_execution_receipt(receipt_count + 4);
         write_receipt_at(
             Some(PRUNING_DEPTH + 4), // Now assuming all the missing receipts are confirmed.

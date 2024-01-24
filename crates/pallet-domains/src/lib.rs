@@ -1860,9 +1860,11 @@ impl<T: Config> Pallet<T> {
         HeadReceiptNumber::<T>::get(domain_id)
     }
 
-    /// Returns the block number of oldest existing execution receipt, return `None` means there is
-    /// no non-confirmed ER exist or submitted yet.
-    pub fn oldest_receipt_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
+    /// Returns the block number of the oldest existing unconfirmed execution receipt, return `None`
+    /// means there is no unconfirmed ER exist or submitted yet.
+    pub fn oldest_unconfirmed_receipt_number(
+        domain_id: DomainId,
+    ) -> Option<DomainBlockNumberFor<T>> {
         let oldest_nonconfirmed_er_number =
             LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
 
