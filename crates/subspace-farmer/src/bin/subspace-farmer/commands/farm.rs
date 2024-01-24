@@ -29,8 +29,8 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    all_cpu_cores, create_plotting_thread_pool_manager, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop,
+    all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    run_future_in_dedicated_thread, thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -138,6 +138,17 @@ pub(crate) struct FarmingArgs {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     plotting_thread_pool_size: Option<NonZeroUsize>,
+    /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
+    /// otherwise. It replaces both `--sector-encoding-concurrency` and
+    /// `--plotting-thread-pool-size` options if specified. Requires `--replotting-cpu-cores` to be
+    /// specified with the same number of CPU cores groups (or not specified at all, in which case
+    /// it'll use the same thread pool as plotting).
+    ///
+    /// Cores are coma-separated, with whitespace separating different thread pools/encoding
+    /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
+    /// each with a pair of CPU cores.
+    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "plotting_thread_pool_size"])]
+    plotting_cpu_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
     /// to not affect farming as much, defaults to half of the number of logical CPUs available on
     /// UMA system and number of logical CPUs available in NUMA node on NUMA system.
@@ -148,6 +159,15 @@ pub(crate) struct FarmingArgs {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     replotting_thread_pool_size: Option<NonZeroUsize>,
+    /// Specify exact CPU cores to be used for replotting bypassing any custom logic farmer might
+    /// use otherwise. It replaces `--replotting-thread_pool_size` options if specified. Requires
+    /// `--plotting-cpu-cores` to be specified with the same number of CPU cores groups.
+    ///
+    /// Cores are coma-separated, with whitespace separating different thread pools/encoding
+    /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
+    /// each with a pair of CPU cores.
+    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "replotting_thread_pool_size"])]
+    replotting_cpu_cores: Option<String>,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -290,7 +310,9 @@ where
         farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
+        plotting_cpu_cores,
         replotting_thread_pool_size,
+        replotting_cpu_cores,
     } = farming_args;
 
     // Override flags with `--dev`
@@ -433,19 +455,41 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool_core_indices =
-        thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
-    let replotting_thread_pool_core_indices = {
-        let mut replotting_thread_pool_core_indices =
-            thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
-        if replotting_thread_pool_size.is_none() {
-            // The default behavior is to use all CPU cores, but for replotting we just want half
-            replotting_thread_pool_core_indices
-                .iter_mut()
-                .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+    let plotting_thread_pool_core_indices;
+    let replotting_thread_pool_core_indices;
+    if let Some(plotting_cpu_cores) = plotting_cpu_cores {
+        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
+            .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
+        replotting_thread_pool_core_indices = match replotting_cpu_cores {
+            Some(replotting_cpu_cores) => {
+                parse_cpu_cores_sets(&replotting_cpu_cores).map_err(|error| {
+                    anyhow::anyhow!("Failed to parse `--replotting-cpu-cores`: {error}")
+                })?
+            }
+            None => plotting_thread_pool_core_indices.clone(),
+        };
+        if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
+            return Err(anyhow::anyhow!(
+                "Number of plotting thread pools ({}) is not the same as for replotting ({})",
+                plotting_thread_pool_core_indices.len(),
+                replotting_thread_pool_core_indices.len()
+            ));
         }
-        replotting_thread_pool_core_indices
-    };
+    } else {
+        plotting_thread_pool_core_indices =
+            thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
+        replotting_thread_pool_core_indices = {
+            let mut replotting_thread_pool_core_indices =
+                thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
+            if replotting_thread_pool_size.is_none() {
+                // The default behavior is to use all CPU cores, but for replotting we just want half
+                replotting_thread_pool_core_indices
+                    .iter_mut()
+                    .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+            }
+            replotting_thread_pool_core_indices
+        };
+    }
 
     let downloading_semaphore = Arc::new(Semaphore::new(
         sector_downloading_concurrency
