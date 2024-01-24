@@ -11,7 +11,7 @@ use sp_domains::OperatorId;
 use sp_runtime::traits::{AccountIdConversion, CheckedSub, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
-use subspace_runtime_primitives::StorageFeeInterface;
+use subspace_runtime_primitives::StorageFee;
 
 /// The proportion of staking fund reserved for the bundle storage fee
 pub const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
@@ -49,7 +49,7 @@ pub fn charge_bundle_storage_fee<T: Config>(
     }
 
     let storage_fund_acc = storage_fund_account::<T>(operator_id)?;
-    let storage_fee = T::StorageFeeInterface::transaction_byte_fee() * bundle_size.into();
+    let storage_fee = T::StorageFee::transaction_byte_fee() * bundle_size.into();
 
     T::Currency::burn_from(
         &storage_fund_acc,
@@ -60,7 +60,7 @@ pub fn charge_bundle_storage_fee<T: Config>(
     .map_err(|_| Error::BundleStorageFeePayment)?;
 
     // Note the storage fee, it will go to the consensus block author
-    T::StorageFeeInterface::note_storage_fees(storage_fee);
+    T::StorageFee::note_storage_fees(storage_fee);
 
     Ok(())
 }
@@ -71,15 +71,15 @@ pub fn charge_bundle_storage_fee<T: Config>(
 #[allow(dead_code)]
 pub fn refund_storage_fee<T: Config>(
     total_storage_fee: BalanceOf<T>,
-    front_paid_storage: BTreeMap<OperatorId, u32>,
+    paid_bundle_storage_fees: BTreeMap<OperatorId, u32>,
 ) -> Result<(), Error> {
     if total_storage_fee.is_zero() {
         return Ok(());
     }
 
-    let total_paid_storage = front_paid_storage.values().sum::<u32>();
+    let total_paid_storage = paid_bundle_storage_fees.values().sum::<u32>();
     let mut remaining_fee = total_storage_fee;
-    for (operator_id, paid_storage) in front_paid_storage {
+    for (operator_id, paid_storage) in paid_bundle_storage_fees {
         // If the operator is deregistered and unlocked or slashed and finalized, the refund bundle storage
         // fee will go to the treasury
         if Operators::<T>::get(operator_id).is_none() || paid_storage.is_zero() {
@@ -87,8 +87,8 @@ pub fn refund_storage_fee<T: Config>(
         }
 
         let refund_amount = {
-            let share = Perbill::from_rational(paid_storage, total_paid_storage);
-            share.mul_floor(total_storage_fee)
+            let paid_storage_percentage = Perbill::from_rational(paid_storage, total_paid_storage);
+            paid_storage_percentage.mul_floor(total_storage_fee)
         };
         let storage_fund_acc = storage_fund_account::<T>(operator_id)?;
         T::Currency::mint_into(&storage_fund_acc, refund_amount).map_err(|_| Error::MintBalance)?;

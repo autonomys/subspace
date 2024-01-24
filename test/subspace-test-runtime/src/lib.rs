@@ -629,7 +629,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 100;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
-    pub const DomainsPalletId: PalletId = PalletId(*b"ssdomain");
+    pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
 }
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
@@ -663,7 +663,7 @@ impl pallet_domains::Config for Runtime {
     type SudoId = SudoId;
     type MinNominatorStake = MinNominatorStake;
     type PalletId = DomainsPalletId;
-    type StorageFeeInterface = TransactionFees;
+    type StorageFee = TransactionFees;
 }
 
 parameter_types! {

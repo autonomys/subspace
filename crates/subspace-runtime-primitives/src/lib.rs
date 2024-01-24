@@ -90,7 +90,7 @@ pub trait FindVotingRewardAddresses<RewardAddress> {
     fn find_voting_reward_addresses() -> Vec<RewardAddress>;
 }
 
-pub trait StorageFeeInterface<Balance> {
+pub trait StorageFee<Balance> {
     /// Return the consensus transaction byte fee.
     fn transaction_byte_fee() -> Balance;
 

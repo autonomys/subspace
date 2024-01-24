@@ -178,7 +178,7 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
-    use subspace_runtime_primitives::StorageFeeInterface;
+    use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -312,7 +312,7 @@ mod pallet {
         type PalletId: Get<frame_support::PalletId>;
 
         /// Storage fee interface used to deal with bundle storage fee
-        type StorageFeeInterface: StorageFeeInterface<BalanceOf<Self>>;
+        type StorageFee: StorageFee<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -871,7 +871,7 @@ mod pallet {
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
                         refund_storage_fee::<T>(
                             confirmed_block_info.total_storage_fee,
-                            confirmed_block_info.front_paid_storage,
+                            confirmed_block_info.paid_bundle_storage_fees,
                         )
                         .map_err(Error::<T>::from)?;
 

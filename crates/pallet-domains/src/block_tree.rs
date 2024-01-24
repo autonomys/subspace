@@ -261,7 +261,7 @@ pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub rewards: Balance,
     pub invalid_bundle_authors: Vec<OperatorId>,
     pub total_storage_fee: Balance,
-    pub front_paid_storage: BTreeMap<OperatorId, u32>,
+    pub paid_bundle_storage_fees: BTreeMap<OperatorId, u32>,
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
@@ -308,7 +308,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 ));
 
                 // Collect the front paid storage and the invalid bundle author
-                let mut front_paid_storage = BTreeMap::new();
+                let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
                 let bundle_digests = ExecutionInbox::<T>::get((
                     domain_id,
@@ -322,7 +322,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                         if execution_receipt.inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
                         } else {
-                            front_paid_storage
+                            paid_bundle_storage_fees
                                 .entry(bundle_author)
                                 .and_modify(|s| *s += bd.size)
                                 .or_insert(bd.size);
@@ -346,7 +346,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     invalid_bundle_authors,
                     // TODO: get the `total_storage_fee` from ER
                     total_storage_fee: Zero::zero(),
-                    front_paid_storage,
+                    paid_bundle_storage_fees,
                 }));
             }
         }

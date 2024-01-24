@@ -307,7 +307,7 @@ where
     }
 }
 
-impl<T: Config> subspace_runtime_primitives::StorageFeeInterface<BalanceOf<T>> for Pallet<T>
+impl<T: Config> subspace_runtime_primitives::StorageFee<BalanceOf<T>> for Pallet<T>
 where
     BalanceOf<T>: From<u64>,
 {
