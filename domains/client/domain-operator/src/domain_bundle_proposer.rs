@@ -197,7 +197,6 @@ where
         let header = BundleHeader {
             proof_of_election,
             receipt,
-            bundle_size,
             estimated_bundle_weight,
             bundle_extrinsics_root: extrinsics_root,
         };

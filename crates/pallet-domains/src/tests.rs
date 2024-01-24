@@ -462,7 +462,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     let header = BundleHeader::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
-        bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
         bundle_extrinsics_root,
     };
@@ -815,11 +814,6 @@ fn test_bundle_fromat_verification() {
         let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
         valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
         valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
-        valid_bundle.sealed_header.header.bundle_size = valid_bundle
-            .extrinsics
-            .iter()
-            .map(|tx| tx.encoded_size() as u32)
-            .sum::<u32>();
         valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
             valid_bundle
                 .extrinsics
@@ -828,10 +822,6 @@ fn test_bundle_fromat_verification() {
                 .collect(),
             sp_core::storage::StateVersion::V1,
         );
-        assert_ok!(pallet_domains::Pallet::<Test>::check_bundle_size(
-            &valid_bundle,
-            max_block_size
-        ));
         assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
             &valid_bundle
         ));
@@ -844,7 +834,7 @@ fn test_bundle_fromat_verification() {
                 .push(opaque_extrinsic(i as u64, i as u128));
         }
         assert_err!(
-            pallet_domains::Pallet::<Test>::check_bundle_size(&too_large_bundle, max_block_size),
+            pallet_domains::Pallet::<Test>::validate_bundle(&too_large_bundle),
             BundleError::BundleTooLarge
         );
 

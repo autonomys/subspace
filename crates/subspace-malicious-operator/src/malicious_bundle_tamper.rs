@@ -270,7 +270,6 @@ where
             _ => return Ok(()),
         };
 
-        opaque_bundle.sealed_header.header.bundle_size += invalid_tx.encoded_size() as u32;
         opaque_bundle.extrinsics.push(invalid_tx);
         opaque_bundle.sealed_header.header.bundle_extrinsics_root =
             HeaderHashingFor::<Block::Header>::ordered_trie_root(

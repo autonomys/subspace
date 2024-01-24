@@ -1321,11 +1321,6 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         bundle_extrinsic_root =
             BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
         opaque_bundle.sealed_header.header.bundle_extrinsics_root = bundle_extrinsic_root;
-        opaque_bundle.sealed_header.header.bundle_size = opaque_bundle
-            .extrinsics
-            .iter()
-            .map(|tx| tx.encoded_size() as u32)
-            .sum::<u32>();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -1624,11 +1619,6 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         bundle_extrinsic_root =
             BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
         opaque_bundle.sealed_header.header.bundle_extrinsics_root = bundle_extrinsic_root;
-        opaque_bundle.sealed_header.header.bundle_size = opaque_bundle
-            .extrinsics
-            .iter()
-            .map(|tx| tx.encoded_size() as u32)
-            .sum::<u32>();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())

@@ -207,10 +207,6 @@ pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    /// The size of the bundle body in bytes.
-    ///
-    /// Used to calculate the storage cost.
-    pub bundle_size: u32,
     /// The total (estimated) weight of all extrinsics in the bundle.
     ///
     /// Used to prevent overloading the bundle with compute.
@@ -323,7 +319,10 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
 
     /// Return the bundle body size in bytes
     pub fn size(&self) -> u32 {
-        self.sealed_header.header.bundle_size
+        self.extrinsics
+            .iter()
+            .map(|tx| tx.encoded_size() as u32)
+            .sum::<u32>()
     }
 }
 
@@ -380,7 +379,6 @@ pub fn dummy_opaque_bundle<
     let header = BundleHeader {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
-        bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
         bundle_extrinsics_root: Default::default(),
     };

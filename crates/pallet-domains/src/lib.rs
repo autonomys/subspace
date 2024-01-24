@@ -593,8 +593,6 @@ mod pallet {
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
         BundleTooLarge,
-        /// The actual bundle size is not match with the `bundle_size` field in bundle header
-        InvalidBundleSize,
         // Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
         /// This bundle duplicated with an already submitted bundle
@@ -1583,24 +1581,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn check_bundle_size(
-        opaque_bundle: &OpaqueBundleOf<T>,
-        max_size: u32,
-    ) -> Result<(), BundleError> {
-        let bundle_size = opaque_bundle
-            .extrinsics
-            .iter()
-            .fold(0, |acc, xt| acc + xt.encoded_size() as u32);
-
-        ensure!(max_size >= bundle_size, BundleError::BundleTooLarge);
-        ensure!(
-            opaque_bundle.size() == bundle_size,
-            BundleError::InvalidBundleSize
-        );
-
-        Ok(())
-    }
-
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
@@ -1644,7 +1624,10 @@ impl<T: Config> Pallet<T> {
 
         // TODO: check bundle weight with `domain_config.max_block_weight`
 
-        Self::check_bundle_size(opaque_bundle, domain_config.max_block_size)?;
+        ensure!(
+            opaque_bundle.size() <= domain_config.max_block_size,
+            BundleError::BundleTooLarge
+        );
 
         Self::check_extrinsics_root(opaque_bundle)?;
 
