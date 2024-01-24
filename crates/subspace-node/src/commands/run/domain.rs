@@ -105,9 +105,17 @@ pub(super) struct DomainOptions {
     #[clap(flatten)]
     network_options: SubstrateNetworkOptions,
 
+    /// Operator secret key URI to insert into keystore.
+    ///
+    /// Example: "//Alice".
+    ///
+    /// If the value is a file, the file content is used as URI.
+    #[arg(long)]
+    keystore_suri: Option<SecretString>,
+
     /// Options for domain keystore
     #[clap(flatten)]
-    keystore_options: KeystoreOptions<false>,
+    keystore_options: KeystoreOptions,
 
     /// Options for transaction pool
     #[clap(flatten)]
@@ -138,7 +146,8 @@ pub(super) fn create_domain_configuration(
         prometheus_listen_on,
         pruning_params,
         network_options,
-        mut keystore_options,
+        mut keystore_suri,
+        keystore_options,
         pool_config,
         additional_args,
     } = domain_options;
@@ -152,10 +161,8 @@ pub(super) fn create_domain_configuration(
             if operator_id.is_none() {
                 operator_id.replace(OperatorId::default());
             }
-            if keystore_options.keystore_suri.is_none() {
-                keystore_options
-                    .keystore_suri
-                    .replace(SecretString::new("//Alice".to_string()));
+            if keystore_suri.is_none() {
+                keystore_suri.replace(SecretString::new("//Alice".to_string()));
             }
         }
 
@@ -285,7 +292,7 @@ pub(super) fn create_domain_configuration(
 
         let keystore_config = keystore_params.keystore_config(&base_path)?;
 
-        if let Some(keystore_suri) = keystore_options.keystore_suri {
+        if let Some(keystore_suri) = keystore_suri {
             let (path, password) = match &keystore_config {
                 KeystoreConfig::Path { path, password, .. } => (path.clone(), password.clone()),
                 KeystoreConfig::InMemory => {
@@ -293,7 +300,7 @@ pub(super) fn create_domain_configuration(
                 }
             };
 
-            store_key_in_keystore(path, password, &keystore_suri)?;
+            store_key_in_keystore(path, &keystore_suri, password)?;
         }
 
         keystore_config
