@@ -1159,6 +1159,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                 .unwrap()
                 .into()
         };
+        receipt.final_state_root = *receipt.execution_trace.last().unwrap();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())

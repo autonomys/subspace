@@ -33,6 +33,7 @@ pub enum Error {
     InvalidTraceRoot,
     InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
+    InvalidStateRoot,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -156,6 +157,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         parent_domain_block_receipt_hash,
         execution_trace,
         execution_trace_root,
+        final_state_root,
         ..
     } = execution_receipt;
 
@@ -238,6 +240,14 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         expected_execution_trace_root == *execution_trace_root,
         Error::InvalidTraceRoot
     );
+
+    // check state root on ER and in the Execution trace
+    if let Some(expected_final_state_root) = execution_trace.last() {
+        ensure!(
+            final_state_root == expected_final_state_root,
+            Error::InvalidStateRoot
+        );
+    }
 
     // Check if the ER is extending an existing parent ER
     if let Some(parent_block_number) = domain_block_number.checked_sub(&One::one()) {
@@ -859,6 +869,7 @@ mod tests {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             let mut next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
             next_receipt.execution_trace.push(H256::random());
+            next_receipt.final_state_root = *next_receipt.execution_trace.last().unwrap();
 
             let mut trace = Vec::with_capacity(next_receipt.execution_trace.len());
             for root in &next_receipt.execution_trace {
