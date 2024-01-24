@@ -434,7 +434,7 @@ pub(crate) fn create_dummy_receipt(
         consensus_block_number: block_number,
         consensus_block_hash,
         inboxed_bundles,
-        final_state_root: Default::default(),
+        final_state_root: *execution_trace.last().unwrap_or(&Default::default()),
         execution_trace,
         execution_trace_root,
         block_fees: Default::default(),
