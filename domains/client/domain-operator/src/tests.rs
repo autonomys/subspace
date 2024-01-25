@@ -3668,7 +3668,7 @@ async fn test_bad_receipt_chain() {
         .into()
     };
 
-    let bundle_producer = {
+    let mut bundle_producer = {
         let domain_bundle_proposer = DomainBundleProposer::new(
             GENESIS_DOMAIN_ID,
             alice.client.clone(),
@@ -3732,15 +3732,9 @@ async fn test_bad_receipt_chain() {
     let parent_bad_receipt_hash = bad_receipt_hash;
     let slot = ferdie.produce_slot();
     let bundle = {
-        let consensus_block_info = sp_blockchain::HashAndNumber {
-            number: ferdie.client.info().best_number,
-            hash: ferdie.client.info().best_hash,
-        };
         bundle_producer
-            .clone()
             .produce_bundle(
                 0,
-                consensus_block_info,
                 OperatorSlotInfo {
                     slot,
                     global_randomness: Randomness::from(Hash::random().to_fixed_bytes()),

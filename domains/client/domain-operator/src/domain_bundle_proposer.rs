@@ -80,7 +80,7 @@ where
     }
 
     pub(crate) async fn propose_bundle_at(
-        &self,
+        &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
         tx_range: U256,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {

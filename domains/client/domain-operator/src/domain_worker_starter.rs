@@ -16,17 +16,17 @@
 
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
-use crate::domain_worker::{on_new_slot, throttling_block_import_notifications};
+use crate::domain_worker::throttling_block_import_notifications;
 use crate::utils::OperatorSlotInfo;
 use crate::{NewSlotNotification, OperatorStreams};
 use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
-use futures::{FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
+use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -59,7 +59,7 @@ pub(super) async fn start_worker<
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     maybe_operator_id: Option<OperatorId>,
-    bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
+    mut bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
 ) where
@@ -121,24 +121,6 @@ pub(super) async fn start_worker<
 
     if let Some(operator_id) = maybe_operator_id {
         info!("👷 Running as Operator[{operator_id}]...");
-        let bundler_fn = {
-            let span = span.clone();
-            move |consensus_block_info: sp_blockchain::HashAndNumber<CBlock>, slot_info| {
-                bundle_producer
-                    .clone()
-                    .produce_bundle(operator_id, consensus_block_info.clone(), slot_info)
-                    .instrument(span.clone())
-                    .unwrap_or_else(move |error| {
-                        tracing::error!(
-                            ?consensus_block_info,
-                            ?error,
-                            "Error at producing bundle."
-                        );
-                        None
-                    })
-                    .boxed()
-            }
-        };
         let mut new_slot_notification_stream = pin!(new_slot_notification_stream);
         let mut acknowledgement_sender_stream = pin!(acknowledgement_sender_stream);
         loop {
@@ -148,22 +130,29 @@ pub(super) async fn start_worker<
                 biased;
 
                 Some((slot, global_randomness)) = new_slot_notification_stream.next() => {
-                    if let Err(error) = on_new_slot::<Block, CBlock, _, _>(
-                        consensus_client.as_ref(),
-                        consensus_offchain_tx_pool_factory.clone(),
-                        &bundler_fn,
-                        OperatorSlotInfo {
-                            slot,
-                            global_randomness,
-                        },
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            ?error,
-                            "Error occurred on producing a bundle at slot {slot}"
-                        );
-                        break;
+                    let res = bundle_producer
+                        .produce_bundle(
+                            operator_id,
+                            OperatorSlotInfo {
+                                slot,
+                                global_randomness,
+                            },
+                        )
+                        .instrument(span.clone())
+                        .await;
+                    match res {
+                        Err(err) => {
+                            tracing::error!(?slot, ?err, "Error at producing bundle.");
+                        }
+                        Ok(Some(opaque_bundle)) => {
+                            let best_hash = consensus_client.info().best_hash;
+                            let mut runtime_api = consensus_client.runtime_api();
+                            runtime_api.register_extension(consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash));
+                            if let Err(err) = runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle) {
+                                tracing::error!(?slot, ?err, "Error at submitting bundle.");
+                            }
+                        }
+                        Ok(None) => {}
                     }
                 }
                 Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {

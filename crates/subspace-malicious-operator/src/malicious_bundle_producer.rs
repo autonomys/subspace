@@ -62,12 +62,12 @@ impl MaliciousOperatorStatus {
         *self = MaliciousOperatorStatus::NoStatus
     }
 
-    fn registered_operator(&self) -> Option<(&OperatorId, &OperatorPublicKey)> {
+    fn registered_operator(&self) -> Option<(OperatorId, OperatorPublicKey)> {
         match self {
             MaliciousOperatorStatus::Registered {
                 operator_id,
                 signing_key,
-            } => Some((operator_id, signing_key)),
+            } => Some((*operator_id, signing_key.clone())),
             _ => None,
         }
     }
@@ -161,24 +161,15 @@ where
     }
 
     async fn handle_new_slot(
-        &self,
+        &mut self,
         operator_id: OperatorId,
         new_slot_info: OperatorSlotInfo,
     ) -> Option<OpaqueBundleFor<DomainBlock, CBlock>> {
         let slot = new_slot_info.slot;
-        let consensus_block_info = {
-            let info = self.consensus_client.info();
-            sp_blockchain::HashAndNumber {
-                number: info.best_number,
-                hash: info.best_hash,
-            }
-        };
         self.bundle_producer
-            .clone()
-            .produce_bundle(operator_id, consensus_block_info.clone(), new_slot_info)
+            .produce_bundle(operator_id, new_slot_info)
             .unwrap_or_else(move |error| {
                 tracing::error!(
-                    ?consensus_block_info,
                     ?slot,
                     ?operator_id,
                     ?error,
@@ -200,7 +191,7 @@ where
             {
                 let maybe_opaque_bundle = self
                     .handle_new_slot(
-                        *operator_id,
+                        operator_id,
                         OperatorSlotInfo {
                             slot,
                             global_randomness,
@@ -211,7 +202,7 @@ where
                 if let Some(mut opaque_bundle) = maybe_opaque_bundle {
                     if let Err(err) = self
                         .malicious_bundle_tamper
-                        .maybe_tamper_bundle(&mut opaque_bundle, signing_key)
+                        .maybe_tamper_bundle(&mut opaque_bundle, &signing_key)
                     {
                         tracing::error!(?err, "Got error when try to tamper bundle");
                     }
@@ -245,7 +236,7 @@ where
         if let Some((malicious_operator_id, _)) =
             self.malicious_operator_status.registered_operator()
         {
-            if next_operators.contains(malicious_operator_id) {
+            if next_operators.contains(&malicious_operator_id) {
                 return Ok(());
             } else {
                 tracing::info!(
@@ -255,7 +246,7 @@ where
                 // Remove the current malicious operator to not account its stake toward
                 // `current_total_stake` otherwise the next malicious operator will stake
                 // more and more fund
-                current_operators.remove(malicious_operator_id);
+                current_operators.remove(&malicious_operator_id);
                 self.malicious_operator_status.no_status();
             }
         }

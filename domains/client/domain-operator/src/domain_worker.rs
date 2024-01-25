@@ -1,17 +1,14 @@
 //! Shared domain worker functions.
 
-use crate::utils::{BlockInfo, OperatorSlotInfo};
+use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
-use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
-use sp_blockchain::{HashAndNumber, HeaderBackend};
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
@@ -116,49 +113,4 @@ where
     );
 
     block_info_receiver
-}
-
-pub(crate) async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
-    consensus_client: &CClient,
-    consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    bundler: &BundlerFn,
-    operator_slot_info: OperatorSlotInfo,
-) -> Result<(), ApiError>
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
-    BundlerFn: Fn(
-            HashAndNumber<CBlock>,
-            OperatorSlotInfo,
-        ) -> Pin<Box<dyn Future<Output = Option<OpaqueBundleFor<Block, CBlock>>> + Send>>
-        + Send
-        + Sync,
-{
-    let best_hash = consensus_client.info().best_hash;
-    let best_number = consensus_client.info().best_number;
-
-    let consensus_block_info = HashAndNumber {
-        number: best_number,
-        hash: best_hash,
-    };
-
-    let slot = operator_slot_info.slot;
-    let opaque_bundle = match bundler(consensus_block_info, operator_slot_info).await {
-        Some(opaque_bundle) => opaque_bundle,
-        None => {
-            tracing::debug!("No bundle produced on slot {slot}");
-            return Ok(());
-        }
-    };
-
-    let mut runtime_api = consensus_client.runtime_api();
-    // Register the offchain tx pool to be able to use it from the runtime.
-    runtime_api.register_extension(
-        consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash),
-    );
-    runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle)?;
-
-    Ok(())
 }
