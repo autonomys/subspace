@@ -570,9 +570,8 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 256;
-    // TODO: revisit these
-    pub const StakeWithdrawalLockingPeriod: DomainNumber = 256;
+    pub const BlockTreePruningDepth: u32 = 14_400;
+    pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
@@ -584,6 +583,9 @@ parameter_types! {
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
+
+// Stake Withdrawal locking period must be >= Block tree pruning depth
+const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
