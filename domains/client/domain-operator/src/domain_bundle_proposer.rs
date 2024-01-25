@@ -173,9 +173,6 @@ where
                     }
                 }
 
-                estimated_bundle_weight = next_estimated_bundle_weight;
-                bundle_size = next_bundle_size;
-
                 // Double check the transaction validity, because the tx pool are re-validate the transaction
                 // in pool asynchronously so there is race condition that the operator imported a domain block
                 // and start producing bundle immediately before the re-validation based on the latest block
@@ -204,6 +201,8 @@ where
                     continue;
                 }
 
+                estimated_bundle_weight = next_estimated_bundle_weight;
+                bundle_size = next_bundle_size;
                 extrinsics.push(pending_tx_data.clone());
             }
         }
