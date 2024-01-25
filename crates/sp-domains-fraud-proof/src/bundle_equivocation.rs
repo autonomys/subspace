@@ -156,11 +156,14 @@ where
 mod test {
     use super::{check_equivocation, MAX_SLOT_CAPACITY, PRUNING_BOUND};
     use domain_runtime_primitives::opaque::Header as DomainHeader;
+    use parking_lot::Mutex;
+    use sc_client_api::backend::AuxStore;
     use sp_core::crypto::UncheckedFrom;
     use sp_domains::{
         BundleHeader, DomainId, ExecutionReceipt, OperatorId, OperatorSignature, ProofOfElection,
         SealedBundleHeader,
     };
+    use std::collections::HashMap;
     use std::sync::Arc;
     use subspace_runtime_primitives::opaque::Block;
     use subspace_runtime_primitives::{Balance, BlockNumber, Hash};
@@ -197,9 +200,39 @@ mod test {
         }
     }
 
+    #[derive(Default)]
+    struct TestClient(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
+
+    impl AuxStore for TestClient {
+        fn insert_aux<
+            'a,
+            'b: 'a,
+            'c: 'a,
+            I: IntoIterator<Item = &'a (&'c [u8], &'c [u8])>,
+            D: IntoIterator<Item = &'a &'b [u8]>,
+        >(
+            &self,
+            insert: I,
+            delete: D,
+        ) -> sp_blockchain::Result<()> {
+            let mut map = self.0.lock();
+            for d in delete {
+                map.remove(&d.to_vec());
+            }
+            for (k, v) in insert {
+                map.insert(k.to_vec(), v.to_vec());
+            }
+            Ok(())
+        }
+
+        fn get_aux(&self, key: &[u8]) -> sp_blockchain::Result<Option<Vec<u8>>> {
+            Ok(self.0.lock().get(key).cloned())
+        }
+    }
+
     #[test]
     fn test_check_equivocation() {
-        let client = Arc::new(substrate_test_runtime_client::new());
+        let client = Arc::new(TestClient::default());
         let domain_id = DomainId::new(0);
         let operator_id = 1;
 
