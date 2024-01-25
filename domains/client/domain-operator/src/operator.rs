@@ -178,7 +178,7 @@ where
         spawn_essential.spawn_essential_blocking(
             "domain-operator-worker",
             None,
-            crate::domain_worker_starter::start_worker(
+            crate::domain_worker::start_worker(
                 spawn_essential.clone(),
                 params.consensus_client.clone(),
                 params.consensus_offchain_tx_pool_factory.clone(),
