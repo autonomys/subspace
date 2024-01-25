@@ -106,7 +106,10 @@ where
     CClient::Api: DomainsApi<CBlock, <DomainBlock as BlockT>::Header>
         + BundleProducerElectionApi<CBlock, Balance>
         + AccountNonceApi<CBlock, AccountId, Nonce>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = DomainBlock> + 'static,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<
+            Block = DomainBlock,
+            Hash = <DomainBlock as BlockT>::Hash,
+        > + 'static,
 {
     pub fn new(
         domain_id: DomainId,

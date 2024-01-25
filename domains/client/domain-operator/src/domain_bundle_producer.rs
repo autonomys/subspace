@@ -74,7 +74,8 @@ where
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

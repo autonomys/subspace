@@ -94,7 +94,8 @@ where
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
+        + 'static,
     E: CodeExecutor,
 {
     /// Create a new instance.

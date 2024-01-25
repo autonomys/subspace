@@ -11,8 +11,10 @@ use sp_domains::{
     BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
+use sp_runtime::Percent;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -25,15 +27,47 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 
 const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
 
-pub struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
+// `PreviousBundledTx` used to keep track of tx that have included in previous bundle and avoid
+// to re-include the these tx in the following bundle to reduce deplicated tx.
+struct PreviousBundledTx<Block: BlockT, CBlock: BlockT> {
+    bundled_at: <CBlock as BlockT>::Hash,
+    tx_hashes: HashSet<<Block as BlockT>::Hash>,
+}
+
+impl<Block: BlockT, CBlock: BlockT> PreviousBundledTx<Block, CBlock> {
+    fn new() -> Self {
+        PreviousBundledTx {
+            bundled_at: Default::default(),
+            tx_hashes: HashSet::new(),
+        }
+    }
+
+    fn already_bundled(&self, tx_hash: &<Block as BlockT>::Hash) -> bool {
+        self.tx_hashes.contains(tx_hash)
+    }
+
+    fn maybe_clear(&mut self, consensus_hash: <CBlock as BlockT>::Hash) {
+        if self.bundled_at != consensus_hash {
+            self.bundled_at = consensus_hash;
+            self.tx_hashes.clear();
+        }
+    }
+
+    fn add_bundled(&mut self, tx_hash: <Block as BlockT>::Hash) {
+        self.tx_hashes.insert(tx_hash);
+    }
+}
+
+pub struct DomainBundleProposer<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> {
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
     transaction_pool: Arc<TransactionPool>,
+    previous_bundled_tx: PreviousBundledTx<Block, CBlock>,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, Client, CBlock, CClient, TransactionPool> Clone
+impl<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> Clone
     for DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>
 {
     fn clone(&self) -> Self {
@@ -42,6 +76,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
+            previous_bundled_tx: PreviousBundledTx::new(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -62,7 +97,8 @@ where
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
     pub fn new(
         domain_id: DomainId,
@@ -75,6 +111,7 @@ where
             client,
             consensus_client,
             transaction_pool,
+            previous_bundled_tx: PreviousBundledTx::new(),
             _phantom_data: PhantomData,
         }
     }
@@ -101,6 +138,12 @@ where
                 self.transaction_pool.ready()
             }
         };
+
+        // Clear the previous bundled tx info whenever the consensus chain tip is changed,
+        // this allow the operator to retry for the previous bundled tx in case the previous
+        // bundle fail to submit to the consensus chain due to any reason.
+        self.previous_bundled_tx
+            .maybe_clear(self.consensus_client.info().best_hash);
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
         let domain_block_limit = self
@@ -136,6 +179,14 @@ where
                     })
                     .unwrap_or(false);
                 if !is_within_tx_range {
+                    continue;
+                }
+
+                // Skip the tx if is is already bundled by a recent bundle
+                if self
+                    .previous_bundled_tx
+                    .already_bundled(&self.transaction_pool.hash_of(pending_tx_data))
+                {
                     continue;
                 }
 
@@ -204,6 +255,9 @@ where
                 estimated_bundle_weight = next_estimated_bundle_weight;
                 bundle_size = next_bundle_size;
                 extrinsics.push(pending_tx_data.clone());
+
+                self.previous_bundled_tx
+                    .add_bundled(self.transaction_pool.hash_of(pending_tx_data));
             }
         }
 
