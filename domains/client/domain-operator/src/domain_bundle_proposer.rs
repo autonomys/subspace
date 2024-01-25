@@ -19,6 +19,12 @@ use std::time;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
+/// If the bundle utilization is below `BUNDLE_UTILIZATION_THRESHOLD` we will attempt to push
+/// at most `MAX_SKIPPED_TRANSACTIONS` number of transactions before quitting for real.
+const MAX_SKIPPED_TRANSACTIONS: usize = 8;
+
+const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
+
 pub struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
     domain_id: DomainId,
     client: Arc<Client>,
@@ -109,6 +115,7 @@ where
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
+        let mut skipped = 0;
 
         // Seperate code block to make sure that runtime api instance is dropped after validation is done.
         {
@@ -142,12 +149,28 @@ where
                 let next_estimated_bundle_weight =
                     estimated_bundle_weight.saturating_add(tx_weight);
                 if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
-                    break;
+                    if skipped < MAX_SKIPPED_TRANSACTIONS
+                        && Percent::from_rational(
+                            estimated_bundle_weight.ref_time(),
+                            domain_block_limit.max_block_weight.ref_time(),
+                        ) < BUNDLE_UTILIZATION_THRESHOLD
+                    {
+                        skipped += 1;
+                    } else {
+                        break;
+                    }
                 }
 
                 let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
                 if next_bundle_size > domain_block_limit.max_block_size {
-                    break;
+                    if skipped < MAX_SKIPPED_TRANSACTIONS
+                        && Percent::from_rational(bundle_size, domain_block_limit.max_block_size)
+                            < BUNDLE_UTILIZATION_THRESHOLD
+                    {
+                        skipped += 1;
+                    } else {
+                        break;
+                    }
                 }
 
                 estimated_bundle_weight = next_estimated_bundle_weight;
