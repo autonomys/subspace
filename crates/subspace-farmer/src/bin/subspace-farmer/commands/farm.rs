@@ -108,7 +108,7 @@ pub(crate) struct FarmingArgs {
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--sector-downloading-concurrency` + 1 to download future
+    /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time
     #[arg(long)]
     sector_downloading_concurrency: Option<NonZeroUsize>,
