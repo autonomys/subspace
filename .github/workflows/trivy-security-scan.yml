@@ -1,0 +1,60 @@
+##
+# This action runs trivy container and repository vulnerability
+# scanner for docker images and cargo packages.
+##
+
+name: trivy-security-scan
+
+on:
+  repository_dispatch:
+    types: [trivy-scan-dispatch]
+
+jobs:
+  trivy_scan_image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - farmer
+          - node
+          - bootstrap-node
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
+
+      - name: Run Trivy vulnerability scanner on image
+        uses: aquasecurity/trivy-action@d43c1f16c00cfd3978dde6c07f4bbcf9eb6993ca # @v0.16.1
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.event.client_payload.sha }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@4759df8df70c5ebe7042c3029bbace20eee13edd # @v2.23.1
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  trivy_scan_repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
+
+      - name: Run Trivy vulnerability scanner in repo mode
+        uses: aquasecurity/trivy-action@d43c1f16c00cfd3978dde6c07f4bbcf9eb6993ca # @v0.16.1
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@4759df8df70c5ebe7042c3029bbace20eee13edd # @v2.23.1
+        with:
+          sarif_file: trivy-results.sarif
