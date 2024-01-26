@@ -477,12 +477,13 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
 #[cfg(test)]
 mod tests {
+    use crate::block_tree::ConfirmedDomainBlock;
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
-        LatestConfirmedDomainBlockNumber, NominatorCount, OperatorIdOwner, OperatorSigningKey,
-        Operators, PendingOperatorSwitches, Withdrawals,
+        LatestConfirmedDomainBlock, NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators,
+        PendingOperatorSwitches, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -638,7 +639,10 @@ mod tests {
 
             // de-register operator
             let domain_block_number = 100;
-            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
+            LatestConfirmedDomainBlock::<Test>::insert(
+                domain_id,
+                ConfirmedDomainBlock::from(domain_block_number),
+            );
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
             // finalize and add to pending operator unlocks
@@ -647,7 +651,10 @@ mod tests {
             // staking withdrawal is 5 blocks,
             // to unlock funds, confirmed block should be atleast 105
             let domain_block_number = 105;
-            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
+            LatestConfirmedDomainBlock::<Test>::insert(
+                domain_id,
+                ConfirmedDomainBlock::from(domain_block_number),
+            );
 
             assert_ok!(do_unlock_operator::<Test>(operator_id));
 

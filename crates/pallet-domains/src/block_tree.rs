@@ -4,9 +4,9 @@ use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
     DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
-    InboxedBundleAuthor, LatestConfirmedDomainBlockNumber, ReceiptHashFor,
+    InboxedBundleAuthor, LatestConfirmedDomainBlock, Pallet, ReceiptHashFor,
 };
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
@@ -35,6 +35,39 @@ pub enum Error {
     InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
     InvalidStateRoot,
+}
+
+/// Type holding the block details of confirmed domain block.
+#[derive(TypeInfo, Encode, Decode, Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmedDomainBlock<DomainBlockNumber: Codec, DomainHash: Codec> {
+    /// Block number of the confirmed domain block.
+    pub block_number: DomainBlockNumber,
+    /// Block hash of the confirmed domain block.
+    pub block_hash: DomainHash,
+    /// Parent block hash of the confirmed domain block.
+    pub parent_block_receipt_hash: DomainHash,
+    /// State root of the domain block.
+    pub state_root: DomainHash,
+    /// Extrinsic root of the domain block.
+    pub extrinsics_root: DomainHash,
+}
+
+#[cfg(test)]
+impl<DomainBlockNumber, DomainHash> From<DomainBlockNumber>
+    for ConfirmedDomainBlock<DomainBlockNumber, DomainHash>
+where
+    DomainBlockNumber: Codec,
+    DomainHash: Codec + Default,
+{
+    fn from(value: DomainBlockNumber) -> Self {
+        ConfirmedDomainBlock {
+            block_number: value,
+            block_hash: Default::default(),
+            parent_block_receipt_hash: Default::default(),
+            state_root: Default::default(),
+            extrinsics_root: Default::default(),
+        }
+    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -109,7 +142,7 @@ pub(crate) fn execution_receipt_type<T: Config>(
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
     let latest_confirmed_domain_block_number =
-        LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
+        Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
 
     match receipt_number.cmp(&next_receipt_number) {
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
@@ -349,6 +382,18 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 ConsensusBlockHash::<T>::remove(
                     domain_id,
                     execution_receipt.consensus_block_number,
+                );
+
+                LatestConfirmedDomainBlock::<T>::insert(
+                    domain_id,
+                    ConfirmedDomainBlock {
+                        block_number: to_prune,
+                        block_hash: execution_receipt.domain_block_hash,
+                        parent_block_receipt_hash: execution_receipt
+                            .parent_domain_block_receipt_hash,
+                        state_root: execution_receipt.final_state_root,
+                        extrinsics_root: execution_receipt.domain_block_extrinsic_root,
+                    },
                 );
 
                 return Ok(Some(ConfirmedDomainBlockInfo {

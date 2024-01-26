@@ -117,8 +117,8 @@ mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
-        ReceiptType,
+        execution_receipt_type, process_execution_receipt, BlockTreeNode, ConfirmedDomainBlock,
+        Error as BlockTreeError, ReceiptType,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
@@ -495,11 +495,6 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
-    /// The latest confirmed block number of each domain.
-    #[pallet::storage]
-    pub(super) type LatestConfirmedDomainBlockNumber<T: Config> =
-        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
-
     /// Whether the head receipt have extended in the current consensus block
     ///
     /// Temporary storage only exist during block execution
@@ -570,6 +565,16 @@ mod pallet {
     #[pallet::storage]
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
+
+    /// Storage to hold all the domain's latest confirmed block.
+    #[pallet::storage]
+    pub(super) type LatestConfirmedDomainBlock<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        ConfirmedDomainBlock<DomainBlockNumberFor<T>, T::DomainHash>,
+        OptionQuery,
+    >;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -896,11 +901,6 @@ mod pallet {
                             ),
                         )
                         .map_err(Error::<T>::from)?;
-
-                        LatestConfirmedDomainBlockNumber::<T>::insert(
-                            domain_id,
-                            confirmed_block_info.domain_block_number,
-                        );
 
                         if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
@@ -1911,7 +1911,7 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<DomainBlockNumberFor<T>> {
         let oldest_nonconfirmed_er_number =
-            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
+            Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
 
         if BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some() {
             Some(oldest_nonconfirmed_er_number)
@@ -1922,6 +1922,14 @@ impl<T: Config> Pallet<T> {
             // - When using consensus block to derive the challenge period forward (unimplemented yet)
             None
         }
+    }
+
+    /// Returns the latest confirmed domain block number for a given domain
+    /// Zero block is always a default confirmed block.
+    pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
+        LatestConfirmedDomainBlock::<T>::get(domain_id)
+            .map(|block| block.block_number)
+            .unwrap_or_default()
     }
 
     /// Returns the domain block limit of the given domain.
@@ -1941,7 +1949,7 @@ impl<T: Config> Pallet<T> {
 
         // Start from the oldest non-confirmed ER to the head domain number
         let mut to_check =
-            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
+            Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
         let head_number = HeadDomainNumber::<T>::get(domain_id);
 
         while to_check <= head_number {
