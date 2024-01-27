@@ -9,7 +9,8 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, AuditEvent, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, AuditEvent, FarmingNotification, FarmingOptions,
+    PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
@@ -590,7 +591,7 @@ pub enum SectorExpirationDetails {
 /// Various sector updates
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum SectorUpdate {
-    /// Sector is is being plotted
+    /// Sector is being plotted
     Plotting(SectorPlottingDetails),
     /// Sector expiration information updated
     Expiration(SectorExpirationDetails),
@@ -599,6 +600,7 @@ pub enum SectorUpdate {
 #[derive(Default, Debug)]
 struct Handlers {
     sector_update: Handler<(SectorIndex, SectorUpdate)>,
+    farming_notification: Handler<FarmingNotification>,
     solution: Handler<SolutionResponse>,
     plot_audited: Handler<AuditEvent>,
 }
@@ -1370,6 +1372,11 @@ impl SingleDiskFarm {
     /// Subscribe to notification about audited plots
     pub fn on_plot_audited(&self, callback: HandlerFn<AuditEvent>) -> HandlerId {
         self.handlers.plot_audited.add(callback)
+    }
+
+    /// Subscribe to farming notifications
+    pub fn on_farming_notification(&self, callback: HandlerFn<FarmingNotification>) -> HandlerId {
+        self.handlers.farming_notification.add(callback)
     }
 
     /// Subscribe to new solution notification
