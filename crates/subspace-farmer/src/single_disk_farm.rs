@@ -9,8 +9,7 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, AuditEvent, FarmingNotification, FarmingOptions,
-    PlotAudit,
+    farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
@@ -602,7 +601,6 @@ struct Handlers {
     sector_update: Handler<(SectorIndex, SectorUpdate)>,
     farming_notification: Handler<FarmingNotification>,
     solution: Handler<SolutionResponse>,
-    plot_audited: Handler<AuditEvent>,
 }
 
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
@@ -749,7 +747,6 @@ impl SingleDiskFarm {
                 single_disk_farm_info
             }
         };
-        let farm_id = *single_disk_farm_info.id();
 
         let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
             .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
@@ -1118,7 +1115,6 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
-                            farm_id,
                         };
                         farming::<PosTable, _, _>(farming_options).await
                     };
@@ -1367,11 +1363,6 @@ impl SingleDiskFarm {
     /// Subscribe to sector updates
     pub fn on_sector_update(&self, callback: HandlerFn<(SectorIndex, SectorUpdate)>) -> HandlerId {
         self.handlers.sector_update.add(callback)
-    }
-
-    /// Subscribe to notification about audited plots
-    pub fn on_plot_audited(&self, callback: HandlerFn<AuditEvent>) -> HandlerId {
-        self.handlers.plot_audited.add(callback)
     }
 
     /// Subscribe to farming notifications

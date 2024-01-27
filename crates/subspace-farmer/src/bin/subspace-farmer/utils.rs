@@ -1,32 +1,71 @@
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use subspace_farmer::single_disk_farm::farming::AuditEvent;
+use std::time::Duration;
+use subspace_farmer::single_disk_farm::farming::ProvingResult;
+use subspace_farmer::single_disk_farm::SingleDiskFarmId;
 use tokio::signal;
 
 #[derive(Debug, Clone)]
 pub(crate) struct FarmerMetrics {
-    // Type comment: we need (String, String) instead of just String for farm_id because of
-    // trait definition within prometheus_client library.
-    audit: Family<Vec<(String, String)>, Histogram>,
+    auditing: Family<Vec<(String, String)>, Histogram>,
+    proving: Family<Vec<(String, String)>, Histogram>,
 }
 
 impl FarmerMetrics {
     pub(crate) fn new(registry: &mut Registry) -> Self {
         let sub_registry = registry.sub_registry_with_prefix("subspace_farmer");
 
-        let audit: Family<_, _> =
-            Family::new_with_constructor(|| Histogram::new(exponential_buckets(0.0001, 2.0, 15)));
+        let auditing = Family::<_, _>::new_with_constructor(|| {
+            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+        });
 
-        sub_registry.register_with_unit("audit", "Audit time", Unit::Seconds, audit.clone());
+        sub_registry.register_with_unit(
+            "auditing_duration",
+            "Auditing duration",
+            Unit::Seconds,
+            auditing.clone(),
+        );
 
-        Self { audit }
+        let proving = Family::<_, _>::new_with_constructor(|| {
+            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+        });
+
+        sub_registry.register_with_unit(
+            "proving_duration",
+            "Proving duration",
+            Unit::Seconds,
+            proving.clone(),
+        );
+
+        Self { auditing, proving }
     }
 
-    pub(crate) fn observe_audit_event(&self, event: &AuditEvent) {
-        self.audit
-            .get_or_create(&vec![(event.farm_id.to_string(), Default::default())])
-            .observe(event.duration);
+    pub(crate) fn observe_auditing(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        duration: &Duration,
+    ) {
+        self.auditing
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .observe(duration.as_secs_f64());
+    }
+
+    pub(crate) fn observe_proving(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        duration: &Duration,
+        result: ProvingResult,
+    ) {
+        self.proving
+            .get_or_create(&vec![
+                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("result".to_string(), result.to_string()),
+            ])
+            .observe(duration.as_secs_f64());
     }
 }
 
