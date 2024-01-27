@@ -6,11 +6,12 @@ use crate::single_disk_farm::Handlers;
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::ThreadPoolBuildError;
 use std::io;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
@@ -22,6 +23,45 @@ use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
+
+/// Auditing details
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct AuditingDetails {
+    /// Number of sectors that were audited
+    pub sectors_count: SectorIndex,
+    /// Audit duration
+    pub duration: Duration,
+}
+
+/// Result of the proving
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum ProvingResult {
+    /// Proved successfully and accepted by the node
+    Success,
+    /// Proving took too long
+    Timeout,
+    /// Managed to prove within time limit, but node rejected solution, likely due to timeout on its
+    /// end
+    Rejected,
+}
+
+/// Proving details
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ProvingDetails {
+    /// Whether proving ended up being successful
+    pub result: ProvingResult,
+    /// Audit duration
+    pub duration: Duration,
+}
+
+/// Various farming notifications
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum FarmingNotification {
+    /// Auditing
+    Auditing(AuditingDetails),
+    /// Proving
+    Proving(ProvingDetails),
+}
 
 /// Errors that happen during farming
 #[derive(Debug, Error)]
@@ -271,7 +311,18 @@ where
             a_solution_distance.cmp(&b_solution_distance)
         });
 
+        handlers
+            .farming_notification
+            .call_simple(&FarmingNotification::Auditing(AuditingDetails {
+                sectors_count: sectors_metadata.len() as SectorIndex,
+                duration: start.elapsed(),
+            }));
+
         'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+            if sector_solutions.is_empty() {
+                continue;
+            }
+            let mut start = Instant::now();
             for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
@@ -279,6 +330,7 @@ where
                         error!(%slot, %sector_index, %error, "Failed to prove");
                         // Do not error completely as disk corruption or other reasons why
                         // proving might fail
+                        start = Instant::now();
                         continue;
                     }
                 };
@@ -287,11 +339,18 @@ where
                 trace!(?solution, "Solution found");
 
                 if start.elapsed() >= farming_timeout {
+                    handlers
+                        .farming_notification
+                        .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                            result: ProvingResult::Timeout,
+                            duration: start.elapsed(),
+                        }));
                     warn!(
                         %slot,
                         %sector_index,
                         "Proving for solution skipped due to farming time limit",
                     );
+
                     break 'solutions_processing;
                 }
 
@@ -303,6 +362,12 @@ where
                 handlers.solution.call_simple(&response);
 
                 if let Err(error) = node_client.submit_solution_response(response).await {
+                    handlers
+                        .farming_notification
+                        .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                            result: ProvingResult::Rejected,
+                            duration: start.elapsed(),
+                        }));
                     warn!(
                         %slot,
                         %sector_index,
@@ -311,6 +376,14 @@ where
                     );
                     break 'solutions_processing;
                 }
+
+                handlers
+                    .farming_notification
+                    .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                        result: ProvingResult::Success,
+                        duration: start.elapsed(),
+                    }));
+                start = Instant::now();
             }
         }
     }
