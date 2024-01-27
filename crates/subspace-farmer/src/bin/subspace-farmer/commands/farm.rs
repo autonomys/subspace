@@ -1,7 +1,9 @@
 mod dsn;
+mod metrics;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::utils::{shutdown_signal, FarmerMetrics};
+use crate::commands::farm::metrics::FarmerMetrics;
+use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
