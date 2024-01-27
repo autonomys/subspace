@@ -30,7 +30,8 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
-    run_future_in_dedicated_thread, thread_pool_core_indices, AsyncJoinOnDrop,
+    recommended_number_of_farming_threads, run_future_in_dedicated_thread,
+    thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -113,7 +114,8 @@ pub(crate) struct FarmingArgs {
     #[arg(long)]
     sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
-    /// number of NUMA nodes on NUMA system. It is further restricted by
+    /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
+    /// restricted by
     /// `--sector-downloading-concurrency` and setting this option higher than
     /// `--sector-downloading-concurrency` will have no effect.
     #[arg(long)]
@@ -130,7 +132,8 @@ pub(crate) struct FarmingArgs {
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
-    /// on UMA system and number of logical CPUs available in NUMA node on NUMA system.
+    /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
+    /// groups on large CPUs.
     ///
     /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
@@ -151,7 +154,8 @@ pub(crate) struct FarmingArgs {
     plotting_cpu_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
     /// to not affect farming as much, defaults to half of the number of logical CPUs available on
-    /// UMA system and number of logical CPUs available in NUMA node on NUMA system.
+    /// UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
+    /// groups on large CPUs.
     ///
     /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
@@ -497,7 +501,6 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
-    let all_cpu_cores = all_cpu_cores();
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
         plotting_thread_pool_core_indices
             .into_iter()
@@ -505,14 +508,9 @@ where
     )?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
-        .unwrap_or_else(|| {
-            all_cpu_cores
-                .first()
-                .expect("Not empty according to function description; qed")
-                .cpu_cores()
-                .len()
-        });
+        .unwrap_or_else(recommended_number_of_farming_threads);
 
+    let all_cpu_cores = all_cpu_cores();
     if all_cpu_cores.len() > 1 {
         info!(numa_nodes = %all_cpu_cores.len(), "NUMA system detected");
 
