@@ -19,11 +19,10 @@
 #![feature(associated_type_bounds)]
 
 use frame_system::pallet_prelude::BlockNumberFor;
-use log::error;
 pub use pallet::*;
 use sp_mmr_primitives::{LeafDataProvider, OnNewRoot};
-use sp_runtime::traits::One;
-use sp_runtime::{DigestItem, Saturating};
+use sp_runtime::traits::{CheckedSub, One};
+use sp_runtime::DigestItem;
 use sp_subspace_mmr::subspace_mmr_runtime_interface::get_mmr_leaf_data;
 use sp_subspace_mmr::{LeafDataV0, MmrDigest, MmrLeaf};
 
@@ -52,16 +51,12 @@ impl<T: Config> LeafDataProvider for Pallet<T> {
     type LeafData = MmrLeaf<BlockNumberFor<T>, T::Hash>;
 
     fn leaf_data() -> Self::LeafData {
-        let block_number = frame_system::Pallet::<T>::block_number().saturating_sub(One::one());
+        let block_number = frame_system::Pallet::<T>::block_number()
+            .checked_sub(&One::one())
+            .expect("`block_number` will always be >= 1; qed");
         let block_hash = frame_system::Pallet::<T>::parent_hash();
-        // unfortunately, we Leaf data provider trait expects the impl to be infallible
-        // but our host function might fail for any reason but practically shouldn't since
-        // we are querying the immediate parent block
-        // We will just log an error in case of such ever happening
-        let leaf_data = get_mmr_leaf_data(block_hash.into()).unwrap_or_else(|| {
-            error!(target: "runtime::subspace_mmr", "Failed to fetch leaf data for Block hash{block_hash:?}");
-            Default::default()
-        });
+        let leaf_data = get_mmr_leaf_data(block_hash.into())
+            .expect("leaf data for parent hash must always be derived; qed");
         MmrLeaf::V0(LeafDataV0 {
             block_number,
             block_hash,

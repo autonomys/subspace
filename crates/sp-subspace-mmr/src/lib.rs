@@ -41,7 +41,7 @@ pub enum MmrLeaf<BlockNumber, Hash> {
 pub struct LeafDataV0<BlockNumber, Hash> {
     pub block_number: BlockNumber,
     pub block_hash: Hash,
-    /// Can be used to prove specific storage after block was imported
+    /// Can be used to prove specific storage after block was pruned
     pub state_root: Hash,
     /// Can be used to prove block body
     pub extrinsics_root: Hash,

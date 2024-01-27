@@ -183,8 +183,8 @@ impl From<SubstrateConfiguration> for Configuration {
                 }),
             telemetry_endpoints: configuration.telemetry_endpoints,
             default_heap_pages: None,
-            // Offchain worker is not used and indexing is used by MMR gadget to
-            // prune fork mmr leaves once a given block is finalized
+            // Offchain worker is not used
+            // indexing is used to store the mmr leaves from Runtime
             offchain_worker: OffchainWorkerConfig {
                 enabled: false,
                 indexing_enabled: true,

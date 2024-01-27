@@ -47,8 +47,9 @@ where
         let header = self
             .consensus_client
             .header(consensus_block_hash.into())
-            .ok()
-            .flatten()?;
+            .expect(
+                "Database error is fatal in host function, there is no recovery from this; qed",
+            )?;
 
         Some(LeafData {
             state_root: H256::from_slice(header.state_root().as_ref()),

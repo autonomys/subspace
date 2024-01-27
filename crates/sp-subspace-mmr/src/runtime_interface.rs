@@ -11,7 +11,6 @@ use sp_runtime_interface::runtime_interface;
 #[runtime_interface]
 pub trait SubspaceMmrRuntimeInterface {
     /// Returns the MMR leaf.
-    #[allow(dead_code)]
     fn get_mmr_leaf_data(&mut self, consensus_block_hash: H256) -> Option<LeafData> {
         self.extension::<SubspaceMmrExtension>()
             .expect("No `SubspaceMmrExtension` associated for the current context!")
