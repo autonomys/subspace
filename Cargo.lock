@@ -1637,6 +1637,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckb-merkle-mountain-range"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ccb671c5921be8a84686e6212ca184cb1d7c51cadcdbfcbd1cc3f042f5dfb8"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "clap"
 version = "4.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6513,6 +6522,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "mmr-gadget"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "futures",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sc-offchain",
+ "sp-api",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-beefy",
+ "sp-core",
+ "sp-mmr-primitives",
+ "sp-runtime",
+]
+
+[[package]]
+name = "mmr-rpc"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "anyhow",
+ "jsonrpsee",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-mmr-primitives",
+ "sp-runtime",
+]
+
+[[package]]
 name = "mockall"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7292,6 +7336,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-mmr"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-object-store"
 version = "0.1.0"
 dependencies = [
@@ -7402,6 +7464,21 @@ dependencies = [
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
  "subspace-verification",
+]
+
+[[package]]
+name = "pallet-subspace-mmr"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+ "sp-subspace-mmr",
 ]
 
 [[package]]
@@ -10546,6 +10623,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-consensus-beefy"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "lazy_static",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-io",
+ "sp-mmr-primitives",
+ "sp-runtime",
+ "sp-std",
+ "strum 0.24.1",
+]
+
+[[package]]
 name = "sp-consensus-grandpa"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -10944,6 +11040,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-mmr-primitives"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
+dependencies = [
+ "ckb-merkle-mountain-range",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-core",
+ "sp-debug-derive",
+ "sp-runtime",
+ "sp-std",
+ "thiserror",
+]
+
+[[package]]
 name = "sp-objects"
 version = "0.1.0"
 dependencies = [
@@ -11127,6 +11241,20 @@ dependencies = [
  "ref-cast",
  "serde",
  "sp-debug-derive",
+ "sp-std",
+]
+
+[[package]]
+name = "sp-subspace-mmr"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-blockchain",
+ "sp-core",
+ "sp-externalities",
+ "sp-runtime",
+ "sp-runtime-interface",
  "sp-std",
 ]
 
@@ -11762,10 +11890,12 @@ dependencies = [
  "pallet-balances",
  "pallet-domains",
  "pallet-messenger",
+ "pallet-mmr",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",
+ "pallet-subspace-mmr",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-fees",
@@ -11785,6 +11915,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
@@ -11825,6 +11956,8 @@ dependencies = [
  "futures",
  "hex",
  "jsonrpsee",
+ "mmr-gadget",
+ "mmr-rpc",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -11864,10 +11997,12 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
  "sp-session",
+ "sp-subspace-mmr",
  "sp-timestamp",
  "sp-transaction-pool",
  "static_assertions",
@@ -11926,9 +12061,11 @@ dependencies = [
  "pallet-balances",
  "pallet-domains",
  "pallet-messenger",
+ "pallet-mmr",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-subspace",
+ "pallet-subspace-mmr",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-fees",
@@ -11947,6 +12084,7 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-inherents",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
@@ -11997,6 +12135,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
+ "sp-subspace-mmr",
  "sp-timestamp",
  "subspace-core-primitives",
  "subspace-runtime-primitives",

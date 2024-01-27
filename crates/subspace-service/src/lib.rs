@@ -89,10 +89,12 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
+use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
+use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
@@ -100,12 +102,12 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{BlockNumber, PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -197,6 +199,7 @@ pub type HostFunctions = (
     sp_io::SubstrateHostFunctions,
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
+    sp_subspace_mmr::HostFunctions,
 );
 
 /// Host functions required for Subspace
@@ -206,6 +209,7 @@ pub type HostFunctions = (
     frame_benchmarking::benchmarking::HostFunctions,
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
+    sp_subspace_mmr::HostFunctions,
 );
 
 /// Runtime executor for Subspace
@@ -362,6 +366,10 @@ where
                 self.client.clone(),
                 self.executor.clone(),
             ),
+        )));
+
+        exts.register(SubspaceMmrExtension::new(Arc::new(
+            SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.client.clone()),
         )));
 
         exts
@@ -633,7 +641,8 @@ where
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
-        + ObjectsApi<Block>,
+        + ObjectsApi<Block>
+        + MmrApi<Block, Hash, BlockNumber>,
 {
     let PartialComponents {
         client,
@@ -654,6 +663,7 @@ where
         mut telemetry,
     } = other;
 
+    let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
     let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
@@ -898,6 +908,19 @@ where
         );
     }
 
+    // mmr offchain indexer
+    if offchain_indexing_enabled {
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "mmr-gadget",
+            None,
+            mmr_gadget::MmrGadget::start(
+                client.clone(),
+                backend.clone(),
+                sp_mmr_primitives::INDEXING_PREFIX.to_vec(),
+            ),
+        );
+    }
+
     let backoff_authoring_blocks: Option<()> = None;
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
@@ -1032,6 +1055,7 @@ where
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
             let transaction_pool = transaction_pool.clone();
             let chain_spec = config.base.chain_spec.cloned_box();
+            let backend = backend.clone();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
@@ -1048,6 +1072,7 @@ where
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
+                    backend: backend.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

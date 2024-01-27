@@ -66,6 +66,7 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic};
+use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::marker::PhantomData;
@@ -212,6 +213,9 @@ where
                 self.consensus_client.clone(),
                 self.executor.clone(),
             ),
+        )));
+        exts.register(SubspaceMmrExtension::new(Arc::new(
+            SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.consensus_client.clone()),
         )));
         exts
     }
