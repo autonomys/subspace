@@ -402,7 +402,7 @@ where
 
             handlers.sector_update.call_simple(&(
                 sector_index,
-                SectorUpdate::Plotting(SectorPlottingDetails::Wrote(start.elapsed())),
+                SectorUpdate::Plotting(SectorPlottingDetails::Written(start.elapsed())),
             ));
         }
 
