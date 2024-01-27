@@ -703,15 +703,30 @@ where
                     let farmer_metrics = farmer_metrics.clone();
 
                     move |(_sector_index, sector_state)| match sector_state {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
+                            farmer_metrics.sector_plotting.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
+                            farmer_metrics.sector_downloading.inc();
+                        }
                         SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
                             farmer_metrics
                                 .observe_sector_downloading_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_downloaded.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
+                            farmer_metrics.sector_encoding.inc();
                         }
                         SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
                             farmer_metrics.observe_sector_encoding_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_encoded.inc();
                         }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Wrote(time)) => {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
+                            farmer_metrics.sector_writing.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
                             farmer_metrics.observe_sector_writing_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_written.inc();
                         }
                         SectorUpdate::Plotting(SectorPlottingDetails::Finished {
                             plotted_sector,
@@ -720,6 +735,7 @@ where
                         }) => {
                             on_plotted_sector_callback(plotted_sector, old_plotted_sector);
                             farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_plotted.inc();
                         }
                         _ => {}
                     }

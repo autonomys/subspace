@@ -560,8 +560,8 @@ pub enum SectorPlottingDetails {
     Encoded(Duration),
     /// Writing sector
     Writing,
-    /// Wrote sector
-    Wrote(Duration),
+    /// Written sector
+    Written(Duration),
     /// Finished plotting
     Finished {
         /// Information about plotted sector
