@@ -13,9 +13,11 @@ use crate::single_disk_farm::farming::{
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
-pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
+};
+pub use crate::single_disk_farm::plotting::{
+    PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
@@ -537,55 +539,6 @@ type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
-
-/// Details about sector currently being plotted
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorPlottingDetails {
-    /// Starting plotting of a sector
-    Starting {
-        /// Progress so far in % (not including this sector)
-        progress: f32,
-        /// Whether sector is being replotted
-        replotting: bool,
-        /// Whether this is the last sector queued so far
-        last_queued: bool,
-    },
-    /// Downloading sector pieces
-    Downloading,
-    /// Downloaded sector pieces
-    Downloaded(Duration),
-    /// Encoding sector pieces
-    Encoding,
-    /// Encoded sector pieces
-    Encoded(Duration),
-    /// Writing sector
-    Writing,
-    /// Written sector
-    Written(Duration),
-    /// Finished plotting
-    Finished {
-        /// Information about plotted sector
-        plotted_sector: PlottedSector,
-        /// Information about old plotted sector that was replaced
-        old_plotted_sector: Option<PlottedSector>,
-        /// How much time it took to plot a sector
-        time: Duration,
-    },
-}
-
-/// Details about sector expiration
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorExpirationDetails {
-    /// Sector expiration became known
-    Determined {
-        /// Segment index at which sector expires
-        expires_at: SegmentIndex,
-    },
-    /// Sector will expire at the next segment index and should be replotted
-    AboutToExpire,
-    /// Sector already expired
-    Expired,
-}
 
 /// Various sector updates
 #[derive(Debug, Clone, Encode, Decode)]
