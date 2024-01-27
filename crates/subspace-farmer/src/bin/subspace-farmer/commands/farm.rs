@@ -696,14 +696,30 @@ where
                 };
 
             single_disk_farm
-                .on_sector_update(Arc::new(move |(_sector_index, sector_state)| {
-                    if let SectorUpdate::Plotting(SectorPlottingDetails::Finished {
-                        plotted_sector,
-                        old_plotted_sector,
-                        ..
-                    }) = sector_state
-                    {
-                        on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                .on_sector_update(Arc::new({
+                    let single_disk_farm_id = *single_disk_farm.id();
+                    let farmer_metrics = farmer_metrics.clone();
+
+                    move |(_sector_index, sector_state)| match sector_state {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
+                            farmer_metrics
+                                .observe_sector_downloading_time(&single_disk_farm_id, time);
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
+                            farmer_metrics.observe_sector_encoding_time(&single_disk_farm_id, time);
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Wrote(time)) => {
+                            farmer_metrics.observe_sector_writing_time(&single_disk_farm_id, time);
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+                            plotted_sector,
+                            old_plotted_sector,
+                            time,
+                        }) => {
+                            on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                            farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
+                        }
+                        _ => {}
                     }
                 }))
                 .detach();
@@ -715,13 +731,15 @@ where
 
                     move |farming_notification| match farming_notification {
                         FarmingNotification::Auditing(auditing_details) => {
-                            farmer_metrics
-                                .observe_auditing(&single_disk_farm_id, &auditing_details.duration);
+                            farmer_metrics.observe_auditing_time(
+                                &single_disk_farm_id,
+                                &auditing_details.time,
+                            );
                         }
                         FarmingNotification::Proving(proving_details) => {
-                            farmer_metrics.observe_proving(
+                            farmer_metrics.observe_proving_time(
                                 &single_disk_farm_id,
-                                &proving_details.duration,
+                                &proving_details.time,
                                 proving_details.result,
                             );
                         }

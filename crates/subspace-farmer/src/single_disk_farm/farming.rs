@@ -30,7 +30,7 @@ pub struct AuditingDetails {
     /// Number of sectors that were audited
     pub sectors_count: SectorIndex,
     /// Audit duration
-    pub duration: Duration,
+    pub time: Duration,
 }
 
 /// Result of the proving
@@ -61,7 +61,7 @@ pub struct ProvingDetails {
     /// Whether proving ended up being successful
     pub result: ProvingResult,
     /// Audit duration
-    pub duration: Duration,
+    pub time: Duration,
 }
 
 /// Various farming notifications
@@ -327,7 +327,7 @@ where
             .farming_notification
             .call_simple(&FarmingNotification::Auditing(AuditingDetails {
                 sectors_count: sectors_metadata.len() as SectorIndex,
-                duration: start.elapsed(),
+                time: start.elapsed(),
             }));
 
         'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
@@ -355,7 +355,7 @@ where
                         .farming_notification
                         .call_simple(&FarmingNotification::Proving(ProvingDetails {
                             result: ProvingResult::Timeout,
-                            duration: start.elapsed(),
+                            time: start.elapsed(),
                         }));
                     warn!(
                         %slot,
@@ -378,7 +378,7 @@ where
                         .farming_notification
                         .call_simple(&FarmingNotification::Proving(ProvingDetails {
                             result: ProvingResult::Rejected,
-                            duration: start.elapsed(),
+                            time: start.elapsed(),
                         }));
                     warn!(
                         %slot,
@@ -393,7 +393,7 @@ where
                     .farming_notification
                     .call_simple(&FarmingNotification::Proving(ProvingDetails {
                         result: ProvingResult::Success,
-                        duration: start.elapsed(),
+                        time: start.elapsed(),
                     }));
                 start = Instant::now();
             }
