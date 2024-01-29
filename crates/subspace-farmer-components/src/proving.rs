@@ -60,6 +60,20 @@ pub enum ProvingError {
     RecordReadingError(#[from] ReadingError),
 }
 
+impl ProvingError {
+    /// Whether this error is fatal and makes farm unusable
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            ProvingError::InvalidErasureCodingInstance => true,
+            ProvingError::FailedToCreatePolynomialForRecord { .. } => false,
+            ProvingError::FailedToCreateChunkWitness { .. } => false,
+            ProvingError::FailedToDecodeSectorContentsMap(_) => false,
+            ProvingError::Io(_) => true,
+            ProvingError::RecordReadingError(error) => error.is_fatal(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct WinningChunk {
     /// Chunk offset within s-bucket

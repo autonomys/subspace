@@ -6,7 +6,7 @@ use crate::single_disk_farm::Handlers;
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, Error, Input, Output};
 use parking_lot::Mutex;
 use rayon::ThreadPoolBuildError;
 use std::sync::Arc;
@@ -71,6 +71,23 @@ pub enum FarmingNotification {
     Auditing(AuditingDetails),
     /// Proving
     Proving(ProvingDetails),
+    /// Non-fatal farming error
+    NonFatalError(Arc<FarmingError>),
+}
+
+/// Special decoded farming error
+#[derive(Debug, Encode, Decode)]
+pub struct DecodedFarmingError {
+    /// String representation of an error
+    error: String,
+    /// Whether error is fatal
+    is_fatal: bool,
+}
+
+impl fmt::Display for DecodedFarmingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
 }
 
 /// Errors that happen during farming
@@ -100,6 +117,54 @@ pub enum FarmingError {
     /// Failed to create thread pool
     #[error("Failed to create thread pool: {0}")]
     FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
+    /// Decoded farming error
+    #[error("Decoded farming error {0}")]
+    Decoded(DecodedFarmingError),
+}
+
+impl Encode for FarmingError {
+    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
+        let error = DecodedFarmingError {
+            error: self.to_string(),
+            is_fatal: self.is_fatal(),
+        };
+
+        error.encode_to(dest)
+    }
+}
+
+impl Decode for FarmingError {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
+        DecodedFarmingError::decode(input).map(FarmingError::Decoded)
+    }
+}
+
+impl FarmingError {
+    /// String variant of the error, primarily for monitoring purposes
+    pub fn str_variant(&self) -> &str {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => "FailedToSubscribeSlotInfo",
+            FarmingError::FailedToGetFarmerInfo { .. } => "FailedToGetFarmerInfo",
+            FarmingError::LowLevelAuditing(_) => "LowLevelAuditing",
+            FarmingError::LowLevelProving(_) => "LowLevelProving",
+            FarmingError::Io(_) => "Io",
+            FarmingError::FailedToCreateThreadPool(_) => "FailedToCreateThreadPool",
+            FarmingError::Decoded(_) => "Decoded",
+        }
+    }
+
+    /// Whether this error is fatal and makes farm unusable
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => true,
+            FarmingError::FailedToGetFarmerInfo { .. } => true,
+            FarmingError::LowLevelAuditing(_) => true,
+            FarmingError::LowLevelProving(error) => error.is_fatal(),
+            FarmingError::Io(_) => true,
+            FarmingError::FailedToCreateThreadPool(_) => true,
+            FarmingError::Decoded(error) => error.is_fatal,
+        }
+    }
 }
 
 pub(super) async fn slot_notification_forwarder<NC>(
@@ -298,108 +363,127 @@ where
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
-        let start = Instant::now();
-        let slot = slot_info.slot_number;
-        let sectors_metadata = sectors_metadata.read().await;
+        let result: Result<(), FarmingError> = try {
+            let start = Instant::now();
+            let slot = slot_info.slot_number;
+            let sectors_metadata = sectors_metadata.read().await;
 
-        debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
+            debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
 
-        let mut sectors_solutions = {
-            let modifying_sector_guard = modifying_sector_index.read().await;
-            let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
+            let mut sectors_solutions = {
+                let modifying_sector_guard = modifying_sector_index.read().await;
+                let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            plot_audit.audit(PlotAuditOptions::<PosTable> {
-                public_key: &public_key,
-                reward_address: &reward_address,
-                slot_info,
-                sectors_metadata: &sectors_metadata,
-                kzg: &kzg,
-                erasure_coding: &erasure_coding,
-                maybe_sector_being_modified,
-                table_generator: &table_generator,
-            })?
+                plot_audit.audit(PlotAuditOptions::<PosTable> {
+                    public_key: &public_key,
+                    reward_address: &reward_address,
+                    slot_info,
+                    sectors_metadata: &sectors_metadata,
+                    kzg: &kzg,
+                    erasure_coding: &erasure_coding,
+                    maybe_sector_being_modified,
+                    table_generator: &table_generator,
+                })?
+            };
+
+            sectors_solutions.sort_by(|a, b| {
+                let a_solution_distance =
+                    a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+                let b_solution_distance =
+                    b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+
+                a_solution_distance.cmp(&b_solution_distance)
+            });
+
+            handlers
+                .farming_notification
+                .call_simple(&FarmingNotification::Auditing(AuditingDetails {
+                    sectors_count: sectors_metadata.len() as SectorIndex,
+                    time: start.elapsed(),
+                }));
+
+            'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+                if sector_solutions.is_empty() {
+                    continue;
+                }
+                let mut start = Instant::now();
+                for maybe_solution in sector_solutions {
+                    let solution = match maybe_solution {
+                        Ok(solution) => solution,
+                        Err(error) => {
+                            error!(%slot, %sector_index, %error, "Failed to prove");
+                            // Do not error completely as disk corruption or other reasons why
+                            // proving might fail
+                            start = Instant::now();
+                            continue;
+                        }
+                    };
+
+                    debug!(%slot, %sector_index, "Solution found");
+                    trace!(?solution, "Solution found");
+
+                    if start.elapsed() >= farming_timeout {
+                        handlers
+                            .farming_notification
+                            .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                                result: ProvingResult::Timeout,
+                                time: start.elapsed(),
+                            }));
+                        warn!(
+                            %slot,
+                            %sector_index,
+                            "Proving for solution skipped due to farming time limit",
+                        );
+
+                        break 'solutions_processing;
+                    }
+
+                    let response = SolutionResponse {
+                        slot_number: slot,
+                        solution,
+                    };
+
+                    handlers.solution.call_simple(&response);
+
+                    if let Err(error) = node_client.submit_solution_response(response).await {
+                        handlers
+                            .farming_notification
+                            .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                                result: ProvingResult::Rejected,
+                                time: start.elapsed(),
+                            }));
+                        warn!(
+                            %slot,
+                            %sector_index,
+                            %error,
+                            "Failed to send solution to node, skipping further proving for this slot",
+                        );
+                        break 'solutions_processing;
+                    }
+
+                    handlers
+                        .farming_notification
+                        .call_simple(&FarmingNotification::Proving(ProvingDetails {
+                            result: ProvingResult::Success,
+                            time: start.elapsed(),
+                        }));
+                    start = Instant::now();
+                }
+            }
         };
 
-        sectors_solutions.sort_by(|a, b| {
-            let a_solution_distance = a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-            let b_solution_distance = b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-
-            a_solution_distance.cmp(&b_solution_distance)
-        });
-
-        handlers
-            .farming_notification
-            .call_simple(&FarmingNotification::Auditing(AuditingDetails {
-                sectors_count: sectors_metadata.len() as SectorIndex,
-                time: start.elapsed(),
-            }));
-
-        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
-            if sector_solutions.is_empty() {
-                continue;
-            }
-            let mut start = Instant::now();
-            for maybe_solution in sector_solutions {
-                let solution = match maybe_solution {
-                    Ok(solution) => solution,
-                    Err(error) => {
-                        error!(%slot, %sector_index, %error, "Failed to prove");
-                        // Do not error completely as disk corruption or other reasons why
-                        // proving might fail
-                        start = Instant::now();
-                        continue;
-                    }
-                };
-
-                debug!(%slot, %sector_index, "Solution found");
-                trace!(?solution, "Solution found");
-
-                if start.elapsed() >= farming_timeout {
-                    handlers
-                        .farming_notification
-                        .call_simple(&FarmingNotification::Proving(ProvingDetails {
-                            result: ProvingResult::Timeout,
-                            time: start.elapsed(),
-                        }));
-                    warn!(
-                        %slot,
-                        %sector_index,
-                        "Proving for solution skipped due to farming time limit",
-                    );
-
-                    break 'solutions_processing;
-                }
-
-                let response = SolutionResponse {
-                    slot_number: slot,
-                    solution,
-                };
-
-                handlers.solution.call_simple(&response);
-
-                if let Err(error) = node_client.submit_solution_response(response).await {
-                    handlers
-                        .farming_notification
-                        .call_simple(&FarmingNotification::Proving(ProvingDetails {
-                            result: ProvingResult::Rejected,
-                            time: start.elapsed(),
-                        }));
-                    warn!(
-                        %slot,
-                        %sector_index,
-                        %error,
-                        "Failed to send solution to node, skipping further proving for this slot",
-                    );
-                    break 'solutions_processing;
-                }
+        if let Err(error) = result {
+            if error.is_fatal() {
+                return Err(error);
+            } else {
+                warn!(
+                    %error,
+                    "Non-fatal farming error"
+                );
 
                 handlers
                     .farming_notification
-                    .call_simple(&FarmingNotification::Proving(ProvingDetails {
-                        result: ProvingResult::Success,
-                        time: start.elapsed(),
-                    }));
-                start = Instant::now();
+                    .call_simple(&FarmingNotification::NonFatalError(Arc::new(error)));
             }
         }
     }

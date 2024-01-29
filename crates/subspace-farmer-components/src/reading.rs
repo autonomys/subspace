@@ -75,6 +75,21 @@ pub enum ReadingError {
     ChecksumMismatch,
 }
 
+impl ReadingError {
+    /// Whether this error is fatal and renders farm unusable
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            ReadingError::FailedToReadChunk { .. } => false,
+            ReadingError::InvalidChunk { .. } => false,
+            ReadingError::FailedToErasureDecodeRecord { .. } => false,
+            ReadingError::WrongRecordSizeAfterDecoding { .. } => false,
+            ReadingError::FailedToDecodeSectorContentsMap(_) => false,
+            ReadingError::Io(_) => true,
+            ReadingError::ChecksumMismatch => false,
+        }
+    }
+}
+
 /// Record contained in the plot
 #[derive(Debug, Clone)]
 pub struct PlotRecord {
