@@ -15,10 +15,10 @@ use std::{fmt, io};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_plot_sync;
+use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_farmer_components::{proving, ReadAtSync};
+use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -88,9 +88,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
+    /// Low-level auditing error
+    #[error("Low-level auditing error: {0}")]
+    LowLevelAuditing(#[from] AuditingError),
     /// Low-level proving error
     #[error("Low-level proving error: {0}")]
-    LowLevelProving(#[from] proving::ProvingError),
+    LowLevelProving(#[from] ProvingError),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -181,10 +184,13 @@ where
     pub fn audit<PosTable>(
         &'a self,
         options: PlotAuditOptions<'a, PosTable>,
-    ) -> Vec<(
-        SectorIndex,
-        impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, ProvingError>> + 'a,
-    )>
+    ) -> Result<
+        Vec<(
+            SectorIndex,
+            impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, ProvingError>> + 'a,
+        )>,
+        AuditingError,
+    >
     where
         PosTable: Table,
     {
@@ -206,9 +212,9 @@ where
             &self.0,
             sectors_metadata,
             maybe_sector_being_modified,
-        );
+        )?;
 
-        audit_results
+        Ok(audit_results
             .into_iter()
             .filter_map(|audit_results| {
                 let sector_index = audit_results.sector_index;
@@ -239,7 +245,7 @@ where
 
                 Some((sector_index, sector_solutions))
             })
-            .collect()
+            .collect())
     }
 }
 
@@ -311,7 +317,7 @@ where
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
-            });
+            })?;
 
             sectors_solutions
         };
