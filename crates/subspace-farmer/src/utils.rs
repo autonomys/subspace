@@ -9,7 +9,6 @@ use crate::thread_pool_manager::{PlottingThreadPoolManager, PlottingThreadPoolPa
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::Either;
-use hwlocality::object::types::ObjectType;
 use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
 use std::num::{NonZeroUsize, ParseIntError};
@@ -221,7 +220,7 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
         Ok(topology) => {
             let cpu_cores = topology
                 // Iterate over groups of L3 caches
-                .objects_with_type(ObjectType::L3Cache)
+                .objects_with_type(hwlocality::object::types::ObjectType::L3Cache)
                 // For each NUMA nodes get CPU set
                 .filter_map(|node| node.cpuset())
                 // For each CPU set extract individual cores
