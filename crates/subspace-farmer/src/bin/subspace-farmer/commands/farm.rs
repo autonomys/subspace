@@ -1,7 +1,9 @@
 mod dsn;
+mod metrics;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::utils::{shutdown_signal, FarmerMetrics};
+use crate::commands::farm::metrics::FarmerMetrics;
+use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -22,6 +24,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
     SectorPlottingDetails, SectorUpdate, SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -694,27 +697,72 @@ where
                     }
                 };
 
-            // Register audit plot events
-            let farmer_metrics = farmer_metrics.clone();
-            let on_plot_audited_callback = move |audit_event: &_| {
-                farmer_metrics.observe_audit_event(audit_event);
-            };
-
             single_disk_farm
-                .on_sector_update(Arc::new(move |(_sector_index, sector_state)| {
-                    if let SectorUpdate::Plotting(SectorPlottingDetails::Finished {
-                        plotted_sector,
-                        old_plotted_sector,
-                        ..
-                    }) = sector_state
-                    {
-                        on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                .on_sector_update(Arc::new({
+                    let single_disk_farm_id = *single_disk_farm.id();
+                    let farmer_metrics = farmer_metrics.clone();
+
+                    move |(_sector_index, sector_state)| match sector_state {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
+                            farmer_metrics.sector_plotting.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
+                            farmer_metrics.sector_downloading.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
+                            farmer_metrics
+                                .observe_sector_downloading_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_downloaded.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
+                            farmer_metrics.sector_encoding.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
+                            farmer_metrics.observe_sector_encoding_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_encoded.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
+                            farmer_metrics.sector_writing.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
+                            farmer_metrics.observe_sector_writing_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_written.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+                            plotted_sector,
+                            old_plotted_sector,
+                            time,
+                        }) => {
+                            on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                            farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_plotted.inc();
+                        }
+                        _ => {}
                     }
                 }))
                 .detach();
 
             single_disk_farm
-                .on_plot_audited(Arc::new(on_plot_audited_callback))
+                .on_farming_notification(Arc::new({
+                    let single_disk_farm_id = *single_disk_farm.id();
+                    let farmer_metrics = farmer_metrics.clone();
+
+                    move |farming_notification| match farming_notification {
+                        FarmingNotification::Auditing(auditing_details) => {
+                            farmer_metrics.observe_auditing_time(
+                                &single_disk_farm_id,
+                                &auditing_details.time,
+                            );
+                        }
+                        FarmingNotification::Proving(proving_details) => {
+                            farmer_metrics.observe_proving_time(
+                                &single_disk_farm_id,
+                                &proving_details.time,
+                                proving_details.result,
+                            );
+                        }
+                    }
+                }))
                 .detach();
 
             single_disk_farm.run()
