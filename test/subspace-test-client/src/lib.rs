@@ -191,6 +191,7 @@ async fn start_farming<PosTable, Client>(
 
             let solution = audit_result
                 .unwrap()
+                .unwrap()
                 .solution_candidates
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)

@@ -250,7 +250,7 @@ fn prove(
                 table_generator: &table_generator,
             };
 
-            let mut audit_results = plot_audit.audit(options);
+            let mut audit_results = plot_audit.audit(options).unwrap();
 
             group.bench_function("plot/single", |b| {
                 b.iter_batched(
@@ -259,7 +259,7 @@ fn prove(
                             return result;
                         }
 
-                        audit_results = plot_audit.audit(options);
+                        audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -293,7 +293,7 @@ fn prove(
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
             };
-            let mut audit_results = plot_audit.audit(options);
+            let mut audit_results = plot_audit.audit(options).unwrap();
 
             group.bench_function("plot/rayon", |b| {
                 b.iter_batched(
@@ -302,7 +302,7 @@ fn prove(
                             return result;
                         }
 
-                        audit_results = plot_audit.audit(options);
+                        audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },

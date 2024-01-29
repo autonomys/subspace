@@ -151,14 +151,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory/sync", |b| {
         b.iter(|| async {
-            black_box(audit_plot_sync(
-                black_box(public_key),
-                black_box(global_challenge),
-                black_box(solution_range),
-                black_box(&plotted_sector_bytes),
-                black_box(slice::from_ref(&plotted_sector.sector_metadata)),
-                black_box(None),
-            ));
+            black_box(
+                audit_plot_sync(
+                    black_box(public_key),
+                    black_box(global_challenge),
+                    black_box(solution_range),
+                    black_box(&plotted_sector_bytes),
+                    black_box(slice::from_ref(&plotted_sector.sector_metadata)),
+                    black_box(None),
+                )
+                .unwrap(),
+            );
         })
     });
 
@@ -193,14 +196,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Elements(sectors_count));
         group.bench_function("disk/sync", |b| {
             b.iter(|| {
-                black_box(audit_plot_sync(
-                    black_box(public_key),
-                    black_box(global_challenge),
-                    black_box(solution_range),
-                    black_box(&plot_file),
-                    black_box(&sectors_metadata),
-                    black_box(None),
-                ));
+                black_box(
+                    audit_plot_sync(
+                        black_box(public_key),
+                        black_box(global_challenge),
+                        black_box(solution_range),
+                        black_box(&plot_file),
+                        black_box(&sectors_metadata),
+                        black_box(None),
+                    )
+                    .unwrap(),
+                );
             });
         });
 

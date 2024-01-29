@@ -482,7 +482,8 @@ pub fn create_signed_vote(
             vote_solution_range,
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
-        );
+        )
+        .unwrap();
 
         let Some(audit_result) = maybe_audit_result else {
             // Sector didn't have any solutions
