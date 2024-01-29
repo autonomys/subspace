@@ -2,12 +2,28 @@ use crate::proving::SolutionCandidates;
 use crate::sector::{sector_size, SectorContentsMap, SectorMetadataChecksummed};
 use crate::{ReadAtOffset, ReadAtSync};
 use rayon::prelude::*;
+use std::io;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     Blake3Hash, PublicKey, SBucket, SectorId, SectorIndex, SectorSlotChallenge, SolutionRange,
 };
 use subspace_verification::is_within_solution_range;
-use tracing::warn;
+use thiserror::Error;
+
+/// Errors that happen during proving
+#[derive(Debug, Error)]
+pub enum AuditingError {
+    /// Failed read s-bucket
+    #[error("Failed read s-bucket {s_bucket_audit_index} of sector {sector_index}: {error}")]
+    SBucketReading {
+        /// Sector index
+        sector_index: SectorIndex,
+        /// S-bucket audit index
+        s_bucket_audit_index: SBucket,
+        /// Low-level error
+        error: io::Error,
+    },
+}
 
 /// Result of sector audit
 #[derive(Debug, Clone)]
@@ -42,7 +58,7 @@ pub fn audit_sector_sync<'a, Sector>(
     solution_range: SolutionRange,
     sector: Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
-) -> Option<AuditResult<'a, Sector>>
+) -> Result<Option<AuditResult<'a, Sector>>, AuditingError>
 where
     Sector: ReadAtSync + 'a,
 {
@@ -55,26 +71,24 @@ where
     } = collect_sector_auditing_details(public_key.hash(), global_challenge, sector_metadata);
 
     let mut s_bucket = vec![0; s_bucket_audit_size];
-    let read_s_bucket_result = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector);
+    sector
+        .read_at(&mut s_bucket, s_bucket_audit_offset_in_sector)
+        .map_err(|error| AuditingError::SBucketReading {
+            sector_index: sector_metadata.sector_index,
+            s_bucket_audit_index,
+            error,
+        })?;
 
-    if let Err(error) = read_s_bucket_result {
-        warn!(
-            %error,
-            sector_index = %sector_metadata.sector_index,
-            %s_bucket_audit_index,
-            "Failed read s-bucket",
-        );
-        return None;
-    }
-
-    let (winning_chunks, best_solution_distance) = map_winning_chunks(
+    let Some((winning_chunks, best_solution_distance)) = map_winning_chunks(
         &s_bucket,
         global_challenge,
         &sector_slot_challenge,
         solution_range,
-    )?;
+    ) else {
+        return Ok(None);
+    };
 
-    Some(AuditResult {
+    Ok(Some(AuditResult {
         sector_index: sector_metadata.sector_index,
         solution_candidates: SolutionCandidates::new(
             public_key,
@@ -85,7 +99,7 @@ where
             winning_chunks.into(),
         ),
         best_solution_distance,
-    })
+    }))
 }
 
 /// Audit the whole plot and generate streams of solutions
@@ -96,7 +110,7 @@ pub fn audit_plot_sync<'a, Plot>(
     plot: &'a Plot,
     sectors_metadata: &'a [SectorMetadataChecksummed],
     maybe_sector_being_modified: Option<SectorIndex>,
-) -> Vec<AuditResult<'a, ReadAtOffset<'a, Plot>>>
+) -> Result<Vec<AuditResult<'a, ReadAtOffset<'a, Plot>>>, AuditingError>
 where
     Plot: ReadAtSync + 'a,
 {
@@ -135,14 +149,11 @@ where
                 &mut s_bucket,
                 sector_auditing_info.s_bucket_audit_offset_in_sector,
             ) {
-                warn!(
-                    %error,
-                    sector_index = %sector_metadata.sector_index,
-                    s_bucket_audit_index = %sector_auditing_info.s_bucket_audit_index,
-                    "Failed read s-bucket",
-                );
-
-                return None;
+                return Some(Err(AuditingError::SBucketReading {
+                    sector_index: sector_metadata.sector_index,
+                    s_bucket_audit_index: sector_auditing_info.s_bucket_audit_index,
+                    error,
+                }));
             }
 
             let (winning_chunks, best_solution_distance) = map_winning_chunks(
@@ -152,7 +163,7 @@ where
                 solution_range,
             )?;
 
-            Some(AuditResult {
+            Some(Ok(AuditResult {
                 sector_index: sector_metadata.sector_index,
                 solution_candidates: SolutionCandidates::new(
                     public_key,
@@ -163,7 +174,7 @@ where
                     winning_chunks.into(),
                 ),
                 best_solution_distance,
-            })
+            }))
         })
         .collect()
 }
