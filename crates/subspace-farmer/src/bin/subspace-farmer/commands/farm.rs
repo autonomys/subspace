@@ -761,6 +761,9 @@ where
                                 proving_details.result,
                             );
                         }
+                        FarmingNotification::NonFatalError(error) => {
+                            farmer_metrics.note_farming_error(&single_disk_farm_id, error);
+                        }
                     }
                 }))
                 .detach();

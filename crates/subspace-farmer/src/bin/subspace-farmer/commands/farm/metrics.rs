@@ -5,12 +5,13 @@ use prometheus_client::registry::{Registry, Unit};
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 use subspace_farmer::single_disk_farm::farming::ProvingResult;
-use subspace_farmer::single_disk_farm::SingleDiskFarmId;
+use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
 
 #[derive(Debug, Clone)]
 pub(super) struct FarmerMetrics {
     auditing_time: Family<Vec<(String, String)>, Histogram>,
     proving_time: Family<Vec<(String, String)>, Histogram>,
+    farming_errors: Family<Vec<(String, String)>, Counter<u64, AtomicU64>>,
     sector_downloading_time: Family<Vec<(String, String)>, Histogram>,
     sector_encoding_time: Family<Vec<(String, String)>, Histogram>,
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
@@ -49,6 +50,14 @@ impl FarmerMetrics {
             "Proving time",
             Unit::Seconds,
             proving_time.clone(),
+        );
+
+        let farming_errors = Family::<_, _>::new_with_constructor(Counter::<_, _>::default);
+
+        sub_registry.register(
+            "farming_errors",
+            "Non-fatal farming errors",
+            farming_errors.clone(),
         );
 
         let sector_downloading_time = Family::<_, _>::new_with_constructor(|| {
@@ -170,6 +179,7 @@ impl FarmerMetrics {
         Self {
             auditing_time,
             proving_time,
+            farming_errors,
             sector_downloading_time,
             sector_encoding_time,
             sector_writing_time,
@@ -210,6 +220,19 @@ impl FarmerMetrics {
                 ("result".to_string(), result.to_string()),
             ])
             .observe(time.as_secs_f64());
+    }
+
+    pub(super) fn note_farming_error(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        error: &FarmingError,
+    ) {
+        self.farming_errors
+            .get_or_create(&vec![
+                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("error".to_string(), error.str_variant().to_string()),
+            ])
+            .inc();
     }
 
     pub(super) fn observe_sector_downloading_time(
