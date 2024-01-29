@@ -12,8 +12,9 @@ use sc_service::Configuration;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
     SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
@@ -80,7 +81,12 @@ struct SubstrateNetworkOptions {
     public_addr: Vec<sc_network::Multiaddr>,
 
     /// Listen on this multiaddress
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30333")]
+    #[arg(long, default_values_t = [
+        sc_network::Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(sc_network::multiaddr::Protocol::Tcp(30333)),
+        sc_network::Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(sc_network::multiaddr::Protocol::Tcp(30333))
+    ])]
     listen_on: Vec<sc_network::Multiaddr>,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
@@ -113,8 +119,16 @@ struct DsnOptions {
     /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
     #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
-        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Statically correct; qed"),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30433))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30433))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30433)),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30433))
     ])]
     dsn_listen_on: Vec<Multiaddr>,
 
