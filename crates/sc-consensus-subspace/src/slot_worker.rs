@@ -66,6 +66,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{
     BlockNumber, PotCheckpoints, PotOutput, PublicKey, Randomness, RewardSignature, SectorId,
@@ -82,13 +83,16 @@ const PENDING_SOLUTIONS_CHANNEL_CAPACITY: usize = 10;
 
 /// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
 /// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
-/// connected nodes (none of which will be synced initially).
+/// connected nodes (none of which will be synced initially). It also accounts for DSN sync, when
+/// normal Substrate sync is paused, which might happen before Substrate's internals decide there is
+/// a sync happening, but DSN sync is already in progress.
 #[derive(Debug, Clone)]
 pub struct SubspaceSyncOracle<SO>
 where
     SO: SyncOracle + Send + Sync,
 {
     force_authoring: bool,
+    pause_sync: Arc<AtomicBool>,
     inner: SO,
 }
 
@@ -99,8 +103,9 @@ where
     fn is_major_syncing(&self) -> bool {
         // This allows slot worker to produce blocks even when it is offline, which according to
         // modified Substrate fork will happen when node is offline or connected to non-synced peers
-        // (default state)
-        !self.force_authoring && self.inner.is_major_syncing()
+        // (default state), it also accounts for DSN sync
+        (!self.force_authoring && self.inner.is_major_syncing())
+            || self.pause_sync.load(Ordering::Acquire)
     }
 
     fn is_offline(&self) -> bool {
@@ -113,9 +118,14 @@ where
     SO: SyncOracle + Send + Sync,
 {
     /// Create new instance
-    pub fn new(force_authoring: bool, substrate_sync_oracle: SO) -> Self {
+    pub fn new(
+        force_authoring: bool,
+        pause_sync: Arc<AtomicBool>,
+        substrate_sync_oracle: SO,
+    ) -> Self {
         Self {
             force_authoring,
+            pause_sync,
             inner: substrate_sync_oracle,
         }
     }

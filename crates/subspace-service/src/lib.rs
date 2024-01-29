@@ -813,7 +813,11 @@ where
         }),
     );
 
-    let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
+    let sync_oracle = SubspaceSyncOracle::new(
+        config.base.force_authoring,
+        Arc::clone(&pause_sync),
+        sync_service.clone(),
+    );
 
     let subspace_archiver = tokio::task::block_in_place(|| {
         create_subspace_archiver(
