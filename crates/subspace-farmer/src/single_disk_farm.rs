@@ -361,9 +361,6 @@ pub enum SingleDiskFarmError {
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
-    /// Failed to decode sector metadata
-    #[error("Failed to decode sector metadata: {0}")]
-    FailedToDecodeSectorMetadata(parity_scale_codec::Error),
     /// Unexpected metadata version
     #[error("Unexpected metadata version {0}")]
     UnexpectedMetadataVersion(u8),
@@ -765,12 +762,13 @@ impl SingleDiskFarm {
             }
         };
 
+        let metadata_file_path = directory.join(Self::METADATA_FILE);
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .advise_random_access()
-            .open(directory.join(Self::METADATA_FILE))?;
+            .open(&metadata_file_path)?;
 
         metadata_file.advise_random_access()?;
 
@@ -827,14 +825,34 @@ impl SingleDiskFarm {
 
             let mut sector_metadata_bytes = vec![0; sector_metadata_size];
             for sector_index in 0..metadata_header.plotted_sector_count {
-                metadata_file.read_exact_at(
-                    &mut sector_metadata_bytes,
-                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
-                )?;
-                sectors_metadata.push(
-                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref())
-                        .map_err(SingleDiskFarmError::FailedToDecodeSectorMetadata)?,
-                );
+                let sector_offset =
+                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index);
+                metadata_file.read_exact_at(&mut sector_metadata_bytes, sector_offset)?;
+
+                let sector_metadata =
+                    match SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()) {
+                        Ok(sector_metadata) => sector_metadata,
+                        Err(error) => {
+                            warn!(
+                                path = %metadata_file_path.display(),
+                                %error,
+                                %sector_index,
+                                "Failed to decode sector metadata, replacing with dummy expired \
+                                sector metadata"
+                            );
+
+                            let dummy_sector = SectorMetadataChecksummed::from(SectorMetadata {
+                                sector_index,
+                                pieces_in_sector,
+                                s_bucket_sizes: Box::new([0; Record::NUM_S_BUCKETS]),
+                                history_size: HistorySize::from(SegmentIndex::ZERO),
+                            });
+                            metadata_file.write_all_at(&dummy_sector.encode(), sector_offset)?;
+
+                            dummy_sector
+                        }
+                    };
+                sectors_metadata.push(sector_metadata);
             }
 
             Arc::new(RwLock::new(sectors_metadata))
