@@ -524,16 +524,6 @@ where
         }
     }
 
-    // TODO: Remove code or environment variable once identified whether it helps or not
-    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpu_cores.len() > 1 {
-        unsafe {
-            libmimalloc_sys::mi_option_set(
-                libmimalloc_sys::mi_option_use_numa_nodes,
-                all_cpu_cores.len() as std::ffi::c_long,
-            );
-        }
-    }
-
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
