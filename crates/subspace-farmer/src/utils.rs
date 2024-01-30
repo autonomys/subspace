@@ -21,6 +21,9 @@ use tokio::runtime::Handle;
 use tokio::task;
 use tracing::{debug, warn};
 
+/// It doesn't make a lot of sense to have a huge number of farming threads, 32 is plenty
+const MAX_DEFAULT_FARMING_THREADS: usize = 32;
+
 /// Joins async join handle on drop
 pub struct AsyncJoinOnDrop<T> {
     handle: Option<task::JoinHandle<T>>,
@@ -203,13 +206,14 @@ pub fn recommended_number_of_farming_threads() -> usize {
                 // Get number of CPU cores
                 .map(|cpuset| cpuset.iter_set().count())
                 .find(|&count| count > 0)
-                .unwrap_or_else(num_cpus::get);
+                .unwrap_or_else(num_cpus::get)
+                .min(MAX_DEFAULT_FARMING_THREADS);
         }
         Err(error) => {
             warn!(%error, "Failed to get NUMA topology");
         }
     }
-    num_cpus::get()
+    num_cpus::get().min(MAX_DEFAULT_FARMING_THREADS)
 }
 
 /// Get all cpu cores, grouped into sets according to NUMA nodes or L3 cache groups on large CPUs.

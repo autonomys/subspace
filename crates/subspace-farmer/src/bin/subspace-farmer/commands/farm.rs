@@ -128,7 +128,8 @@ pub(crate) struct FarmingArgs {
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of logical CPUs
-    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
+    /// not more than 32 threads
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
