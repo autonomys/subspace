@@ -44,56 +44,65 @@ where
         piece_index: PieceIndex,
         piece: Piece,
     ) -> Option<Piece> {
-        if source_peer_id != self.dsn_node.id() {
-            let segment_index = piece_index.segment_index();
+        if source_peer_id == self.dsn_node.id() {
+            return Some(piece);
+        }
 
-            let maybe_segment_commitment = self
-                .segment_commitment_cache
-                .lock()
-                .get(&segment_index)
-                .copied();
-            let segment_commitment = match maybe_segment_commitment {
-                Some(segment_commitment) => segment_commitment,
-                None => {
-                    let segment_headers =
-                        match self.node_client.segment_headers(vec![segment_index]).await {
-                            Ok(segment_headers) => segment_headers,
-                            Err(error) => {
-                                error!(
-                                    %piece_index,
-                                    ?error,
-                                    "Failed tor retrieve segment headers from node"
-                                );
-                                return None;
-                            }
-                        };
+        let segment_index = piece_index.segment_index();
 
-                    let segment_commitment = match segment_headers.into_iter().next().flatten() {
-                        Some(segment_header) => segment_header.segment_commitment(),
-                        None => {
+        let maybe_segment_commitment = self
+            .segment_commitment_cache
+            .lock()
+            .get(&segment_index)
+            .copied();
+        let segment_commitment = match maybe_segment_commitment {
+            Some(segment_commitment) => segment_commitment,
+            None => {
+                let segment_headers =
+                    match self.node_client.segment_headers(vec![segment_index]).await {
+                        Ok(segment_headers) => segment_headers,
+                        Err(error) => {
                             error!(
                                 %piece_index,
-                                %segment_index,
-                                "Segment commitment for segment index wasn't found on node"
+                                ?error,
+                                "Failed tor retrieve segment headers from node"
                             );
                             return None;
                         }
                     };
 
-                    self.segment_commitment_cache
-                        .lock()
-                        .push(segment_index, segment_commitment);
+                let segment_commitment = match segment_headers.into_iter().next().flatten() {
+                    Some(segment_header) => segment_header.segment_commitment(),
+                    None => {
+                        error!(
+                            %piece_index,
+                            %segment_index,
+                            "Segment commitment for segment index wasn't found on node"
+                        );
+                        return None;
+                    }
+                };
 
-                    segment_commitment
-                }
-            };
+                self.segment_commitment_cache
+                    .lock()
+                    .push(segment_index, segment_commitment);
 
-            if !is_piece_valid(
-                &self.kzg,
-                &piece,
-                &segment_commitment,
-                piece_index.position(),
-            ) {
+                segment_commitment
+            }
+        };
+
+        let is_valid_fut = tokio::task::spawn_blocking({
+            let kzg = self.kzg.clone();
+
+            move || {
+                is_piece_valid(&kzg, &piece, &segment_commitment, piece_index.position())
+                    .then_some(piece)
+            }
+        });
+
+        match is_valid_fut.await.unwrap_or_default() {
+            Some(piece) => Some(piece),
+            None => {
                 warn!(
                     %piece_index,
                     %source_peer_id,
@@ -102,10 +111,8 @@ where
 
                 // We don't care about result here
                 let _ = self.dsn_node.ban_peer(source_peer_id).await;
-                return None;
+                None
             }
         }
-
-        Some(piece)
     }
 }

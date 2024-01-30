@@ -44,25 +44,34 @@ where
         piece_index: PieceIndex,
         piece: Piece,
     ) -> Option<Piece> {
-        if source_peer_id != self.dsn_node.id() {
-            let segment_index = piece_index.segment_index();
+        if source_peer_id == self.dsn_node.id() {
+            return Some(piece);
+        }
 
-            let maybe_segment_header = self.segment_headers_store.get_segment_header(segment_index);
-            let segment_commitment = match maybe_segment_header {
-                Some(segment_header) => segment_header.segment_commitment(),
-                None => {
-                    error!(%segment_index, "No segment commitment in the cache.");
+        let segment_index = piece_index.segment_index();
 
-                    return None;
-                }
-            };
+        let maybe_segment_header = self.segment_headers_store.get_segment_header(segment_index);
+        let segment_commitment = match maybe_segment_header {
+            Some(segment_header) => segment_header.segment_commitment(),
+            None => {
+                error!(%segment_index, "No segment commitment in the cache.");
 
-            if !is_piece_valid(
-                self.kzg,
-                &piece,
-                &segment_commitment,
-                piece_index.position(),
-            ) {
+                return None;
+            }
+        };
+
+        let is_valid_fut = tokio::task::spawn_blocking({
+            let kzg = self.kzg.clone();
+
+            move || {
+                is_piece_valid(&kzg, &piece, &segment_commitment, piece_index.position())
+                    .then_some(piece)
+            }
+        });
+
+        match is_valid_fut.await.unwrap_or_default() {
+            Some(piece) => Some(piece),
+            None => {
                 warn!(
                     %piece_index,
                     %source_peer_id,
@@ -71,10 +80,8 @@ where
 
                 // We don't care about result here
                 let _ = self.dsn_node.ban_peer(source_peer_id).await;
-                return None;
+                None
             }
         }
-
-        Some(piece)
     }
 }
