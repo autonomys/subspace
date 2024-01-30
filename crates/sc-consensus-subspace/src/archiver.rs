@@ -69,7 +69,6 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Ze
 use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -90,8 +89,7 @@ const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 8;
 /// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
 /// Substrate and is not worth it right now.
 /// https://github.com/paritytech/substrate/discussions/14359
-pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: NonZeroUsize =
-    NonZeroUsize::new(5).expect("Not zero; qed");
+pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: SegmentIndex = SegmentIndex::new(5);
 
 #[derive(Debug)]
 struct SegmentHeadersStoreInner<AS> {
@@ -863,27 +861,35 @@ where
             }
 
             if !new_segment_headers.is_empty() {
-                let maybe_block_number_to_finalize = {
-                    let mut segment_headers = segment_headers.lock();
-                    segment_headers.put(block_number + One::one(), new_segment_headers);
+                segment_headers
+                    .lock()
+                    .put(block_number + One::one(), new_segment_headers);
 
+                let maybe_block_number_to_finalize = segment_headers_store
+                    .max_segment_index()
                     // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
-                    segment_headers
-                        .iter()
-                        .flat_map(|(_k, v)| v.iter().rev())
-                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS.get())
-                        .map(|segment_header| segment_header.last_archived_block().number)
-                };
+                    .and_then(|max_segment_index| {
+                        max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
+                    })
+                    .and_then(|segment_index| {
+                        segment_headers_store.get_segment_header(segment_index)
+                    })
+                    .map(|segment_header| segment_header.last_archived_block().number)
+                    // Make sure not to finalize block number that does not yet exist (segment
+                    // headers store may contain future blocks during initial sync)
+                    .map(|block_number| best_archived_block_number.min(block_number.into()))
+                    // Do not finalize blocks twice
+                    .filter(|block_number| *block_number > client.info().finalized_number);
 
                 if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
                     let block_hash_to_finalize = client
-                        .hash(block_number_to_finalize.into())?
+                        .hash(block_number_to_finalize)?
                         .expect("Block about to be finalized must always exist");
                     finalize_block(
                         client.as_ref(),
                         telemetry.clone(),
                         block_hash_to_finalize,
-                        block_number_to_finalize.into(),
+                        block_number_to_finalize,
                     );
                 }
             }
