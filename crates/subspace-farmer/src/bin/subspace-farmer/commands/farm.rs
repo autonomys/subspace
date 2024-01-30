@@ -432,14 +432,14 @@ where
         Arc::clone(&readers_and_pieces),
     ));
 
-    let _piece_cache_worker = run_future_in_dedicated_thread(
+    let piece_cache_worker_fut = run_future_in_dedicated_thread(
         {
             let future = piece_cache_worker.run(piece_getter.clone());
 
             move || future
         },
         "cache-worker".to_string(),
-    );
+    )?;
 
     let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -774,7 +774,7 @@ where
     // event handlers
     drop(readers_and_pieces);
 
-    let farm_fut = pin!(run_future_in_dedicated_thread(
+    let farm_fut = run_future_in_dedicated_thread(
         move || async move {
             while let Some(result) = single_disk_farms_stream.next().await {
                 let id = result?;
@@ -784,25 +784,39 @@ where
             anyhow::Ok(())
         },
         "farmer-farm".to_string(),
-    )?);
+    )?;
 
-    let networking_fut = pin!(run_future_in_dedicated_thread(
+    let networking_fut = run_future_in_dedicated_thread(
         move || async move { node_runner.run().await },
         "farmer-networking".to_string(),
-    )?);
+    )?;
+
+    // This defines order in which things are dropped
+    let networking_fut = networking_fut;
+    let farm_fut = farm_fut;
+    let piece_cache_worker_fut = piece_cache_worker_fut;
+
+    let networking_fut = pin!(networking_fut);
+    let farm_fut = pin!(farm_fut);
+    let piece_cache_worker_fut = pin!(piece_cache_worker_fut);
 
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
+
+        // Networking future
+        _ = networking_fut.fuse() => {
+            info!("Node runner exited.")
+        },
 
         // Farm future
         result = farm_fut.fuse() => {
             result??;
         },
 
-        // Node runner future
-        _ = networking_fut.fuse() => {
-            info!("Node runner exited.")
+        // Piece cache worker future
+        _ = piece_cache_worker_fut.fuse() => {
+            info!("Piece cache worker exited.")
         },
     );
 
