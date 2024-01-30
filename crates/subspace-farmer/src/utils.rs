@@ -152,6 +152,27 @@ pub struct CpuCoreSet {
 }
 
 impl CpuCoreSet {
+    /// Regroup CPU core sets to contain at most `target_sets` sets, useful when there are many L3
+    /// cache groups and not as many farms
+    pub fn regroup(cpu_core_sets: &[Self], target_sets: usize) -> Vec<Self> {
+        cpu_core_sets
+            // Chunk CPU core sets
+            .chunks(cpu_core_sets.len().div_ceil(target_sets))
+            .map(|sets| Self {
+                // Combine CPU cores
+                cores: sets
+                    .iter()
+                    .flat_map(|set| set.cores.iter())
+                    .copied()
+                    .collect(),
+                // Preserve topology object
+                #[cfg(feature = "numa")]
+                topology: sets[0].topology.clone(),
+            })
+            .collect()
+    }
+
+    /// Get cpu core numbers in this set
     pub fn cpu_cores(&self) -> &[usize] {
         &self.cores
     }
