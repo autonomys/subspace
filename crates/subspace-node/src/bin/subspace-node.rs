@@ -38,6 +38,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_io::SubstrateHostFunctions;
 use sp_messenger::messages::ChainId;
 use sp_wasm_interface::ExtendedHostFunctions;
+use std::env;
 use subspace_node::domain::{DomainCli, DomainInstanceStarter, DomainSubcommand};
 use subspace_node::{Cli, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
@@ -122,6 +123,11 @@ fn pot_external_entropy(
 }
 
 fn main() -> Result<(), Error> {
+    // TODO: This is a hack to work around https://github.com/quinn-rs/quinn/issues/1750, should be
+    //  removed once fixed upstream
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info,quinn_udp=error");
+    }
     let mut cli = Cli::from_args();
     // Force UTC logs for Subspace node
     cli.run.shared_params.use_utc_log_time = true;
