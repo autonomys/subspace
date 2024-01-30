@@ -113,11 +113,22 @@ impl DiskPieceCache {
     ) -> impl ExactSizeIterator<Item = (Offset, Option<PieceIndex>)> + '_ {
         let file = &self.inner.file;
         let mut element = vec![0; Self::element_size()];
+        let mut early_exit = false;
 
-        // TODO: Stop early on first missing entry
         (0..self.inner.num_elements).map(move |offset| {
+            if early_exit {
+                return (Offset(offset), None);
+            }
+
             match Self::read_piece_internal(file, offset, &mut element) {
-                Ok(maybe_piece_index) => (Offset(offset), maybe_piece_index),
+                Ok(maybe_piece_index) => {
+                    if maybe_piece_index.is_none() {
+                        // End of stored pieces, no need to read further
+                        early_exit = true;
+                    }
+
+                    (Offset(offset), maybe_piece_index)
+                }
                 Err(error) => {
                     warn!(%error, %offset, "Failed to read cache element");
                     (Offset(offset), None)
