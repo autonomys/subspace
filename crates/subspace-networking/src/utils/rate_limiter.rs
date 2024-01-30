@@ -6,7 +6,7 @@ use crate::utils::rate_limiter::resizable_semaphore::{
     ResizableSemaphore, ResizableSemaphorePermit, SemaphoreError,
 };
 use std::num::NonZeroUsize;
-use tracing::{debug, trace};
+use tracing::trace;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -31,74 +31,29 @@ const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
 /// to be tweaked in the future.
 pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 
-/// Defines the minimum size of the "connection limit semaphore".
-const MINIMUM_CONNECTIONS_SEMAPHORE_SIZE: usize = 3;
-
-/// Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
-const CONNECTION_TIMEOUT_PARAMETER: usize = 9;
-
 #[derive(Debug)]
 pub(crate) struct RateLimiterPermit {
-    /// Limits Kademlia substreams.
-    _substream_limit_permit: ResizableSemaphorePermit,
-
-    /// Limits outgoing connections.
-    _connection_limit_permit: ResizableSemaphorePermit,
+    _permit: ResizableSemaphorePermit,
 }
 
 #[derive(Debug)]
 pub(crate) struct RateLimiter {
     kademlia_tasks_semaphore: ResizableSemaphore,
     regular_tasks_semaphore: ResizableSemaphore,
-    connections_semaphore: ResizableSemaphore,
 }
 
 impl RateLimiter {
-    pub(crate) fn new(out_connections: u32, pending_out_connections: u32) -> Self {
-        let permits = Self::calculate_connection_semaphore_size(
-            out_connections as usize,
-            pending_out_connections as usize,
-        );
-
-        debug!(%out_connections, %pending_out_connections, %permits, "Rate limiter was instantiated.");
-
+    pub(crate) fn new() -> Self {
         Self {
             kademlia_tasks_semaphore: ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS),
             regular_tasks_semaphore: ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS),
-            connections_semaphore: ResizableSemaphore::new(permits),
         }
-    }
-
-    /// Calculates an empiric formula for the semaphore size based on the connection parameters and
-    /// existing constants.
-    fn calculate_connection_semaphore_size(
-        out_connections: usize,
-        pending_out_connections: usize,
-    ) -> NonZeroUsize {
-        let connections = out_connections.min(pending_out_connections);
-
-        // Number of "in-flight" parallel requests for each query
-        let kademlia_parallelism_level = libp2p::kad::ALPHA_VALUE.get();
-
-        let permits_number =
-            (connections / (kademlia_parallelism_level * CONNECTION_TIMEOUT_PARAMETER)).max(1);
-
-        let minimum_semaphore_size =
-            NonZeroUsize::new(MINIMUM_CONNECTIONS_SEMAPHORE_SIZE).expect("Manual setting");
-
-        NonZeroUsize::new(permits_number)
-            .expect("The value is at least 1")
-            .max(minimum_semaphore_size)
     }
 
     pub(crate) async fn acquire_regular_permit(&self) -> RateLimiterPermit {
-        let connections_permit = self.connections_semaphore.acquire().await;
-        let substream_permit = self.regular_tasks_semaphore.acquire().await;
+        let permit = self.regular_tasks_semaphore.acquire().await;
 
-        RateLimiterPermit {
-            _connection_limit_permit: connections_permit,
-            _substream_limit_permit: substream_permit,
-        }
+        RateLimiterPermit { _permit: permit }
     }
 
     pub(crate) fn expand_regular_semaphore(&self) -> Result<(), SemaphoreError> {
@@ -114,13 +69,9 @@ impl RateLimiter {
     }
 
     pub(crate) async fn acquire_kademlia_permit(&self) -> RateLimiterPermit {
-        let connections_permit = self.connections_semaphore.acquire().await;
-        let substream_permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
 
-        RateLimiterPermit {
-            _connection_limit_permit: connections_permit,
-            _substream_limit_permit: substream_permit,
-        }
+        RateLimiterPermit { _permit: permit }
     }
 
     pub(crate) fn expand_kademlia_semaphore(&self) -> Result<(), SemaphoreError> {
