@@ -14,7 +14,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::pin::pin;
@@ -41,6 +41,7 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -196,8 +197,16 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
-        "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Statically correct; qed"),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30533))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30533))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533)),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533))
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
