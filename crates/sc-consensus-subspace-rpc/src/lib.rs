@@ -58,7 +58,8 @@ use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber, Solution,
+    BlockHash, HistorySize, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
+    Solution,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -77,7 +78,7 @@ const NODE_SYNC_STATUS_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 /// Provides rpc methods for interacting with Subspace.
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
-    /// Ger metadata necessary for farmer operation
+    /// Get metadata necessary for farmer operation
     #[method(name = "subspace_getFarmerAppInfo")]
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo>;
 
@@ -221,7 +222,9 @@ where
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
+    genesis_hash: BlockHash,
     chain_constants: ChainConstants,
+    max_pieces_in_sector: u16,
     kzg: Kzg,
     deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
@@ -244,9 +247,16 @@ where
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Result<Self, ApiError> {
-        let best_hash = config.client.info().best_hash;
+        let info = config.client.info();
+        let best_hash = info.best_hash;
+        let genesis_hash = BlockHash::try_from(info.genesis_hash.as_ref())
+            .expect("Genesis hash must always be convertable into BlockHash; qed");
         let runtime_api = config.client.runtime_api();
         let chain_constants = runtime_api.chain_constants(best_hash)?;
+        // While the number can technically change in runtime, farmer will not adjust to it on the
+        // fly and previous value will remain valid (number only expected to increase), so it is
+        // fine to query it only once
+        let max_pieces_in_sector = runtime_api.max_pieces_in_sector(best_hash)?;
         let block_authoring_delay = u64::from(chain_constants.block_authoring_delay());
         let block_authoring_delay = usize::try_from(block_authoring_delay)
             .expect("Block authoring delay will never exceed usize on any platform; qed");
@@ -269,7 +279,9 @@ where
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle: config.sync_oracle,
+            genesis_hash,
             chain_constants,
+            max_pieces_in_sector,
             kzg: config.kzg,
             deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
@@ -287,37 +299,28 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: ObjectsApi<Block>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
-        let best_hash = self.client.info().best_hash;
-        let runtime_api = self.client.runtime_api();
-
-        let genesis_hash = self
-            .client
-            .info()
-            .genesis_hash
-            .as_ref()
-            .try_into()
-            .map_err(|error| {
-                error!("Failed to convert genesis hash: {error}");
-                JsonRpseeError::Custom("Internal error".to_string())
-            })?;
+        let last_segment_index = self
+            .segment_headers_store
+            .max_segment_index()
+            .unwrap_or(SegmentIndex::ZERO);
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
             let chain_constants = &self.chain_constants;
             let protocol_info = FarmerProtocolInfo {
-                history_size: runtime_api.history_size(best_hash)?,
-                max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,
+                history_size: HistorySize::from(last_segment_index),
+                max_pieces_in_sector: self.max_pieces_in_sector,
                 recent_segments: chain_constants.recent_segments(),
                 recent_history_fraction: chain_constants.recent_history_fraction(),
                 min_sector_lifetime: chain_constants.min_sector_lifetime(),
             };
 
             FarmerAppInfo {
-                genesis_hash,
+                genesis_hash: self.genesis_hash,
                 dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
                 farming_timeout: chain_constants
                     .slot_duration()
@@ -828,17 +831,10 @@ where
             )));
         };
 
-        let runtime_api = self.client.runtime_api();
-        let best_hash = self.client.info().best_hash;
-
-        let last_segment_index = match runtime_api.history_size(best_hash) {
-            Ok(history_size) => history_size.segment_index(),
-            Err(error) => {
-                error!(?best_hash, "Failed to get history size: {}", error);
-
-                SegmentIndex::ZERO
-            }
-        };
+        let last_segment_index = self
+            .segment_headers_store
+            .max_segment_index()
+            .unwrap_or(SegmentIndex::ZERO);
 
         let last_segment_headers = (SegmentIndex::ZERO..=last_segment_index)
             .rev()
