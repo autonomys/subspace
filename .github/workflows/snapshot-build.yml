@@ -39,6 +39,7 @@ jobs:
             dockerfile-suffix: ".aarch64"
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             image-suffix: "-aarch64"
+      fail-fast: false
 
     steps:
       - name: Set up QEMU
@@ -123,6 +124,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+      fail-fast: false
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
