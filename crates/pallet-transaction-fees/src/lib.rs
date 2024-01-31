@@ -152,7 +152,7 @@ mod pallet {
             /// Amount of collected tips.
             tips: BalanceOf<T>,
         },
-        /// Fees burned due to equivocated block author.
+        /// Fees burned due to equivocated block author or rewards not enabled.
         #[codec(index = 1)]
         BurnedBlockFees {
             /// Amount of burned storage fees.
