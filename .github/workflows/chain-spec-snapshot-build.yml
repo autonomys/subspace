@@ -46,3 +46,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["chain-spec-gemini-3h.json", "chain-spec-raw-gemini-3h.json"]'
+        # Only run for releases
+        if: github.event_name == 'push' && github.ref_type == 'tag'
