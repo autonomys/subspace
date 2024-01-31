@@ -24,7 +24,7 @@ use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, GEMINI_3H_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -219,7 +219,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
 }
 
 pub fn gemini_3h_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
-    unimplemented!("Please use release prefixed with gemini-3h")
+    GenericChainSpec::from_json_bytes(GEMINI_3H_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
