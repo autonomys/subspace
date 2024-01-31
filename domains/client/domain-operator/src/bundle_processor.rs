@@ -231,8 +231,19 @@ where
                 let header = self.client.header(domain_tip)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
                 })?;
+                let block_origin = if self
+                    .domain_block_processor
+                    .consensus_network_sync_oracle
+                    .is_major_syncing()
+                {
+                    // The domain block is derived from the consensus block, if the consensus chain is
+                    // in major sync then we should also consider the domain block is `NetworkInitialSync`
+                    BlockOrigin::NetworkInitialSync
+                } else {
+                    BlockOrigin::Own
+                };
                 let block_import_params = {
-                    let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+                    let mut import_block = BlockImportParams::new(block_origin, header);
                     import_block.import_existing = true;
                     import_block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
                     import_block.state_action = StateAction::Skip;
