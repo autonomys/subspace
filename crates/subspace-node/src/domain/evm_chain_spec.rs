@@ -64,16 +64,16 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
     )
 }
 
-pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
+pub fn gemini_3h_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
 ) -> GenericChainSpec<RuntimeGenesisConfig> {
     // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
     #[allow(deprecated)]
     GenericChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3g EVM Domain",
+        "Subspace Gemini 3h EVM Domain",
         // ID
-        "subspace_gemini_3g_evm_domain",
+        "subspace_gemini_3h_evm_domain",
         ChainType::Live,
         constructor,
         // Bootnodes
@@ -81,7 +81,7 @@ pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3g-evm-domain"),
+        Some("subspace-gemini-3h-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -122,7 +122,7 @@ pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
+        "gemini-3h" => gemini_3h_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
         "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
