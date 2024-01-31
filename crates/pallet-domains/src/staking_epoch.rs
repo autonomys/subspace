@@ -6,11 +6,11 @@ use crate::pallet::{
 };
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
-    Error as TransitionError, OperatorStatus, SharePrice,
+    Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
 };
 use crate::{
-    BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier, OperatorEpochSharePrice,
-    Pallet,
+    bundle_storage_fund, BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier,
+    OperatorEpochSharePrice, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -71,28 +71,34 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                 };
 
                 // calculate operator tax, mint the balance, and stake them
-                let operator_tax = operator.nomination_tax.mul_floor(reward);
-                if !operator_tax.is_zero() {
+                let operator_tax_amount = operator.nomination_tax.mul_floor(reward);
+                if !operator_tax_amount.is_zero() {
                     let nominator_id = OperatorIdOwner::<T>::get(operator_id)
                         .ok_or(TransitionError::MissingOperatorOwner)?;
-                    T::Currency::mint_into(&nominator_id, operator_tax)
+                    T::Currency::mint_into(&nominator_id, operator_tax_amount)
                         .map_err(|_| TransitionError::MintBalance)?;
 
                     // Reserve for the bundle storage fund
-                    let operator_tax =
-                        deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, operator_tax)
+                    let operator_tax_deposit =
+                        deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, operator_tax_amount)
                             .map_err(TransitionError::BundleStorageFund)?;
 
                     crate::staking::hold_deposit::<T>(
                         &nominator_id,
                         operator_id,
-                        operator_tax,
+                        operator_tax_deposit.staking,
                     )?;
 
                     // increment total deposit for operator pool within this epoch
                     operator.deposits_in_epoch = operator
                         .deposits_in_epoch
-                        .checked_add(&operator_tax)
+                        .checked_add(&operator_tax_deposit.staking)
+                        .ok_or(TransitionError::BalanceOverflow)?;
+
+                    // Increase total storage fee deposit as there is new deposit to the storage fund
+                    operator.total_storage_fee_deposit = operator
+                        .total_storage_fee_deposit
+                        .checked_add(&operator_tax_deposit.storage_fee)
                         .ok_or(TransitionError::BalanceOverflow)?;
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
@@ -100,18 +106,18 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                             operator_id,
                             nominator_id,
                             current_domain_epoch,
-                            operator_tax,
+                            operator_tax_deposit,
                         )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
                         operator_id,
-                        tax: operator_tax,
+                        tax: operator_tax_amount,
                     });
                 }
 
                 // add remaining rewards to nominators to be distributed during the epoch transition
                 let rewards = reward
-                    .checked_sub(&operator_tax)
+                    .checked_sub(&operator_tax_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
                 operator.current_epoch_rewards = operator
@@ -338,6 +344,12 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             let total_shares = operator.current_total_shares;
             let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
+            let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+            let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                operator_id,
+                operator.total_storage_fee_deposit,
+            );
+
             // transfer all the staked funds to the treasury account
             // any gains will be minted to treasury account
             Deposits::<T>::drain_prefix(operator_id).try_for_each(
@@ -361,7 +373,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                                     withdrawal.total_withdrawal_amount,
                                     withdrawal
                                         .withdrawal_in_shares
-                                        .map(|(_, _, shares)| shares)
+                                        .map(|WithdrawalInShares { shares, .. }| shares)
                                         .unwrap_or_default(),
                                 ))
                             })
@@ -414,12 +426,47 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
                         .map_err(|_| TransitionError::RemoveLock)?;
 
+                    // Transfer the deposited unstaked storage fee back to nominator
+                    if let Some(pending_deposit) = deposit.pending {
+                        let storage_fee_deposit = bundle_storage_fund::withdraw_and_hold::<T>(
+                            operator_id,
+                            &nominator_id,
+                            storage_fund_redeem_price.redeem(pending_deposit.storage_fee_deposit),
+                        )
+                        .map_err(TransitionError::BundleStorageFund)?;
+                        T::Currency::release(
+                            &storage_fund_hold_id,
+                            &nominator_id,
+                            storage_fee_deposit,
+                            Precision::Exact,
+                        )
+                        .map_err(|_| TransitionError::RemoveLock)?;
+                    }
+
+                    // Transfer all the storage fee on withdraw to the treasury
+                    let withdraw_storage_fee_on_hold =
+                        T::Currency::balance_on_hold(&storage_fund_hold_id, &nominator_id);
+                    T::Currency::transfer_on_hold(
+                        &storage_fund_hold_id,
+                        &nominator_id,
+                        &T::TreasuryAccount::get(),
+                        withdraw_storage_fee_on_hold,
+                        Precision::Exact,
+                        Restriction::Free,
+                        Fortitude::Force,
+                    )
+                    .map_err(|_| TransitionError::RemoveLock)?;
+
                     Ok(())
                 },
             )?;
 
             // mint any gains to treasury account
             mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
+
+            // Transfer all the storage fund to treasury
+            bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
+                .map_err(TransitionError::BundleStorageFund)?;
 
             Ok(())
         })?;

@@ -153,6 +153,10 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {
         Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
+
+    fn storage_fund(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
 }
 
 impl VariantCount for HoldIdentifier {
@@ -564,6 +568,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
                 status: OperatorStatus::Registered,
                 deposits_in_epoch: Zero::zero(),
                 withdrawals_in_epoch: Zero::zero(),
+                total_storage_fee_deposit: Zero::zero(),
             },
         );
     }

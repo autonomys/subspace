@@ -29,7 +29,7 @@ use sp_std::vec::IntoIter;
 /// A nominators deposit.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
-    pub(crate) known: KnownDeposit<Share>,
+    pub(crate) known: KnownDeposit<Share, Balance>,
     pub(crate) pending: Option<PendingDeposit<Balance>>,
 }
 
@@ -83,10 +83,16 @@ impl From<(DomainId, EpochIndex)> for DomainEpoch {
     }
 }
 
+pub struct NewDeposit<Balance> {
+    pub(crate) staking: Balance,
+    pub(crate) storage_fee: Balance,
+}
+
 /// A nominator's shares against their deposits to given operator pool.
 #[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq, Default)]
-pub(crate) struct KnownDeposit<Share: Copy> {
+pub(crate) struct KnownDeposit<Share: Copy, Balance: Copy> {
     pub(crate) shares: Share,
+    pub(crate) storage_fee_deposit: Balance,
 }
 
 /// A nominators pending deposit in SSC that needs to be converted to shares once domain epoch is complete.
@@ -94,18 +100,44 @@ pub(crate) struct KnownDeposit<Share: Copy> {
 pub(crate) struct PendingDeposit<Balance: Copy> {
     pub(crate) effective_domain_epoch: DomainEpoch,
     pub(crate) amount: Balance,
+    pub(crate) storage_fee_deposit: Balance,
+}
+
+impl<Balance: Copy + CheckedAdd> PendingDeposit<Balance> {
+    fn total(&self) -> Result<Balance, Error> {
+        self.amount
+            .checked_add(&self.storage_fee_deposit)
+            .ok_or(Error::BalanceOverflow)
+    }
 }
 
 /// A nominator's withdrawal from a given operator pool.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
-    /// Total withdrawal amount requested by the nominator that are in unlocking state excluding withdrawal in shares.
+    /// Total withdrawal amount requested by the nominator that are in unlocking state excluding withdrawal
+    /// in shares and the storage fee
     pub(crate) total_withdrawal_amount: Balance,
     /// Individual withdrawal amounts with their unlocking block for a given domain
-    pub(crate) withdrawals: VecDeque<(DomainId, DomainBlockNumber, Balance)>,
+    pub(crate) withdrawals: VecDeque<WithdrawalInBalance<DomainBlockNumber, Balance>>,
     /// Withdrawal that was initiated by nominator and not converted to balance due to
     /// unfinished domain epoch.
-    pub(crate) withdrawal_in_shares: Option<(DomainEpoch, DomainBlockNumber, Share)>,
+    pub(crate) withdrawal_in_shares: Option<WithdrawalInShares<DomainBlockNumber, Share, Balance>>,
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct WithdrawalInBalance<DomainBlockNumber, Balance> {
+    pub(crate) domain_id: DomainId,
+    pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
+    pub(crate) amount_to_unlock: Balance,
+    pub(crate) storage_fee: Balance,
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct WithdrawalInShares<DomainBlockNumber, Share, Balance> {
+    pub(crate) domain_epoch: DomainEpoch,
+    pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
+    pub(crate) shares: Share,
+    pub(crate) storage_fee: Balance,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -153,6 +185,8 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     pub deposits_in_epoch: Balance,
     /// Total withdrew shares during the previous epoch
     pub withdrawals_in_epoch: Share,
+    /// Total balance deposited to the bundle storage fund
+    pub total_storage_fee_deposit: Balance,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -273,7 +307,11 @@ pub(crate) fn do_register_operator<T: Config>(
             Error::MinimumOperatorStake
         );
 
-        hold_deposit::<T>(&operator_owner, operator_id, amount)?;
+        let new_deposit =
+            deposit_reserve_for_storage_fund::<T>(operator_id, &operator_owner, amount)
+                .map_err(Error::BundleStorageFund)?;
+
+        hold_deposit::<T>(&operator_owner, operator_id, new_deposit.staking)?;
 
         let domain_stake_summary = maybe_domain_stake_summary
             .as_mut()
@@ -296,8 +334,9 @@ pub(crate) fn do_register_operator<T: Config>(
             current_total_shares: Zero::zero(),
             status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
-            deposits_in_epoch: amount,
+            deposits_in_epoch: new_deposit.staking,
             withdrawals_in_epoch: Zero::zero(),
+            total_storage_fee_deposit: new_deposit.storage_fee,
         };
         Operators::<T>::insert(operator_id, operator);
         OperatorSigningKey::<T>::insert(signing_key, operator_id);
@@ -309,7 +348,7 @@ pub(crate) fn do_register_operator<T: Config>(
             operator_id,
             operator_owner,
             current_domain_epoch,
-            amount,
+            new_deposit,
         )?;
 
         Ok((operator_id, domain_stake_summary.current_epoch_index))
@@ -334,7 +373,7 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     current_domain_epoch: DomainEpoch,
-    new_deposit: BalanceOf<T>,
+    new_deposit: NewDeposit<BalanceOf<T>>,
 ) -> Result<DepositInfo<BalanceOf<T>>, Error> {
     Deposits::<T>::try_mutate(operator_id, nominator_id, |maybe_deposit| {
         let mut deposit = maybe_deposit.take().unwrap_or_default();
@@ -345,12 +384,13 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
             None => {
                 let pending_deposit = PendingDeposit {
                     effective_domain_epoch: current_domain_epoch,
-                    amount: new_deposit,
+                    amount: new_deposit.staking,
+                    storage_fee_deposit: new_deposit.storage_fee,
                 };
 
                 let deposit_info = DepositInfo {
                     nominating: !deposit.known.shares.is_zero(),
-                    total_deposit: new_deposit,
+                    total_deposit: pending_deposit.total()?,
                     first_deposit_in_epoch: true,
                 };
 
@@ -361,13 +401,17 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
                     effective_domain_epoch: current_domain_epoch,
                     amount: pending_deposit
                         .amount
-                        .checked_add(&new_deposit)
+                        .checked_add(&new_deposit.staking)
+                        .ok_or(Error::BalanceOverflow)?,
+                    storage_fee_deposit: pending_deposit
+                        .storage_fee_deposit
+                        .checked_add(&new_deposit.storage_fee)
                         .ok_or(Error::BalanceOverflow)?,
                 };
 
                 let deposit_info = DepositInfo {
                     nominating: !deposit.known.shares.is_zero(),
-                    total_deposit: pending_deposit.amount,
+                    total_deposit: pending_deposit.total()?,
                     first_deposit_in_epoch: false,
                 };
 
@@ -385,14 +429,19 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     operator_id: OperatorId,
     deposit: &mut Deposit<T::Share, BalanceOf<T>>,
 ) -> Result<(), Error> {
-    let maybe_pending_deposit = deposit.pending.take();
     // if it is one of the previous domain epoch, then calculate shares for the epoch and update known deposit
-    deposit.pending = if let Some(PendingDeposit {
-        effective_domain_epoch,
+    let epoch_share_price = match deposit.pending.and_then(|pending_deposit| {
+        OperatorEpochSharePrice::<T>::get(operator_id, pending_deposit.effective_domain_epoch)
+    }) {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    if let Some(PendingDeposit {
         amount,
-    }) = maybe_pending_deposit
-        && let Some(epoch_share_price) =
-            OperatorEpochSharePrice::<T>::get(operator_id, effective_domain_epoch)
+        storage_fee_deposit,
+        ..
+    }) = deposit.pending.take()
     {
         let new_shares = epoch_share_price.stake_to_shares::<T>(amount);
         deposit.known.shares = deposit
@@ -400,10 +449,12 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
             .shares
             .checked_add(&new_shares)
             .ok_or(Error::ShareOverflow)?;
-        None
-    } else {
-        maybe_pending_deposit
-    };
+        deposit.known.storage_fee_deposit = deposit
+            .known
+            .storage_fee_deposit
+            .checked_add(&storage_fee_deposit)
+            .ok_or(Error::BalanceOverflow)?;
+    }
 
     Ok(())
 }
@@ -414,11 +465,21 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     operator_id: OperatorId,
     withdrawal: &mut Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
 ) -> Result<(), Error> {
-    let withdrawal_in_shares = withdrawal.withdrawal_in_shares.take();
-    withdrawal.withdrawal_in_shares = if let Some((domain_epoch, domain_block_number, shares)) =
-        withdrawal_in_shares
-        && let Some(epoch_share_price) =
-            OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch)
+    let epoch_share_price = match withdrawal
+        .withdrawal_in_shares
+        .as_ref()
+        .and_then(|withdraw| OperatorEpochSharePrice::<T>::get(operator_id, withdraw.domain_epoch))
+    {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    if let Some(WithdrawalInShares {
+        domain_epoch,
+        unlock_at_confirmed_domain_block_number,
+        shares,
+        storage_fee,
+    }) = withdrawal.withdrawal_in_shares.take()
     {
         let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
         withdrawal.total_withdrawal_amount = withdrawal
@@ -426,13 +487,15 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
             .checked_add(&withdrawal_amount)
             .ok_or(Error::BalanceOverflow)?;
         let (domain_id, _) = domain_epoch.deconstruct();
-        withdrawal
-            .withdrawals
-            .push_back((domain_id, domain_block_number, withdrawal_amount));
-        None
-    } else {
-        withdrawal_in_shares
-    };
+
+        let withdraw_in_balance = WithdrawalInBalance {
+            domain_id,
+            unlock_at_confirmed_domain_block_number,
+            amount_to_unlock: withdrawal_amount,
+            storage_fee,
+        };
+        withdrawal.withdrawals.push_back(withdraw_in_balance);
+    }
 
     Ok(())
 }
@@ -454,15 +517,21 @@ pub(crate) fn do_nominate_operator<T: Config>(
             .ok_or(Error::DomainNotInitialized)?;
 
         // Reserve for the bundle storage fund
-        let amount = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
+        let new_deposit = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
             .map_err(Error::BundleStorageFund)?;
 
-        hold_deposit::<T>(&nominator_id, operator_id, amount)?;
+        hold_deposit::<T>(&nominator_id, operator_id, new_deposit.staking)?;
 
         // increment total deposit for operator pool within this epoch
         operator.deposits_in_epoch = operator
             .deposits_in_epoch
-            .checked_add(&amount)
+            .checked_add(&new_deposit.staking)
+            .ok_or(Error::BalanceOverflow)?;
+
+        // Increase total storage fee deposit as there is new deposit to the storage fund
+        operator.total_storage_fee_deposit = operator
+            .total_storage_fee_deposit
+            .checked_add(&new_deposit.storage_fee)
             .ok_or(Error::BalanceOverflow)?;
 
         let current_domain_epoch = (
@@ -479,7 +548,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
             operator_id,
             nominator_id,
             current_domain_epoch,
-            amount,
+            new_deposit,
         )?;
 
         // if not a nominator, then ensure
@@ -712,7 +781,15 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
                     let share_price =
                         SharePrice::new::<T>(operator.current_total_shares, total_stake);
-                    let remaining_stake = share_price.shares_to_stake::<T>(remaining_shares);
+
+                    let remaining_storage_fee =
+                        Perbill::from_rational(remaining_shares, known_shares)
+                            .mul_floor(deposit.known.storage_fee_deposit);
+
+                    let remaining_stake = share_price
+                        .shares_to_stake::<T>(remaining_shares)
+                        .checked_add(&remaining_storage_fee)
+                        .ok_or(Error::BalanceOverflow)?;
 
                     // ensure the remaining share value is atleast the defined minimum
                     // MinOperatorStake if a nominator is operator pool owner
@@ -729,6 +806,35 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 }
             };
 
+            // Withdraw storage fund, the `withdraw_storage_fee` amount of fund will be transfered
+            // and hold on the nominator account
+            let storage_fee_to_withdraw = Perbill::from_rational(shares_withdrew, known_shares)
+                .mul_floor(deposit.known.storage_fee_deposit);
+
+            let withdraw_storage_fee = {
+                let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                    operator_id,
+                    operator.total_storage_fee_deposit,
+                );
+                bundle_storage_fund::withdraw_and_hold::<T>(
+                    operator_id,
+                    &nominator_id,
+                    storage_fund_redeem_price.redeem(storage_fee_to_withdraw),
+                )
+                .map_err(Error::BundleStorageFund)?
+            };
+
+            deposit.known.storage_fee_deposit = deposit
+                .known
+                .storage_fee_deposit
+                .checked_sub(&storage_fee_to_withdraw)
+                .ok_or(Error::BalanceOverflow)?;
+
+            operator.total_storage_fee_deposit = operator
+                .total_storage_fee_deposit
+                .checked_sub(&storage_fee_to_withdraw)
+                .ok_or(Error::BalanceOverflow)?;
+
             // update operator pool to note withdrew shares in the epoch
             operator.withdrawals_in_epoch = operator
                 .withdrawals_in_epoch
@@ -741,7 +847,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     // if there is a pending deposit, then ensure
                     // the new deposit is atleast minimum nominator stake
                     ensure!(
-                        pending_deposit.amount >= operator.minimum_nominator_stake,
+                        pending_deposit.total()? >= operator.minimum_nominator_stake,
                         Error::MinimumNominatorStake
                     );
                 } else {
@@ -762,25 +868,30 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 let mut withdrawal = maybe_withdrawal.take().unwrap_or_default();
                 // if this is some, then the withdrawal was initiated in this current epoch due to conversion
                 // of previous epoch withdrawals from shares to balances above. So just update it instead
-                let withdrawals_in_shares = withdrawal.withdrawal_in_shares.take();
-                withdrawal.withdrawal_in_shares = Some(
-                    if let Some((domain_epoch, _, shares)) = withdrawals_in_shares {
-                        let updated_shares = shares
+                let new_withdrawal_in_shares = match withdrawal.withdrawal_in_shares.take() {
+                    Some(WithdrawalInShares {
+                        domain_epoch,
+                        shares,
+                        storage_fee,
+                        ..
+                    }) => WithdrawalInShares {
+                        domain_epoch,
+                        shares: shares
                             .checked_add(&shares_withdrew)
-                            .ok_or(Error::ShareOverflow)?;
-                        (
-                            domain_epoch,
-                            unlock_at_confirmed_domain_block_number,
-                            updated_shares,
-                        )
-                    } else {
-                        (
-                            domain_current_epoch,
-                            unlock_at_confirmed_domain_block_number,
-                            shares_withdrew,
-                        )
+                            .ok_or(Error::ShareOverflow)?,
+                        unlock_at_confirmed_domain_block_number,
+                        storage_fee: storage_fee
+                            .checked_add(&withdraw_storage_fee)
+                            .ok_or(Error::BalanceOverflow)?,
                     },
-                );
+                    None => WithdrawalInShares {
+                        domain_epoch: domain_current_epoch,
+                        unlock_at_confirmed_domain_block_number,
+                        shares: shares_withdrew,
+                        storage_fee: withdraw_storage_fee,
+                    },
+                };
+                withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
 
                 *maybe_withdrawal = Some(withdrawal);
                 Ok(())
@@ -803,7 +914,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
     Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
         let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
         do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
-        let (domain_id, unlock_at_confirmed_domain_block_number, amount_to_unlock) = withdrawal
+        let WithdrawalInBalance {
+            domain_id,
+            unlock_at_confirmed_domain_block_number,
+            amount_to_unlock,
+            storage_fee,
+        } = withdrawal
             .withdrawals
             .pop_front()
             .ok_or(Error::MissingWithdrawal)?;
@@ -834,10 +950,21 @@ pub(crate) fn do_unlock_funds<T: Config>(
             }
         };
 
+        // Release staking fund
         T::Currency::release(
             &staked_hold_id,
             &nominator_id,
             amount_to_release,
+            Precision::Exact,
+        )
+        .map_err(|_| Error::RemoveLock)?;
+
+        // Release storage fund
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+        T::Currency::release(
+            &storage_fund_hold_id,
+            &nominator_id,
+            storage_fee,
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
@@ -889,6 +1016,12 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
+
+        let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+            operator_id,
+            operator.total_storage_fee_deposit,
+        );
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
             // convert any deposits from the previous epoch to shares
             do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
@@ -908,7 +1041,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
                             withdrawal.total_withdrawal_amount,
                             withdrawal
                                 .withdrawal_in_shares
-                                .map(|(_, _, shares)| shares)
+                                .map(|WithdrawalInShares { shares, .. }| shares)
                                 .unwrap_or_default(),
                         ))
                     })
@@ -950,8 +1083,30 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
 
             total_stake = total_stake.saturating_sub(nominator_staked_amount);
 
+            // Withdraw all storage fee for the nominator
+            let nominator_total_storage_fee_deposit = deposit
+                .pending
+                .map(|pending_deposit| pending_deposit.storage_fee_deposit)
+                .unwrap_or(Zero::zero())
+                .checked_add(&deposit.known.storage_fee_deposit)
+                .ok_or(Error::BalanceOverflow)?;
+            bundle_storage_fund::withdraw_and_hold::<T>(
+                operator_id,
+                &nominator_id,
+                storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
+            )
+            .map_err(Error::BundleStorageFund)?;
+
+            // Release all storage fee that just withdraw above and withdraw previously
+            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
+                .map_err(|_| Error::RemoveLock)?;
+
             Ok(())
         })?;
+
+        // transfer any remaining storage fund to treasury
+        bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
+            .map_err(Error::BundleStorageFund)?;
 
         // transfer any remaining amount to treasury
         mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
@@ -1287,6 +1442,7 @@ pub(crate) mod tests {
                     status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,
                     withdrawals_in_epoch: 0,
+                    total_storage_fee_deposit: 0,
                 }
             );
 

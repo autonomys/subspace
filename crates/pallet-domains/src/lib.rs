@@ -80,6 +80,7 @@ pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 pub trait HoldIdentifier<T: Config> {
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
+    fn storage_fund(operator_id: OperatorId) -> FungibleHoldId<T>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<

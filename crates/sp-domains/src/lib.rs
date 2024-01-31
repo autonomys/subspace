@@ -687,6 +687,7 @@ pub enum StakingHoldIdentifier {
 pub enum DomainsHoldIdentifier {
     Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
+    StorageFund(OperatorId),
 }
 
 /// Domains specific digest item.

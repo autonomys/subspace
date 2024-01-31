@@ -386,6 +386,10 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     fn domain_instantiation_id(domain_id: DomainId) -> Self {
         Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
+
+    fn storage_fund(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
 }
 
 impl VariantCount for HoldIdentifier {
