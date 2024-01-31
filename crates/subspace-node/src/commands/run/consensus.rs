@@ -24,10 +24,6 @@ use subspace_service::dsn::DsnConfig;
 use tempfile::TempDir;
 use tracing::warn;
 
-fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
-    hex::decode(s)
-}
-
 fn parse_timekeeper_cpu_cores(
     s: &str,
 ) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
@@ -276,8 +272,8 @@ pub(super) struct ConsensusChainOptions {
     force_authoring: bool,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
-    #[arg(long, value_parser = parse_pot_external_entropy)]
-    pot_external_entropy: Option<Vec<u8>>,
+    #[arg(long)]
+    pot_external_entropy: Option<String>,
 
     /// Options for DSN
     #[clap(flatten)]
