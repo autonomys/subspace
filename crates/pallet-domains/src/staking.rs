@@ -1238,13 +1238,13 @@ pub(crate) mod tests {
         PendingSlashes, Withdrawals,
     };
     use crate::staking::{
-        do_nominate_operator, do_reward_operators, do_slash_operators, do_unlock_funds,
-        do_withdraw_stake, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
-        StakingSummary,
+        do_convert_previous_epoch_withdrawal, do_nominate_operator, do_reward_operators,
+        do_slash_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
+        OperatorConfig, OperatorStatus, StakingSummary,
     };
     use crate::staking_epoch::do_finalize_domain_current_epoch;
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
-    use crate::{BalanceOf, Error, NominatorId, SlashedReason};
+    use crate::{bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason};
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
     use frame_support::weights::Weight;
@@ -1255,12 +1255,14 @@ pub(crate) mod tests {
         ZERO_OPERATOR_SIGNING_KEY,
     };
     use sp_runtime::traits::Zero;
+    use sp_runtime::{PerThing, Perbill};
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
+    const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
 
     pub(crate) fn register_operator(
         domain_id: DomainId,
@@ -1407,7 +1409,9 @@ pub(crate) mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
+        let operator_total_stake = 1000 * SSC;
+        let operator_stake = 800 * SSC;
+        let operator_storage_fee_deposit = 200 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let mut ext = new_test_ext();
@@ -1416,7 +1420,7 @@ pub(crate) mod tests {
                 domain_id,
                 operator_account,
                 operator_free_balance,
-                operator_stake,
+                operator_total_stake,
                 SSC,
                 pair.public(),
                 BTreeMap::new(),
@@ -1442,7 +1446,7 @@ pub(crate) mod tests {
                     status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,
                     withdrawals_in_epoch: 0,
-                    total_storage_fee_deposit: 0,
+                    total_storage_fee_deposit: operator_storage_fee_deposit,
                 }
             );
 
@@ -1452,7 +1456,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 Balances::usable_balance(operator_account),
-                operator_free_balance - operator_stake - ExistentialDeposit::get()
+                operator_free_balance - operator_total_stake - ExistentialDeposit::get()
             );
 
             // cannot register with same operator key
@@ -1491,12 +1495,16 @@ pub(crate) mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
+        let operator_total_stake = 1000 * SSC;
+        let operator_stake = 800 * SSC;
+        let operator_storage_fee_deposit = 200 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
+        let nominator_total_stake = 100 * SSC;
+        let nominator_stake = 80 * SSC;
+        let nominator_storage_fee_deposit = 20 * SSC;
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -1504,12 +1512,12 @@ pub(crate) mod tests {
                 domain_id,
                 operator_account,
                 operator_free_balance,
-                operator_stake,
+                operator_total_stake,
                 10 * SSC,
                 pair.public(),
                 BTreeMap::from_iter(vec![(
                     nominator_account,
-                    (nominator_free_balance, nominator_stake),
+                    (nominator_free_balance, nominator_total_stake),
                 )]),
             );
 
@@ -1519,37 +1527,63 @@ pub(crate) mod tests {
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(operator.current_total_stake, operator_stake);
             assert_eq!(operator.current_total_shares, operator_stake);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                operator_storage_fee_deposit + nominator_storage_fee_deposit
+            );
             assert_eq!(operator.deposits_in_epoch, nominator_stake);
 
             let pending_deposit = Deposits::<Test>::get(0, nominator_account)
                 .unwrap()
                 .pending
-                .unwrap()
-                .amount;
-            assert_eq!(pending_deposit, nominator_stake);
+                .unwrap();
+            assert_eq!(pending_deposit.amount, nominator_stake);
+            assert_eq!(
+                pending_deposit.storage_fee_deposit,
+                nominator_storage_fee_deposit
+            );
+            assert_eq!(pending_deposit.total().unwrap(), nominator_total_stake);
 
             assert_eq!(
                 Balances::usable_balance(nominator_account),
-                nominator_free_balance - nominator_stake - ExistentialDeposit::get()
+                nominator_free_balance - nominator_total_stake - ExistentialDeposit::get()
             );
 
             // another transfer with an existing transfer in place should lead to single
+            let addtional_nomination_total_stake = 40 * SSC;
+            let addtional_nomination_stake = 32 * SSC;
+            let addtional_nomination_storage_fee_deposit = 8 * SSC;
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator_account),
                 operator_id,
-                40 * SSC,
+                addtional_nomination_total_stake,
             );
             assert_ok!(res);
             let pending_deposit = Deposits::<Test>::get(0, nominator_account)
                 .unwrap()
                 .pending
-                .unwrap()
-                .amount;
-            assert_eq!(pending_deposit, nominator_stake + 40 * SSC);
+                .unwrap();
+            assert_eq!(
+                pending_deposit.amount,
+                nominator_stake + addtional_nomination_stake
+            );
+            assert_eq!(
+                pending_deposit.storage_fee_deposit,
+                nominator_storage_fee_deposit + addtional_nomination_storage_fee_deposit
+            );
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(operator.current_total_stake, operator_stake);
-            assert_eq!(operator.deposits_in_epoch, nominator_stake + 40 * SSC);
+            assert_eq!(
+                operator.deposits_in_epoch,
+                nominator_stake + addtional_nomination_stake
+            );
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                operator_storage_fee_deposit
+                    + nominator_storage_fee_deposit
+                    + addtional_nomination_storage_fee_deposit
+            );
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             assert_eq!(nominator_count, 1);
@@ -1560,13 +1594,13 @@ pub(crate) mod tests {
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(
                 operator.current_total_stake,
-                operator_stake + nominator_stake + 40 * SSC
+                operator_stake + nominator_stake + addtional_nomination_stake
             );
 
             let domain_staking_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 domain_staking_summary.current_total_stake,
-                operator_stake + nominator_stake + 40 * SSC
+                operator_stake + nominator_stake + addtional_nomination_stake
             );
         });
     }
@@ -1815,6 +1849,9 @@ pub(crate) mod tests {
     /// since ED is not holded back from usable balance when there are no holds on the account.
     type ExpectedWithdrawAmount = Option<(BalanceOf<Test>, bool)>;
 
+    /// The storage fund change in SSC, `true` means increase of the storage fund, `false` means decrease.
+    type StorageFundChange = (bool, u32);
+
     pub(crate) type Share = <Test as Config>::Share;
 
     struct WithdrawParams {
@@ -1826,6 +1863,7 @@ pub(crate) mod tests {
         maybe_deposit: Option<BalanceOf<Test>>,
         expected_withdraw: ExpectedWithdrawAmount,
         expected_nominator_count_reduced_by: u32,
+        storage_fund_change: StorageFundChange,
     }
 
     fn withdraw_stake(params: WithdrawParams) {
@@ -1838,10 +1876,15 @@ pub(crate) mod tests {
             maybe_deposit,
             expected_withdraw,
             expected_nominator_count_reduced_by,
+            storage_fund_change,
         } = params;
         let domain_id = DomainId::new(0);
         let operator_account = 0;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let mut total_balance = nominators.iter().map(|n| n.1).sum::<BalanceOf<Test>>()
+            + operator_reward
+            + maybe_deposit.unwrap_or(0);
 
         let mut nominators = BTreeMap::from_iter(
             nominators
@@ -1889,11 +1932,38 @@ pub(crate) mod tests {
                 assert_ok!(res);
             }
 
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            let (is_storage_fund_increased, storage_fund_change_amount) = storage_fund_change;
+            if is_storage_fund_increased {
+                bundle_storage_fund::refund_storage_fee::<Test>(
+                    storage_fund_change_amount as u128 * SSC,
+                    BTreeMap::from_iter([(operator_id, 1)]),
+                )
+                .unwrap();
+                assert_eq!(
+                    operator.total_storage_fee_deposit + storage_fund_change_amount as u128 * SSC,
+                    bundle_storage_fund::total_balance::<Test>(operator_id)
+                );
+                total_balance += storage_fund_change_amount as u128 * SSC;
+            } else {
+                bundle_storage_fund::charge_bundle_storage_fee::<Test>(
+                    operator_id,
+                    storage_fund_change_amount,
+                )
+                .unwrap();
+                assert_eq!(
+                    operator.total_storage_fee_deposit - storage_fund_change_amount as u128 * SSC,
+                    bundle_storage_fund::total_balance::<Test>(operator_id)
+                );
+                total_balance -= storage_fund_change_amount as u128 * SSC;
+            }
+
             for (withdraw, expected_result) in withdraws {
+                let withdraw_share_amount = STORAGE_FEE_RESERVE.left_from_one().mul_ceil(withdraw);
                 let res = Domains::withdraw_stake(
                     RuntimeOrigin::signed(nominator_id),
                     operator_id,
-                    withdraw,
+                    withdraw_share_amount,
                 );
                 assert_eq!(
                     res,
@@ -1901,9 +1971,10 @@ pub(crate) mod tests {
                 );
             }
 
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
             if let Some((withdraw, include_ed)) = expected_withdraw {
                 let previous_usable_balance = Balances::usable_balance(nominator_id);
-                do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
                 // staking withdrawal is 5 blocks
                 // to unlock funds, confirmed block should be atleast 105
@@ -1912,6 +1983,7 @@ pub(crate) mod tests {
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));
 
                 let expected_balance = if include_ed {
+                    total_balance += crate::tests::ExistentialDeposit::get();
                     previous_usable_balance + withdraw + crate::tests::ExistentialDeposit::get()
                 } else {
                     previous_usable_balance + withdraw
@@ -1933,6 +2005,15 @@ pub(crate) mod tests {
             if new_nominator_count < nominator_count {
                 assert!(Deposits::<Test>::get(operator_id, nominator_id).is_none())
             }
+
+            // The total balance is distributed in different places but never changed
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                total_balance,
+                Balances::usable_balance(nominator_id)
+                    + operator.current_total_stake
+                    + bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
         });
     }
 
@@ -1947,6 +2028,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -1961,6 +2043,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -1975,6 +2058,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -1989,8 +2073,9 @@ pub(crate) mod tests {
             // given the reward, operator will get 164.28 SSC
             // taking 58 shares will give this following approximate amount.
             maybe_deposit: None,
-            expected_withdraw: Some((63523809541959183678, false)),
+            expected_withdraw: Some((63523809519881179143, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2006,8 +2091,9 @@ pub(crate) mod tests {
                 (5 * SSC, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809541959183678, false)),
+            expected_withdraw: Some((63523809519881179143, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2020,8 +2106,9 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(53 * SSC, Ok(())), (5 * SSC, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((63523809541959183678, false)),
+            expected_withdraw: Some((63523809515796643053, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2034,8 +2121,9 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(49 * SSC, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((49 * SSC, false)),
+            expected_withdraw: Some((48999999980000000000, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2048,8 +2136,9 @@ pub(crate) mod tests {
             nominator_id: 0,
             withdraws: vec![(29 * SSC, Ok(())), (20 * SSC, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((49 * SSC, false)),
+            expected_withdraw: Some((48999999986852892560, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2066,8 +2155,9 @@ pub(crate) mod tests {
                 (20 * SSC, Err(StakingError::MinimumOperatorStake)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((49 * SSC, false)),
+            expected_withdraw: Some((48999999986852892560, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2083,8 +2173,9 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904777551020412, true)),
+            expected_withdraw: Some((54761904775759637192, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2100,8 +2191,9 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904777551020412, true)),
+            expected_withdraw: Some((54761904775759637192, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2121,8 +2213,9 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: None,
-            expected_withdraw: Some((54761904777551020412, true)),
+            expected_withdraw: Some((54761904775759637192, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2137,6 +2230,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2151,6 +2245,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2169,6 +2264,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2181,8 +2277,9 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(40 * SSC, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523822040816330, false)),
+            expected_withdraw: Some((43809523820607709753, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2195,8 +2292,9 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![(35 * SSC, Ok(())), (5 * SSC, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523822040816330, false)),
+            expected_withdraw: Some((43809523819607709753, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2213,8 +2311,9 @@ pub(crate) mod tests {
                 (15 * SSC, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((43809523822040816330, false)),
+            expected_withdraw: Some((43809523819607709753, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2229,6 +2328,7 @@ pub(crate) mod tests {
             maybe_deposit: None,
             expected_withdraw: Some((39 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2239,10 +2339,11 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC, Ok(()))],
+            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC - 100000000000, Ok(()))],
             maybe_deposit: None,
-            expected_withdraw: Some((40 * SSC, false)),
+            expected_withdraw: Some((39999999898000000000, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2255,12 +2356,13 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![
                 (35 * SSC, Ok(())),
-                (5 * SSC, Ok(())),
+                (5 * SSC - 100000000000, Ok(())),
                 (15 * SSC, Err(StakingError::InsufficientShares)),
             ],
             maybe_deposit: None,
-            expected_withdraw: Some((40 * SSC, false)),
+            expected_withdraw: Some((39999999898000000000, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2273,12 +2375,13 @@ pub(crate) mod tests {
             nominator_id: 1,
             withdraws: vec![
                 (35 * SSC, Ok(())),
-                (5 * SSC, Ok(())),
+                (5 * SSC - 100000000000, Ok(())),
                 (10 * SSC, Err(StakingError::MinimumNominatorStake)),
             ],
             maybe_deposit: Some(2 * SSC),
-            expected_withdraw: Some((40 * SSC, false)),
+            expected_withdraw: Some((39999999898000000000, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2298,8 +2401,9 @@ pub(crate) mod tests {
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
             maybe_deposit: Some(2 * SSC),
-            expected_withdraw: Some((43809523822040816330, false)),
+            expected_withdraw: Some((43809523819607709753, false)),
             expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
         })
     }
 
@@ -2313,6 +2417,94 @@ pub(crate) mod tests {
             withdraws: vec![(0, Err(StakingError::ZeroWithdrawShares))],
             maybe_deposit: None,
             expected_withdraw: None,
+            expected_nominator_count_reduced_by: 0,
+            storage_fund_change: (true, 0),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_all_with_storage_fee_profit() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(50 * SSC, Ok(()))],
+            maybe_deposit: None,
+            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator make 50%
+            // storage fee profit i.e. 5 * SSC with rounding dust deducted
+            storage_fund_change: (true, 21),
+            expected_withdraw: Some((54999999994000000000, true)),
+            expected_nominator_count_reduced_by: 1,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_all_with_storage_fee_loss() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(50 * SSC, Ok(()))],
+            maybe_deposit: None,
+            // The storage fund decreased 50% (i.e. 21 * SSC) thus the nominator loss 50%
+            // storage fee deposit i.e. 5 * SSC with rounding dust deducted
+            storage_fund_change: (false, 21),
+            expected_withdraw: Some((44999999998000000000, true)),
+            expected_nominator_count_reduced_by: 1,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_all_with_storage_fee_loss_all() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(50 * SSC, Ok(()))],
+            maybe_deposit: None,
+            // The storage fund decreased 100% (i.e. 42 * SSC) thus the nominator loss 100%
+            // storage fee deposit i.e. 10 * SSC
+            storage_fund_change: (false, 42),
+            expected_withdraw: Some((40 * SSC, true)),
+            expected_nominator_count_reduced_by: 1,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_multiple_withdraws_with_storage_fee_profit() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(5 * SSC, Ok(())), (10 * SSC, Ok(())), (15 * SSC, Ok(()))],
+            maybe_deposit: None,
+            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator make 50%
+            // storage fee profit i.e. 5 * SSC with rounding dust deducted, withdraw 60% of
+            // the stake and the storage fee profit
+            storage_fund_change: (true, 21),
+            expected_withdraw: Some((30 * SSC + 2999999855527204374, false)),
+            expected_nominator_count_reduced_by: 0,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_multiple_withdraws_with_storage_fee_loss() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(5 * SSC, Ok(())), (5 * SSC, Ok(())), (10 * SSC, Ok(()))],
+            maybe_deposit: None,
+            // The storage fund increased 50% (i.e. 21 * SSC) thus the nominator loss 50%
+            // storage fee i.e. 5 * SSC with rounding dust deducted, withdraw 40% of
+            // the stake and 40% of the storage fee loss are deducted
+            storage_fund_change: (false, 21),
+            expected_withdraw: Some((20 * SSC - 2 * SSC - 33331097576, false)),
             expected_nominator_count_reduced_by: 0,
         })
     }
@@ -2343,6 +2535,9 @@ pub(crate) mod tests {
             (nominator_account, nominator_extra_deposit),
         ];
 
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * 300 * SSC;
+        let init_total_storage_fund = STORAGE_FEE_RESERVE * 300 * SSC;
+
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             let (operator_id, _) = register_operator(
@@ -2357,10 +2552,15 @@ pub(crate) mod tests {
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
-            assert_eq!(domain_stake_summary.current_total_stake, 300 * SSC);
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert_eq!(operator.current_total_stake, 300 * SSC);
+            assert_eq!(operator.current_total_stake, init_total_stake);
+            assert_eq!(operator.total_storage_fee_deposit, init_total_storage_fund);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
 
             for unlock in &unlocking {
                 do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
@@ -2370,15 +2570,43 @@ pub(crate) mod tests {
                 .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-            // post epoch transition, domain stake has 21.333 amount reduced due to withdrawal of 20 shares
-            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
-            assert_eq!(
-                domain_stake_summary.current_total_stake,
-                298666666666666666667
-            );
+            // Manually convert previous withdrawal in share to balance
+            for id in [operator_account, nominator_account] {
+                Withdrawals::<Test>::try_mutate(operator_id, id, |maybe_withdrawal| {
+                    do_convert_previous_epoch_withdrawal::<Test>(
+                        operator_id,
+                        maybe_withdrawal.as_mut().unwrap(),
+                    )
+                })
+                .unwrap();
+            }
 
+            // post epoch transition, domain stake has 21.666 amount reduced and storage fund has 5 amount reduced
+            // due to withdrawal of 20 shares
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert_eq!(operator.current_total_stake, 298666666666666666667);
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            let operator_withdrawal =
+                Withdrawals::<Test>::get(operator_id, operator_account).unwrap();
+            let nominator_withdrawal =
+                Withdrawals::<Test>::get(operator_id, nominator_account).unwrap();
+
+            let total_deposit =
+                domain_stake_summary.current_total_stake + operator.total_storage_fee_deposit;
+            let total_stake_withdrawal = operator_withdrawal.total_withdrawal_amount
+                + nominator_withdrawal.total_withdrawal_amount;
+            let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0].storage_fee
+                + nominator_withdrawal.withdrawals[0].storage_fee;
+            assert_eq!(293333333331527777778, total_deposit,);
+            assert_eq!(21666666668472222222, total_stake_withdrawal);
+            assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
+            assert_eq!(
+                320 * SSC,
+                total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
+            );
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
 
             for deposit in deposits {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
@@ -2417,7 +2645,8 @@ pub(crate) mod tests {
                 nominator_free_balance - nominator_stake
             );
 
-            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * SSC)
+            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * SSC);
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
 
@@ -2472,7 +2701,21 @@ pub(crate) mod tests {
             assert!(domain_stake_summary.next_operators.contains(&operator_id_1));
             assert!(domain_stake_summary.next_operators.contains(&operator_id_2));
             assert!(domain_stake_summary.next_operators.contains(&operator_id_3));
-            assert_eq!(domain_stake_summary.current_total_stake, 600 * SSC);
+            assert_eq!(
+                domain_stake_summary.current_total_stake,
+                STORAGE_FEE_RESERVE.left_from_one() * 600 * SSC
+            );
+            for operator_id in [operator_id_1, operator_id_2, operator_id_3] {
+                let operator = Operators::<Test>::get(operator_id).unwrap();
+                assert_eq!(
+                    operator.total_storage_fee_deposit,
+                    STORAGE_FEE_RESERVE * operator_stake
+                );
+                assert_eq!(
+                    operator.total_storage_fee_deposit,
+                    bundle_storage_fund::total_balance::<Test>(operator_id)
+                );
+            }
 
             do_slash_operators::<Test, _>(
                 vec![
@@ -2515,7 +2758,91 @@ pub(crate) mod tests {
             assert_eq!(
                 Balances::total_balance(&crate::tests::TreasuryAccount::get()),
                 600 * SSC
+            );
+            for operator_id in [operator_id_1, operator_id_2, operator_id_3] {
+                assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+            }
+        });
+    }
+
+    #[test]
+    fn bundle_storage_fund_charged_and_refund_storege_fee() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 150 * SSC;
+        let operator_total_stake = 100 * SSC;
+        let operator_stake = 80 * SSC;
+        let operator_storage_fee_deposit = 20 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let nominator_account = 2;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_total_stake,
+                SSC,
+                pair.public(),
+                BTreeMap::default(),
+            );
+
+            let domain_staking_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_staking_summary.current_total_stake, operator_stake);
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, operator_stake);
+            assert_eq!(operator.current_total_shares, operator_stake);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                operator_storage_fee_deposit
+            );
+
+            // Drain the bundle storage fund
+            bundle_storage_fund::charge_bundle_storage_fee::<Test>(
+                operator_id,
+                // the transaction fee is one SSC per byte thus div SSC here
+                (operator_storage_fee_deposit / SSC) as u32,
             )
+            .unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+            assert_err!(
+                bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1,),
+                bundle_storage_fund::Error::BundleStorageFeePayment
+            );
+
+            // The operator add more stake thus add deposit to the bundle storage fund
+            do_nominate_operator::<Test>(operator_id, operator_account, 5 * SSC).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+
+            bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+
+            // New nominator add deposit to the bundle storage fund
+            Balances::set_balance(&nominator_account, 100 * SSC);
+            do_nominate_operator::<Test>(operator_id, nominator_account, 5 * SSC).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+
+            bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+
+            // Refund of the storage fee add deposit to the bundle storage fund
+            bundle_storage_fund::refund_storage_fee::<Test>(
+                10 * SSC,
+                BTreeMap::from_iter([(operator_id, 1), (operator_id + 1, 9)]),
+            )
+            .unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), SSC);
+
+            // The operator `operator_id + 1` not exist thus the refund storage fee added to treasury
+            assert_eq!(
+                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
+                9 * SSC
+            );
+
+            bundle_storage_fund::charge_bundle_storage_fee::<Test>(operator_id, 1).unwrap();
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
 }

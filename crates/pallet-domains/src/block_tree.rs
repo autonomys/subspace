@@ -442,7 +442,7 @@ mod tests {
     fn test_genesis_receipt() {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(0u64, vec![0u64]);
+            let domain_id = register_genesis_domain(0u128, vec![0u64]);
 
             // The genesis receipt should be added to the block tree
             let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0).unwrap();
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_new_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id = 1u64;
         let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get();
 
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_confirm_current_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_non_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -699,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_previous_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -740,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_new_branch_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_invalid_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
@@ -875,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_invalid_trace_root_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -937,7 +937,7 @@ mod tests {
 
     #[test]
     fn test_collect_invalid_bundle_author() {
-        let creator = 0u64;
+        let creator = 0u128;
         let challenge_period = BlockTreePruningDepth::get() as u64;
         let operator_set: Vec<_> = (1..15).collect();
         let mut ext = new_test_ext_with_extensions();

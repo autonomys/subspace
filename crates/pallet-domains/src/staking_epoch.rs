@@ -477,6 +477,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
 #[cfg(test)]
 mod tests {
+    use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
@@ -500,7 +501,7 @@ mod tests {
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorAllowList, OperatorPair};
     use sp_runtime::traits::Zero;
-    use sp_runtime::Percent;
+    use sp_runtime::{PerThing, Percent};
     use std::collections::{BTreeMap, BTreeSet};
     use subspace_runtime_primitives::SSC;
 
@@ -690,9 +691,9 @@ mod tests {
             vec![(2, 10 * SSC), (4, 10 * SSC)],
             vec![(1, 20 * SSC), (2, 10 * SSC)],
             vec![
-                (1, 164285714332653061237),
-                (2, 64761904777551020412),
-                (3, 10952380955510204082),
+                (1, 164285714327278911577),
+                (2, 64761904775759637192),
+                (3, 10952380955151927438),
                 (4, 10 * SSC),
             ],
             20 * SSC,
@@ -700,7 +701,7 @@ mod tests {
     }
 
     struct FinalizeDomainParams {
-        total_stake: BalanceOf<Test>,
+        total_deposit: BalanceOf<Test>,
         rewards: BalanceOf<Test>,
         nominators: Vec<(NominatorId<Test>, <Test as Config>::Share)>,
         deposits: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
@@ -712,7 +713,7 @@ mod tests {
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let FinalizeDomainParams {
-            total_stake,
+            total_deposit,
             rewards,
             nominators,
             deposits,
@@ -749,10 +750,10 @@ mod tests {
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-            let mut total_deposit = BalanceOf::<Test>::zero();
+            let mut total_new_deposit = BalanceOf::<Test>::zero();
             for deposit in &deposits {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
-                total_deposit += deposit.1;
+                total_new_deposit += deposit.1;
             }
 
             if !rewards.is_zero() {
@@ -766,6 +767,7 @@ mod tests {
             }
 
             // should also store the previous epoch details in-block
+            let total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
             let election_params = LastEpochStakingDistribution::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 election_params.operators,
@@ -773,15 +775,18 @@ mod tests {
             );
             assert_eq!(election_params.total_domain_stake, total_stake);
 
-            let total_updated_stake = total_stake + total_deposit + rewards;
+            let total_updated_stake = total_deposit + total_new_deposit + rewards;
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert_eq!(operator.current_total_stake, total_updated_stake);
+            assert_eq!(
+                operator.current_total_stake + operator.total_storage_fee_deposit,
+                total_updated_stake
+            );
             assert_eq!(operator.current_epoch_rewards, Zero::zero());
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 domain_stake_summary.current_total_stake,
-                total_updated_stake
+                total_updated_stake - operator.total_storage_fee_deposit
             );
             // epoch should be 3 since we did 3 epoch transitions
             assert_eq!(domain_stake_summary.current_epoch_index, 3);
@@ -791,7 +796,7 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_no_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_stake: 210 * SSC,
+            total_deposit: 210 * SSC,
             rewards: 0,
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
@@ -801,7 +806,7 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_with_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_stake: 210 * SSC,
+            total_deposit: 210 * SSC,
             rewards: 20 * SSC,
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
@@ -836,6 +841,7 @@ mod tests {
             // 10% tax
             let nomination_tax = Percent::from_parts(10);
             let mut operator = Operators::<Test>::get(operator_id).unwrap();
+            let pre_storage_fund_deposit = operator.total_storage_fee_deposit;
             operator.nomination_tax = nomination_tax;
             Operators::<Test>::insert(operator_id, operator);
             let expected_operator_tax = nomination_tax.mul_ceil(operator_rewards);
@@ -845,18 +851,30 @@ mod tests {
 
             operator_take_reward_tax_and_stake::<Test>(domain_id).unwrap();
             let operator = Operators::<Test>::get(operator_id).unwrap();
+            let new_storage_fund_deposit =
+                operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
                 operator.current_epoch_rewards,
                 (10 * SSC - expected_operator_tax)
             );
 
-            let deposit = Deposits::<Test>::get(operator_id, operator_account)
+            let staking_deposit = Deposits::<Test>::get(operator_id, operator_account)
                 .unwrap()
                 .pending
                 .unwrap()
                 .amount;
-            assert_eq!(deposit, expected_operator_tax);
-
+            assert_eq!(
+                staking_deposit + new_storage_fund_deposit,
+                expected_operator_tax
+            );
+            assert_eq!(
+                staking_deposit,
+                STORAGE_FEE_RESERVE.left_from_one() * expected_operator_tax
+            );
+            assert_eq!(
+                new_storage_fund_deposit,
+                STORAGE_FEE_RESERVE * expected_operator_tax
+            );
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(domain_stake_summary.current_epoch_rewards.is_empty())
         });
