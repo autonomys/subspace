@@ -417,30 +417,30 @@ where
             };
 
             // Find plot in which there is a place for new piece to be stored
-            if !caches
-                .iter_mut()
-                .enumerate()
-                .any(|(disk_farm_index, cache)| {
-                    let Some(offset) = cache.free_offsets.pop() else {
-                        return false;
-                    };
+            let mut sorted_caches = caches.iter_mut().enumerate().collect::<Vec<_>>();
+            // Sort piece caches by number of stored pieces to fill those that are less
+            // populated first
+            sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
+            if !sorted_caches.into_iter().any(|(disk_farm_index, cache)| {
+                let Some(offset) = cache.free_offsets.pop() else {
+                    return false;
+                };
 
-                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
-                        error!(
-                            %error,
-                            %disk_farm_index,
-                            %piece_index,
-                            %offset,
-                            "Failed to write piece into cache"
-                        );
-                        return false;
-                    }
-                    cache
-                        .stored_pieces
-                        .insert(RecordKey::from(piece_index.to_multihash()), offset);
-                    true
-                })
-            {
+                if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
+                    error!(
+                        %error,
+                        %disk_farm_index,
+                        %piece_index,
+                        %offset,
+                        "Failed to write piece into cache"
+                    );
+                    return false;
+                }
+                cache
+                    .stored_pieces
+                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                true
+            }) {
                 error!(
                     %piece_index,
                     "Failed to store piece in cache, there was no space"
@@ -697,7 +697,11 @@ where
             }
             // There is free space in cache, need to find a free spot and place piece there
             None => {
-                for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
+                let mut sorted_caches = caches.iter_mut().enumerate().collect::<Vec<_>>();
+                // Sort piece caches by number of stored pieces to fill those that are less
+                // populated first
+                sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
+                for (disk_farm_index, cache) in sorted_caches {
                     let Some(offset) = cache.free_offsets.pop() else {
                         // Not this disk farm
                         continue;
