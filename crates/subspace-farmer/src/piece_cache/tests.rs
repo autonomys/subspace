@@ -21,8 +21,7 @@ use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_rpc_primitives::{
-    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
-    SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tempfile::tempdir;
 
@@ -97,12 +96,6 @@ impl NodeClient for MockNodeClient {
         // Allow to delay segment headers subscription in tests
         let stream = rx.await.unwrap();
         Ok(Box::pin(stream))
-    }
-
-    async fn subscribe_node_sync_status_change(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = NodeSyncStatus> + Send + 'static>>, Error> {
-        unimplemented!()
     }
 
     async fn segment_headers(

@@ -9,8 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
-    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
-    SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Semaphore;
 
@@ -129,23 +128,6 @@ impl NodeClient for NodeRpcClient {
 
         Ok(Box::pin(subscription.filter_map(
             |archived_segment_header_result| async move { archived_segment_header_result.ok() },
-        )))
-    }
-
-    async fn subscribe_node_sync_status_change(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = NodeSyncStatus> + Send + 'static>>, RpcError> {
-        let subscription = self
-            .client
-            .subscribe(
-                "subspace_subscribeNodeSyncStatusChange",
-                rpc_params![],
-                "subspace_unsubscribeNodeSyncStatusChange",
-            )
-            .await?;
-
-        Ok(Box::pin(subscription.filter_map(
-            |node_sync_status_result| async move { node_sync_status_result.ok() },
         )))
     }
 
