@@ -454,7 +454,7 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
-            genesis_domain: Some(sp_domains::GenesisDomain {
+            genesis_domain: enable_domains.then_some(sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
