@@ -175,7 +175,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     // TODO: Adjust once we bench PoT on faster hardware
                     // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
                     pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
-                    enable_domains: true,
+                    enable_domains: false,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
                     enable_non_root_calls: false,
