@@ -400,7 +400,7 @@ pub(super) fn create_consensus_chain_configuration(
 
     let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
-        impl_version: env!("CARGO_PKG_VERSION").to_string(),
+        impl_version: env!("SUBSTRATE_CLI_IMPL_VERSION").into(),
         farmer,
         base_path: base_path.clone(),
         transaction_pool,

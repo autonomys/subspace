@@ -307,8 +307,8 @@ pub(super) fn create_domain_configuration(
     };
 
     let domain_config = SubstrateConfiguration {
-        impl_name: env!("CARGO_PKG_NAME").to_string(),
-        impl_version: env!("CARGO_PKG_VERSION").to_string(),
+        impl_name: consensus_chain_configuration.impl_name.clone(),
+        impl_version: consensus_chain_configuration.impl_version.clone(),
         operator: operator_id.is_some(),
         base_path: base_path.clone(),
         transaction_pool,
