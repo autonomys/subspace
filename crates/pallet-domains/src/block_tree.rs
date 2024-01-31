@@ -352,11 +352,9 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
                     operator_ids,
-                    // TODO: also distribute the `storage_fee`
                     rewards: execution_receipt.block_fees.domain_execution_fee,
                     invalid_bundle_authors,
-                    // TODO: get the `total_storage_fee` from ER
-                    total_storage_fee: Zero::zero(),
+                    total_storage_fee: execution_receipt.block_fees.consensus_storage_fee,
                     paid_bundle_storage_fees,
                 }));
             }

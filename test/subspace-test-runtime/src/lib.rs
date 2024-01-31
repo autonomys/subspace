@@ -397,7 +397,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type BlockchainHistorySize = BlockchainHistorySize;
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
-    type DynamicCostOfStorage = ConstBool<{ !cfg!(feature = "do-not-enforce-cost-of-storage") }>;
+    type DynamicCostOfStorage = ConstBool<false>;
     type WeightInfo = ();
 }
 

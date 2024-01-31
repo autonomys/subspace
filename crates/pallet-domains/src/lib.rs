@@ -1399,8 +1399,7 @@ mod pallet {
                     .and_then(|_| {
                         charge_bundle_storage_fee::<T>(
                             opaque_bundle.operator_id(),
-                            Zero::zero(),
-                            // TODO: use `opaque_bundle.size()` when deposit to storage fund works
+                            opaque_bundle.size(),
                         )
                         .map_err(|_| InvalidTransaction::Call.into())
                     }),
@@ -1445,8 +1444,7 @@ mod pallet {
 
                     if let Err(e) = charge_bundle_storage_fee::<T>(
                         opaque_bundle.operator_id(),
-                        Zero::zero(),
-                        // TODO: use `opaque_bundle.size()` when deposit to storage fund works
+                        opaque_bundle.size(),
                     ) {
                         log::debug!(
                             target: "runtime::domains",
