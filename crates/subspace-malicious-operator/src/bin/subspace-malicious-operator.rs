@@ -24,6 +24,7 @@ use sc_consensus_slots::SlotProportion;
 use sc_network::config::MultiaddrWithPeerId;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
+use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
@@ -133,12 +134,13 @@ fn main() -> Result<(), Error> {
                 .chain_spec
                 .properties()
                 .get("potExternalEntropy")
-                .map(|d| serde_json::from_value(d.clone()))
-                .transpose()
-                .map_err(|error| {
-                    sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
-                })?
-                .flatten()
+                .map(|d| match d.clone() {
+                    Value::String(s) => Ok(s.into_bytes()),
+                    _ => Err(sc_service::Error::Other(
+                        "Failed to decode PoT initial key".to_string(),
+                    )),
+                })
+                .transpose()?
                 .unwrap_or_default();
 
             let dsn_config = {

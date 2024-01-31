@@ -33,7 +33,7 @@
       "/dns/bootstrap-0.gemini-3h.subspace.network/tcp/30533/p2p/12D3KooWK7NuL4S6aEdy5gELnvhCGo6EyrWVARnBy7W4AJTVkaF1",
       "/dns/bootstrap-1.gemini-3h.subspace.network/tcp/30533/p2p/12D3KooWQK33n2raSXzjH8JyqbFtczBmbwZiK9Tpicdw3rveJesj"
     ],
-    "potExternalEntropy": null,
+    "potExternalEntropy": "000000000000000000037bbc7fae1cd2c91dba8312b65f71352630e938cc4dda",
     "ss58Format": 2254,
     "tokenDecimals": 18,
     "tokenSymbol": "tSSC"
