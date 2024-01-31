@@ -85,7 +85,7 @@ impl From<(DomainId, EpochIndex)> for DomainEpoch {
 
 pub struct NewDeposit<Balance> {
     pub(crate) staking: Balance,
-    pub(crate) storage_fee: Balance,
+    pub(crate) storage_fee_deposit: Balance,
 }
 
 /// A nominator's shares against their deposits to given operator pool.
@@ -129,7 +129,7 @@ pub(crate) struct WithdrawalInBalance<DomainBlockNumber, Balance> {
     pub(crate) domain_id: DomainId,
     pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
     pub(crate) amount_to_unlock: Balance,
-    pub(crate) storage_fee: Balance,
+    pub(crate) storage_fee_refund: Balance,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -137,7 +137,7 @@ pub(crate) struct WithdrawalInShares<DomainBlockNumber, Share, Balance> {
     pub(crate) domain_epoch: DomainEpoch,
     pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
     pub(crate) shares: Share,
-    pub(crate) storage_fee: Balance,
+    pub(crate) storage_fee_refund: Balance,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -336,7 +336,7 @@ pub(crate) fn do_register_operator<T: Config>(
             // sum total deposits added during this epoch.
             deposits_in_epoch: new_deposit.staking,
             withdrawals_in_epoch: Zero::zero(),
-            total_storage_fee_deposit: new_deposit.storage_fee,
+            total_storage_fee_deposit: new_deposit.storage_fee_deposit,
         };
         Operators::<T>::insert(operator_id, operator);
         OperatorSigningKey::<T>::insert(signing_key, operator_id);
@@ -385,7 +385,7 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
                 let pending_deposit = PendingDeposit {
                     effective_domain_epoch: current_domain_epoch,
                     amount: new_deposit.staking,
-                    storage_fee_deposit: new_deposit.storage_fee,
+                    storage_fee_deposit: new_deposit.storage_fee_deposit,
                 };
 
                 let deposit_info = DepositInfo {
@@ -405,7 +405,7 @@ pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: 
                         .ok_or(Error::BalanceOverflow)?,
                     storage_fee_deposit: pending_deposit
                         .storage_fee_deposit
-                        .checked_add(&new_deposit.storage_fee)
+                        .checked_add(&new_deposit.storage_fee_deposit)
                         .ok_or(Error::BalanceOverflow)?,
                 };
 
@@ -478,7 +478,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
         domain_epoch,
         unlock_at_confirmed_domain_block_number,
         shares,
-        storage_fee,
+        storage_fee_refund,
     }) = withdrawal.withdrawal_in_shares.take()
     {
         let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
@@ -492,7 +492,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
             domain_id,
             unlock_at_confirmed_domain_block_number,
             amount_to_unlock: withdrawal_amount,
-            storage_fee,
+            storage_fee_refund,
         };
         withdrawal.withdrawals.push_back(withdraw_in_balance);
     }
@@ -531,7 +531,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
         // Increase total storage fee deposit as there is new deposit to the storage fund
         operator.total_storage_fee_deposit = operator
             .total_storage_fee_deposit
-            .checked_add(&new_deposit.storage_fee)
+            .checked_add(&new_deposit.storage_fee_deposit)
             .ok_or(Error::BalanceOverflow)?;
 
         let current_domain_epoch = (
@@ -872,7 +872,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     Some(WithdrawalInShares {
                         domain_epoch,
                         shares,
-                        storage_fee,
+                        storage_fee_refund,
                         ..
                     }) => WithdrawalInShares {
                         domain_epoch,
@@ -880,7 +880,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                             .checked_add(&shares_withdrew)
                             .ok_or(Error::ShareOverflow)?,
                         unlock_at_confirmed_domain_block_number,
-                        storage_fee: storage_fee
+                        storage_fee_refund: storage_fee_refund
                             .checked_add(&withdraw_storage_fee)
                             .ok_or(Error::BalanceOverflow)?,
                     },
@@ -888,7 +888,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         domain_epoch: domain_current_epoch,
                         unlock_at_confirmed_domain_block_number,
                         shares: shares_withdrew,
-                        storage_fee: withdraw_storage_fee,
+                        storage_fee_refund: withdraw_storage_fee,
                     },
                 };
                 withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
@@ -918,7 +918,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             domain_id,
             unlock_at_confirmed_domain_block_number,
             amount_to_unlock,
-            storage_fee,
+            storage_fee_refund,
         } = withdrawal
             .withdrawals
             .pop_front()
@@ -964,7 +964,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         T::Currency::release(
             &storage_fund_hold_id,
             &nominator_id,
-            storage_fee,
+            storage_fee_refund,
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
@@ -2594,8 +2594,9 @@ pub(crate) mod tests {
                 domain_stake_summary.current_total_stake + operator.total_storage_fee_deposit;
             let total_stake_withdrawal = operator_withdrawal.total_withdrawal_amount
                 + nominator_withdrawal.total_withdrawal_amount;
-            let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0].storage_fee
-                + nominator_withdrawal.withdrawals[0].storage_fee;
+            let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
+                .storage_fee_refund
+                + nominator_withdrawal.withdrawals[0].storage_fee_refund;
             assert_eq!(293333333331527777778, total_deposit,);
             assert_eq!(21666666668472222222, total_stake_withdrawal);
             assert_eq!(5000000000000000000, total_storage_fee_withdrawal);

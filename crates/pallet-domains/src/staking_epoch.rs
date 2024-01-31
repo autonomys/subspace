@@ -98,7 +98,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     // Increase total storage fee deposit as there is new deposit to the storage fund
                     operator.total_storage_fee_deposit = operator
                         .total_storage_fee_deposit
-                        .checked_add(&operator_tax_deposit.storage_fee)
+                        .checked_add(&operator_tax_deposit.storage_fee_deposit)
                         .ok_or(TransitionError::BalanceOverflow)?;
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();

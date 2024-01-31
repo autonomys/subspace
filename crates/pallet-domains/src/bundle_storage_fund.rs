@@ -156,7 +156,7 @@ pub fn deposit_reserve_for_storage_fund<T: Config>(
 
     Ok(NewDeposit {
         staking,
-        storage_fee: storage_fee_reserve,
+        storage_fee_deposit: storage_fee_reserve,
     })
 }
 
@@ -198,10 +198,10 @@ pub fn total_balance<T: Config>(operator_id: OperatorId) -> BalanceOf<T> {
 /// Return the bundle storage fund redeem price
 pub fn storage_fund_redeem_price<T: Config>(
     operator_id: OperatorId,
-    operartor_total_deposit: BalanceOf<T>,
+    operator_total_deposit: BalanceOf<T>,
 ) -> StorageFundRedeemPrice<T> {
     let total_balance = total_balance::<T>(operator_id);
-    StorageFundRedeemPrice::<T>::new(total_balance, operartor_total_deposit)
+    StorageFundRedeemPrice::<T>::new(total_balance, operator_total_deposit)
 }
 
 /// Transfer all of the balance of the bundle storage fund to the treasury

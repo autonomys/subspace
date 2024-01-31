@@ -150,7 +150,7 @@ where
                     break;
                 }
 
-                // TODO: stop including more tx once the operartor's available storage fund less than
+                // TODO: stop including more tx once the operator's available storage fund less than
                 // `next_bundle_size * consensus_transaction_byte_fee`
 
                 // Double check the transaction validity, because the tx pool are re-validate the transaction
