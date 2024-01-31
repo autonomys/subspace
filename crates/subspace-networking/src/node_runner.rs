@@ -46,6 +46,7 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::task::yield_now;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
@@ -316,6 +317,9 @@ where
                     self.handle_removed_address_event(event);
                 },
             }
+
+            // Allow to exit from busy loop during graceful shutdown
+            yield_now().await;
         }
     }
 
