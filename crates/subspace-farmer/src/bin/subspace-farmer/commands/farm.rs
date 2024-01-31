@@ -31,7 +31,7 @@ use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop,
+    thread_pool_core_indices, AsyncJoinOnDrop, CpuCoreSet,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -128,7 +128,8 @@ pub(crate) struct FarmingArgs {
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of logical CPUs
-    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
+    /// not more than 32 threads
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
@@ -459,8 +460,8 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool_core_indices;
-    let replotting_thread_pool_core_indices;
+    let mut plotting_thread_pool_core_indices;
+    let mut replotting_thread_pool_core_indices;
     if let Some(plotting_cpu_cores) = plotting_cpu_cores {
         plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
             .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
@@ -493,6 +494,25 @@ where
             }
             replotting_thread_pool_core_indices
         };
+
+        if plotting_thread_pool_core_indices.len() > 1 {
+            info!(
+                l3_cache_groups = %plotting_thread_pool_core_indices.len(),
+                "Multiple L3 cache groups detected"
+            );
+
+            if plotting_thread_pool_core_indices.len() > disk_farms.len() {
+                plotting_thread_pool_core_indices =
+                    CpuCoreSet::regroup(&plotting_thread_pool_core_indices, disk_farms.len());
+                replotting_thread_pool_core_indices =
+                    CpuCoreSet::regroup(&replotting_thread_pool_core_indices, disk_farms.len());
+
+                info!(
+                    farms_count = %disk_farms.len(),
+                    "Regrouped CPU cores to match number of farms, more farms may leverage CPU more efficiently"
+                );
+            }
+        }
     }
 
     let downloading_semaphore = Arc::new(Semaphore::new(
@@ -509,30 +529,6 @@ where
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
-
-    let all_cpu_cores = all_cpu_cores();
-    if all_cpu_cores.len() > 1 {
-        info!(numa_nodes = %all_cpu_cores.len(), "NUMA system detected");
-
-        if all_cpu_cores.len() > disk_farms.len() {
-            warn!(
-                numa_nodes = %all_cpu_cores.len(),
-                farms_count = %disk_farms.len(),
-                "Too few disk farms, CPU will not be utilized fully during plotting, same number of farms as NUMA \
-                nodes or more is recommended"
-            );
-        }
-    }
-
-    // TODO: Remove code or environment variable once identified whether it helps or not
-    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpu_cores.len() > 1 {
-        unsafe {
-            libmimalloc_sys::mi_option_set(
-                libmimalloc_sys::mi_option_use_numa_nodes,
-                all_cpu_cores.len() as std::ffi::c_long,
-            );
-        }
-    }
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
