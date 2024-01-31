@@ -35,6 +35,8 @@ pub struct FarmerAppInfo {
     pub genesis_hash: [u8; 32],
     /// Bootstrap nodes for DSN
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// Whether node is syncing right now
+    pub syncing: bool,
     /// How much time farmer has to audit sectors and generate a solution
     pub farming_timeout: Duration,
     /// Protocol info for farmer

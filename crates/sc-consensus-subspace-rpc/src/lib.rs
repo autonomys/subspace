@@ -322,6 +322,7 @@ where
             FarmerAppInfo {
                 genesis_hash: self.genesis_hash,
                 dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
+                syncing: self.sync_oracle.is_major_syncing(),
                 farming_timeout: chain_constants
                     .slot_duration()
                     .as_duration()

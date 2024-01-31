@@ -42,6 +42,7 @@ impl NodeClient for MockNodeClient {
         Ok(FarmerAppInfo {
             genesis_hash: [0; 32],
             dsn_bootstrap_nodes: Vec::new(),
+            syncing: false,
             farming_timeout: Duration::default(),
             protocol_info: FarmerProtocolInfo {
                 history_size: HistorySize::from(SegmentIndex::from(
