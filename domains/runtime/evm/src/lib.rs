@@ -659,17 +659,14 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
+// TODO: fix extracting state roots
 fn extract_xdm_proof_state_roots(
     encoded_ext: Vec<u8>,
 ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
     if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
         match &ext.0.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-                msg.extract_state_roots_from_proof::<BlakeTwo256>()
-            }
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-                msg.extract_state_roots_from_proof::<BlakeTwo256>()
-            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { .. }) => None,
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { .. }) => None,
             _ => None,
         }
     } else {

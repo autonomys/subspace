@@ -25,5 +25,6 @@ sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polk
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
+sp-mmr-primitives = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 tracing = "0.1.40"

@@ -2531,6 +2531,7 @@ dependencies = [
  "sp-consensus",
  "sp-domains",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-runtime",
  "tracing",
 ]
@@ -7323,6 +7324,7 @@ dependencies = [
  "sp-core",
  "sp-domains",
  "sp-messenger",
+ "sp-mmr-primitives",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",
@@ -11005,6 +11007,7 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-domains",
+ "sp-mmr-primitives",
  "sp-runtime",
  "sp-std",
  "sp-trie",

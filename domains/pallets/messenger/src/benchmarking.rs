@@ -8,9 +8,11 @@ use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
-    CrossDomainMessage, InitiateChannelParams, Message, MessageWeightTag, Payload, Proof,
-    RequestResponse, VersionedPayload,
+    BlockInfo, ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams, Message,
+    MessageWeightTag, Payload, Proof, RequestResponse, VersionedPayload,
 };
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_trie::StorageProof;
 
 #[benchmarks]
 mod benchmarks {
@@ -119,7 +121,7 @@ mod benchmarks {
                 dst_chain_id: T::SelfChainId::get(),
                 channel_id,
                 nonce: channel.next_inbox_nonce,
-                proof: Proof::dummy(),
+                proof: dummy_proof(),
                 weight_tag: MessageWeightTag::EndpointRequest(endpoint),
             };
 
@@ -187,7 +189,7 @@ mod benchmarks {
                 dst_chain_id: T::SelfChainId::get(),
                 channel_id,
                 nonce: resp_nonce,
-                proof: Proof::dummy(),
+                proof: dummy_proof(),
                 weight_tag: MessageWeightTag::EndpointResponse(endpoint),
             };
 
@@ -233,4 +235,23 @@ mod benchmarks {
         crate::mock::chain_a::new_test_ext(),
         crate::mock::chain_a::Runtime,
     );
+}
+
+pub fn dummy_proof<CBlockNumber, CBlockHash, MmrHash>() -> Proof<CBlockNumber, CBlockHash, MmrHash>
+where
+    CBlockNumber: Default,
+    CBlockHash: Default,
+{
+    Proof::Consensus {
+        consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+            block_info: BlockInfo::default(),
+            opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+            proof: MmrProof {
+                leaf_indices: vec![],
+                leaf_count: 0,
+                items: vec![],
+            },
+        },
+        message_proof: StorageProof::empty(),
+    }
 }
