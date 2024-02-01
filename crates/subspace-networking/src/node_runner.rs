@@ -3,16 +3,15 @@ use crate::behavior::persistent_parameters::{
     PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{Behavior, Event};
-use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::{ConnectedPeersHandler, LocalOnlyRecordStore};
 use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
-use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
-use crate::utils::rate_limiter::RateLimiterPermit;
+use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::{constructor, NewPeerInfo};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -41,11 +40,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Debug;
 use std::net::IpAddr;
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::yield_now;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
@@ -53,32 +52,26 @@ use tracing::{debug, error, trace, warn};
 // Defines a batch size for peer addresses from Kademlia buckets.
 const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
 
-/// How many peers should node be connected to before boosting turns on.
-///
-/// 1 means boosting starts with second peer.
-const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
-    NonZeroUsize::new(5).expect("Not zero; qed");
-
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<PeerRecord>,
         // Just holding onto permit while data structure is not dropped
-        _permit: RateLimiterPermit,
+        _permit: OwnedSemaphorePermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: RateLimiterPermit,
+        _permit: Option<OwnedSemaphorePermit>,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: Option<RateLimiterPermit>,
+        _permit: Option<OwnedSemaphorePermit>,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
-        _permit: RateLimiterPermit,
+        _permit: OwnedSemaphorePermit,
     },
     Bootstrap {
         sender: mpsc::UnboundedSender<()>,
@@ -534,15 +527,7 @@ where
                     .num_established_peer_connections
                     .fetch_add(1, Ordering::SeqCst)
                     + 1;
-                if num_established_peer_connections > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
-                    // The peer count exceeded the threshold, bump up the quota.
-                    if let Err(error) = shared.rate_limiter.expand_kademlia_semaphore() {
-                        warn!(%error, "Failed to expand Kademlia concurrent tasks");
-                    }
-                    if let Err(error) = shared.rate_limiter.expand_regular_semaphore() {
-                        warn!(%error, "Failed to expand regular concurrent tasks");
-                    }
-                }
+
                 shared
                     .handlers
                     .num_established_peer_connections_change
@@ -577,16 +562,7 @@ where
                     .num_established_peer_connections
                     .fetch_sub(1, Ordering::SeqCst)
                     - 1;
-                if num_established_peer_connections == CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
-                {
-                    // The previous peer count was over the threshold, reclaim the quota.
-                    if let Err(error) = shared.rate_limiter.shrink_kademlia_semaphore() {
-                        warn!(%error, "Failed to shrink Kademlia concurrent tasks");
-                    }
-                    if let Err(error) = shared.rate_limiter.shrink_regular_semaphore() {
-                        warn!(%error, "Failed to shrink regular concurrent tasks");
-                    }
-                }
+
                 shared
                     .handlers
                     .num_established_peer_connections_change
