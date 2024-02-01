@@ -11,23 +11,63 @@ use sp_domains::{
     BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
+use sp_runtime::Percent;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
-pub struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
+/// If the bundle utilization is below `BUNDLE_UTILIZATION_THRESHOLD` we will attempt to push
+/// at most `MAX_SKIPPED_TRANSACTIONS` number of transactions before quitting for real.
+const MAX_SKIPPED_TRANSACTIONS: usize = 8;
+
+const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
+
+// `PreviousBundledTx` used to keep track of tx that have included in previous bundle and avoid
+// to re-include the these tx in the following bundle to reduce deplicated tx.
+struct PreviousBundledTx<Block: BlockT, CBlock: BlockT> {
+    bundled_at: <CBlock as BlockT>::Hash,
+    tx_hashes: HashSet<<Block as BlockT>::Hash>,
+}
+
+impl<Block: BlockT, CBlock: BlockT> PreviousBundledTx<Block, CBlock> {
+    fn new() -> Self {
+        PreviousBundledTx {
+            bundled_at: Default::default(),
+            tx_hashes: HashSet::new(),
+        }
+    }
+
+    fn already_bundled(&self, tx_hash: &<Block as BlockT>::Hash) -> bool {
+        self.tx_hashes.contains(tx_hash)
+    }
+
+    fn maybe_clear(&mut self, consensus_hash: <CBlock as BlockT>::Hash) {
+        if self.bundled_at != consensus_hash {
+            self.bundled_at = consensus_hash;
+            self.tx_hashes.clear();
+        }
+    }
+
+    fn add_bundled(&mut self, tx_hash: <Block as BlockT>::Hash) {
+        self.tx_hashes.insert(tx_hash);
+    }
+}
+
+pub struct DomainBundleProposer<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> {
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
     transaction_pool: Arc<TransactionPool>,
+    previous_bundled_tx: PreviousBundledTx<Block, CBlock>,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, Client, CBlock, CClient, TransactionPool> Clone
+impl<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> Clone
     for DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>
 {
     fn clone(&self) -> Self {
@@ -36,6 +76,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
+            previous_bundled_tx: PreviousBundledTx::new(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -56,7 +97,8 @@ where
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
     pub fn new(
         domain_id: DomainId,
@@ -69,12 +111,13 @@ where
             client,
             consensus_client,
             transaction_pool,
+            previous_bundled_tx: PreviousBundledTx::new(),
             _phantom_data: PhantomData,
         }
     }
 
     pub(crate) async fn propose_bundle_at(
-        &self,
+        &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
         tx_range: U256,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
@@ -96,6 +139,12 @@ where
             }
         };
 
+        // Clear the previous bundled tx info whenever the consensus chain tip is changed,
+        // this allow the operator to retry for the previous bundled tx in case the previous
+        // bundle fail to submit to the consensus chain due to any reason.
+        self.previous_bundled_tx
+            .maybe_clear(self.consensus_client.info().best_hash);
+
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
         let domain_block_limit = self
             .consensus_client
@@ -109,6 +158,7 @@ where
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
+        let mut skipped = 0;
 
         // Seperate code block to make sure that runtime api instance is dropped after validation is done.
         {
@@ -132,6 +182,14 @@ where
                     continue;
                 }
 
+                // Skip the tx if is is already bundled by a recent bundle
+                if self
+                    .previous_bundled_tx
+                    .already_bundled(&self.transaction_pool.hash_of(pending_tx_data))
+                {
+                    continue;
+                }
+
                 let tx_weight = runtime_api_instance
                     .extrinsic_weight(parent_hash, pending_tx_data)
                     .map_err(|error| {
@@ -142,16 +200,29 @@ where
                 let next_estimated_bundle_weight =
                     estimated_bundle_weight.saturating_add(tx_weight);
                 if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
-                    break;
+                    if skipped < MAX_SKIPPED_TRANSACTIONS
+                        && Percent::from_rational(
+                            estimated_bundle_weight.ref_time(),
+                            domain_block_limit.max_block_weight.ref_time(),
+                        ) < BUNDLE_UTILIZATION_THRESHOLD
+                    {
+                        skipped += 1;
+                    } else {
+                        break;
+                    }
                 }
 
                 let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
                 if next_bundle_size > domain_block_limit.max_block_size {
-                    break;
+                    if skipped < MAX_SKIPPED_TRANSACTIONS
+                        && Percent::from_rational(bundle_size, domain_block_limit.max_block_size)
+                            < BUNDLE_UTILIZATION_THRESHOLD
+                    {
+                        skipped += 1;
+                    } else {
+                        break;
+                    }
                 }
-
-                estimated_bundle_weight = next_estimated_bundle_weight;
-                bundle_size = next_bundle_size;
 
                 // Double check the transaction validity, because the tx pool are re-validate the transaction
                 // in pool asynchronously so there is race condition that the operator imported a domain block
@@ -181,7 +252,12 @@ where
                     continue;
                 }
 
+                estimated_bundle_weight = next_estimated_bundle_weight;
+                bundle_size = next_bundle_size;
                 extrinsics.push(pending_tx_data.clone());
+
+                self.previous_bundled_tx
+                    .add_bundled(self.transaction_pool.hash_of(pending_tx_data));
             }
         }
 

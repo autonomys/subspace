@@ -8,9 +8,9 @@ use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
-use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
+use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
-use domain_test_service::GENESIS_DOMAIN_ID;
+use domain_test_service::{construct_extrinsic_generic, GENESIS_DOMAIN_ID};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
@@ -389,7 +389,7 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -399,15 +399,18 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
-    let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
-    let alice_account_nonce = alice.account_nonce();
-    for i in 0..3 {
-        let tx = alice.construct_extrinsic(
-            alice_account_nonce + i,
+    let pre_eve_free_balance = alice.free_balance(Eve.to_account_id());
+    for caller in [Alice, Bob, Charlie] {
+        let tx = construct_extrinsic_generic::<evm_domain_test_runtime::Runtime, _>(
+            &alice.client,
             pallet_balances::Call::transfer_allow_death {
-                dest: Bob.to_account_id(),
+                dest: Eve.to_account_id(),
                 value: 1,
             },
+            caller,
+            false,
+            0,
+            0u128,
         );
         alice
             .send_extrinsic(tx)
@@ -415,20 +418,17 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
             .expect("Failed to send extrinsic");
 
         // Produce a bundle and submit to the tx pool of the consensus node
-        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        assert!(bundle.is_some());
-
-        // In the last iteration, produce a consensus block which will included all the bundles
-        // and drive the corresponding domain block
-        if i == 2 {
-            produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-                .await
-                .unwrap();
-        }
+        let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        assert_eq!(bundle.unwrap().extrinsics.len(), 1);
     }
+
+    let slot = ferdie.produce_slot();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
     assert_eq!(
-        alice.free_balance(Bob.to_account_id()),
-        pre_bob_free_balance + 3
+        alice.free_balance(Eve.to_account_id()),
+        pre_eve_free_balance + 3
     );
     let domain_block_number = alice.client.info().best_number;
 
@@ -3668,7 +3668,7 @@ async fn test_bad_receipt_chain() {
         .into()
     };
 
-    let bundle_producer = {
+    let mut bundle_producer = {
         let domain_bundle_proposer = DomainBundleProposer::new(
             GENESIS_DOMAIN_ID,
             alice.client.clone(),
@@ -3732,15 +3732,9 @@ async fn test_bad_receipt_chain() {
     let parent_bad_receipt_hash = bad_receipt_hash;
     let slot = ferdie.produce_slot();
     let bundle = {
-        let consensus_block_info = sp_blockchain::HashAndNumber {
-            number: ferdie.client.info().best_number,
-            hash: ferdie.client.info().best_hash,
-        };
         bundle_producer
-            .clone()
             .produce_bundle(
                 0,
-                consensus_block_info,
                 OperatorSlotInfo {
                     slot,
                     global_randomness: Randomness::from(Hash::random().to_fixed_bytes()),
@@ -3850,4 +3844,161 @@ async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_ch
         .consensus_chain_byte_fee(alice.client.info().best_hash)
         .unwrap();
     assert_eq!(consensus_chain_byte_fee, operator_consensus_chain_byte_fee);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_skip_duplicated_tx_in_previous_bundle() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bob_pre_balance = alice.free_balance(Bob.to_account_id());
+    let call = pallet_balances::Call::transfer_allow_death {
+        dest: Bob.to_account_id(),
+        value: 1,
+    };
+
+    // Send a tx and produce a bundle, it will include the tx
+    alice
+        .construct_and_send_extrinsic_with(alice.account_nonce(), 0u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+
+    // Produce a few more bundles, all of them will be empty since the only tx in the tx pool is already pick
+    // up by the previous bundle
+    for _ in 0..3 {
+        let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        assert!(bundle.unwrap().extrinsics.is_empty());
+    }
+
+    // Produce a domain that include all the bundles
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert_eq!(alice.free_balance(Bob.to_account_id()), bob_pre_balance + 1);
+
+    // Produce a bundle with a tx but not include it in the next consensus block
+    alice
+        .construct_and_send_extrinsic_with(alice.account_nonce(), 0u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    ferdie
+        .produce_block_with_slot_at(slot, ferdie.client.info().best_hash, Some(vec![]))
+        .await
+        .unwrap();
+
+    // Even the tx is inclued in a previous bundle, after the consensus chain's tip changed, the operator
+    // will resubmit the tx in the next bundle as retry
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert_eq!(alice.free_balance(Bob.to_account_id()), bob_pre_balance + 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let nonce = alice.account_nonce();
+    let bob_pre_balance = alice.free_balance(Bob.to_account_id());
+    let call = pallet_balances::Call::transfer_allow_death {
+        dest: Bob.to_account_id(),
+        value: 1,
+    };
+
+    // Send a tx and produce a bundle, it will include the tx
+    alice
+        .construct_and_send_extrinsic_with(nonce, 0u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+
+    // Send a new tx with the same `nonce` and a tip then produce a bundle, this tx will replace
+    // the previous tx in the tx pool and included in the bundle
+    alice
+        .construct_and_send_extrinsic_with(nonce, 1u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+
+    // Send a tx with `nonce + 1` and produce a bundle, it won't include this tx because the tx
+    // with `nonce` is included in previous bundle and is not submitted to the consensus chain yet
+    alice
+        .construct_and_send_extrinsic_with(nonce + 1, 0u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.unwrap().extrinsics.is_empty());
+
+    // Produce a domain that include all the bundles
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert_eq!(alice.free_balance(Bob.to_account_id()), bob_pre_balance + 1);
+
+    // Send a tx with `nonce + 2` and produce a bundle, it will include both the previous `nonce + 1`
+    // tx and the `nonce + 2` tx
+    alice
+        .construct_and_send_extrinsic_with(nonce + 2, 0u32.into(), call.clone())
+        .await
+        .expect("Failed to send extrinsic");
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 2);
+
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert_eq!(alice.free_balance(Bob.to_account_id()), bob_pre_balance + 3);
+    assert_eq!(alice.account_nonce(), nonce + 3);
 }
