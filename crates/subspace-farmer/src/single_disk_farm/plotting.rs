@@ -586,14 +586,6 @@ where
         new_segment_processing_delay,
     );
 
-    let (sectors_to_plot_proxy_sender, sectors_to_plot_proxy_receiver) = mpsc::channel(0);
-
-    let pause_plotting_if_node_not_synced_fut = pause_plotting_if_node_not_synced(
-        &node_client,
-        sectors_to_plot_proxy_receiver,
-        sectors_to_plot_sender,
-    );
-
     let send_plotting_notifications_fut = send_plotting_notifications(
         public_key_hash,
         sectors_indices_left_to_plot,
@@ -604,14 +596,11 @@ where
         sectors_metadata,
         &last_archived_segment,
         archived_segments_receiver,
-        sectors_to_plot_proxy_sender,
+        sectors_to_plot_sender,
         initial_plotting_finished,
     );
 
     select! {
-        result = pause_plotting_if_node_not_synced_fut.fuse() => {
-            result
-        }
         result = read_archived_segments_notifications_fut.fuse() => {
             result
         }
@@ -661,77 +650,6 @@ where
     }
 
     Ok(())
-}
-
-async fn pause_plotting_if_node_not_synced<NC>(
-    node_client: &NC,
-    sectors_to_plot_proxy_receiver: mpsc::Receiver<SectorToPlot>,
-    mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
-) -> Result<(), BackgroundTaskError>
-where
-    NC: NodeClient,
-{
-    let mut node_sync_status_change_notifications = node_client
-        .subscribe_node_sync_status_change()
-        .await
-        .map_err(|error| PlottingError::FailedToSubscribeArchivedSegments { error })?;
-
-    let Some(mut node_sync_status) = node_sync_status_change_notifications.next().await else {
-        return Ok(());
-    };
-
-    let mut sectors_to_plot_proxy_receiver = sectors_to_plot_proxy_receiver.fuse();
-    let mut node_sync_status_change_notifications = node_sync_status_change_notifications.fuse();
-
-    'outer: loop {
-        // Pause proxying of sectors to plot until we get notification that node is synced
-        if !node_sync_status.is_synced() {
-            info!("Node is not synced yet, pausing plotting until sync status changes");
-
-            loop {
-                match node_sync_status_change_notifications.next().await {
-                    Some(new_node_sync_status) => {
-                        node_sync_status = new_node_sync_status;
-
-                        if node_sync_status.is_synced() {
-                            info!("Node is synced, resuming plotting");
-                            continue 'outer;
-                        }
-                    }
-                    None => {
-                        // Subscription ended, nothing left to do
-                        return Ok(());
-                    }
-                }
-            }
-        }
-
-        select! {
-            maybe_sector_to_plot = sectors_to_plot_proxy_receiver.next() => {
-                let Some(sector_to_plot) = maybe_sector_to_plot else {
-                    // Subscription ended, nothing left to do
-                    return Ok(());
-                };
-
-                if let Err(_error) = sectors_to_plot_sender.send(sector_to_plot).await {
-                    // Receiver disconnected, nothing left to do
-                    return Ok(());
-                }
-            },
-
-            maybe_node_sync_status = node_sync_status_change_notifications.next() => {
-                match maybe_node_sync_status {
-                    Some(new_node_sync_status) => {
-                        node_sync_status = new_node_sync_status;
-                    }
-                    None => {
-                        // Subscription ended, nothing left to do
-                        return Ok(());
-                    }
-                }
-            },
-        }
-    }
 }
 
 struct SectorToReplot {

@@ -64,8 +64,8 @@ use subspace_core_primitives::{
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
-    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
-    SolutionResponse, MAX_SEGMENT_HEADERS_PER_REQUEST,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
 use tracing::{debug, error, warn};
 
@@ -73,7 +73,6 @@ use tracing::{debug, error, warn};
 /// the fact that channel sender exists
 const SOLUTION_SENDER_CHANNEL_CAPACITY: usize = 9;
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
-const NODE_SYNC_STATUS_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc(client, server)]
@@ -111,14 +110,6 @@ pub trait SubspaceRpcApi {
         item = SegmentHeader,
     )]
     fn subscribe_archived_segment_header(&self);
-
-    /// Archived segment header subscription
-    #[subscription(
-        name = "subspace_subscribeNodeSyncStatusChange" => "subspace_node_sync_status_change",
-        unsubscribe = "subspace_unsubscribeNodeSyncStatusChange",
-        item = NodeSyncStatus,
-    )]
-    fn subscribe_node_sync_status_change(&self);
 
     #[method(name = "subspace_segmentHeaders")]
     async fn segment_headers(
@@ -322,6 +313,7 @@ where
             FarmerAppInfo {
                 genesis_hash: self.genesis_hash,
                 dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
+                syncing: self.sync_oracle.is_major_syncing(),
                 farming_timeout: chain_constants
                     .slot_duration()
                     .as_duration()
@@ -642,61 +634,6 @@ where
 
         self.subscription_executor.spawn(
             "subspace-archived-segment-header-subscription",
-            Some("rpc"),
-            fut.boxed(),
-        );
-
-        Ok(())
-    }
-
-    fn subscribe_node_sync_status_change(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
-        let sync_oracle = self.sync_oracle.clone();
-        let fut = async move {
-            let mut last_is_major_syncing = None;
-            loop {
-                let is_major_syncing = sync_oracle.is_major_syncing();
-
-                // Update subscriber if value has changed
-                if last_is_major_syncing != Some(is_major_syncing) {
-                    // In case change is detected, wait for another interval to confirm.
-                    // TODO: This is primarily because Substrate seems to lose peers for brief
-                    //  periods of time sometimes that needs to be investigated separately
-                    futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
-
-                    // If status returned back to what it was, ignore
-                    if last_is_major_syncing == Some(sync_oracle.is_major_syncing()) {
-                        futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
-                        continue;
-                    }
-
-                    // Otherwise save new status
-                    last_is_major_syncing.replace(is_major_syncing);
-
-                    let node_sync_status = if is_major_syncing {
-                        NodeSyncStatus::MajorSyncing
-                    } else {
-                        NodeSyncStatus::Synced
-                    };
-                    match sink.send(&node_sync_status) {
-                        Ok(true) => {
-                            // Success
-                        }
-                        Ok(false) => {
-                            // Subscription closed
-                            return;
-                        }
-                        Err(error) => {
-                            error!("Failed to serialize node sync status: {}", error);
-                        }
-                    }
-                }
-
-                futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
-            }
-        };
-
-        self.subscription_executor.spawn(
-            "subspace-node-sync-status-change-subscription",
             Some("rpc"),
             fut.boxed(),
         );

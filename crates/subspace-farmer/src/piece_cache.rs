@@ -12,6 +12,7 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::num::NonZeroU16;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
@@ -30,6 +31,7 @@ const CONCURRENT_PIECES_TO_DOWNLOAD: usize = 1_000;
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
 /// Get piece retry attempts number.
 const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
+const INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
@@ -303,21 +305,36 @@ where
 
         info!("Synchronizing piece cache");
 
-        // TODO: Query from the DSN too such that we don't build outdated cache at start if node is
-        //  not synced fully
-        let last_segment_index = match self.node_client.farmer_app_info().await {
-            Ok(farmer_app_info) => farmer_app_info.protocol_info.history_size.segment_index(),
-            Err(error) => {
-                error!(
-                    %error,
-                    "Failed to get farmer app info from node, keeping old cache state without \
-                    updates"
-                );
+        let last_segment_index = loop {
+            match self.node_client.farmer_app_info().await {
+                Ok(farmer_app_info) => {
+                    let last_segment_index =
+                        farmer_app_info.protocol_info.history_size.segment_index();
+                    // Wait for node to be either fully synced or to be aware of non-zero segment
+                    // index, which would indicate it has started DSN sync and knows about
+                    // up-to-date archived history.
+                    //
+                    // While this doesn't account for situations where node was offline for a long
+                    // time and is aware of old segment headers, this is good enough for piece cache
+                    // sync to proceed and should result in better user experience on average.
+                    if !farmer_app_info.syncing || last_segment_index > SegmentIndex::ZERO {
+                        break last_segment_index;
+                    }
+                }
+                Err(error) => {
+                    error!(
+                        %error,
+                        "Failed to get farmer app info from node, keeping old cache state without \
+                        updates"
+                    );
 
-                // Not the latest, but at least something
-                *self.caches.write() = caches;
-                return;
+                    // Not the latest, but at least something
+                    *self.caches.write() = caches;
+                    return;
+                }
             }
+
+            tokio::time::sleep(INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL).await;
         };
 
         debug!(%last_segment_index, "Identified last segment index");
