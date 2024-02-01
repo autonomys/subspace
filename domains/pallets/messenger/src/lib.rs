@@ -109,8 +109,9 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
-        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        BlockInfo, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
+        InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::OnXDMRewards;
     use sp_runtime::traits::CheckedSub;
@@ -843,9 +844,9 @@ mod pallet {
             // nonce should be either be next or in future.
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
-            let extracted_state_roots = xdm.extract_state_roots_from_proof::<T::Hashing>().ok_or(
-                TransactionValidityError::Invalid(InvalidTransaction::BadProof),
-            )?;
+            // TODO: verify the actual proof
+            let extracted_state_roots =
+                ExtractedStateRootsFromProof::<BlockNumberFor<T>, T::Hash, T::Hash>::default();
 
             // on consensus, ensure the domain info is at K-depth and state root matches
             if T::SelfChainId::get().is_consensus_chain() {

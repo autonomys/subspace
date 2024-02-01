@@ -12,9 +12,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{
     BlockInfo, BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId,
-    CrossDomainMessage, DomainStateRootStorage, Proof,
+    ConsensusChainMmrLeafProof, CrossDomainMessage, DomainStateRootStorage, Proof,
 };
 use sp_messenger::RelayerApi;
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
@@ -115,16 +116,24 @@ where
         consensus_chain_client
             .header(block_hash)?
             .map(|header| (*header.number(), header.hash(), *header.state_root()))
-            .and_then(|(block_number, block_hash, state_root)| {
+            .and_then(|(block_number, block_hash, _state_root)| {
                 let proof = consensus_chain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
+                // TODO: derive the correct proof here
                 Some(Proof {
-                    consensus_chain_block_info: BlockInfo {
-                        block_number,
-                        block_hash,
+                    consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                        block_info: BlockInfo {
+                            block_number,
+                            block_hash,
+                        },
+                        opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                        proof: MmrProof {
+                            leaf_indices: vec![],
+                            leaf_count: 0,
+                            items: vec![],
+                        },
                     },
-                    consensus_chain_state_root: state_root,
                     domain_proof: None,
                     message_proof: proof,
                 })
@@ -399,7 +408,7 @@ where
         domain_client: &Arc<Client>,
         block_hash: Block::Hash,
         key: &[u8],
-        consensus_chain_state_root: CHash,
+        _consensus_chain_state_root: CHash,
         domain_proof: StorageProof,
     ) -> Result<ProofOf<Block>, Error>
     where
@@ -409,23 +418,25 @@ where
         domain_client
             .header(block_hash)?
             .map(|header| (*header.number(), header.hash()))
-            .and_then(|(number, hash)| {
+            .and_then(|(_number, _hash)| {
                 let proof = domain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
+                // TODO: Derive correct domain proof
                 Some(Proof {
-                    consensus_chain_block_info: BlockInfo {
-                        block_number: consensus_chain_block_info.block_number.into(),
-                        block_hash: consensus_chain_block_info.block_hash.into(),
-                    },
-                    consensus_chain_state_root: consensus_chain_state_root.into(),
-                    domain_proof: Some((
-                        BlockInfo {
-                            block_number: number,
-                            block_hash: hash,
+                    consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                        block_info: BlockInfo {
+                            block_number: consensus_chain_block_info.block_number.into(),
+                            block_hash: consensus_chain_block_info.block_hash.into(),
                         },
-                        domain_proof,
-                    )),
+                        opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                        proof: MmrProof {
+                            leaf_indices: vec![],
+                            leaf_count: 0,
+                            items: vec![],
+                        },
+                    },
+                    domain_proof: Some(domain_proof),
                     message_proof: proof,
                 })
             })

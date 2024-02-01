@@ -6,8 +6,8 @@ use frame_support::Identity;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
-use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::DomainId;
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
 use sp_std::marker::PhantomData;
@@ -197,33 +197,80 @@ pub struct BlockInfo<Number, Hash> {
     pub block_hash: Hash,
 }
 
+/// Consensus chain MMR leaf and its Proof at specific block
+#[derive(Debug, Encode, Decode, Eq, PartialEq, TypeInfo)]
+pub struct ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash> {
+    /// Consensus block info from which this proof was generated.
+    pub block_info: BlockInfo<BlockNumber, BlockHash>,
+    /// Encoded MMR leaf
+    pub opaque_mmr_leaf: EncodableOpaqueLeaf,
+    /// MMR proof for the leaf above.
+    pub proof: MmrProof<MmrHash>,
+}
+
+// TODO: remove this once the usage is unnecessary
+impl<BlockNumber, BlockHash, MmrHash> Default
+    for ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash>
+where
+    BlockNumber: Default,
+    BlockHash: Default,
+{
+    fn default() -> Self {
+        Self {
+            block_info: BlockInfo::default(),
+            opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+            proof: MmrProof {
+                leaf_indices: vec![],
+                leaf_count: 0,
+                items: vec![],
+            },
+        }
+    }
+}
+
+impl<BlockNumber, BlockHash, MmrHash> Clone
+    for ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash>
+where
+    BlockNumber: Clone,
+    BlockHash: Clone,
+    MmrHash: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            block_info: self.block_info.clone(),
+            opaque_mmr_leaf: EncodableOpaqueLeaf(self.opaque_mmr_leaf.0.clone()),
+            proof: self.proof.clone(),
+        }
+    }
+}
+
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<BlockNumber, BlockHash, StateRoot> {
-    /// Consensus chain block info when proof was constructed
-    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
-    /// State root of Consensus chain at above number and block hash.
-    /// This is the used to extract the message from proof.
-    pub consensus_chain_state_root: StateRoot,
-    /// Storage proof that src chain state_root is registered on Consensus chain.
-    /// This is optional when the src_chain is Consensus.
-    /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub domain_proof: Option<(BlockInfo<BlockNumber, BlockHash>, StorageProof)>,
+pub struct Proof<CBlockNumber, CBlockHash, MmrHash> {
+    /// Consensus chain MMR leaf proof.
+    pub consensus_chain_mmr_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    /// Storage proof that src domain chain's block is out of the challenge period on Consensus chain.
+    /// This is None when the src_chain is Consensus.
+    pub domain_proof: Option<StorageProof>,
     /// Storage proof that message is processed on src_chain.
     pub message_proof: StorageProof,
 }
 
-impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
-    Proof<BlockNumber, BlockHash, StateRoot>
+impl<CBlockNumber: Default, CBlockHash: Default, MmrHash: Default>
+    Proof<CBlockNumber, CBlockHash, MmrHash>
 {
     #[cfg(feature = "runtime-benchmarks")]
     pub fn dummy() -> Self {
         Proof {
-            consensus_chain_block_info: BlockInfo {
-                block_number: Default::default(),
-                block_hash: Default::default(),
+            consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                block_info: BlockInfo::default(),
+                opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+                proof: MmrProof {
+                    leaf_indices: vec![],
+                    leaf_count: 0,
+                    items: vec![],
+                },
             },
-            consensus_chain_state_root: Default::default(),
             domain_proof: None,
             message_proof: StorageProof::empty(),
         }
@@ -231,7 +278,7 @@ impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
 }
 
 /// Holds the Block info and state roots from which a proof was constructed.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Default, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
     /// Consensus chain block info when proof was constructed
     pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
@@ -245,7 +292,7 @@ pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
 
 /// Cross Domain message contains Message and its proof on src_chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
+pub struct CrossDomainMessage<CBlockNumber, CBlockHash, MmrHash> {
     /// Chain which initiated this message.
     pub src_chain_id: ChainId,
     /// Chain this message is intended for.
@@ -255,71 +302,9 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Proof of message processed on src_chain.
-    pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
+    pub proof: Proof<CBlockNumber, CBlockHash, MmrHash>,
     /// The message weight tag
     pub weight_tag: MessageWeightTag,
-}
-
-impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
-    /// Extracts state roots.
-    /// If the chain proof is present, then then we construct the trie and extract chain state root.
-    pub fn extract_state_roots_from_proof<Hashing>(
-        &self,
-    ) -> Option<ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot>>
-    where
-        Hashing: hash_db::Hasher,
-        StateRoot: Clone + Decode + Into<Hashing::Out> + FullCodec + TypeInfo + 'static,
-        BlockNumber: Clone + FullCodec + TypeInfo + 'static,
-        BlockHash: Clone + FullCodec + TypeInfo + 'static,
-    {
-        let xdm_proof = self.proof.clone();
-        let consensus_chain_state_root = xdm_proof.consensus_chain_state_root.clone();
-        let mut extracted_state_roots = ExtractedStateRootsFromProof {
-            consensus_chain_block_info: xdm_proof.consensus_chain_block_info,
-            consensus_chain_state_root: xdm_proof.consensus_chain_state_root,
-            domain_info: None,
-        };
-
-        // verify intermediate domain proof and retrieve state root of the message.
-        let domain_proof = xdm_proof.domain_proof;
-        match self.src_chain_id {
-            // if the src_chain is a consensus chain, return the state root as is since message is on consensus runtime
-            ChainId::Consensus if domain_proof.is_none() => Some(extracted_state_roots),
-            // if the src_chain is a domain, then return the state root of the domain by verifying the domain proof.
-            ChainId::Domain(domain_id) if domain_proof.is_some() => {
-                let (domain_info, domain_state_root_proof) =
-                    domain_proof.expect("checked for existence value above");
-                let domain_state_root_key = DomainStateRootStorage::<_, _, StateRoot>::storage_key(
-                    domain_id,
-                    domain_info.block_number.clone(),
-                    domain_info.block_hash.clone(),
-                );
-
-                let domain_state_root =
-                    match StorageProofVerifier::<Hashing>::get_decoded_value::<StateRoot>(
-                        &consensus_chain_state_root.into(),
-                        domain_state_root_proof,
-                        domain_state_root_key,
-                    ) {
-                        Ok(result) => result,
-                        Err(err) => {
-                            log::error!(
-                                target: "runtime::messenger",
-                                "Failed to verify Domain proof: {:?}",
-                                err
-                            );
-                            return None;
-                        }
-                    };
-
-                extracted_state_roots.domain_info =
-                    Some((domain_id, domain_info, domain_state_root));
-
-                Some(extracted_state_roots)
-            }
-            _ => None,
-        }
-    }
 }
 
 /// Message with storage key to generate storage proof using the backend.
@@ -346,6 +331,7 @@ pub struct BlockMessagesWithStorageKey {
     pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
+// TODO: remove or update this accordingly
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
         r_msg: BlockMessageWithStorageKey,
@@ -362,6 +348,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
     }
 }
 
+// TODO: remove or update this accordingly
 /// This is a representation of actual StateRoots storage in pallet-domains.
 /// Any change in key or value there should be changed here accordingly.
 pub struct DomainStateRootStorage<Number, Hash, StateRoot>(PhantomData<(Number, Hash, StateRoot)>);
