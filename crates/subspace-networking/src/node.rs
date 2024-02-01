@@ -2,7 +2,6 @@ use crate::protocols::request_response::handlers::generic_request_handler::Gener
 use crate::protocols::request_response::request_response_factory;
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::HandlerFn;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -17,6 +16,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use thiserror::Error;
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::{debug, error, trace};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
@@ -28,7 +28,7 @@ pub struct TopicSubscription {
     command_sender: Option<mpsc::Sender<Command>>,
     #[pin]
     receiver: mpsc::UnboundedReceiver<Bytes>,
-    _permit: RateLimiterPermit,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl Stream for TopicSubscription {
@@ -265,7 +265,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
-        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
+        let permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -288,7 +288,7 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
+        let permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -308,7 +308,7 @@ impl Node {
 
     /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -336,7 +336,7 @@ impl Node {
 
     /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let _permit = self.shared.rate_limiter.acquire_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -362,7 +362,7 @@ impl Node {
         Request: GenericRequest,
     {
         let _permit = if acquire_permit {
-            Some(self.shared.rate_limiter.acquire_kademlia_permit().await)
+            Some(self.shared.rate_limiter.acquire_permit().await)
         } else {
             None
         };
@@ -410,7 +410,7 @@ impl Node {
         acquire_permit: bool,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
         let permit = if acquire_permit {
-            Some(self.shared.rate_limiter.acquire_kademlia_permit().await)
+            Some(self.shared.rate_limiter.acquire_permit().await)
         } else {
             None
         };
@@ -447,7 +447,7 @@ impl Node {
         acquire_permit: bool,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         let permit = if acquire_permit {
-            Some(self.shared.rate_limiter.acquire_kademlia_permit().await)
+            Some(self.shared.rate_limiter.acquire_permit().await)
         } else {
             None
         };
@@ -576,7 +576,7 @@ impl Node {
 
     /// Returns the request batch handle with common "connection permit" slot from the shared pool.
     pub async fn get_requests_batch_handle(&self) -> NodeRequestsBatchHandle {
-        let _permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
+        let _permit = self.shared.rate_limiter.acquire_permit().await;
 
         NodeRequestsBatchHandle {
             _permit,
@@ -591,7 +591,7 @@ impl Node {
 /// we don't need to obtain separate semaphore permits for the operations.
 pub struct NodeRequestsBatchHandle {
     node: Node,
-    _permit: RateLimiterPermit,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl NodeRequestsBatchHandle {

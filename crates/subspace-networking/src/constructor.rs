@@ -52,7 +52,7 @@ const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 /// It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 /// How long will connection be allowed to be open without any usage
-const IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
+const IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(3);
 /// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 100;
 /// The default maximum established incoming connection number for the swarm.
