@@ -9,7 +9,7 @@ use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU16;
 use std::sync::Arc;
 use std::{fmt, mem};
@@ -42,7 +42,7 @@ struct Handlers {
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {
     stored_pieces: HashMap<RecordKey, Offset>,
-    free_offsets: Vec<Offset>,
+    free_offsets: VecDeque<Offset>,
     backend: DiskPieceCache,
 }
 
@@ -178,7 +178,7 @@ where
                     };
 
                     // Making offset as unoccupied and remove corresponding key from heap
-                    cache.free_offsets.push(offset);
+                    cache.free_offsets.push_front(offset);
                     match cache.backend.read_piece_index(offset) {
                         Ok(Some(piece_index)) => {
                             worker_state.heap.remove(KeyWrapper(piece_index));
@@ -227,7 +227,7 @@ where
             free_offsets.push(state.free_offsets);
         }
         stored_pieces.resize(new_caches.len(), HashMap::default());
-        free_offsets.resize(new_caches.len(), Vec::default());
+        free_offsets.resize(new_caches.len(), VecDeque::default());
 
         debug!("Collecting pieces that were in the cache before");
 
@@ -253,7 +253,7 @@ where
                                         );
                                     }
                                     None => {
-                                        free_offsets.push(offset);
+                                        free_offsets.push_back(offset);
                                     }
                                 }
 
@@ -356,7 +356,7 @@ where
                 .stored_pieces
                 .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
                 .for_each(|(_piece_index, offset)| {
-                    state.free_offsets.push(offset);
+                    state.free_offsets.push_front(offset);
                 });
         });
 
@@ -421,7 +421,7 @@ where
                 .iter_mut()
                 .enumerate()
                 .any(|(disk_farm_index, cache)| {
-                    let Some(offset) = cache.free_offsets.pop() else {
+                    let Some(offset) = cache.free_offsets.pop_front() else {
                         return false;
                     };
 
@@ -698,7 +698,7 @@ where
             // There is free space in cache, need to find a free spot and place piece there
             None => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
-                    let Some(offset) = cache.free_offsets.pop() else {
+                    let Some(offset) = cache.free_offsets.pop_front() else {
                         // Not this disk farm
                         continue;
                     };
