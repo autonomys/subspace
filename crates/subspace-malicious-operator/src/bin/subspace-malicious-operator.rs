@@ -136,6 +136,7 @@ fn main() -> Result<(), Error> {
                 .get("potExternalEntropy")
                 .map(|d| match d.clone() {
                     Value::String(s) => Ok(s.into_bytes()),
+                    Value::Null => Ok(Vec::new()),
                     _ => Err(sc_service::Error::Other(
                         "Failed to decode PoT initial key".to_string(),
                     )),

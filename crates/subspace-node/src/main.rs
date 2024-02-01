@@ -104,6 +104,7 @@ fn derive_pot_external_entropy(
         .get("potExternalEntropy")
         .map(|d| match d.clone() {
             Value::String(s) => Ok(s),
+            Value::Null => Ok(String::new()),
             _ => Err(sc_service::Error::Other(
                 "Failed to decode PoT initial key".to_string(),
             )),
