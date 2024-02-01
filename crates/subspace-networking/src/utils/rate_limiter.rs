@@ -1,7 +1,3 @@
-pub(crate) mod resizable_semaphore;
-#[cfg(test)]
-mod tests;
-
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
