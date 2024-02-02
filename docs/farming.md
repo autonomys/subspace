@@ -46,7 +46,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe run `
 --base-path PATH_TO_NODE `
---chain gemini-3g `
+--chain gemini-3h `
 --blocks-pruning 256 `
 --state-pruning archive-canonical `
 --farmer `
@@ -98,7 +98,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
   --base-path PATH_TO_NODE \
-  --chain gemini-3g \
+  --chain gemini-3h \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
   --farmer \
@@ -153,7 +153,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
   --base-path PATH_TO_NODE \
-  --chain gemini-3g \
+  --chain gemini-3h \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
   --farmer \
@@ -217,7 +217,7 @@ services:
     restart: unless-stopped
     command: [
       "run",
-      "--chain", "gemini-3g",
+      "--chain", "gemini-3h",
       "--base-path", "/var/subspace",
       "--blocks-pruning", "256",
       "--state-pruning", "archive-canonical",
@@ -227,7 +227,6 @@ services:
       "--rpc-listen-on", "0.0.0.0:9944",
       "--rpc-cors", "all",
       "--rpc-methods", "unsafe",
-      "--rpc-external",
       "--farmer",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
@@ -288,7 +287,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3g.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3h.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 

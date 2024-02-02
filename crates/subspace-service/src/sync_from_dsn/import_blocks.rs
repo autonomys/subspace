@@ -37,7 +37,7 @@ use tokio::sync::Semaphore;
 use tracing::warn;
 
 /// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(7).expect("Not zero; qed");
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
 /// essentially used to ensure we use a bounded amount of RAM during sync process.

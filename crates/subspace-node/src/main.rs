@@ -33,6 +33,7 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_service::{Configuration, PartialComponents};
+use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
@@ -95,18 +96,20 @@ where
 
 fn derive_pot_external_entropy(
     consensus_chain_config: &Configuration,
-    maybe_pot_external_entropy: Option<Vec<u8>>,
+    maybe_pot_external_entropy: Option<String>,
 ) -> Result<Vec<u8>, sc_service::Error> {
     let maybe_chain_spec_pot_external_entropy = consensus_chain_config
         .chain_spec
         .properties()
         .get("potExternalEntropy")
-        .map(|d| serde_json::from_value(d.clone()))
-        .transpose()
-        .map_err(|error| {
-            sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
-        })?
-        .flatten();
+        .map(|d| match d.clone() {
+            Value::String(s) => Ok(s),
+            Value::Null => Ok(String::new()),
+            _ => Err(sc_service::Error::Other(
+                "Failed to decode PoT initial key".to_string(),
+            )),
+        })
+        .transpose()?;
     if maybe_chain_spec_pot_external_entropy.is_some()
         && maybe_pot_external_entropy.is_some()
         && maybe_chain_spec_pot_external_entropy != maybe_pot_external_entropy
@@ -118,7 +121,8 @@ fn derive_pot_external_entropy(
     }
     Ok(maybe_chain_spec_pot_external_entropy
         .or(maybe_pot_external_entropy)
-        .unwrap_or_default())
+        .unwrap_or_default()
+        .into_bytes())
 }
 
 fn main() -> Result<(), Error> {

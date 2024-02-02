@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,8 +46,16 @@ enum Command {
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
         #[arg(long, default_values_t = [
-            "/ip4/0.0.0.0/udp/0/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
-            "/ip4/0.0.0.0/tcp/0".parse::<Multiaddr>().expect("Manual setting"),
+            Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+                .with(Protocol::Udp(0))
+                .with(Protocol::QuicV1),
+            Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+                .with(Protocol::Udp(0))
+                .with(Protocol::QuicV1),
+            Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+                .with(Protocol::Tcp(0)),
+            Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+                .with(Protocol::Tcp(0))
         ])]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported

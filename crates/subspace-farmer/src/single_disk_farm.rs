@@ -9,13 +9,15 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, AuditEvent, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
-pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
+};
+pub use crate::single_disk_farm::plotting::{
+    PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
@@ -359,9 +361,6 @@ pub enum SingleDiskFarmError {
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
-    /// Failed to decode sector metadata
-    #[error("Failed to decode sector metadata: {0}")]
-    FailedToDecodeSectorMetadata(parity_scale_codec::Error),
     /// Unexpected metadata version
     #[error("Unexpected metadata version {0}")]
     UnexpectedMetadataVersion(u8),
@@ -538,59 +537,10 @@ type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
-/// Details about sector currently being plotted
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorPlottingDetails {
-    /// Starting plotting of a sector
-    Starting {
-        /// Progress so far in % (not including this sector)
-        progress: f32,
-        /// Whether sector is being replotted
-        replotting: bool,
-        /// Whether this is the last sector queued so far
-        last_queued: bool,
-    },
-    /// Downloading sector pieces
-    Downloading,
-    /// Downloaded sector pieces
-    Downloaded(Duration),
-    /// Encoding sector pieces
-    Encoding,
-    /// Encoded sector pieces
-    Encoded(Duration),
-    /// Writing sector
-    Writing,
-    /// Wrote sector
-    Wrote(Duration),
-    /// Finished plotting
-    Finished {
-        /// Information about plotted sector
-        plotted_sector: PlottedSector,
-        /// Information about old plotted sector that was replaced
-        old_plotted_sector: Option<PlottedSector>,
-        /// How much time it took to plot a sector
-        time: Duration,
-    },
-}
-
-/// Details about sector expiration
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorExpirationDetails {
-    /// Sector expiration became known
-    Determined {
-        /// Segment index at which sector expires
-        expires_at: SegmentIndex,
-    },
-    /// Sector will expire at the next segment index and should be replotted
-    AboutToExpire,
-    /// Sector already expired
-    Expired,
-}
-
 /// Various sector updates
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum SectorUpdate {
-    /// Sector is is being plotted
+    /// Sector is being plotted
     Plotting(SectorPlottingDetails),
     /// Sector expiration information updated
     Expiration(SectorExpirationDetails),
@@ -599,8 +549,8 @@ pub enum SectorUpdate {
 #[derive(Default, Debug)]
 struct Handlers {
     sector_update: Handler<(SectorIndex, SectorUpdate)>,
+    farming_notification: Handler<FarmingNotification>,
     solution: Handler<SolutionResponse>,
-    plot_audited: Handler<AuditEvent>,
 }
 
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
@@ -747,7 +697,6 @@ impl SingleDiskFarm {
                 single_disk_farm_info
             }
         };
-        let farm_id = *single_disk_farm_info.id();
 
         let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
             .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
@@ -813,12 +762,13 @@ impl SingleDiskFarm {
             }
         };
 
+        let metadata_file_path = directory.join(Self::METADATA_FILE);
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .advise_random_access()
-            .open(directory.join(Self::METADATA_FILE))?;
+            .open(&metadata_file_path)?;
 
         metadata_file.advise_random_access()?;
 
@@ -875,14 +825,34 @@ impl SingleDiskFarm {
 
             let mut sector_metadata_bytes = vec![0; sector_metadata_size];
             for sector_index in 0..metadata_header.plotted_sector_count {
-                metadata_file.read_exact_at(
-                    &mut sector_metadata_bytes,
-                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
-                )?;
-                sectors_metadata.push(
-                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref())
-                        .map_err(SingleDiskFarmError::FailedToDecodeSectorMetadata)?,
-                );
+                let sector_offset =
+                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index);
+                metadata_file.read_exact_at(&mut sector_metadata_bytes, sector_offset)?;
+
+                let sector_metadata =
+                    match SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()) {
+                        Ok(sector_metadata) => sector_metadata,
+                        Err(error) => {
+                            warn!(
+                                path = %metadata_file_path.display(),
+                                %error,
+                                %sector_index,
+                                "Failed to decode sector metadata, replacing with dummy expired \
+                                sector metadata"
+                            );
+
+                            let dummy_sector = SectorMetadataChecksummed::from(SectorMetadata {
+                                sector_index,
+                                pieces_in_sector,
+                                s_bucket_sizes: Box::new([0; Record::NUM_S_BUCKETS]),
+                                history_size: HistorySize::from(SegmentIndex::ZERO),
+                            });
+                            metadata_file.write_all_at(&dummy_sector.encode(), sector_offset)?;
+
+                            dummy_sector
+                        }
+                    };
+                sectors_metadata.push(sector_metadata);
             }
 
             Arc::new(RwLock::new(sectors_metadata))
@@ -1116,7 +1086,6 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
-                            farm_id,
                         };
                         farming::<PosTable, _, _>(farming_options).await
                     };
@@ -1367,9 +1336,9 @@ impl SingleDiskFarm {
         self.handlers.sector_update.add(callback)
     }
 
-    /// Subscribe to notification about audited plots
-    pub fn on_plot_audited(&self, callback: HandlerFn<AuditEvent>) -> HandlerId {
-        self.handlers.plot_audited.add(callback)
+    /// Subscribe to farming notifications
+    pub fn on_farming_notification(&self, callback: HandlerFn<FarmingNotification>) -> HandlerId {
+        self.handlers.farming_notification.add(callback)
     }
 
     /// Subscribe to new solution notification

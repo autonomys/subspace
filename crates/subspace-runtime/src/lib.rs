@@ -70,7 +70,8 @@ use sp_messenger::messages::{
     ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, NumberFor,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, Keccak256,
+    NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -574,9 +575,8 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 256;
-    // TODO: revisit these
-    pub const StakeWithdrawalLockingPeriod: DomainNumber = 256;
+    pub const BlockTreePruningDepth: u32 = 14_400;
+    pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
@@ -589,6 +589,9 @@ parameter_types! {
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
+
+// Stake Withdrawal locking period must be >= Block tree pruning depth
+const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -656,6 +659,27 @@ impl orml_vesting::Config for Runtime {
     type BlockNumberProvider = System;
 }
 
+mod mmr {
+    use super::Runtime;
+    pub use pallet_mmr::primitives::*;
+
+    pub type Leaf = <<Runtime as pallet_mmr::Config>::LeafData as LeafDataProvider>::LeafData;
+    pub type Hashing = <Runtime as pallet_mmr::Config>::Hashing;
+    pub type Hash = <Hashing as sp_runtime::traits::Hash>::Output;
+}
+
+impl pallet_mmr::Config for Runtime {
+    const INDEXING_PREFIX: &'static [u8] = mmr::INDEXING_PREFIX;
+    type Hashing = Keccak256;
+    type LeafData = SubspaceMmr;
+    type OnNewRoot = SubspaceMmr;
+    type WeightInfo = ();
+}
+
+impl pallet_subspace_mmr::Config for Runtime {
+    type MmrRootHash = mmr::Hash;
+}
+
 construct_runtime!(
     pub struct Runtime {
         System: frame_system = 0,
@@ -674,6 +698,9 @@ construct_runtime!(
         RuntimeConfigs: pallet_runtime_configs = 14,
 
         Vesting: orml_vesting = 13,
+
+        Mmr: pallet_mmr = 30,
+        SubspaceMmr: pallet_subspace_mmr = 31,
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
@@ -779,6 +806,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_domains, Domains]
+        [pallet_mmr, Mmr]
         [pallet_runtime_configs, RuntimeConfigs]
         [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
@@ -1017,12 +1045,8 @@ impl_runtime_apis! {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> DomainNumber {
-            Domains::oldest_receipt_number(domain_id)
-        }
-
-        fn block_tree_pruning_depth() -> DomainNumber {
-            Domains::block_tree_pruning_depth()
+        fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::oldest_unconfirmed_receipt_number(domain_id)
         }
 
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
@@ -1174,6 +1198,52 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
             crate::domains::extract_fraud_proofs(domain_id, extrinsics)
+        }
+    }
+
+    impl mmr::MmrApi<Block, mmr::Hash, BlockNumber> for Runtime {
+        fn mmr_root() -> Result<mmr::Hash, mmr::Error> {
+            Ok(Mmr::mmr_root())
+        }
+
+        fn mmr_leaf_count() -> Result<mmr::LeafIndex, mmr::Error> {
+            Ok(Mmr::mmr_leaves())
+        }
+
+        fn generate_proof(
+            block_numbers: Vec<BlockNumber>,
+            best_known_block_number: Option<BlockNumber>,
+        ) -> Result<(Vec<mmr::EncodableOpaqueLeaf>, mmr::Proof<mmr::Hash>), mmr::Error> {
+            Mmr::generate_proof(block_numbers, best_known_block_number).map(
+                |(leaves, proof)| {
+                    (
+                        leaves
+                            .into_iter()
+                            .map(|leaf| mmr::EncodableOpaqueLeaf::from_leaf(&leaf))
+                            .collect(),
+                        proof,
+                    )
+                },
+            )
+        }
+
+        fn verify_proof(leaves: Vec<mmr::EncodableOpaqueLeaf>, proof: mmr::Proof<mmr::Hash>)
+            -> Result<(), mmr::Error>
+        {
+            let leaves = leaves.into_iter().map(|leaf|
+                leaf.into_opaque_leaf()
+                .try_decode()
+                .ok_or(mmr::Error::Verify)).collect::<Result<Vec<mmr::Leaf>, mmr::Error>>()?;
+            Mmr::verify_leaves(leaves, proof)
+        }
+
+        fn verify_proof_stateless(
+            root: mmr::Hash,
+            leaves: Vec<mmr::EncodableOpaqueLeaf>,
+            proof: mmr::Proof<mmr::Hash>
+        ) -> Result<(), mmr::Error> {
+            let nodes = leaves.into_iter().map(|leaf|mmr::DataOrHash::Data(leaf.into_opaque_leaf())).collect();
+            pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(root, nodes, proof)
         }
     }
 

@@ -24,6 +24,9 @@ pub(crate) enum BenchmarkArgs {
         /// Number of samples to collect for benchmarking purposes
         #[arg(long, default_value_t = 10)]
         sample_size: usize,
+        /// Also run `single` benchmark (only useful for developers, not used by default)
+        #[arg(long)]
+        with_single: bool,
         /// Disk farm to audit
         ///
         /// Example:
@@ -37,6 +40,9 @@ pub(crate) enum BenchmarkArgs {
         /// Number of samples to collect for benchmarking purposes
         #[arg(long, default_value_t = 10)]
         sample_size: usize,
+        /// Also run `single` benchmark (only useful for developers, not used by default)
+        #[arg(long)]
+        with_single: bool,
         /// Disk farm to prove
         ///
         /// Example:
@@ -55,19 +61,32 @@ pub(crate) fn benchmark(benchmark_args: BenchmarkArgs) -> anyhow::Result<()> {
     match benchmark_args {
         BenchmarkArgs::Audit {
             sample_size,
+            with_single,
             disk_farm,
             filter,
-        } => audit(sample_size, disk_farm, filter),
+        } => audit(sample_size, with_single, disk_farm, filter),
         BenchmarkArgs::Prove {
             sample_size,
+            with_single,
             disk_farm,
             filter,
             limit_sector_count,
-        } => prove(sample_size, disk_farm, filter, limit_sector_count),
+        } => prove(
+            sample_size,
+            with_single,
+            disk_farm,
+            filter,
+            limit_sector_count,
+        ),
     }
 }
 
-fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyhow::Result<()> {
+fn audit(
+    sample_size: usize,
+    with_single: bool,
+    disk_farm: PathBuf,
+    filter: Option<String>,
+) -> anyhow::Result<()> {
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {
@@ -107,7 +126,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
         group.throughput(Throughput::Bytes(
             sector_size as u64 * sectors_metadata.len() as u64,
         ));
-        {
+        if with_single {
             let plot = OpenOptions::new()
                 .read(true)
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
@@ -184,6 +203,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
 
 fn prove(
     sample_size: usize,
+    with_single: bool,
     disk_farm: PathBuf,
     filter: Option<String>,
     limit_sector_count: Option<usize>,
@@ -226,7 +246,7 @@ fn prove(
     }
     {
         let mut group = criterion.benchmark_group("prove");
-        {
+        if with_single {
             let plot = OpenOptions::new()
                 .read(true)
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
@@ -250,7 +270,7 @@ fn prove(
                 table_generator: &table_generator,
             };
 
-            let mut audit_results = plot_audit.audit(options);
+            let mut audit_results = plot_audit.audit(options).unwrap();
 
             group.bench_function("plot/single", |b| {
                 b.iter_batched(
@@ -259,7 +279,7 @@ fn prove(
                             return result;
                         }
 
-                        audit_results = plot_audit.audit(options);
+                        audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
@@ -293,7 +313,7 @@ fn prove(
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
             };
-            let mut audit_results = plot_audit.audit(options);
+            let mut audit_results = plot_audit.audit(options).unwrap();
 
             group.bench_function("plot/rayon", |b| {
                 b.iter_batched(
@@ -302,7 +322,7 @@ fn prove(
                             return result;
                         }
 
-                        audit_results = plot_audit.audit(options);
+                        audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },

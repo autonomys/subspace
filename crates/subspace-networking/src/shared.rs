@@ -3,7 +3,7 @@
 
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::{RateLimiter, RateLimiterPermit};
+use crate::utils::rate_limiter::RateLimiter;
 use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
@@ -13,6 +13,7 @@ use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
 
 /// Represents Kademlia events (RoutablePeer, PendingRoutablePeer, UnroutablePeer).
 #[derive(Clone, Debug)]
@@ -55,13 +56,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerRecord>,
-        permit: RateLimiterPermit,
+        permit: OwnedSemaphorePermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
-        permit: RateLimiterPermit,
+        permit: OwnedSemaphorePermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -79,7 +80,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: Option<RateLimiterPermit>,
+        permit: Option<OwnedSemaphorePermit>,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -90,7 +91,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: Option<RateLimiterPermit>,
+        permit: Option<OwnedSemaphorePermit>,
     },
     BanPeer {
         peer_id: PeerId,

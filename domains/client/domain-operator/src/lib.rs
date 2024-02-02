@@ -68,7 +68,6 @@ mod domain_block_processor;
 pub mod domain_bundle_producer;
 pub mod domain_bundle_proposer;
 mod domain_worker;
-mod domain_worker_starter;
 mod fetch_domain_bootstrap_info;
 mod fraud_proof;
 mod operator;

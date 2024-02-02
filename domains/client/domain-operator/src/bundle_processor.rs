@@ -231,8 +231,19 @@ where
                 let header = self.client.header(domain_tip)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
                 })?;
+                let block_origin = if self
+                    .domain_block_processor
+                    .consensus_network_sync_oracle
+                    .is_major_syncing()
+                {
+                    // The domain block is derived from the consensus block, if the consensus chain is
+                    // in major sync then we should also consider the domain block is `NetworkInitialSync`
+                    BlockOrigin::NetworkInitialSync
+                } else {
+                    BlockOrigin::Own
+                };
                 let block_import_params = {
-                    let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+                    let mut import_block = BlockImportParams::new(block_origin, header);
                     import_block.import_existing = true;
                     import_block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
                     import_block.state_action = StateAction::Skip;
@@ -267,11 +278,6 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        let head_receipt_number = self
-            .consensus_client
-            .runtime_api()
-            .head_receipt_number(consensus_block_hash, self.domain_id)?;
-
         let maybe_preprocess_result = self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?;
@@ -289,11 +295,8 @@ where
                 "Skip building new domain block, no bundles and runtime upgrade for this domain \
                     in consensus block #{consensus_block_number:?},{consensus_block_hash}"
             );
-            self.domain_block_processor.on_consensus_block_processed(
-                consensus_block_hash,
-                None,
-                head_receipt_number,
-            )?;
+            self.domain_block_processor
+                .on_consensus_block_processed(consensus_block_hash, None)?;
             return Ok(None);
         };
 
@@ -311,6 +314,10 @@ where
             )
             .await?;
 
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_block_hash, self.domain_id)?;
         assert!(
             domain_block_result.header_number > head_receipt_number,
             "Domain chain number must larger than the head number of the receipt chain \
@@ -341,11 +348,8 @@ where
             );
         }
 
-        self.domain_block_processor.on_consensus_block_processed(
-            consensus_block_hash,
-            Some(domain_block_result),
-            head_receipt_number,
-        )?;
+        self.domain_block_processor
+            .on_consensus_block_processed(consensus_block_hash, Some(domain_block_result))?;
 
         let post_block_execution_took = start
             .elapsed()

@@ -7,7 +7,7 @@ use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::{HashAndNumber, HeaderBackend};
+use sp_blockchain::HeaderBackend;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
     OperatorSignature, SealedBundleHeader,
@@ -74,7 +74,8 @@ where
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -109,9 +110,8 @@ where
     }
 
     pub async fn produce_bundle(
-        self,
+        &mut self,
         operator_id: OperatorId,
-        consensus_block_info: HashAndNumber<CBlock>,
         slot_info: OperatorSlotInfo,
     ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
         let OperatorSlotInfo {
@@ -145,7 +145,7 @@ where
         if let Some((proof_of_election, operator_signing_key)) =
             self.bundle_producer_election_solver.solve_challenge(
                 slot,
-                consensus_block_info.hash,
+                consensus_chain_best_hash,
                 self.domain_id,
                 operator_id,
                 global_randomness,
@@ -156,7 +156,7 @@ where
             let tx_range = self
                 .consensus_client
                 .runtime_api()
-                .domain_tx_range(consensus_block_info.hash, self.domain_id)
+                .domain_tx_range(consensus_chain_best_hash, self.domain_id)
                 .map_err(|error| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Error getting tx range: {error}"

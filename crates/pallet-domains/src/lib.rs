@@ -60,7 +60,7 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
+use sp_runtime::traits::{Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -1905,16 +1905,23 @@ impl<T: Config> Pallet<T> {
         HeadReceiptNumber::<T>::get(domain_id)
     }
 
-    /// Returns the block number of oldest execution receipt.
-    // FIXME: the `oldest_receipt_number` may not be correct if fraud proof is submitted
-    // and bad ER were pruned, see https://github.com/subspace/subspace/issues/2354
-    pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
-    }
+    /// Returns the block number of the oldest existing unconfirmed execution receipt, return `None`
+    /// means there is no unconfirmed ER exist or submitted yet.
+    pub fn oldest_unconfirmed_receipt_number(
+        domain_id: DomainId,
+    ) -> Option<DomainBlockNumberFor<T>> {
+        let oldest_nonconfirmed_er_number =
+            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
 
-    /// Returns the block tree pruning depth.
-    pub fn block_tree_pruning_depth() -> DomainBlockNumberFor<T> {
-        T::BlockTreePruningDepth::get()
+        if BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some() {
+            Some(oldest_nonconfirmed_er_number)
+        } else {
+            // The `oldest_nonconfirmed_er_number` ER may not exist if
+            // - The domain just started and no ER submitted yet
+            // - The oldest ER just pruned by fraud proof and no new ER submitted yet
+            // - When using consensus block to derive the challenge period forward (unimplemented yet)
+            None
+        }
     }
 
     /// Returns the domain block limit of the given domain.
@@ -1932,10 +1939,10 @@ impl<T: Config> Pallet<T> {
             return true;
         }
 
+        // Start from the oldest non-confirmed ER to the head domain number
+        let mut to_check =
+            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
         let head_number = HeadDomainNumber::<T>::get(domain_id);
-        let mut to_check = head_number
-            .checked_sub(&T::BlockTreePruningDepth::get())
-            .unwrap_or(Zero::zero());
 
         while to_check <= head_number {
             if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {

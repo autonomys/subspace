@@ -94,7 +94,8 @@ where
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
+        + 'static,
     E: CodeExecutor,
 {
     /// Create a new instance.
@@ -177,7 +178,7 @@ where
         spawn_essential.spawn_essential_blocking(
             "domain-operator-worker",
             None,
-            crate::domain_worker_starter::start_worker(
+            crate::domain_worker::start_worker(
                 spawn_essential.clone(),
                 params.consensus_client.clone(),
                 params.consensus_offchain_tx_pool_factory.clone(),

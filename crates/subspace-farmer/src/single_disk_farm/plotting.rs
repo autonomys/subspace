@@ -1,6 +1,5 @@
 use crate::single_disk_farm::{
-    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorExpirationDetails,
-    SectorPlottingDetails, SectorUpdate, RESERVED_PLOT_METADATA,
+    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorUpdate, RESERVED_PLOT_METADATA,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -10,7 +9,7 @@ use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -44,7 +43,56 @@ const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
 /// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(7).expect("Not zero; qed");
+
+/// Details about sector currently being plotted
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorPlottingDetails {
+    /// Starting plotting of a sector
+    Starting {
+        /// Progress so far in % (not including this sector)
+        progress: f32,
+        /// Whether sector is being replotted
+        replotting: bool,
+        /// Whether this is the last sector queued so far
+        last_queued: bool,
+    },
+    /// Downloading sector pieces
+    Downloading,
+    /// Downloaded sector pieces
+    Downloaded(Duration),
+    /// Encoding sector pieces
+    Encoding,
+    /// Encoded sector pieces
+    Encoded(Duration),
+    /// Writing sector
+    Writing,
+    /// Written sector
+    Written(Duration),
+    /// Finished plotting
+    Finished {
+        /// Information about plotted sector
+        plotted_sector: PlottedSector,
+        /// Information about old plotted sector that was replaced
+        old_plotted_sector: Option<PlottedSector>,
+        /// How much time it took to plot a sector
+        time: Duration,
+    },
+}
+
+/// Details about sector expiration
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorExpirationDetails {
+    /// Sector expiration became known
+    Determined {
+        /// Segment index at which sector expires
+        expires_at: SegmentIndex,
+    },
+    /// Sector will expire at the next segment index and should be replotted
+    AboutToExpire,
+    /// Sector already expired
+    Expired,
+}
 
 pub(super) struct SectorToPlot {
     sector_index: SectorIndex,
@@ -402,7 +450,7 @@ where
 
             handlers.sector_update.call_simple(&(
                 sector_index,
-                SectorUpdate::Plotting(SectorPlottingDetails::Wrote(start.elapsed())),
+                SectorUpdate::Plotting(SectorPlottingDetails::Written(start.elapsed())),
             ));
         }
 
@@ -538,14 +586,6 @@ where
         new_segment_processing_delay,
     );
 
-    let (sectors_to_plot_proxy_sender, sectors_to_plot_proxy_receiver) = mpsc::channel(0);
-
-    let pause_plotting_if_node_not_synced_fut = pause_plotting_if_node_not_synced(
-        &node_client,
-        sectors_to_plot_proxy_receiver,
-        sectors_to_plot_sender,
-    );
-
     let send_plotting_notifications_fut = send_plotting_notifications(
         public_key_hash,
         sectors_indices_left_to_plot,
@@ -556,14 +596,11 @@ where
         sectors_metadata,
         &last_archived_segment,
         archived_segments_receiver,
-        sectors_to_plot_proxy_sender,
+        sectors_to_plot_sender,
         initial_plotting_finished,
     );
 
     select! {
-        result = pause_plotting_if_node_not_synced_fut.fuse() => {
-            result
-        }
         result = read_archived_segments_notifications_fut.fuse() => {
             result
         }
@@ -613,77 +650,6 @@ where
     }
 
     Ok(())
-}
-
-async fn pause_plotting_if_node_not_synced<NC>(
-    node_client: &NC,
-    sectors_to_plot_proxy_receiver: mpsc::Receiver<SectorToPlot>,
-    mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
-) -> Result<(), BackgroundTaskError>
-where
-    NC: NodeClient,
-{
-    let mut node_sync_status_change_notifications = node_client
-        .subscribe_node_sync_status_change()
-        .await
-        .map_err(|error| PlottingError::FailedToSubscribeArchivedSegments { error })?;
-
-    let Some(mut node_sync_status) = node_sync_status_change_notifications.next().await else {
-        return Ok(());
-    };
-
-    let mut sectors_to_plot_proxy_receiver = sectors_to_plot_proxy_receiver.fuse();
-    let mut node_sync_status_change_notifications = node_sync_status_change_notifications.fuse();
-
-    'outer: loop {
-        // Pause proxying of sectors to plot until we get notification that node is synced
-        if !node_sync_status.is_synced() {
-            info!("Node is not synced yet, pausing plotting until sync status changes");
-
-            loop {
-                match node_sync_status_change_notifications.next().await {
-                    Some(new_node_sync_status) => {
-                        node_sync_status = new_node_sync_status;
-
-                        if node_sync_status.is_synced() {
-                            info!("Node is synced, resuming plotting");
-                            continue 'outer;
-                        }
-                    }
-                    None => {
-                        // Subscription ended, nothing left to do
-                        return Ok(());
-                    }
-                }
-            }
-        }
-
-        select! {
-            maybe_sector_to_plot = sectors_to_plot_proxy_receiver.next() => {
-                let Some(sector_to_plot) = maybe_sector_to_plot else {
-                    // Subscription ended, nothing left to do
-                    return Ok(());
-                };
-
-                if let Err(_error) = sectors_to_plot_sender.send(sector_to_plot).await {
-                    // Receiver disconnected, nothing left to do
-                    return Ok(());
-                }
-            },
-
-            maybe_node_sync_status = node_sync_status_change_notifications.next() => {
-                match maybe_node_sync_status {
-                    Some(new_node_sync_status) => {
-                        node_sync_status = new_node_sync_status;
-                    }
-                    None => {
-                        // Subscription ended, nothing left to do
-                        return Ok(());
-                    }
-                }
-            },
-        }
-    }
 }
 
 struct SectorToReplot {

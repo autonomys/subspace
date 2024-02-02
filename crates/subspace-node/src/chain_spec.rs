@@ -24,7 +24,7 @@ use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, GEMINI_3H_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -109,15 +109,15 @@ struct GenesisDomainParams {
     operator_signing_key: OperatorPublicKey,
 }
 
-pub fn gemini_3g_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
     // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
     #[allow(deprecated)]
     Ok(GenericChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3g",
+        "Subspace Gemini 3h",
         // ID
-        "subspace_gemini_3g",
-        ChainType::Custom("Subspace Gemini 3g".to_string()),
+        "subspace_gemini_3h",
+        ChainType::Custom("Subspace Gemini 3h".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
@@ -175,7 +175,7 @@ pub fn gemini_3g_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     // TODO: Adjust once we bench PoT on faster hardware
                     // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
                     pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
-                    enable_domains: true,
+                    enable_domains: false,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
                     enable_non_root_calls: false,
@@ -200,7 +200,7 @@ pub fn gemini_3g_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3g"),
+        Some("subspace-gemini-3h"),
         None,
         // Properties
         Some({
@@ -218,8 +218,8 @@ pub fn gemini_3g_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
     ))
 }
 
-pub fn gemini_3g_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
-    unimplemented!("Please use release prefixed with gemini-3g")
+pub fn gemini_3h_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    GenericChainSpec::from_json_bytes(GEMINI_3H_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
@@ -417,7 +417,7 @@ fn subspace_genesis_config(
             SpecId::Dev => evm_chain_spec::development_config(move || {
                 evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
             }),
-            SpecId::Gemini => evm_chain_spec::gemini_3g_config(move || {
+            SpecId::Gemini => evm_chain_spec::gemini_3h_config(move || {
                 evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
             }),
             SpecId::DevNet => evm_chain_spec::devnet_config(move || {
@@ -454,7 +454,7 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
-            genesis_domain: Some(sp_domains::GenesisDomain {
+            genesis_domain: enable_domains.then_some(sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,

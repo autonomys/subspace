@@ -86,7 +86,10 @@ mod benchmarks {
             Domains::<T>::head_receipt_number(domain_id),
             (block_tree_pruning_depth + 1).into()
         );
-        assert_eq!(Domains::<T>::oldest_receipt_number(domain_id), 1u32.into());
+        assert_eq!(
+            Domains::<T>::oldest_unconfirmed_receipt_number(domain_id),
+            Some(1u32.into())
+        );
     }
 
     /// Benchmark pending staking operation with the worst possible conditions:

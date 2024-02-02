@@ -39,6 +39,7 @@ jobs:
             dockerfile-suffix: ".aarch64"
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             image-suffix: "-aarch64"
+      fail-fast: false
 
     steps:
       - name: Set up QEMU
@@ -80,6 +81,13 @@ jobs:
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
             RUSTFLAGS=${{ matrix.platform.rustflags }}
 
+      - name: Trigger trivy-security-scan Workflow
+        uses: peter-evans/repository-dispatch@a4a90276d01e3a2ae44fa10a0247287f045afd59 # @v2.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: trivy-scan-dispatch
+          client-payload: '{"sha": "${{ github.sha }}"}'
+
   executables:
     strategy:
       matrix:
@@ -116,6 +124,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+      fail-fast: false
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
@@ -176,7 +185,7 @@ jobs:
             gcc-aarch64-linux-gnu \
             libc6-dev-arm64-cross \
             zlib1g-dev:arm64
-          
+
           echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 

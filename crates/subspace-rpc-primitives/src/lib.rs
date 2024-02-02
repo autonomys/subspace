@@ -35,6 +35,8 @@ pub struct FarmerAppInfo {
     pub genesis_hash: [u8; 32],
     /// Bootstrap nodes for DSN
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// Whether node is syncing right now
+    pub syncing: bool,
     /// How much time farmer has to audit sectors and generate a solution
     pub farming_timeout: Duration,
     /// Protocol info for farmer
@@ -89,21 +91,4 @@ pub struct RewardSignatureResponse {
     pub hash: [u8; 32],
     /// Pre-header or vote hash signature.
     pub signature: Option<RewardSignature>,
-}
-
-/// Information about new slot that just arrived
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum NodeSyncStatus {
-    /// Node is fully synced
-    Synced,
-    /// Node is major syncing
-    MajorSyncing,
-}
-
-impl NodeSyncStatus {
-    /// Whether node is synced
-    pub fn is_synced(&self) -> bool {
-        matches!(self, Self::Synced)
-    }
 }

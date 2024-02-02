@@ -152,7 +152,7 @@ mod pallet {
             /// Amount of collected tips.
             tips: BalanceOf<T>,
         },
-        /// Fees burned due to equivocated block author.
+        /// Fees burned due to equivocated block author or rewards not enabled.
         #[codec(index = 1)]
         BurnedBlockFees {
             /// Amount of burned storage fees.
@@ -257,10 +257,9 @@ where
     pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {
         let credit_supply = T::CreditSupply::get();
 
-        match T::TotalSpacePledged::get().checked_sub(
-            T::BlockchainHistorySize::get()
-                .saturating_mul(u128::from(T::MinReplicationFactor::get())),
-        ) {
+        match (T::TotalSpacePledged::get() / u128::from(T::MinReplicationFactor::get()))
+            .checked_sub(T::BlockchainHistorySize::get())
+        {
             Some(free_space) if free_space > 0 => {
                 credit_supply / BalanceOf::<T>::saturated_from(free_space)
             }

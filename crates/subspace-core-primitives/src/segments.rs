@@ -69,6 +69,12 @@ impl SegmentIndex {
     /// Segment index 1.
     pub const ONE: SegmentIndex = SegmentIndex(1);
 
+    /// Create new instance
+    #[inline]
+    pub const fn new(n: u64) -> Self {
+        Self(n)
+    }
+
     /// Get the first piece index in this segment.
     pub fn first_piece_index(&self) -> PieceIndex {
         PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
@@ -108,6 +114,12 @@ impl SegmentIndex {
             });
 
         source_first_piece_indices
+    }
+
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
+    #[inline]
+    pub fn checked_sub(self, rhs: Self) -> Option<Self> {
+        self.0.checked_sub(rhs.0).map(Self)
     }
 }
 

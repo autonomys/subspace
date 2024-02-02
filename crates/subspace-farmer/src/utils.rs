@@ -11,9 +11,10 @@ use futures::channel::oneshot::Canceled;
 use futures::future::Either;
 use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroUsize, ParseIntError};
 use std::ops::Deref;
 use std::pin::{pin, Pin};
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
@@ -21,6 +22,9 @@ use tokio::task;
 use tracing::debug;
 #[cfg(feature = "numa")]
 use tracing::warn;
+
+/// It doesn't make a lot of sense to have a huge number of farming threads, 32 is plenty
+const MAX_DEFAULT_FARMING_THREADS: usize = 32;
 
 /// Joins async join handle on drop
 pub struct AsyncJoinOnDrop<T> {
@@ -150,6 +154,27 @@ pub struct CpuCoreSet {
 }
 
 impl CpuCoreSet {
+    /// Regroup CPU core sets to contain at most `target_sets` sets, useful when there are many L3
+    /// cache groups and not as many farms
+    pub fn regroup(cpu_core_sets: &[Self], target_sets: usize) -> Vec<Self> {
+        cpu_core_sets
+            // Chunk CPU core sets
+            .chunks(cpu_core_sets.len().div_ceil(target_sets))
+            .map(|sets| Self {
+                // Combine CPU cores
+                cores: sets
+                    .iter()
+                    .flat_map(|set| set.cores.iter())
+                    .copied()
+                    .collect(),
+                // Preserve topology object
+                #[cfg(feature = "numa")]
+                topology: sets[0].topology.clone(),
+            })
+            .collect()
+    }
+
+    /// Get cpu core numbers in this set
     pub fn cpu_cores(&self) -> &[usize] {
         &self.cores
     }
@@ -186,7 +211,31 @@ impl CpuCoreSet {
     }
 }
 
-/// Get all cpu cores, grouped into sets according to NUMA nodes.
+/// Recommended number of thread pool size for farming, equal to number of CPU cores in the first
+/// NUMA node
+pub fn recommended_number_of_farming_threads() -> usize {
+    #[cfg(feature = "numa")]
+    match hwlocality::Topology::new().map(std::sync::Arc::new) {
+        Ok(topology) => {
+            return topology
+                // Iterate over NUMA nodes
+                .objects_at_depth(hwlocality::object::depth::Depth::NUMANode)
+                // For each NUMA nodes get CPU set
+                .filter_map(|node| node.cpuset())
+                // Get number of CPU cores
+                .map(|cpuset| cpuset.iter_set().count())
+                .find(|&count| count > 0)
+                .unwrap_or_else(num_cpus::get)
+                .min(MAX_DEFAULT_FARMING_THREADS);
+        }
+        Err(error) => {
+            warn!(%error, "Failed to get NUMA topology");
+        }
+    }
+    num_cpus::get().min(MAX_DEFAULT_FARMING_THREADS)
+}
+
+/// Get all cpu cores, grouped into sets according to NUMA nodes or L3 cache groups on large CPUs.
 ///
 /// Returned vector is guaranteed to have at least one element and have non-zero number of CPU cores
 /// in each set.
@@ -195,8 +244,8 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
     match hwlocality::Topology::new().map(std::sync::Arc::new) {
         Ok(topology) => {
             let cpu_cores = topology
-                // Iterate over NUMA nodes
-                .objects_at_depth(hwlocality::object::depth::Depth::NUMANode)
+                // Iterate over groups of L3 caches
+                .objects_with_type(hwlocality::object::types::ObjectType::L3Cache)
                 // For each NUMA nodes get CPU set
                 .filter_map(|node| node.cpuset())
                 // For each CPU set extract individual cores
@@ -213,7 +262,7 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
             }
         }
         Err(error) => {
-            warn!(%error, "Failed to get CPU topology");
+            warn!(%error, "Failed to get L3 cache topology");
         }
     }
     vec![CpuCoreSet {
@@ -221,6 +270,28 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
         #[cfg(feature = "numa")]
         topology: None,
     }]
+}
+
+/// Parse space-separated set of groups of CPU cores (individual cores are coma-separated) into
+/// vector of CPU core sets that can be used for creation of plotting/replotting thread pools.
+pub fn parse_cpu_cores_sets(s: &str) -> Result<Vec<CpuCoreSet>, ParseIntError> {
+    #[cfg(feature = "numa")]
+    let topology = hwlocality::Topology::new().map(std::sync::Arc::new).ok();
+
+    s.split(' ')
+        .map(|s| {
+            let cores = s
+                .split(',')
+                .map(usize::from_str)
+                .collect::<Result<Vec<usize>, _>>()?;
+
+            Ok(CpuCoreSet {
+                cores,
+                #[cfg(feature = "numa")]
+                topology: topology.clone(),
+            })
+        })
+        .collect()
 }
 
 /// Thread indices for each thread pool

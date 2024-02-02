@@ -9,9 +9,10 @@ use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU16;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
@@ -30,6 +31,7 @@ const CONCURRENT_PIECES_TO_DOWNLOAD: usize = 1_000;
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
 /// Get piece retry attempts number.
 const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
+const INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
@@ -42,7 +44,7 @@ struct Handlers {
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {
     stored_pieces: HashMap<RecordKey, Offset>,
-    free_offsets: Vec<Offset>,
+    free_offsets: VecDeque<Offset>,
     backend: DiskPieceCache,
 }
 
@@ -178,7 +180,7 @@ where
                     };
 
                     // Making offset as unoccupied and remove corresponding key from heap
-                    cache.free_offsets.push(offset);
+                    cache.free_offsets.push_front(offset);
                     match cache.backend.read_piece_index(offset) {
                         Ok(Some(piece_index)) => {
                             worker_state.heap.remove(KeyWrapper(piece_index));
@@ -227,7 +229,7 @@ where
             free_offsets.push(state.free_offsets);
         }
         stored_pieces.resize(new_caches.len(), HashMap::default());
-        free_offsets.resize(new_caches.len(), Vec::default());
+        free_offsets.resize(new_caches.len(), VecDeque::default());
 
         debug!("Collecting pieces that were in the cache before");
 
@@ -253,7 +255,7 @@ where
                                         );
                                     }
                                     None => {
-                                        free_offsets.push(offset);
+                                        free_offsets.push_back(offset);
                                     }
                                 }
 
@@ -303,21 +305,36 @@ where
 
         info!("Synchronizing piece cache");
 
-        // TODO: Query from the DSN too such that we don't build outdated cache at start if node is
-        //  not synced fully
-        let last_segment_index = match self.node_client.farmer_app_info().await {
-            Ok(farmer_app_info) => farmer_app_info.protocol_info.history_size.segment_index(),
-            Err(error) => {
-                error!(
-                    %error,
-                    "Failed to get farmer app info from node, keeping old cache state without \
-                    updates"
-                );
+        let last_segment_index = loop {
+            match self.node_client.farmer_app_info().await {
+                Ok(farmer_app_info) => {
+                    let last_segment_index =
+                        farmer_app_info.protocol_info.history_size.segment_index();
+                    // Wait for node to be either fully synced or to be aware of non-zero segment
+                    // index, which would indicate it has started DSN sync and knows about
+                    // up-to-date archived history.
+                    //
+                    // While this doesn't account for situations where node was offline for a long
+                    // time and is aware of old segment headers, this is good enough for piece cache
+                    // sync to proceed and should result in better user experience on average.
+                    if !farmer_app_info.syncing || last_segment_index > SegmentIndex::ZERO {
+                        break last_segment_index;
+                    }
+                }
+                Err(error) => {
+                    error!(
+                        %error,
+                        "Failed to get farmer app info from node, keeping old cache state without \
+                        updates"
+                    );
 
-                // Not the latest, but at least something
-                *self.caches.write() = caches;
-                return;
+                    // Not the latest, but at least something
+                    *self.caches.write() = caches;
+                    return;
+                }
             }
+
+            tokio::time::sleep(INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL).await;
         };
 
         debug!(%last_segment_index, "Identified last segment index");
@@ -356,7 +373,7 @@ where
                 .stored_pieces
                 .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
                 .for_each(|(_piece_index, offset)| {
-                    state.free_offsets.push(offset);
+                    state.free_offsets.push_front(offset);
                 });
         });
 
@@ -417,30 +434,30 @@ where
             };
 
             // Find plot in which there is a place for new piece to be stored
-            if !caches
-                .iter_mut()
-                .enumerate()
-                .any(|(disk_farm_index, cache)| {
-                    let Some(offset) = cache.free_offsets.pop() else {
-                        return false;
-                    };
+            let mut sorted_caches = caches.iter_mut().enumerate().collect::<Vec<_>>();
+            // Sort piece caches by number of stored pieces to fill those that are less
+            // populated first
+            sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
+            if !sorted_caches.into_iter().any(|(disk_farm_index, cache)| {
+                let Some(offset) = cache.free_offsets.pop_front() else {
+                    return false;
+                };
 
-                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
-                        error!(
-                            %error,
-                            %disk_farm_index,
-                            %piece_index,
-                            %offset,
-                            "Failed to write piece into cache"
-                        );
-                        return false;
-                    }
-                    cache
-                        .stored_pieces
-                        .insert(RecordKey::from(piece_index.to_multihash()), offset);
-                    true
-                })
-            {
+                if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
+                    error!(
+                        %error,
+                        %disk_farm_index,
+                        %piece_index,
+                        %offset,
+                        "Failed to write piece into cache"
+                    );
+                    return false;
+                }
+                cache
+                    .stored_pieces
+                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                true
+            }) {
                 error!(
                     %piece_index,
                     "Failed to store piece in cache, there was no space"
@@ -697,8 +714,12 @@ where
             }
             // There is free space in cache, need to find a free spot and place piece there
             None => {
-                for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
-                    let Some(offset) = cache.free_offsets.pop() else {
+                let mut sorted_caches = caches.iter_mut().enumerate().collect::<Vec<_>>();
+                // Sort piece caches by number of stored pieces to fill those that are less
+                // populated first
+                sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
+                for (disk_farm_index, cache) in sorted_caches {
+                    let Some(offset) = cache.free_offsets.pop_front() else {
                         // Not this disk farm
                         continue;
                     };

@@ -43,6 +43,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_subspace::ChainConstants;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::SegmentHeader;
@@ -89,7 +90,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
             block_importing_notification_sender,
             block_importing_notification_stream,
             segment_headers: Arc::new(Mutex::new(LruCache::new(
-                FINALIZATION_DEPTH_IN_SEGMENTS.saturating_add(1),
+                NonZeroUsize::new(u64::from(FINALIZATION_DEPTH_IN_SEGMENTS) as usize + 1)
+                    .expect("Not zero; qed"),
             ))),
             chain_constants,
             kzg,

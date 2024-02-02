@@ -1,7 +1,9 @@
 mod dsn;
+mod metrics;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::utils::{shutdown_signal, FarmerMetrics};
+use crate::commands::farm::metrics::FarmerMetrics;
+use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -12,7 +14,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::pin::pin;
@@ -22,6 +24,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
     SectorPlottingDetails, SectorUpdate, SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -30,13 +33,15 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    all_cpu_cores, create_plotting_thread_pool_manager, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop,
+    all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    recommended_number_of_farming_threads, run_future_in_dedicated_thread,
+    thread_pool_core_indices, AsyncJoinOnDrop, CpuCoreSet,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -108,12 +113,13 @@ pub(crate) struct FarmingArgs {
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--sector-downloading-concurrency` + 1 to download future
+    /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time
     #[arg(long)]
     sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
-    /// number of NUMA nodes on NUMA system. It is further restricted by
+    /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
+    /// restricted by
     /// `--sector-downloading-concurrency` and setting this option higher than
     /// `--sector-downloading-concurrency` will have no effect.
     #[arg(long)]
@@ -126,11 +132,13 @@ pub(crate) struct FarmingArgs {
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of logical CPUs
-    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
+    /// not more than 32 threads
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
-    /// on UMA system and number of logical CPUs available in NUMA node on NUMA system.
+    /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
+    /// groups on large CPUs.
     ///
     /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
@@ -138,9 +146,21 @@ pub(crate) struct FarmingArgs {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     plotting_thread_pool_size: Option<NonZeroUsize>,
+    /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
+    /// otherwise. It replaces both `--sector-encoding-concurrency` and
+    /// `--plotting-thread-pool-size` options if specified. Requires `--replotting-cpu-cores` to be
+    /// specified with the same number of CPU cores groups (or not specified at all, in which case
+    /// it'll use the same thread pool as plotting).
+    ///
+    /// Cores are coma-separated, with whitespace separating different thread pools/encoding
+    /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
+    /// each with a pair of CPU cores.
+    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "plotting_thread_pool_size"])]
+    plotting_cpu_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
     /// to not affect farming as much, defaults to half of the number of logical CPUs available on
-    /// UMA system and number of logical CPUs available in NUMA node on NUMA system.
+    /// UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
+    /// groups on large CPUs.
     ///
     /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
@@ -148,6 +168,15 @@ pub(crate) struct FarmingArgs {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     replotting_thread_pool_size: Option<NonZeroUsize>,
+    /// Specify exact CPU cores to be used for replotting bypassing any custom logic farmer might
+    /// use otherwise. It replaces `--replotting-thread_pool_size` options if specified. Requires
+    /// `--plotting-cpu-cores` to be specified with the same number of CPU cores groups.
+    ///
+    /// Cores are coma-separated, with whitespace separating different thread pools/encoding
+    /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
+    /// each with a pair of CPU cores.
+    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "replotting_thread_pool_size"])]
+    replotting_cpu_cores: Option<String>,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -169,8 +198,16 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
-        "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Statically correct; qed"),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30533))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30533))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533)),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533))
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
@@ -286,7 +323,9 @@ where
         farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
+        plotting_cpu_cores,
         replotting_thread_pool_size,
+        replotting_cpu_cores,
     } = farming_args;
 
     // Override flags with `--dev`
@@ -403,14 +442,14 @@ where
         Arc::clone(&readers_and_pieces),
     ));
 
-    let _piece_cache_worker = run_future_in_dedicated_thread(
+    let piece_cache_worker_fut = run_future_in_dedicated_thread(
         {
             let future = piece_cache_worker.run(piece_getter.clone());
 
             move || future
         },
         "cache-worker".to_string(),
-    );
+    )?;
 
     let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -431,19 +470,60 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool_core_indices =
-        thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
-    let replotting_thread_pool_core_indices = {
-        let mut replotting_thread_pool_core_indices =
-            thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
-        if replotting_thread_pool_size.is_none() {
-            // The default behavior is to use all CPU cores, but for replotting we just want half
-            replotting_thread_pool_core_indices
-                .iter_mut()
-                .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+    let mut plotting_thread_pool_core_indices;
+    let mut replotting_thread_pool_core_indices;
+    if let Some(plotting_cpu_cores) = plotting_cpu_cores {
+        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
+            .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
+        replotting_thread_pool_core_indices = match replotting_cpu_cores {
+            Some(replotting_cpu_cores) => {
+                parse_cpu_cores_sets(&replotting_cpu_cores).map_err(|error| {
+                    anyhow::anyhow!("Failed to parse `--replotting-cpu-cores`: {error}")
+                })?
+            }
+            None => plotting_thread_pool_core_indices.clone(),
+        };
+        if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
+            return Err(anyhow::anyhow!(
+                "Number of plotting thread pools ({}) is not the same as for replotting ({})",
+                plotting_thread_pool_core_indices.len(),
+                replotting_thread_pool_core_indices.len()
+            ));
         }
-        replotting_thread_pool_core_indices
-    };
+    } else {
+        plotting_thread_pool_core_indices =
+            thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
+        replotting_thread_pool_core_indices = {
+            let mut replotting_thread_pool_core_indices =
+                thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
+            if replotting_thread_pool_size.is_none() {
+                // The default behavior is to use all CPU cores, but for replotting we just want half
+                replotting_thread_pool_core_indices
+                    .iter_mut()
+                    .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+            }
+            replotting_thread_pool_core_indices
+        };
+
+        if plotting_thread_pool_core_indices.len() > 1 {
+            info!(
+                l3_cache_groups = %plotting_thread_pool_core_indices.len(),
+                "Multiple L3 cache groups detected"
+            );
+
+            if plotting_thread_pool_core_indices.len() > disk_farms.len() {
+                plotting_thread_pool_core_indices =
+                    CpuCoreSet::regroup(&plotting_thread_pool_core_indices, disk_farms.len());
+                replotting_thread_pool_core_indices =
+                    CpuCoreSet::regroup(&replotting_thread_pool_core_indices, disk_farms.len());
+
+                info!(
+                    farms_count = %disk_farms.len(),
+                    "Regrouped CPU cores to match number of farms, more farms may leverage CPU more efficiently"
+                );
+            }
+        }
+    }
 
     let downloading_semaphore = Arc::new(Semaphore::new(
         sector_downloading_concurrency
@@ -451,7 +531,6 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
-    let all_cpu_cores = all_cpu_cores();
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
         plotting_thread_pool_core_indices
             .into_iter()
@@ -459,36 +538,7 @@ where
     )?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
-        .unwrap_or_else(|| {
-            all_cpu_cores
-                .first()
-                .expect("Not empty according to function description; qed")
-                .cpu_cores()
-                .len()
-        });
-
-    if all_cpu_cores.len() > 1 {
-        info!(numa_nodes = %all_cpu_cores.len(), "NUMA system detected");
-
-        if all_cpu_cores.len() > disk_farms.len() {
-            warn!(
-                numa_nodes = %all_cpu_cores.len(),
-                farms_count = %disk_farms.len(),
-                "Too few disk farms, CPU will not be utilized fully during plotting, same number of farms as NUMA \
-                nodes or more is recommended"
-            );
-        }
-    }
-
-    // TODO: Remove code or environment variable once identified whether it helps or not
-    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpu_cores.len() > 1 {
-        unsafe {
-            libmimalloc_sys::mi_option_set(
-                libmimalloc_sys::mi_option_use_numa_nodes,
-                all_cpu_cores.len() as std::ffi::c_long,
-            );
-        }
-    }
+        .unwrap_or_else(recommended_number_of_farming_threads);
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
@@ -650,27 +700,75 @@ where
                     }
                 };
 
-            // Register audit plot events
-            let farmer_metrics = farmer_metrics.clone();
-            let on_plot_audited_callback = move |audit_event: &_| {
-                farmer_metrics.observe_audit_event(audit_event);
-            };
-
             single_disk_farm
-                .on_sector_update(Arc::new(move |(_sector_index, sector_state)| {
-                    if let SectorUpdate::Plotting(SectorPlottingDetails::Finished {
-                        plotted_sector,
-                        old_plotted_sector,
-                        ..
-                    }) = sector_state
-                    {
-                        on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                .on_sector_update(Arc::new({
+                    let single_disk_farm_id = *single_disk_farm.id();
+                    let farmer_metrics = farmer_metrics.clone();
+
+                    move |(_sector_index, sector_state)| match sector_state {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
+                            farmer_metrics.sector_plotting.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
+                            farmer_metrics.sector_downloading.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
+                            farmer_metrics
+                                .observe_sector_downloading_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_downloaded.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
+                            farmer_metrics.sector_encoding.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
+                            farmer_metrics.observe_sector_encoding_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_encoded.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
+                            farmer_metrics.sector_writing.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
+                            farmer_metrics.observe_sector_writing_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_written.inc();
+                        }
+                        SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+                            plotted_sector,
+                            old_plotted_sector,
+                            time,
+                        }) => {
+                            on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                            farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
+                            farmer_metrics.sector_plotted.inc();
+                        }
+                        _ => {}
                     }
                 }))
                 .detach();
 
             single_disk_farm
-                .on_plot_audited(Arc::new(on_plot_audited_callback))
+                .on_farming_notification(Arc::new({
+                    let single_disk_farm_id = *single_disk_farm.id();
+                    let farmer_metrics = farmer_metrics.clone();
+
+                    move |farming_notification| match farming_notification {
+                        FarmingNotification::Auditing(auditing_details) => {
+                            farmer_metrics.observe_auditing_time(
+                                &single_disk_farm_id,
+                                &auditing_details.time,
+                            );
+                        }
+                        FarmingNotification::Proving(proving_details) => {
+                            farmer_metrics.observe_proving_time(
+                                &single_disk_farm_id,
+                                &proving_details.time,
+                                proving_details.result,
+                            );
+                        }
+                        FarmingNotification::NonFatalError(error) => {
+                            farmer_metrics.note_farming_error(&single_disk_farm_id, error);
+                        }
+                    }
+                }))
                 .detach();
 
             single_disk_farm.run()
@@ -681,7 +779,7 @@ where
     // event handlers
     drop(readers_and_pieces);
 
-    let farm_fut = pin!(run_future_in_dedicated_thread(
+    let farm_fut = run_future_in_dedicated_thread(
         move || async move {
             while let Some(result) = single_disk_farms_stream.next().await {
                 let id = result?;
@@ -691,25 +789,39 @@ where
             anyhow::Ok(())
         },
         "farmer-farm".to_string(),
-    )?);
+    )?;
 
-    let networking_fut = pin!(run_future_in_dedicated_thread(
+    let networking_fut = run_future_in_dedicated_thread(
         move || async move { node_runner.run().await },
         "farmer-networking".to_string(),
-    )?);
+    )?;
+
+    // This defines order in which things are dropped
+    let networking_fut = networking_fut;
+    let farm_fut = farm_fut;
+    let piece_cache_worker_fut = piece_cache_worker_fut;
+
+    let networking_fut = pin!(networking_fut);
+    let farm_fut = pin!(farm_fut);
+    let piece_cache_worker_fut = pin!(piece_cache_worker_fut);
 
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
+
+        // Networking future
+        _ = networking_fut.fuse() => {
+            info!("Node runner exited.")
+        },
 
         // Farm future
         result = farm_fut.fuse() => {
             result??;
         },
 
-        // Node runner future
-        _ = networking_fut.fuse() => {
-            info!("Node runner exited.")
+        // Piece cache worker future
+        _ = piece_cache_worker_fut.fuse() => {
+            info!("Piece cache worker exited.")
         },
     );
 

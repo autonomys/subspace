@@ -32,7 +32,7 @@ hwlocality = { version = "1.0.0-alpha.1", features = ["vendored"], optional = tr
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.12.1"
 mimalloc = "0.1.39"
-libmimalloc-sys = { version = "0.1.35", features = ["extended"] }
+libmimalloc-sys = "0.1.35"
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.1"
@@ -56,7 +56,7 @@ substrate-bip39 = "0.4.5"
 supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"
-tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }

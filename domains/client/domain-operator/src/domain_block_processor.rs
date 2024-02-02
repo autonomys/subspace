@@ -510,7 +510,6 @@ where
         &self,
         consensus_block_hash: CBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, CBlock>>,
-        head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
         let domain_hash = match domain_block_result {
             Some(DomainBlockResult {
@@ -518,9 +517,13 @@ where
                 header_number: _,
                 execution_receipt,
             }) => {
+                let oldest_unconfirmed_receipt_number = self
+                    .consensus_client
+                    .runtime_api()
+                    .oldest_unconfirmed_receipt_number(consensus_block_hash, self.domain_id)?;
                 crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(
                     &*self.client,
-                    head_receipt_number,
+                    oldest_unconfirmed_receipt_number,
                     &execution_receipt,
                 )?;
 
@@ -759,12 +762,17 @@ where
             .consensus_client
             .runtime_api()
             .head_receipt_number(consensus_block_hash, self.domain_id)?;
-        let oldest_receipt_number = self
+        let oldest_unconfirmed_receipt_number = match self
             .consensus_client
             .runtime_api()
-            .oldest_receipt_number(consensus_block_hash, self.domain_id)?;
+            .oldest_unconfirmed_receipt_number(consensus_block_hash, self.domain_id)?
+        {
+            Some(er_number) => er_number,
+            // Early return if there is no non-confirmed ER exist
+            None => return Ok(None),
+        };
 
-        while !to_check.is_zero() && oldest_receipt_number < to_check {
+        while !to_check.is_zero() && oldest_unconfirmed_receipt_number <= to_check {
             let onchain_receipt_hash = self
                 .consensus_client
                 .runtime_api()

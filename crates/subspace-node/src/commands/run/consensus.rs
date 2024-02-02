@@ -12,8 +12,9 @@ use sc_service::Configuration;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
     SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
@@ -22,10 +23,6 @@ use subspace_service::config::{
 use subspace_service::dsn::DsnConfig;
 use tempfile::TempDir;
 use tracing::warn;
-
-fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
-    hex::decode(s)
-}
 
 fn parse_timekeeper_cpu_cores(
     s: &str,
@@ -80,7 +77,12 @@ struct SubstrateNetworkOptions {
     public_addr: Vec<sc_network::Multiaddr>,
 
     /// Listen on this multiaddress
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30333")]
+    #[arg(long, default_values_t = [
+        sc_network::Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(sc_network::multiaddr::Protocol::Tcp(30333)),
+        sc_network::Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(sc_network::multiaddr::Protocol::Tcp(30333))
+    ])]
     listen_on: Vec<sc_network::Multiaddr>,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
@@ -113,8 +115,16 @@ struct DsnOptions {
     /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
     #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
-        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Statically correct; qed"),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30433))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Udp(30433))
+            .with(Protocol::QuicV1),
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30433)),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30433))
     ])]
     dsn_listen_on: Vec<Multiaddr>,
 
@@ -262,8 +272,8 @@ pub(super) struct ConsensusChainOptions {
     force_authoring: bool,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
-    #[arg(long, value_parser = parse_pot_external_entropy)]
-    pot_external_entropy: Option<Vec<u8>>,
+    #[arg(long)]
+    pot_external_entropy: Option<String>,
 
     /// Options for DSN
     #[clap(flatten)]
@@ -352,8 +362,8 @@ pub(super) fn create_consensus_chain_configuration(
     }
 
     let chain_spec = match chain.as_deref() {
-        Some("gemini-3g-compiled") => chain_spec::gemini_3g_compiled()?,
-        Some("gemini-3g") => chain_spec::gemini_3g_config()?,
+        Some("gemini-3h-compiled") => chain_spec::gemini_3h_compiled()?,
+        Some("gemini-3h") => chain_spec::gemini_3h_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
         Some("dev") => chain_spec::dev_config()?,
@@ -390,7 +400,7 @@ pub(super) fn create_consensus_chain_configuration(
 
     let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
-        impl_version: env!("CARGO_PKG_VERSION").to_string(),
+        impl_version: env!("SUBSTRATE_CLI_IMPL_VERSION").into(),
         farmer,
         base_path: base_path.clone(),
         transaction_pool,

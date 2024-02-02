@@ -313,13 +313,24 @@ where
         &mut self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
+        self.construct_and_send_extrinsic_with(self.account_nonce(), 0.into(), function)
+            .await
+    }
+
+    /// Construct an extrinsic with the given nonce and tip for the node account and send it to this node.
+    pub async fn construct_and_send_extrinsic_with(
+        &self,
+        nonce: u32,
+        tip: BalanceOf<Runtime>,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let extrinsic = construct_extrinsic_generic::<Runtime, _>(
             &self.client,
             function,
             self.key,
             false,
-            self.account_nonce(),
-            0.into(),
+            nonce,
+            tip,
         );
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
