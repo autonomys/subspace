@@ -960,7 +960,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         .map_err(|_| Error::RemoveLock)?;
 
         // Release storage fund
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         T::Currency::release(
             &storage_fund_hold_id,
             &nominator_id,
@@ -1021,7 +1021,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             operator_id,
             operator.total_storage_fee_deposit,
         );
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
             // convert any deposits from the previous epoch to shares
             do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;

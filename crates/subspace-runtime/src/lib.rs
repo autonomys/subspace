@@ -387,7 +387,7 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
         Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
 
-    fn storage_fund(operator_id: OperatorId) -> Self {
+    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
         Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
     }
 }

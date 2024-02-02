@@ -1,7 +1,7 @@
 //! Bundle storage fund
 
 use crate::staking::NewDeposit;
-use crate::{BalanceOf, Config, HoldIdentifier, Operators};
+use crate::{BalanceOf, Config, Event, HoldIdentifier, Operators, Pallet};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
@@ -150,6 +150,12 @@ pub fn deposit_reserve_for_storage_fund<T: Config>(
     )
     .map_err(|_| Error::FailToDeposit)?;
 
+    Pallet::<T>::deposit_event(Event::StorageFeeDeposited {
+        operator_id,
+        nominator_id: source.clone(),
+        amount: storage_fee_reserve,
+    });
+
     let staking = deposit_amount
         .checked_sub(&storage_fee_reserve)
         .ok_or(Error::BalanceUnderflow)?;
@@ -172,7 +178,7 @@ pub fn withdraw_and_hold<T: Config>(
     }
 
     let storage_fund_acc = storage_fund_account::<T>(operator_id);
-    let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+    let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
     T::Currency::transfer_and_hold(
         &storage_fund_hold_id,
         &storage_fund_acc,

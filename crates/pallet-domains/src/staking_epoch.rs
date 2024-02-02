@@ -344,7 +344,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             let total_shares = operator.current_total_shares;
             let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
-            let storage_fund_hold_id = T::HoldIdentifier::storage_fund(operator_id);
+            let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
             let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
                 operator_id,
                 operator.total_storage_fee_deposit,
