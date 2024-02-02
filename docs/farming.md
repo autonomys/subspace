@@ -227,7 +227,6 @@ services:
       "--rpc-listen-on", "0.0.0.0:9944",
       "--rpc-cors", "all",
       "--rpc-methods", "unsafe",
-      "--rpc-external",
       "--farmer",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
