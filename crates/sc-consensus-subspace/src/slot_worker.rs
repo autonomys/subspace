@@ -257,6 +257,20 @@ where
             return;
         }
 
+        let maybe_root_plot_public_key = self
+            .client
+            .runtime_api()
+            .root_plot_public_key(self.client.info().best_hash)
+            .ok()
+            .flatten();
+        if maybe_root_plot_public_key.is_some() && !self.force_authoring {
+            debug!(
+                "Skipping farming slot {slot} due to root public key present and force authoring \
+                not enabled"
+            );
+            return;
+        }
+
         let proof_of_time = checkpoints.output();
         let global_randomness = proof_of_time.derive_global_randomness();
 
