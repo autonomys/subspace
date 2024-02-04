@@ -28,12 +28,13 @@ pub mod config;
 pub mod dsn;
 mod metrics;
 pub mod rpc;
-mod sync_from_dsn;
+pub mod sync_from_dsn;
 pub mod transaction_pool;
 
 use crate::config::{SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
+use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
@@ -105,6 +106,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{BlockNumber, PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
@@ -844,6 +846,15 @@ where
 
     network_wrapper.set(network_service.clone());
     if config.sync_from_dsn {
+        let piece_provider = PieceProvider::new(
+            node.clone(),
+            Some(SegmentCommitmentPieceValidator::new(
+                node.clone(),
+                subspace_link.kzg().clone(),
+                segment_headers_store.clone(),
+            )),
+        );
+
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
             segment_headers_store.clone(),
             Arc::clone(&network_service),
@@ -852,7 +863,7 @@ where
             import_queue_service,
             sync_target_block_number,
             pause_sync,
-            subspace_link.kzg().clone(),
+            piece_provider,
         );
         task_manager
             .spawn_handle()

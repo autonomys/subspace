@@ -1,9 +1,9 @@
 mod import_blocks;
-mod piece_validator;
+pub(super) mod piece_validator;
 mod segment_header_downloader;
 
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
-use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
+pub use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
@@ -20,9 +20,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::SegmentIndex;
-use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 use tracing::{info, warn};
 
@@ -47,7 +45,7 @@ enum NotificationReason {
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn create_observer_and_worker<Block, AS, Client>(
+pub(super) fn create_observer_and_worker<Block, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
@@ -55,7 +53,7 @@ pub(super) fn create_observer_and_worker<Block, AS, Client>(
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
-    kzg: Kzg,
+    piece_getter: PG,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -71,6 +69,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    PG: DsnSyncPieceGetter + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(0);
     let observer_fut = {
@@ -88,7 +87,7 @@ where
             sync_target_block_number,
             pause_sync,
             rx,
-            &kzg,
+            &piece_getter,
         )
         .await
     };
@@ -211,7 +210,7 @@ async fn create_substrate_network_observer<Block>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Block, AS, IQS, Client>(
+async fn create_worker<Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
@@ -219,7 +218,7 @@ async fn create_worker<Block, AS, IQS, Client>(
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
-    kzg: &Kzg,
+    piece_getter: &PG,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
@@ -232,6 +231,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     IQS: ImportQueueService<Block> + ?Sized,
+    PG: DsnSyncPieceGetter,
 {
     let info = client.info();
     let chain_constants = client
@@ -248,14 +248,6 @@ where
         .best_number
         .saturating_sub(chain_constants.confirmation_depth_k().into());
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
-    let piece_provider = PieceProvider::new(
-        node.clone(),
-        Some(SegmentCommitmentPieceValidator::<AS>::new(
-            node,
-            kzg,
-            &segment_headers_store,
-        )),
-    );
 
     // Node starts as offline, we'll wait for it to go online shrtly after
     let mut initial_pause_sync = Some(pause_sync.swap(true, Ordering::AcqRel));
@@ -268,7 +260,7 @@ where
             &segment_headers_store,
             &segment_header_downloader,
             client,
-            &piece_provider,
+            piece_getter,
             import_queue_service,
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
