@@ -28,6 +28,7 @@ use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use sp_runtime::Saturating;
 use std::error::Error;
+use std::fmt;
 use std::num::NonZeroU16;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,7 +42,7 @@ use tracing::warn;
 
 /// Trait representing a way to get pieces for DSN sync purposes
 #[async_trait]
-pub trait DsnSyncPieceGetter {
+pub trait DsnSyncPieceGetter: fmt::Debug {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
@@ -51,7 +52,7 @@ pub trait DsnSyncPieceGetter {
 #[async_trait]
 impl<T> DsnSyncPieceGetter for Arc<T>
 where
-    T: DsnSyncPieceGetter + Send + Sync,
+    T: DsnSyncPieceGetter + Send + Sync + ?Sized,
 {
     async fn get_piece(
         &self,

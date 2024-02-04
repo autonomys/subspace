@@ -846,14 +846,16 @@ where
 
     network_wrapper.set(network_service.clone());
     if config.sync_from_dsn {
-        let piece_provider = PieceProvider::new(
-            node.clone(),
-            Some(SegmentCommitmentPieceValidator::new(
+        let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
+            Arc::new(PieceProvider::new(
                 node.clone(),
-                subspace_link.kzg().clone(),
-                segment_headers_store.clone(),
-            )),
-        );
+                Some(SegmentCommitmentPieceValidator::new(
+                    node.clone(),
+                    subspace_link.kzg().clone(),
+                    segment_headers_store.clone(),
+                )),
+            ))
+        });
 
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
             segment_headers_store.clone(),
@@ -863,7 +865,7 @@ where
             import_queue_service,
             sync_target_block_number,
             pause_sync,
-            piece_provider,
+            dsn_sync_piece_getter,
         );
         task_manager
             .spawn_handle()

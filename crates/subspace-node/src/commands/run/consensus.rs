@@ -530,6 +530,7 @@ pub(super) fn create_consensus_chain_configuration(
             // Domain node needs slots notifications for bundle production.
             force_new_slot_notifications: domains_enabled,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
+            dsn_piece_getter: None,
             sync_from_dsn,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
