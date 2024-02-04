@@ -24,12 +24,69 @@ pub mod sector;
 mod segment_reconstruction;
 
 use crate::file_ext::FileExt;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::File;
 use std::future::Future;
 use std::io;
-use subspace_core_primitives::HistorySize;
+use std::sync::Arc;
+use subspace_core_primitives::{ArchivedHistorySegment, HistorySize, Piece, PieceIndex};
+
+use std::error::Error;
+
+/// Defines retry policy on error during piece acquiring.
+#[derive(PartialEq, Eq, Clone, Debug, Copy)]
+pub enum PieceGetterRetryPolicy {
+    /// Retry N times (including zero)
+    Limited(u16),
+    /// No restrictions on retries
+    Unlimited,
+}
+
+impl Default for PieceGetterRetryPolicy {
+    #[inline]
+    fn default() -> Self {
+        Self::Limited(0)
+    }
+}
+
+/// Trait representing a way to get pieces
+#[async_trait]
+pub trait PieceGetter {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        retry_policy: PieceGetterRetryPolicy,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
+#[async_trait]
+impl<T> PieceGetter for Arc<T>
+where
+    T: PieceGetter + Send + Sync,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        retry_policy: PieceGetterRetryPolicy,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_ref().get_piece(piece_index, retry_policy).await
+    }
+}
+
+#[async_trait]
+impl PieceGetter for ArchivedHistorySegment {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        _retry_policy: PieceGetterRetryPolicy,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        Ok(self
+            .get(usize::try_from(u64::from(piece_index))?)
+            .map(Piece::from))
+    }
+}
 
 /// Enum to encapsulate the selection between [`ReadAtSync`] and [`ReadAtAsync]` variants
 #[derive(Copy, Clone)]

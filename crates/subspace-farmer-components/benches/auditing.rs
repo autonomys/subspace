@@ -14,13 +14,11 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
-use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
-};
+use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 

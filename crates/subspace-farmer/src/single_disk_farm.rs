@@ -53,9 +53,9 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
-use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
+use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};

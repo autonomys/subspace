@@ -54,10 +54,8 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
-use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
-};
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_verification::is_within_solution_range;
