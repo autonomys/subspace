@@ -1,4 +1,5 @@
 use crate::dsn::DsnConfig;
+use crate::sync_from_dsn::DsnSyncPieceGetter;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
@@ -242,6 +243,8 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
+    /// DSN piece getter
+    pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
     /// Is this node a Timekeeper

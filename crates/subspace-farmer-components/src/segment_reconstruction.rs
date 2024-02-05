@@ -1,4 +1,4 @@
-use crate::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use crate::{PieceGetter, PieceGetterRetryPolicy};
 use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -3,16 +3,14 @@ use crate::sector::{
     SectorMetadata, SectorMetadataChecksummed,
 };
 use crate::segment_reconstruction::recover_missing_piece;
-use crate::FarmerProtocolInfo;
+use crate::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
 use async_lock::Mutex;
-use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
-use std::error::Error;
 use std::mem;
 use std::simd::Simd;
 use std::sync::Arc;
@@ -20,8 +18,7 @@ use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Blake3Hash, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket,
-    SectorId, SectorIndex,
+    Blake3Hash, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -39,60 +36,6 @@ fn default_backoff() -> ExponentialBackoff {
         // Try until we get a valid piece
         max_elapsed_time: None,
         ..ExponentialBackoff::default()
-    }
-}
-
-/// Defines retry policy on error during piece acquiring.
-#[derive(PartialEq, Eq, Clone, Debug, Copy)]
-pub enum PieceGetterRetryPolicy {
-    /// Retry N times (including zero)
-    Limited(u16),
-    /// No restrictions on retries
-    Unlimited,
-}
-
-impl Default for PieceGetterRetryPolicy {
-    #[inline]
-    fn default() -> Self {
-        Self::Limited(0)
-    }
-}
-
-/// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
-/// simplifying dependency graph.
-#[async_trait]
-pub trait PieceGetter {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        retry_policy: PieceGetterRetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
-
-#[async_trait]
-impl<T> PieceGetter for Arc<T>
-where
-    T: PieceGetter + Send + Sync,
-{
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        retry_policy: PieceGetterRetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.as_ref().get_piece(piece_index, retry_policy).await
-    }
-}
-
-#[async_trait]
-impl PieceGetter for ArchivedHistorySegment {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        _retry_policy: PieceGetterRetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self
-            .get(usize::try_from(u64::from(piece_index))?)
-            .map(Piece::from))
     }
 }
 

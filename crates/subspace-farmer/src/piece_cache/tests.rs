@@ -15,8 +15,7 @@ use std::time::Duration;
 use subspace_core_primitives::{
     HistorySize, LastArchivedBlock, Piece, PieceIndex, SegmentHeader, SegmentIndex,
 };
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;

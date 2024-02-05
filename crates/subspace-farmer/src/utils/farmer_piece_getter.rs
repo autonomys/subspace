@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex};
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
