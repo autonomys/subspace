@@ -6,6 +6,7 @@ use sp_domains::DomainId;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
+use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 

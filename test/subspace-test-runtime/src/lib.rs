@@ -1268,10 +1268,6 @@ impl_runtime_apis! {
             Domains::domain_best_number(domain_id)
         }
 
-        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
-            Domains::domain_state_root(domain_id, number, hash)
-        }
-
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
         }

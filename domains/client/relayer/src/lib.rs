@@ -53,8 +53,6 @@ pub enum Error {
     ApiError(sp_api::ApiError),
     /// Emits when the core domain block is not yet confirmed on the system domain.
     DomainNonConfirmedOnConsensusChain,
-    /// Emits when the core domain block state root is invalid.
-    DomainStateRootInvalid,
     /// Failed to submit a cross domain message
     UnableToSubmitCrossDomainMessage(TrySendError<GossipMessage>),
     /// Invalid ChainId
@@ -321,36 +319,11 @@ where
             return Ok(());
         }
 
-        // verify if the state root is matching.
-        let domain_number = *domain_block_header.number();
-        if !consensus_chain_api
-            .domain_state_root(
-                best_consensus_chain_hash,
-                domain_id,
-                domain_number,
-                confirmed_block_hash,
-            )?
-            .map(|state_root| state_root == (*domain_block_header.state_root()))
-            .unwrap_or_else(|| {
-                // if this is genesis block, ignore as state root of genesis for domain is not tracked on runtime
-                domain_number.is_zero()
-            })
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                "Domain state root mismatch at: Number: {:?}, Hash: {:?}",
-                domain_number,
-                confirmed_block_hash
-            );
-            return Err(Error::DomainStateRootInvalid);
-        }
-
-        // generate domain proof that points to the state root of the domain block on Consensus chain.
+        // generate domain proof that points to the confirmed domain block on consensus chain
         let storage_key = consensus_chain_api
             .confirmed_domain_block_storage_key(best_consensus_chain_hash, domain_id)?;
 
-        // construct storage proof for the core domain state root using system domain backend.
-        let domain_state_root_proof = consensus_chain_client.read_proof(
+        let domain_proof = consensus_chain_client.read_proof(
             best_consensus_chain_hash,
             &mut [storage_key.as_ref()].into_iter(),
         )?;
@@ -365,7 +338,7 @@ where
                     block_hash,
                     key,
                     *best_consensus_chain_block_header.state_root(),
-                    domain_state_root_proof.clone(),
+                    domain_proof.clone(),
                 )
             },
             |msg| Self::gossip_outbox_message(domain_client, msg, gossip_message_sink),
@@ -381,7 +354,7 @@ where
                     block_id,
                     key,
                     *best_consensus_chain_block_header.state_root(),
-                    domain_state_root_proof.clone(),
+                    domain_proof.clone(),
                 )
             },
             |msg| Self::gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
