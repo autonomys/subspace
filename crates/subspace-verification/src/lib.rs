@@ -241,8 +241,6 @@ where
         return Err(Error::InvalidChunkWitness);
     }
 
-    // TODO: Check if sector already expired once we have such notion
-
     if let Some(PieceCheckParams {
         max_pieces_in_sector,
         segment_commitment,
