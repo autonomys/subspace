@@ -157,7 +157,7 @@ async fn read_pieces<PosTable>(
         }
 
         let sector_size = sector_size(pieces_in_sector);
-        let sector = plot_file.offset(sector_index as usize * sector_size);
+        let sector = plot_file.offset(u64::from(sector_index) * sector_size as u64);
 
         let maybe_piece = read_piece::<PosTable, _, _>(
             &public_key,

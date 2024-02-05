@@ -3,7 +3,6 @@
 rustflags = ["-C", "target-feature=+aes"]
 
 [target.'cfg(target_arch = "aarch64")']
-# TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
-# TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to at least
-#  1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+# TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
+#  https://github.com/RustCrypto/block-ciphers/pull/395
 rustflags = ["--cfg", "aes_armv8"]

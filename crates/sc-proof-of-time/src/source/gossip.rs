@@ -20,11 +20,10 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::future::poll_fn;
-use std::hash::{Hash, Hasher};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::pin::pin;
 use std::sync::{atomic, Arc};
-use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far
@@ -88,7 +87,7 @@ pub fn pot_gossip_peers_set_config() -> (
     (cfg, notification_service)
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Encode, Decode)]
 pub(super) struct GossipProof {
     /// Slot number
     pub(super) slot: Slot,
@@ -98,16 +97,6 @@ pub(super) struct GossipProof {
     pub(super) slot_iterations: NonZeroU32,
     /// Proof of time checkpoints
     pub(super) checkpoints: PotCheckpoints,
-}
-
-// TODO: Replace with derive once `Slot` implements `Hash`
-impl Hash for GossipProof {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        SlotNumber::from(self.slot).hash(state);
-        self.seed.hash(state);
-        self.slot_iterations.hash(state);
-        self.checkpoints.hash(state);
-    }
 }
 
 #[derive(Debug)]

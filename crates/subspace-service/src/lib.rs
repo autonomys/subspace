@@ -1002,7 +1002,6 @@ where
                 async move {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    // TODO: Would be nice if the whole header was passed in here
                     let parent_header = client
                         .header(parent_hash)?
                         .expect("Parent header must always exist when block is created; qed");

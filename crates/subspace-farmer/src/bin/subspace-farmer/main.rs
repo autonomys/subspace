@@ -110,12 +110,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             for disk_farm in &disk_farms {
-                // TODO: Delete this section once we don't have shared data anymore
-                info!("Wiping shared data");
-                let _ = fs::remove_file(disk_farm.join("known_addresses_db"));
-                let _ = fs::remove_file(disk_farm.join("known_addresses.bin"));
-                let _ = fs::remove_file(disk_farm.join("piece_cache_db"));
-                let _ = fs::remove_file(disk_farm.join("providers_db"));
+                if disk_farm.join("known_addresses.bin").exists() {
+                    info!("Wiping known addresses");
+                    let _ = fs::remove_file(disk_farm.join("known_addresses.bin"));
+                }
 
                 SingleDiskFarm::wipe(disk_farm)?;
             }
