@@ -7,6 +7,7 @@ use sp_core::H256;
 use sp_externalities::ExternalitiesExt;
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime_interface::runtime_interface;
+use sp_std::vec::Vec;
 
 /// MMR related runtime interface
 #[runtime_interface]
@@ -29,7 +30,6 @@ pub struct LeafData {
 #[runtime_interface]
 pub trait DomainMmrRuntimeInterface {
     /// Verifies the given MMR proof using the leaves provided
-    #[allow(dead_code)]
     fn verify_mmr_proof(
         &mut self,
         leaves: Vec<EncodableOpaqueLeaf>,

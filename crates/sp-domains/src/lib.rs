@@ -1091,12 +1091,6 @@ sp_api::decl_runtime_apis! {
         /// Returns the current best number of the domain.
         fn domain_best_number(domain_id: DomainId) -> Option<HeaderNumberFor<DomainHeader>>;
 
-        /// Returns the chain state root at the given block.
-        fn domain_state_root(
-            domain_id: DomainId,
-            number: HeaderNumberFor<DomainHeader>,
-            hash: HeaderHashFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
-
         /// Returns the execution receipt
         fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
