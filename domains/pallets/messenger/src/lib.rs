@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
+#![feature(let_chains)]
 
 #[cfg(test)]
 mod mock;
@@ -109,11 +110,11 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        BlockInfo, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
-        InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
-        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
+        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::{MmrProofVerifier, OnXDMRewards};
+    use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
+    use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
@@ -139,9 +140,11 @@ mod pallet {
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
         /// Hash type of MMR
-        type MmrHash;
+        type MmrHash: Parameter + Member + Default + Clone;
         /// MMR proof verifier
         type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, StateRootOf<Self>>;
+        /// Storage key provider.
+        type StorageKeys: StorageKeys;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -506,7 +509,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -519,7 +522,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -698,7 +701,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message(
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -730,11 +733,13 @@ mod pallet {
             };
 
             // derive the key as stored on the src_chain.
-            let key = StorageKey(Outbox::<T>::hashed_key_for((
-                T::SelfChainId::get(),
-                xdm.channel_id,
-                xdm.nonce,
-            )));
+            let key = StorageKey(
+                T::StorageKeys::outbox_storage_key(
+                    T::SelfChainId::get(),
+                    (xdm.channel_id, xdm.nonce),
+                )
+                .ok_or(UnknownTransaction::CannotLookup)?,
+            );
 
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
@@ -793,7 +798,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message_response(
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -810,11 +815,13 @@ mod pallet {
             .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
 
             // derive the key as stored on the src_chain.
-            let key = StorageKey(InboxResponses::<T>::hashed_key_for((
-                T::SelfChainId::get(),
-                xdm.channel_id,
-                xdm.nonce,
-            )));
+            let key = StorageKey(
+                T::StorageKeys::inbox_responses_storage_key(
+                    T::SelfChainId::get(),
+                    (xdm.channel_id, xdm.nonce),
+                )
+                .ok_or(UnknownTransaction::CannotLookup)?,
+            );
 
             // verify, decode, and store the message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
@@ -838,7 +845,7 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for chain.
             let next_channel_id = NextChannelId::<T>::get(xdm.src_chain_id);
@@ -848,26 +855,43 @@ mod pallet {
             // nonce should be either be next or in future.
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
-            // TODO: verify the actual proof
-            let extracted_state_roots =
-                ExtractedStateRootsFromProof::<BlockNumberFor<T>, T::Hash, T::Hash>::default();
+            let mmr_leaf =
+                EncodableOpaqueLeaf(xdm.proof.consensus_mmr_proof().opaque_mmr_leaf.0.clone());
 
-            // on consensus, ensure the domain info is at K-depth and state root matches
-            if T::SelfChainId::get().is_consensus_chain() {
-                if let Some((domain_id, block_info, state_root)) =
-                    extracted_state_roots.domain_info.clone()
-                {
-                    ensure!(
-                        Self::is_domain_info_confirmed(domain_id, block_info, state_root),
-                        InvalidTransaction::BadProof
-                    )
-                }
-            }
+            let mmr_proof = xdm.proof.consensus_mmr_proof().proof.clone();
 
-            let state_root = extracted_state_roots
-                .domain_info
-                .map(|(_chain_id, _info, state_root)| state_root)
-                .unwrap_or(extracted_state_roots.consensus_chain_state_root);
+            let state_root = T::MmrProofVerifier::verify_proof_and_extract_consensus_state_root(
+                mmr_leaf, mmr_proof,
+            )
+            .ok_or(InvalidTransaction::BadProof)?;
+
+            // if the message is from domain, verify domain confirmation proof
+            let state_root = if let Some(domain_proof) = xdm.proof.domain_proof().clone()
+                && let Some(domain_id) = xdm.src_chain_id.maybe_domain_chain()
+            {
+                let confirmed_domain_block_storage_key =
+                    T::StorageKeys::confirmed_domain_block_storage_key(domain_id)
+                        .ok_or(UnknownTransaction::CannotLookup)?;
+
+                StorageProofVerifier::<T::Hashing>::get_decoded_value::<
+                    sp_domains::ConfirmedDomainBlock<BlockNumberFor<T>, T::Hash>,
+                >(
+                    &state_root,
+                    domain_proof,
+                    StorageKey(confirmed_domain_block_storage_key),
+                )
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::messenger",
+                        "Failed to verify storage proof: {:?}",
+                        err
+                    );
+                    TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+                })?
+                .state_root
+            } else {
+                state_root
+            };
 
             // verify and decode the message
             let msg =
@@ -913,6 +937,16 @@ mod pallet {
 
             confirmed && valid_state_root
         }
+
+        pub fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
+            let (channel_id, nonce) = message_id;
+            Outbox::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        }
+
+        pub fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
+            let (channel_id, nonce) = message_id;
+            InboxResponses::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        }
     }
 }
 
@@ -921,14 +955,14 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     pub fn outbox_message_unsigned(
-        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
         T::Extrinsic::new(call.into(), None)
     }
 
     pub fn inbox_response_message_unsigned(
-        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>>,
+        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
         T::Extrinsic::new(call.into(), None)

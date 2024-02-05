@@ -199,6 +199,33 @@ impl<CBlockNumber, CBlockHash, MmrHash> Proof<CBlockNumber, CBlockHash, MmrHash>
             Proof::Domain { message_proof, .. } => message_proof.clone(),
         }
     }
+
+    pub fn consensus_mmr_proof(
+        &self,
+    ) -> ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>
+    where
+        CBlockNumber: Clone,
+        CBlockHash: Clone,
+        MmrHash: Clone,
+    {
+        match self {
+            Proof::Consensus {
+                consensus_chain_mmr_proof,
+                ..
+            } => consensus_chain_mmr_proof.clone(),
+            Proof::Domain {
+                consensus_chain_mmr_proof,
+                ..
+            } => consensus_chain_mmr_proof.clone(),
+        }
+    }
+
+    pub fn domain_proof(&self) -> Option<StorageProof> {
+        match self {
+            Proof::Consensus { .. } => None,
+            Proof::Domain { domain_proof, .. } => Some(domain_proof.clone()),
+        }
+    }
 }
 
 /// Holds the Block info and state roots from which a proof was constructed.

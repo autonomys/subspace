@@ -2005,6 +2005,10 @@ impl<T: Config> Pallet<T> {
     ) -> Option<ReceiptHashFor<T>> {
         BlockTree::<T>::get(domain_id, domain_number)
     }
+
+    pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
+        LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
+    }
 }
 
 impl<T> Pallet<T>

@@ -2706,6 +2706,7 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-io",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-offchain",
  "sp-runtime",
@@ -3137,6 +3138,7 @@ dependencies = [
  "sp-domains",
  "sp-inherents",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-offchain",
  "sp-runtime",
@@ -3188,6 +3190,7 @@ dependencies = [
  "sp-domains",
  "sp-inherents",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-offchain",
  "sp-runtime",
@@ -11020,6 +11023,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-messenger-host-functions"
+version = "0.1.0"
+dependencies = [
+ "domain-block-preprocessor",
+ "parity-scale-codec",
+ "sc-executor",
+ "scale-info",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-externalities",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-metadata-ir"
 version = "0.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -11922,6 +11944,7 @@ dependencies = [
  "sp-inherents",
  "sp-io",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
@@ -12003,6 +12026,8 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
+ "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",
@@ -12089,6 +12114,7 @@ dependencies = [
  "sp-domains-fraud-proof",
  "sp-inherents",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-objects",
  "sp-offchain",

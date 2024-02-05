@@ -230,6 +230,14 @@ impl ChainId {
             ChainId::Domain(_) => false,
         }
     }
+
+    #[inline]
+    pub fn maybe_domain_chain(&self) -> Option<DomainId> {
+        match self {
+            ChainId::Consensus => None,
+            ChainId::Domain(domain_id) => Some(*domain_id),
+        }
+    }
 }
 
 impl From<u32> for ChainId {

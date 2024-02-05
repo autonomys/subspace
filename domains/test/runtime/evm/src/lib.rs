@@ -47,6 +47,7 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
+use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
@@ -413,6 +414,27 @@ impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
     }
 }
 
+pub struct StorageKeys;
+impl sp_messenger::StorageKeys for StorageKeys {
+    fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>> {
+        get_storage_key(StorageKeyRequest::ConfirmedDomainBlockStorageKey(domain_id))
+    }
+
+    fn outbox_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+        get_storage_key(StorageKeyRequest::OutboxStorageKey {
+            chain_id,
+            message_id,
+        })
+    }
+
+    fn inbox_responses_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+        get_storage_key(StorageKeyRequest::InboxResponseStorageKey {
+            chain_id,
+            message_id,
+        })
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -433,6 +455,7 @@ impl pallet_messenger::Config for Runtime {
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
+    type StorageKeys = StorageKeys;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -1013,6 +1036,18 @@ impl_runtime_apis! {
         ) -> bool{
             // this is always invalid on domains since we do not have info other domains.
             false
+        }
+
+        fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {
+            vec![]
+        }
+
+        fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
+            Messenger::outbox_storage_key(message_id)
+        }
+
+        fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
+            Messenger::inbox_response_storage_key(message_id)
         }
     }
 

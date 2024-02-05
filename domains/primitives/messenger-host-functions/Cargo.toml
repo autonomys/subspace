@@ -1,0 +1,49 @@
+[package]
+name = "sp-messenger-host-functions"
+version = "0.1.0"
+authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Host functions for Messenger"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/README.md",
+]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = ["derive"] }
+domain-block-preprocessor = { version = "0.1.0", default-features = false, path = "../../../domains/client/block-preprocessor", optional = true }
+scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false, optional = true }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", optional = true }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
+sp-externalities = { version = "0.19.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "domain-block-preprocessor",
+    "scale-info/std",
+    "sc-executor",
+    "sp-api/std",
+    "sp-blockchain",
+    "sp-core/std",
+    "sp-domains/std",
+    "sp-externalities/std",
+    "sp-messenger/std",
+    "sp-runtime/std",
+    "sp-runtime-interface/std",
+    "sp-std/std",
+]
+
+runtime-benchmarks = []
