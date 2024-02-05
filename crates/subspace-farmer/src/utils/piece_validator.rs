@@ -1,11 +1,8 @@
 use crate::NodeClient;
 use async_trait::async_trait;
-use lru::LruCache;
-use parking_lot::Mutex;
-use std::sync::Arc;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
@@ -16,21 +13,14 @@ pub struct SegmentCommitmentPieceValidator<NC> {
     dsn_node: Node,
     node_client: NC,
     kzg: Kzg,
-    segment_commitment_cache: Arc<Mutex<LruCache<SegmentIndex, SegmentCommitment>>>,
 }
 
 impl<NC> SegmentCommitmentPieceValidator<NC> {
-    pub fn new(
-        dsn_node: Node,
-        node_client: NC,
-        kzg: Kzg,
-        segment_commitment_cache: Arc<Mutex<LruCache<SegmentIndex, SegmentCommitment>>>,
-    ) -> Self {
+    pub fn new(dsn_node: Node, node_client: NC, kzg: Kzg) -> Self {
         Self {
             dsn_node,
             node_client,
             kzg,
-            segment_commitment_cache,
         }
     }
 }
@@ -52,44 +42,27 @@ where
 
         let segment_index = piece_index.segment_index();
 
-        let maybe_segment_commitment = self
-            .segment_commitment_cache
-            .lock()
-            .get(&segment_index)
-            .copied();
-        let segment_commitment = match maybe_segment_commitment {
-            Some(segment_commitment) => segment_commitment,
+        let segment_headers = match self.node_client.segment_headers(vec![segment_index]).await {
+            Ok(segment_headers) => segment_headers,
+            Err(error) => {
+                error!(
+                    %piece_index,
+                    ?error,
+                    "Failed tor retrieve segment headers from node"
+                );
+                return None;
+            }
+        };
+
+        let segment_commitment = match segment_headers.into_iter().next().flatten() {
+            Some(segment_header) => segment_header.segment_commitment(),
             None => {
-                let segment_headers =
-                    match self.node_client.segment_headers(vec![segment_index]).await {
-                        Ok(segment_headers) => segment_headers,
-                        Err(error) => {
-                            error!(
-                                %piece_index,
-                                ?error,
-                                "Failed tor retrieve segment headers from node"
-                            );
-                            return None;
-                        }
-                    };
-
-                let segment_commitment = match segment_headers.into_iter().next().flatten() {
-                    Some(segment_header) => segment_header.segment_commitment(),
-                    None => {
-                        error!(
-                            %piece_index,
-                            %segment_index,
-                            "Segment commitment for segment index wasn't found on node"
-                        );
-                        return None;
-                    }
-                };
-
-                self.segment_commitment_cache
-                    .lock()
-                    .push(segment_index, segment_commitment);
-
-                segment_commitment
+                error!(
+                    %piece_index,
+                    %segment_index,
+                    "Segment commitment for segment index wasn't found on node"
+                );
+                return None;
             }
         };
 

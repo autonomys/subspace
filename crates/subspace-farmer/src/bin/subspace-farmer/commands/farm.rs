@@ -10,7 +10,6 @@ use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -48,8 +47,6 @@ use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
-
-const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 fn should_farm_during_initial_plotting() -> bool {
     let total_cpu_cores = all_cpu_cores()
@@ -424,14 +421,10 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow::anyhow!(error))?;
-    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
-    //  in multiple files)
-    let segment_commitments_cache = Arc::new(Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE)));
     let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
         node_client.clone(),
         kzg.clone(),
-        segment_commitments_cache,
     ));
     let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
