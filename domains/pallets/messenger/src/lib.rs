@@ -35,7 +35,6 @@ mod messages;
 
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::Inspect;
-use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -107,15 +106,13 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
-    use sp_domains::DomainId;
-    use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
-        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
+        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
-    use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
 
@@ -129,8 +126,6 @@ mod pallet {
             -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
         type Currency: Mutate<Self::AccountId>;
-        /// Chain info to verify chain state roots at a confirmation depth.
-        type DomainInfo: DomainInfo<BlockNumberFor<Self>, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from chains.
         type ConfirmationDepth: Get<BlockNumberFor<Self>>;
         /// Weight information for extrinsics in this pallet.
@@ -509,7 +504,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+            msg: CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -522,7 +517,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+            msg: CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -701,7 +696,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message(
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -798,7 +793,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message_response(
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -845,7 +840,7 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
-            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for chain.
             let next_channel_id = NextChannelId::<T>::get(xdm.src_chain_id);
@@ -912,32 +907,6 @@ mod pallet {
             Ok(msg)
         }
 
-        pub fn is_domain_info_confirmed(
-            domain_id: DomainId,
-            domain_block_info: BlockInfo<BlockNumberFor<T>, T::Hash>,
-            domain_state_root: T::Hash,
-        ) -> bool {
-            // ensure the block is at-least k-deep
-            let confirmed = T::DomainInfo::domain_best_number(domain_id)
-                .and_then(|best_number| {
-                    best_number
-                        .checked_sub(&T::ConfirmationDepth::get())
-                        .map(|confirmed_number| confirmed_number >= domain_block_info.block_number)
-                })
-                .unwrap_or(false);
-
-            // verify state root of the block
-            let valid_state_root = T::DomainInfo::domain_state_root(
-                domain_id,
-                domain_block_info.block_number,
-                domain_block_info.block_hash,
-            )
-            .map(|got_state_root| got_state_root == domain_state_root)
-            .unwrap_or(false);
-
-            confirmed && valid_state_root
-        }
-
         pub fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
             let (channel_id, nonce) = message_id;
             Outbox::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
@@ -955,14 +924,14 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     pub fn outbox_message_unsigned(
-        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+        msg: CrossDomainMessage<T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
         T::Extrinsic::new(call.into(), None)
     }
 
     pub fn inbox_response_message_unsigned(
-        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+        msg: CrossDomainMessage<T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
         T::Extrinsic::new(call.into(), None)

@@ -44,10 +44,7 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{
-    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
-    ExtractedStateRootsFromProof, MessageId,
-};
+use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
@@ -450,7 +447,6 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
@@ -705,10 +701,7 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
-// TODO: fix extracting state roots
-fn extract_xdm_proof_state_roots(
-    encoded_ext: Vec<u8>,
-) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
     if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
         match &ext.0.function {
             RuntimeCall::Messenger(pallet_messenger::Call::relay_message { .. }) => None,
@@ -1039,19 +1032,10 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
-        fn extract_xdm_proof_state_roots(
+        fn is_xdm_valid(
             extrinsic: Vec<u8>,
-        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
-        }
-
-        fn is_domain_info_confirmed(
-            _domain_id: DomainId,
-            _domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
-            _domain_state_root: <Block as BlockT>::Hash,
-        ) -> bool{
-            // not valid on evm domain
-            false
+        ) -> Option<bool> {
+            is_xdm_valid(extrinsic)
         }
 
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {
@@ -1081,11 +1065,11 @@ impl_runtime_apis! {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

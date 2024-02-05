@@ -20,13 +20,9 @@
 pub mod endpoint;
 pub mod messages;
 
-use crate::messages::BlockInfo;
 use codec::{Decode, Encode};
-use messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
-    MessageId,
-};
-use sp_domains::DomainId;
+use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
+use sp_domains::{ChainId, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_std::vec::Vec;
 
@@ -101,12 +97,12 @@ sp_api::decl_runtime_apis! {
 
         /// Constructs an outbox message to the dst_chain as an unsigned extrinsic.
         fn outbox_message_unsigned(
-            msg: CrossDomainMessage<BlockNumber, Block::Hash, Block::Hash>,
+            msg: CrossDomainMessage<Block::Hash, Block::Hash>,
         ) -> Option<Block::Extrinsic>;
 
         /// Constructs an inbox response message to the dst_chain as an unsigned extrinsic.
         fn inbox_response_message_unsigned(
-            msg: CrossDomainMessage<BlockNumber, Block::Hash, Block::Hash>,
+            msg: CrossDomainMessage<Block::Hash, Block::Hash>,
         ) -> Option<Block::Extrinsic>;
 
         /// Returns true if the outbox message is ready to be relayed to dst_chain.
@@ -118,15 +114,12 @@ sp_api::decl_runtime_apis! {
 
     /// Api to provide XDM extraction from Runtime Calls.
     pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
-        fn extract_xdm_proof_state_roots(
+        /// Returns `Some(true)` if valid XDM or `Some(false)` if not
+        /// Returns None if this is not an XDM
+        fn is_xdm_valid(
             extrinsic: Vec<u8>
-        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
+        ) -> Option<bool>;
 
-        fn is_domain_info_confirmed(
-            domain_id: DomainId,
-            domain_block_info: BlockInfo<BlockNumber, Block::Hash>,
-            domain_state_root: Block::Hash,
-        ) -> bool;
 
         /// Returns the confirmed domain block storage for given domain.
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8>;

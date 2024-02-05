@@ -59,10 +59,7 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{
-    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
-    ExtractedStateRootsFromProof, MessageId,
-};
+use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
@@ -527,19 +524,8 @@ parameter_types! {
     pub SelfChainId: ChainId = ChainId::Consensus;
 }
 
-pub struct DomainInfo;
-
-impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
-    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-        Domains::domain_best_number(domain_id)
-    }
-
-    fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash> {
-        None
-    }
-}
-
 pub struct MmrProofVerifier;
+
 impl sp_messenger::MmrProofVerifier<mmr::Hash, Hash> for MmrProofVerifier {
     fn verify_proof_and_extract_consensus_state_root(
         opaque_leaf: EncodableOpaqueLeaf,
@@ -553,6 +539,7 @@ impl sp_messenger::MmrProofVerifier<mmr::Hash, Hash> for MmrProofVerifier {
 }
 
 pub struct StorageKeys;
+
 impl sp_messenger::StorageKeys for StorageKeys {
     fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>> {
         Some(Domains::confirmed_domain_block_storage_key(domain_id))
@@ -586,7 +573,6 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type DomainInfo = DomainInfo;
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
@@ -668,6 +654,7 @@ parameter_types! {
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
 pub struct BlockSlot;
+
 impl pallet_domains::BlockSlot for BlockSlot {
     fn current_slot() -> sp_consensus_slots::Slot {
         Subspace::current_slot()
@@ -833,16 +820,7 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
     }
 }
 
-// TODO: fix extracting state roots
-fn extract_xdm_proof_state_roots(
-    encoded_ext: Vec<u8>,
-) -> Option<
-    ExtractedStateRootsFromProof<
-        domain_runtime_primitives::BlockNumber,
-        domain_runtime_primitives::Hash,
-        domain_runtime_primitives::Hash,
-    >,
-> {
+fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
     if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
         match &ext.function {
             RuntimeCall::Messenger(pallet_messenger::Call::relay_message { .. }) => None,
@@ -1383,18 +1361,10 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
-        fn extract_xdm_proof_state_roots(
+        fn is_xdm_valid(
             extrinsic: Vec<u8>,
-        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
-        }
-
-        fn is_domain_info_confirmed(
-            domain_id: DomainId,
-            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
-            domain_state_root: <Block as BlockT>::Hash,
-        ) -> bool{
-            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
+        ) -> Option<bool> {
+            is_xdm_valid(extrinsic)
         }
 
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
@@ -1423,11 +1393,11 @@ impl_runtime_apis! {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

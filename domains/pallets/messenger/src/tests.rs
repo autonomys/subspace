@@ -16,8 +16,8 @@ use sp_core::{Blake2Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    BlockInfo, ChainId, ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams,
-    Payload, Proof, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    ChainId, ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams, Payload, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::{Convert, ValidateUnsigned};
@@ -77,12 +77,9 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<
     assert_eq!(messages_with_keys.outbox[0].storage_key, expected_key);
 }
 
-fn default_consensus_proof() -> ConsensusChainMmrLeafProof<u64, H256, H256> {
+fn default_consensus_proof() -> ConsensusChainMmrLeafProof<H256, H256> {
     ConsensusChainMmrLeafProof {
-        block_info: BlockInfo {
-            block_number: Default::default(),
-            block_hash: Default::default(),
-        },
+        consensus_block_hash: Default::default(),
         opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
         proof: MmrProof {
             leaf_indices: vec![],
@@ -201,7 +198,7 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let proof: Proof<u64, H256, H256> = Proof::Consensus {
+    let proof = Proof::<H256, H256>::Consensus {
         consensus_chain_mmr_proof: default_consensus_proof(),
         message_proof: storage_proof,
     };
@@ -227,7 +224,7 @@ fn test_storage_proof_verification_missing_value() {
 
     let (_state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, U256::one());
-    let proof: Proof<u64, H256, H256> = Proof::Consensus {
+    let proof = Proof::<H256, H256>::Consensus {
         consensus_chain_mmr_proof: default_consensus_proof(),
         message_proof: storage_proof,
     };
@@ -255,7 +252,7 @@ fn test_storage_proof_verification() {
 
     let (_state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let proof: Proof<u64, H256, H256> = Proof::Consensus {
+    let proof = Proof::<H256, H256>::Consensus {
         consensus_chain_mmr_proof: default_consensus_proof(),
         message_proof: storage_proof,
     };
