@@ -10,7 +10,38 @@ on:
     types: [trivy-scan-dispatch]
 
 jobs:
+  wait-for-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image-available: ${{ steps.check-image.outputs.available }}
+    steps:
+      - name: Check Docker image availability with retry
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/${{ github.event.client_payload.image }}:${{ github.event.client_payload.sha }}"
+          timeout=900 # Timeout in seconds (15 minutes)
+          interval=300 # Interval between retries in seconds (5 minutes)
+          retry_limit=5 # Number of retries
+          attempt=0
+
+          while ! docker pull $image; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -gt "$retry_limit" ]; then
+              echo "Image $image is not available after $retry_limit attempts."
+              echo "::set-output name=available::false"
+              exit 1
+            fi
+
+            echo "Attempt $attempt: Waiting for $image to be available. Retrying in $interval seconds..."
+            sleep $interval
+          done
+
+          echo "$image is now available."
+          echo "::set-output name=available::true"
+        shell: bash
+
   trivy_scan_image:
+    needs: wait-for-image
+    if: needs.wait-for-image.outputs.image-available == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
