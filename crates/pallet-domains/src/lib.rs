@@ -25,6 +25,7 @@ mod benchmarking;
 mod tests;
 
 pub mod block_tree;
+mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod runtime_registry;
 mod staking;
@@ -79,6 +80,7 @@ pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 pub trait HoldIdentifier<T: Config> {
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
+    fn storage_fund_withdrawal(operator_id: OperatorId) -> FungibleHoldId<T>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -118,6 +120,9 @@ mod pallet {
         execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
         ReceiptType,
     };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::bundle_storage_fund::refund_storage_fee;
+    use crate::bundle_storage_fund::{charge_bundle_storage_fee, Error as BundleStorageFundError};
     use crate::domain_registry::{
         do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
         Error as DomainRegistryError,
@@ -171,6 +176,7 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
+    use subspace_runtime_primitives::StorageFee;
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -298,6 +304,13 @@ mod pallet {
         /// The sudo account id
         #[pallet::constant]
         type SudoId: Get<Self::AccountId>;
+
+        /// The pallet-domains's pallet id.
+        #[pallet::constant]
+        type PalletId: Get<frame_support::PalletId>;
+
+        /// Storage fee interface used to deal with bundle storage fee
+        type StorageFee: StorageFee<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -660,6 +673,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<BundleStorageFundError> for Error<T> {
+        fn from(err: BundleStorageFundError) -> Self {
+            Error::BundleStorageFund(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Invalid fraud proof.
@@ -674,6 +693,8 @@ mod pallet {
         DomainRegistry(DomainRegistryError),
         /// Block tree specific errors
         BlockTree(BlockTreeError),
+        /// Bundle storage fund specific errors
+        BundleStorageFund(BundleStorageFundError),
     }
 
     /// Reason for slashing an operator
@@ -768,6 +789,11 @@ mod pallet {
             operator_id: OperatorId,
             reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
         },
+        StorageFeeDeposited {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            amount: BalanceOf<T>,
+        },
     }
 
     /// Per-domain state for tx range calculation.
@@ -811,6 +837,7 @@ mod pallet {
             let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
+            let bundle_size = opaque_bundle.size();
             let receipt = opaque_bundle.into_receipt();
 
             #[cfg(not(feature = "runtime-benchmarks"))]
@@ -843,6 +870,12 @@ mod pallet {
                     // - `do_finalize_domain_current_epoch`
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
+                        refund_storage_fee::<T>(
+                            confirmed_block_info.total_storage_fee,
+                            confirmed_block_info.paid_bundle_storage_fees,
+                        )
+                        .map_err(Error::<T>::from)?;
+
                         do_reward_operators::<T>(
                             domain_id,
                             confirmed_block_info.operator_ids.into_iter(),
@@ -904,6 +937,7 @@ mod pallet {
                 BundleDigest {
                     header_hash: bundle_header_hash,
                     extrinsics_root,
+                    size: bundle_size,
                 },
             );
 
@@ -1366,7 +1400,14 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
-                    .map_err(|_| InvalidTransaction::Call.into()),
+                    .map_err(|_| InvalidTransaction::Call.into())
+                    .and_then(|_| {
+                        charge_bundle_storage_fee::<T>(
+                            opaque_bundle.operator_id(),
+                            opaque_bundle.size(),
+                        )
+                        .map_err(|_| InvalidTransaction::Call.into())
+                    }),
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map_err(|_| InvalidTransaction::Call.into()),
                 _ => Err(InvalidTransaction::Call.into()),
@@ -1404,6 +1445,19 @@ mod pallet {
                         } else {
                             return InvalidTransactionCode::Bundle.into();
                         }
+                    }
+
+                    if let Err(e) = charge_bundle_storage_fee::<T>(
+                        opaque_bundle.operator_id(),
+                        opaque_bundle.size(),
+                    ) {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Operator {} unable to pay for the bundle storage fee, domain id {:?}, error: {e:?}",
+                            opaque_bundle.operator_id(),
+                            opaque_bundle.domain_id(),
+                        );
+                        return InvalidTransactionCode::BundleStorageFeePayment.into();
                     }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
@@ -1528,18 +1582,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn check_bundle_size(
-        opaque_bundle: &OpaqueBundleOf<T>,
-        max_size: u32,
-    ) -> Result<(), BundleError> {
-        let bundle_size = opaque_bundle
-            .extrinsics
-            .iter()
-            .fold(0, |acc, xt| acc + xt.encoded_size() as u32);
-        ensure!(max_size >= bundle_size, BundleError::BundleTooLarge);
-        Ok(())
-    }
-
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
@@ -1583,7 +1625,10 @@ impl<T: Config> Pallet<T> {
 
         // TODO: check bundle weight with `domain_config.max_block_weight`
 
-        Self::check_bundle_size(opaque_bundle, domain_config.max_block_size)?;
+        ensure!(
+            opaque_bundle.size() <= domain_config.max_block_size,
+            BundleError::BundleTooLarge
+        );
 
         Self::check_extrinsics_root(opaque_bundle)?;
 

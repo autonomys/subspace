@@ -63,6 +63,7 @@ pub enum InvalidTransactionCode {
     ExecutionReceipt = 103,
     Bundle = 104,
     FraudProof = 105,
+    BundleStorageFeePayment = 106,
 }
 
 impl From<InvalidTransactionCode> for InvalidTransaction {

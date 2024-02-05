@@ -387,6 +387,10 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     fn domain_instantiation_id(domain_id: DomainId) -> Self {
         Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
+
+    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
 }
 
 impl VariantCount for HoldIdentifier {
@@ -580,6 +584,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 256;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
+    pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
 }
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
@@ -615,6 +620,8 @@ impl pallet_domains::Config for Runtime {
     type MaxNominators = MaxNominators;
     type Randomness = Subspace;
     type SudoId = SudoId;
+    type PalletId = DomainsPalletId;
+    type StorageFee = TransactionFees;
 }
 
 parameter_types! {

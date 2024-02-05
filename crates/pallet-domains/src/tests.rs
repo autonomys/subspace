@@ -50,7 +50,7 @@ use sp_trie::{LayoutV1, PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::{Randomness, U256 as P256};
-use subspace_runtime_primitives::{Moment, SSC};
+use subspace_runtime_primitives::{Moment, StorageFee, SSC};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -75,7 +75,7 @@ frame_support::construct_runtime!(
 
 type BlockNumber = u64;
 type Hash = H256;
-type AccountId = u64;
+type AccountId = u128;
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -153,6 +153,10 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {
         Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
+
+    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
 }
 
 impl VariantCount for HoldIdentifier {
@@ -186,10 +190,11 @@ parameter_types! {
     pub const MinNominatorStake: Balance = SSC;
     pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
-    pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
+    pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 5;
+    pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
 }
 
@@ -208,6 +213,14 @@ impl pallet_timestamp::Config for Test {
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
+}
+
+pub struct DummyStorageFee;
+impl StorageFee<Balance> for DummyStorageFee {
+    fn transaction_byte_fee() -> Balance {
+        SSC
+    }
+    fn note_storage_fees(_fee: Balance) {}
 }
 
 impl pallet_domains::Config for Test {
@@ -237,6 +250,8 @@ impl pallet_domains::Config for Test {
     type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
     type SudoId = ();
+    type PalletId = DomainsPalletId;
+    type StorageFee = DummyStorageFee;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -471,7 +486,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     let header = BundleHeader::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
-        bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
         bundle_extrinsics_root,
     };
@@ -509,7 +523,7 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
     <crate::Pallet<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
 }
 
-pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
+pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorId>) -> DomainId {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
@@ -554,6 +568,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
                 status: OperatorStatus::Registered,
                 deposits_in_epoch: Zero::zero(),
                 withdrawals_in_epoch: Zero::zero(),
+                total_storage_fee_deposit: Zero::zero(),
             },
         );
     }
@@ -789,7 +804,7 @@ fn test_calculate_tx_range() {
 
 #[test]
 fn test_bundle_fromat_verification() {
-    let opaque_extrinsic = |dest: u64, value: u128| -> OpaqueExtrinsic {
+    let opaque_extrinsic = |dest: u128, value: u128| -> OpaqueExtrinsic {
         UncheckedExtrinsic {
             signature: None,
             function: RuntimeCall::Balances(pallet_balances::Call::transfer_allow_death {
@@ -832,10 +847,6 @@ fn test_bundle_fromat_verification() {
                 .collect(),
             sp_core::storage::StateVersion::V1,
         );
-        assert_ok!(pallet_domains::Pallet::<Test>::check_bundle_size(
-            &valid_bundle,
-            max_block_size
-        ));
         assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
             &valid_bundle
         ));
@@ -845,12 +856,9 @@ fn test_bundle_fromat_verification() {
         for i in 0..max_extrincis_count {
             too_large_bundle
                 .extrinsics
-                .push(opaque_extrinsic(i as u64, i as u128));
+                .push(opaque_extrinsic(i as u128, i as u128));
         }
-        assert_err!(
-            pallet_domains::Pallet::<Test>::check_bundle_size(&too_large_bundle, max_block_size),
-            BundleError::BundleTooLarge
-        );
+        assert!(too_large_bundle.size() > max_block_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
@@ -893,7 +901,7 @@ fn test_bundle_fromat_verification() {
 
 #[test]
 fn test_invalid_fraud_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -929,7 +937,7 @@ fn test_invalid_fraud_proof() {
 
 #[test]
 fn test_invalid_block_fees_fraud_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -1010,7 +1018,7 @@ fn storage_proof_for_key<T: Config, B: Backend<T::Hashing> + AsTrieBackend<T::Ha
 
 #[test]
 fn test_invalid_domain_extrinsic_root_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -1088,7 +1096,7 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
 
 #[test]
 fn test_true_invalid_bundles_inherent_extrinsic_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -1153,7 +1161,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
 
 #[test]
 fn test_false_invalid_bundles_inherent_extrinsic_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -1244,7 +1252,7 @@ fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
 
 #[test]
 fn test_invalid_domain_block_hash_fraud_proof() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
@@ -1292,7 +1300,7 @@ fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
 
 #[test]
 fn test_basic_fraud_proof_processing() {
-    let creator = 0u64;
+    let creator = 0u128;
     let operator_id = 1u64;
     let head_domain_number = BlockTreePruningDepth::get() - 1;
     let test_cases = vec![

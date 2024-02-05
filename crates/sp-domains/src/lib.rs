@@ -208,10 +208,6 @@ pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    /// The size of the bundle body in bytes.
-    ///
-    /// Used to calculate the storage cost.
-    pub bundle_size: u32,
     /// The total (estimated) weight of all extrinsics in the bundle.
     ///
     /// Used to prevent overloading the bundle with compute.
@@ -321,6 +317,14 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
     > {
         self.sealed_header.header.receipt
     }
+
+    /// Return the bundle body size in bytes
+    pub fn size(&self) -> u32 {
+        self.extrinsics
+            .iter()
+            .map(|tx| tx.encoded_size() as u32)
+            .sum::<u32>()
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -376,7 +380,6 @@ pub fn dummy_opaque_bundle<
     let header = BundleHeader {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
-        bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
         bundle_extrinsics_root: Default::default(),
     };
@@ -395,6 +398,8 @@ pub struct BundleDigest<Hash> {
     pub header_hash: Hash,
     /// The Merkle root of all new extrinsics included in this bundle.
     pub extrinsics_root: Hash,
+    /// The size of the bundle body in bytes.
+    pub size: u32,
 }
 
 /// Receipt of a domain block execution.
@@ -682,6 +687,7 @@ pub enum StakingHoldIdentifier {
 pub enum DomainsHoldIdentifier {
     Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
+    StorageFund(OperatorId),
 }
 
 /// Domains specific digest item.

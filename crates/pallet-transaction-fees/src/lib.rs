@@ -273,12 +273,26 @@ where
         tip: BalanceOf<T>,
     ) {
         CollectedBlockFees::<T>::mutate(|collected_block_fees| {
-            let collected_block_fees = collected_block_fees
-                .as_mut()
-                .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
-            collected_block_fees.storage += storage_fee;
-            collected_block_fees.compute += compute_fee;
-            collected_block_fees.tips += tip;
+            // `CollectedBlockFees` was set in `on_initialize` if it is `None` means this
+            // function is called offchain (i.e. transaction validation) thus safe to skip
+            if let Some(collected_block_fees) = collected_block_fees.as_mut() {
+                collected_block_fees.storage += storage_fee;
+                collected_block_fees.compute += compute_fee;
+                collected_block_fees.tips += tip;
+            }
         });
+    }
+}
+
+impl<T: Config> subspace_runtime_primitives::StorageFee<BalanceOf<T>> for Pallet<T>
+where
+    BalanceOf<T>: From<u64>,
+{
+    fn transaction_byte_fee() -> BalanceOf<T> {
+        Self::transaction_byte_fee()
+    }
+
+    fn note_storage_fees(storage_fee: BalanceOf<T>) {
+        Self::note_transaction_fees(storage_fee, Zero::zero(), Zero::zero())
     }
 }

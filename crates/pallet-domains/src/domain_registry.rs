@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_domain_instantiation() {
-        let creator = 1u64;
+        let creator = 1u128;
         let created_at = 0u64;
         // Construct an invalid domain config initially
         let mut domain_config = DomainConfig {

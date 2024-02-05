@@ -14,6 +14,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 
 /// Block tree specific errors
@@ -271,6 +272,8 @@ pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub operator_ids: Vec<OperatorId>,
     pub rewards: Balance,
     pub invalid_bundle_authors: Vec<OperatorId>,
+    pub total_storage_fee: Balance,
+    pub paid_bundle_storage_fees: BTreeMap<OperatorId, u32>,
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
@@ -316,7 +319,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.domain_block_hash,
                 ));
 
-                // Collect the invalid bundle author
+                // Collect the paid bundle storage fees and the invalid bundle author
+                let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
                 let bundle_digests = ExecutionInbox::<T>::get((
                     domain_id,
@@ -329,6 +333,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
                         // the `ER::bundles` have the same length of `ExecutionInbox`
                         if execution_receipt.inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
+                        } else {
+                            paid_bundle_storage_fees
+                                .entry(bundle_author)
+                                .and_modify(|s| *s += bd.size)
+                                .or_insert(bd.size);
                         }
                     }
                 }
@@ -345,9 +354,10 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
                     operator_ids,
-                    // TODO: also distribute the `storage_fee`
                     rewards: execution_receipt.block_fees.domain_execution_fee,
                     invalid_bundle_authors,
+                    total_storage_fee: execution_receipt.block_fees.consensus_storage_fee,
+                    paid_bundle_storage_fees,
                 }));
             }
         }
@@ -432,7 +442,7 @@ mod tests {
     fn test_genesis_receipt() {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(0u64, vec![0u64]);
+            let domain_id = register_genesis_domain(0u128, vec![0u64]);
 
             // The genesis receipt should be added to the block tree
             let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0).unwrap();
@@ -463,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_new_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id = 1u64;
         let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get();
 
@@ -517,6 +527,7 @@ mod tests {
                     vec![BundleDigest {
                         header_hash: bundle_header_hash,
                         extrinsics_root: bundle_extrinsics_root,
+                        size: 0,
                     }]
                 );
                 assert!(InboxedBundleAuthor::<Test>::contains_key(
@@ -577,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_confirm_current_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -643,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_non_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -688,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_previous_head_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -729,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_new_branch_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -776,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_invalid_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id = 1u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
@@ -801,6 +812,7 @@ mod tests {
                     .map(|b| BundleDigest {
                         header_hash: H256::random(),
                         extrinsics_root: b.extrinsics_root,
+                        size: 0,
                     })
                     .collect::<Vec<_>>(),
             );
@@ -863,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_invalid_trace_root_receipt() {
-        let creator = 0u64;
+        let creator = 0u128;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
@@ -925,7 +937,7 @@ mod tests {
 
     #[test]
     fn test_collect_invalid_bundle_author() {
-        let creator = 0u64;
+        let creator = 0u128;
         let challenge_period = BlockTreePruningDepth::get() as u64;
         let operator_set: Vec<_> = (1..15).collect();
         let mut ext = new_test_ext_with_extensions();

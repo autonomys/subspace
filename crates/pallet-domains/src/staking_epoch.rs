@@ -1,15 +1,16 @@
 //! Staking epoch transition for domain
+use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
     PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
-    Error as TransitionError, OperatorStatus, SharePrice,
+    Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
 };
 use crate::{
-    BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier, OperatorEpochSharePrice,
-    Pallet,
+    bundle_storage_fund, BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier,
+    OperatorEpochSharePrice, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -70,23 +71,34 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                 };
 
                 // calculate operator tax, mint the balance, and stake them
-                let operator_tax = operator.nomination_tax.mul_floor(reward);
-                if !operator_tax.is_zero() {
+                let operator_tax_amount = operator.nomination_tax.mul_floor(reward);
+                if !operator_tax_amount.is_zero() {
                     let nominator_id = OperatorIdOwner::<T>::get(operator_id)
                         .ok_or(TransitionError::MissingOperatorOwner)?;
-                    T::Currency::mint_into(&nominator_id, operator_tax)
+                    T::Currency::mint_into(&nominator_id, operator_tax_amount)
                         .map_err(|_| TransitionError::MintBalance)?;
+
+                    // Reserve for the bundle storage fund
+                    let operator_tax_deposit =
+                        deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, operator_tax_amount)
+                            .map_err(TransitionError::BundleStorageFund)?;
 
                     crate::staking::hold_deposit::<T>(
                         &nominator_id,
                         operator_id,
-                        operator_tax,
+                        operator_tax_deposit.staking,
                     )?;
 
                     // increment total deposit for operator pool within this epoch
                     operator.deposits_in_epoch = operator
                         .deposits_in_epoch
-                        .checked_add(&operator_tax)
+                        .checked_add(&operator_tax_deposit.staking)
+                        .ok_or(TransitionError::BalanceOverflow)?;
+
+                    // Increase total storage fee deposit as there is new deposit to the storage fund
+                    operator.total_storage_fee_deposit = operator
+                        .total_storage_fee_deposit
+                        .checked_add(&operator_tax_deposit.storage_fee_deposit)
                         .ok_or(TransitionError::BalanceOverflow)?;
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
@@ -94,18 +106,18 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                             operator_id,
                             nominator_id,
                             current_domain_epoch,
-                            operator_tax,
+                            operator_tax_deposit,
                         )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
                         operator_id,
-                        tax: operator_tax,
+                        tax: operator_tax_amount,
                     });
                 }
 
                 // add remaining rewards to nominators to be distributed during the epoch transition
                 let rewards = reward
-                    .checked_sub(&operator_tax)
+                    .checked_sub(&operator_tax_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
                 operator.current_epoch_rewards = operator
@@ -332,6 +344,12 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             let total_shares = operator.current_total_shares;
             let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
+            let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+            let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                operator_id,
+                operator.total_storage_fee_deposit,
+            );
+
             // transfer all the staked funds to the treasury account
             // any gains will be minted to treasury account
             Deposits::<T>::drain_prefix(operator_id).try_for_each(
@@ -355,7 +373,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                                     withdrawal.total_withdrawal_amount,
                                     withdrawal
                                         .withdrawal_in_shares
-                                        .map(|(_, _, shares)| shares)
+                                        .map(|WithdrawalInShares { shares, .. }| shares)
                                         .unwrap_or_default(),
                                 ))
                             })
@@ -408,12 +426,47 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
                         .map_err(|_| TransitionError::RemoveLock)?;
 
+                    // Transfer the deposited unstaked storage fee back to nominator
+                    if let Some(pending_deposit) = deposit.pending {
+                        let storage_fee_deposit = bundle_storage_fund::withdraw_and_hold::<T>(
+                            operator_id,
+                            &nominator_id,
+                            storage_fund_redeem_price.redeem(pending_deposit.storage_fee_deposit),
+                        )
+                        .map_err(TransitionError::BundleStorageFund)?;
+                        T::Currency::release(
+                            &storage_fund_hold_id,
+                            &nominator_id,
+                            storage_fee_deposit,
+                            Precision::Exact,
+                        )
+                        .map_err(|_| TransitionError::RemoveLock)?;
+                    }
+
+                    // Transfer all the storage fee on withdraw to the treasury
+                    let withdraw_storage_fee_on_hold =
+                        T::Currency::balance_on_hold(&storage_fund_hold_id, &nominator_id);
+                    T::Currency::transfer_on_hold(
+                        &storage_fund_hold_id,
+                        &nominator_id,
+                        &T::TreasuryAccount::get(),
+                        withdraw_storage_fee_on_hold,
+                        Precision::Exact,
+                        Restriction::Free,
+                        Fortitude::Force,
+                    )
+                    .map_err(|_| TransitionError::RemoveLock)?;
+
                     Ok(())
                 },
             )?;
 
             // mint any gains to treasury account
             mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
+
+            // Transfer all the storage fund to treasury
+            bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
+                .map_err(TransitionError::BundleStorageFund)?;
 
             Ok(())
         })?;
@@ -424,6 +477,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
 #[cfg(test)]
 mod tests {
+    use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
@@ -447,7 +501,7 @@ mod tests {
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorAllowList, OperatorPair};
     use sp_runtime::traits::Zero;
-    use sp_runtime::Percent;
+    use sp_runtime::{PerThing, Percent};
     use std::collections::{BTreeMap, BTreeSet};
     use subspace_runtime_primitives::SSC;
 
@@ -637,9 +691,9 @@ mod tests {
             vec![(2, 10 * SSC), (4, 10 * SSC)],
             vec![(1, 20 * SSC), (2, 10 * SSC)],
             vec![
-                (1, 164285714332653061237),
-                (2, 64761904777551020412),
-                (3, 10952380955510204082),
+                (1, 164285714327278911577),
+                (2, 64761904775759637192),
+                (3, 10952380955151927438),
                 (4, 10 * SSC),
             ],
             20 * SSC,
@@ -647,7 +701,7 @@ mod tests {
     }
 
     struct FinalizeDomainParams {
-        total_stake: BalanceOf<Test>,
+        total_deposit: BalanceOf<Test>,
         rewards: BalanceOf<Test>,
         nominators: Vec<(NominatorId<Test>, <Test as Config>::Share)>,
         deposits: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
@@ -659,7 +713,7 @@ mod tests {
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let FinalizeDomainParams {
-            total_stake,
+            total_deposit,
             rewards,
             nominators,
             deposits,
@@ -696,10 +750,10 @@ mod tests {
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-            let mut total_deposit = BalanceOf::<Test>::zero();
+            let mut total_new_deposit = BalanceOf::<Test>::zero();
             for deposit in &deposits {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
-                total_deposit += deposit.1;
+                total_new_deposit += deposit.1;
             }
 
             if !rewards.is_zero() {
@@ -713,6 +767,7 @@ mod tests {
             }
 
             // should also store the previous epoch details in-block
+            let total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
             let election_params = LastEpochStakingDistribution::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 election_params.operators,
@@ -720,15 +775,18 @@ mod tests {
             );
             assert_eq!(election_params.total_domain_stake, total_stake);
 
-            let total_updated_stake = total_stake + total_deposit + rewards;
+            let total_updated_stake = total_deposit + total_new_deposit + rewards;
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert_eq!(operator.current_total_stake, total_updated_stake);
+            assert_eq!(
+                operator.current_total_stake + operator.total_storage_fee_deposit,
+                total_updated_stake
+            );
             assert_eq!(operator.current_epoch_rewards, Zero::zero());
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 domain_stake_summary.current_total_stake,
-                total_updated_stake
+                total_updated_stake - operator.total_storage_fee_deposit
             );
             // epoch should be 3 since we did 3 epoch transitions
             assert_eq!(domain_stake_summary.current_epoch_index, 3);
@@ -738,7 +796,7 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_no_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_stake: 210 * SSC,
+            total_deposit: 210 * SSC,
             rewards: 0,
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
@@ -748,7 +806,7 @@ mod tests {
     #[test]
     fn finalize_domain_epoch_with_rewards() {
         finalize_domain_epoch(FinalizeDomainParams {
-            total_stake: 210 * SSC,
+            total_deposit: 210 * SSC,
             rewards: 20 * SSC,
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
@@ -783,6 +841,7 @@ mod tests {
             // 10% tax
             let nomination_tax = Percent::from_parts(10);
             let mut operator = Operators::<Test>::get(operator_id).unwrap();
+            let pre_storage_fund_deposit = operator.total_storage_fee_deposit;
             operator.nomination_tax = nomination_tax;
             Operators::<Test>::insert(operator_id, operator);
             let expected_operator_tax = nomination_tax.mul_ceil(operator_rewards);
@@ -792,18 +851,30 @@ mod tests {
 
             operator_take_reward_tax_and_stake::<Test>(domain_id).unwrap();
             let operator = Operators::<Test>::get(operator_id).unwrap();
+            let new_storage_fund_deposit =
+                operator.total_storage_fee_deposit - pre_storage_fund_deposit;
             assert_eq!(
                 operator.current_epoch_rewards,
                 (10 * SSC - expected_operator_tax)
             );
 
-            let deposit = Deposits::<Test>::get(operator_id, operator_account)
+            let staking_deposit = Deposits::<Test>::get(operator_id, operator_account)
                 .unwrap()
                 .pending
                 .unwrap()
                 .amount;
-            assert_eq!(deposit, expected_operator_tax);
-
+            assert_eq!(
+                staking_deposit + new_storage_fund_deposit,
+                expected_operator_tax
+            );
+            assert_eq!(
+                staking_deposit,
+                STORAGE_FEE_RESERVE.left_from_one() * expected_operator_tax
+            );
+            assert_eq!(
+                new_storage_fund_deposit,
+                STORAGE_FEE_RESERVE * expected_operator_tax
+            );
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(domain_stake_summary.current_epoch_rewards.is_empty())
         });
