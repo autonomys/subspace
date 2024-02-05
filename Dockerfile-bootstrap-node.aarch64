@@ -50,9 +50,6 @@ RUN \
         gcc-aarch64-linux-gnu \
         libc6-dev-arm64-cross
 
-# TODO: Following package is not necessary on Ubuntu 22.04, but RocksDb compilation fails otherwise on Ubuntu 20.04
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++-9-multilib
-
 RUN \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
