@@ -89,7 +89,7 @@ pub fn charge_bundle_storage_fee<T: Config>(
     Ok(())
 }
 
-/// Refund the front paid storage fee of a particular domain block back to the operator, the amount to
+/// Refund the paid bundle storage fee of a particular domain block back to the operator, the amount to
 /// refund to a particular operator is determined by the total storage fee collected from the domain user
 /// and the percentage of bundle storage that the operator have submitted for the domain block.
 #[allow(dead_code)]
