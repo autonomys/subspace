@@ -94,6 +94,8 @@ macro_rules! impl_runtime {
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
             type OnXDMRewards = ();
+            type MmrHash = H256;
+            type MmrProofVerifier = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

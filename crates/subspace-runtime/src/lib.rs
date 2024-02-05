@@ -69,6 +69,7 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, Keccak256,
     NumberFor,
@@ -492,6 +493,19 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     }
 }
 
+pub struct MmrProofVerifier;
+impl sp_messenger::MmrProofVerifier<mmr::Hash, Hash> for MmrProofVerifier {
+    fn verify_proof_and_extract_consensus_state_root(
+        opaque_leaf: EncodableOpaqueLeaf,
+        proof: Proof<mmr::Hash>,
+    ) -> Option<Hash> {
+        let leaf: mmr::Leaf = opaque_leaf.into_opaque_leaf().try_decode()?;
+        let state_root = leaf.state_root();
+        Mmr::verify_leaves(vec![leaf], proof).ok()?;
+        Some(state_root)
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -510,6 +524,8 @@ impl pallet_messenger::Config for Runtime {
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
     type OnXDMRewards = OnXDMRewards;
+    type MmrHash = mmr::Hash;
+    type MmrProofVerifier = MmrProofVerifier;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

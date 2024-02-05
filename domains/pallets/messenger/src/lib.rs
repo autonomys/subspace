@@ -113,7 +113,7 @@ mod pallet {
         InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::OnXDMRewards;
+    use sp_messenger::{MmrProofVerifier, OnXDMRewards};
     use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
@@ -138,6 +138,10 @@ mod pallet {
         type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
         /// Handle XDM rewards.
         type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
+        /// Hash type of MMR
+        type MmrHash;
+        /// MMR proof verifier
+        type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, StateRootOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.

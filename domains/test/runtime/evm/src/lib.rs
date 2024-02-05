@@ -47,11 +47,12 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Verify, Zero,
+    IdentifyAccount, IdentityLookup, Keccak256, One, PostDispatchInfoOf, SignedExtension,
+    UniqueSaturatedInto, ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -62,8 +63,12 @@ use sp_runtime::{
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
+use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
+use sp_subspace_mmr::MmrLeaf;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{
+    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
+};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -392,6 +397,22 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     }
 }
 
+type MmrHash = <Keccak256 as sp_runtime::traits::Hash>::Output;
+
+pub struct MmrProofVerifier;
+impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
+    fn verify_proof_and_extract_consensus_state_root(
+        opaque_leaf: EncodableOpaqueLeaf,
+        proof: Proof<MmrHash>,
+    ) -> Option<Hash> {
+        let leaf: MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash> =
+            opaque_leaf.into_opaque_leaf().try_decode()?;
+        let state_root = leaf.state_root();
+        verify_mmr_proof(vec![EncodableOpaqueLeaf::from_leaf(&leaf)], proof.encode())
+            .then_some(state_root)
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -410,6 +431,8 @@ impl pallet_messenger::Config for Runtime {
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
     type OnXDMRewards = OnXDMRewards;
+    type MmrHash = MmrHash;
+    type MmrProofVerifier = MmrProofVerifier;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
