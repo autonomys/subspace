@@ -1,4 +1,5 @@
 use crate::dsn::DsnConfig;
+use crate::sync_from_dsn::DsnSyncPieceGetter;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
@@ -83,7 +84,7 @@ pub struct SubstrateConfiguration {
     /// Network configuration
     pub network: SubstrateNetworkConfiguration,
     /// State pruning settings
-    pub state_pruning: Option<PruningMode>,
+    pub state_pruning: PruningMode,
     /// Number of blocks to keep in the db.
     ///
     /// NOTE: only finalized blocks are subject for removal!
@@ -159,7 +160,7 @@ impl From<SubstrateConfiguration> for Configuration {
             data_path: configuration.base_path.clone(),
             // Substrate's default
             trie_cache_maximum_size: Some(64 * 1024 * 1024),
-            state_pruning: configuration.state_pruning,
+            state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
             wasm_method: Default::default(),
             wasm_runtime_overrides: None,
@@ -242,6 +243,8 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
+    /// DSN piece getter
+    pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
     /// Is this node a Timekeeper

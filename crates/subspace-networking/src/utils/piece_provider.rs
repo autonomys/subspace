@@ -9,6 +9,7 @@ use futures::StreamExt;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use std::error::Error;
+use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -61,6 +62,12 @@ impl PieceValidator for NoPieceValidator {
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: Option<PV>,
+}
+
+impl<PV> fmt::Debug for PieceProvider<PV> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("PieceProvider").finish_non_exhaustive()
+    }
 }
 
 impl<PV> PieceProvider<PV>

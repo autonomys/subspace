@@ -26,12 +26,12 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
     download_sector, encode_sector, DownloadSectorOptions, DownloadedSector, EncodeSectorOptions,
-    PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+    PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
+use subspace_farmer_components::{plotting, PieceGetter, PieceGetterRetryPolicy};
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;

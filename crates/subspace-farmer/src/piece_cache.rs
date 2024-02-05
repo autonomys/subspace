@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;

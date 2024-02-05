@@ -3,17 +3,19 @@ use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
-    generate_node_name, Cors, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods,
-    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_PORT,
+    generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
+    TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
-use sc_service::Configuration;
+use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
+use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
+use std::str::FromStr;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
@@ -161,6 +163,121 @@ struct DsnOptions {
     dsn_external_addresses: Vec<Multiaddr>,
 }
 
+/// This mode specifies when the block's state (ie, storage) should be pruned (ie, removed) from
+/// the database.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum StatePruningMode {
+    /// Keep the data of all blocks.
+    Archive,
+    /// Keep only the data of finalized blocks.
+    ArchiveCanonical,
+}
+
+impl FromStr for StatePruningMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "archive" => Ok(Self::Archive),
+            "archive-canonical" => Ok(Self::ArchiveCanonical),
+            _ => Err("Invalid state pruning mode specified".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for StatePruningMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Archive => "archive",
+            Self::ArchiveCanonical => "archive-canonical",
+        })
+    }
+}
+
+/// This mode specifies when the block's body (including justifications) should be pruned (ie,
+/// removed) from the database.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BlocksPruningMode {
+    /// Keep the data of all blocks.
+    Archive,
+    /// Keep only the data of finalized blocks.
+    ArchiveCanonical,
+    /// Keep the data of the last number of finalized blocks.
+    Number(u32),
+}
+
+impl FromStr for BlocksPruningMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "archive" => Ok(Self::Archive),
+            "archive-canonical" => Ok(Self::ArchiveCanonical),
+            n => n
+                .parse()
+                .map_err(|_| "Invalid block pruning mode specified".to_string())
+                .map(Self::Number),
+        }
+    }
+}
+
+impl fmt::Display for BlocksPruningMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Archive => f.write_str("archive"),
+            Self::ArchiveCanonical => f.write_str("archive-canonical"),
+            Self::Number(n) => f.write_str(n.to_string().as_str()),
+        }
+    }
+}
+
+/// Parameters to define the pruning mode
+#[derive(Debug, Clone, Parser)]
+struct PruningOptions {
+    /// Specify the state pruning mode.
+    ///
+    /// This mode specifies when the block's state (ie, storage) should be pruned (ie, removed)
+    /// from the database.
+    /// This setting can only be set on the first creation of the database. Every subsequent run
+    /// will load the pruning mode from the database and will error if the stored mode doesn't
+    /// match this CLI value. It is fine to drop this CLI flag for subsequent runs.
+    /// Possible values:
+    ///  - archive: Keep the state of all blocks.
+    ///  - archive-canonical: Keep only the state of finalized blocks.
+    #[arg(long, default_value_t = StatePruningMode::ArchiveCanonical)]
+    state_pruning: StatePruningMode,
+
+    /// Specify the blocks pruning mode.
+    ///
+    /// This mode specifies when the block's body (including justifications)
+    /// should be pruned (ie, removed) from the database.
+    /// Possible values:
+    ///  - archive Keep all blocks.
+    ///  - archive-canonical Keep only finalized blocks.
+    ///  - number: Keep the last `number` of finalized blocks.
+    #[arg(long, default_value_t = BlocksPruningMode::Number(256))]
+    blocks_pruning: BlocksPruningMode,
+}
+
+impl PruningOptions {
+    /// Get the pruning value from the parameters
+    fn state_pruning(&self) -> PruningMode {
+        match self.state_pruning {
+            StatePruningMode::Archive => PruningMode::ArchiveAll,
+            StatePruningMode::ArchiveCanonical => PruningMode::ArchiveCanonical,
+        }
+    }
+
+    /// Get the block pruning value from the parameters
+    fn blocks_pruning(&self) -> BlocksPruning {
+        match self.blocks_pruning {
+            BlocksPruningMode::Archive => BlocksPruning::KeepAll,
+            BlocksPruningMode::ArchiveCanonical => BlocksPruning::KeepFinalized,
+            BlocksPruningMode::Number(n) => BlocksPruning::Some(n),
+        }
+    }
+}
+
 /// Options for timekeeper
 #[derive(Debug, Parser)]
 struct TimekeeperOptions {
@@ -249,7 +366,7 @@ pub(super) struct ConsensusChainOptions {
 
     /// Options for chain database pruning
     #[clap(flatten)]
-    pruning_params: PruningParams,
+    pruning_params: PruningOptions,
 
     /// Options for Substrate networking
     #[clap(flatten)]
@@ -431,8 +548,8 @@ pub(super) fn create_consensus_chain_configuration(
             allow_private_ips: network_options.allow_private_ips,
             force_synced,
         },
-        state_pruning: pruning_params.state_pruning()?,
-        blocks_pruning: pruning_params.blocks_pruning()?,
+        state_pruning: pruning_params.state_pruning(),
+        blocks_pruning: pruning_params.blocks_pruning(),
         rpc_options: SubstrateRpcConfiguration {
             listen_on: rpc_options.rpc_listen_on,
             max_connections: rpc_options.rpc_max_connections,
@@ -530,6 +647,7 @@ pub(super) fn create_consensus_chain_configuration(
             // Domain node needs slots notifications for bundle production.
             force_new_slot_notifications: domains_enabled,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
+            dsn_piece_getter: None,
             sync_from_dsn,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,

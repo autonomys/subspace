@@ -9,21 +9,21 @@ use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
 use tracing::{error, warn};
 
-pub struct SegmentCommitmentPieceValidator<'a, AS> {
-    dsn_node: &'a Node,
-    kzg: &'a Kzg,
-    segment_headers_store: &'a SegmentHeadersStore<AS>,
+pub(crate) struct SegmentCommitmentPieceValidator<AS> {
+    dsn_node: Node,
+    kzg: Kzg,
+    segment_headers_store: SegmentHeadersStore<AS>,
 }
 
-impl<'a, AS> SegmentCommitmentPieceValidator<'a, AS>
+impl<AS> SegmentCommitmentPieceValidator<AS>
 where
     AS: AuxStore + Send + Sync + 'static,
 {
     /// Segment headers must be in order from 0 to the last one that exists
-    pub fn new(
-        dsn_node: &'a Node,
-        kzg: &'a Kzg,
-        segment_headers_store: &'a SegmentHeadersStore<AS>,
+    pub(crate) fn new(
+        dsn_node: Node,
+        kzg: Kzg,
+        segment_headers_store: SegmentHeadersStore<AS>,
     ) -> Self {
         Self {
             dsn_node,
@@ -34,7 +34,7 @@ where
 }
 
 #[async_trait]
-impl<'a, AS> PieceValidator for SegmentCommitmentPieceValidator<'a, AS>
+impl<AS> PieceValidator for SegmentCommitmentPieceValidator<AS>
 where
     AS: AuxStore + Send + Sync + 'static,
 {
