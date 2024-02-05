@@ -319,7 +319,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.domain_block_hash,
                 ));
 
-                // Collect the front paid storage and the invalid bundle author
+                // Collect the paid bundle storage fees and the invalid bundle author
                 let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
                 let bundle_digests = ExecutionInbox::<T>::get((
