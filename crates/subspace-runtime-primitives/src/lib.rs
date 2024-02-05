@@ -75,6 +75,12 @@ pub mod opaque {
     pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 }
 
+/// A trait for determining whether rewards are enabled or not
+pub trait RewardsEnabled {
+    /// Determine whether rewards are enabled or not
+    fn rewards_enabled() -> bool;
+}
+
 /// A trait for finding the address for a block reward based on the `PreRuntime` digests contained within it.
 pub trait FindBlockRewardAddress<RewardAddress> {
     /// Find the address for a block rewards based on the pre-runtime digests.

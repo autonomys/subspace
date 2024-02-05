@@ -1724,6 +1724,16 @@ fn check_segment_headers<T: Config>(
     Ok(())
 }
 
+impl<T: Config> subspace_runtime_primitives::RewardsEnabled for Pallet<T> {
+    fn rewards_enabled() -> bool {
+        if let Some(height) = EnableRewards::<T>::get() {
+            frame_system::Pallet::<T>::current_block_number() >= height
+        } else {
+            false
+        }
+    }
+}
+
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
         CurrentBlockAuthorInfo::<T>::get().and_then(
