@@ -57,7 +57,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-12", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -82,6 +82,11 @@ jobs:
         with:
           version: "15.0"
         if: runner.os != 'macOS'
+
+      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
+      - name: Install glibtoolize (macOS)
+        run: brew install libtool
+        if: runner.os == 'macOS'
 
       - name: Install Protoc
         uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
@@ -143,7 +148,7 @@ jobs:
   cargo-test:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-12", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -168,6 +173,11 @@ jobs:
         with:
           version: "15.0"
         if: runner.os != 'macOS'
+
+      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
+      - name: Install glibtoolize (macOS)
+        run: brew install libtool
+        if: runner.os == 'macOS'
 
       - name: Install Protoc
         uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0

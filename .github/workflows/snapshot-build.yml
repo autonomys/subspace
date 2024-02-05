@@ -106,13 +106,13 @@ jobs:
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
             rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-12"') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-12"') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-14"') }}
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
             rustflags: ""
@@ -151,6 +151,11 @@ jobs:
         with:
           version: "15.0"
         if: runner.os != 'macOS'
+
+      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
+      - name: Install glibtoolize (macOS)
+        run: brew install libtool
+        if: runner.os == 'macOS'
 
       - name: Install Protoc
         uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
