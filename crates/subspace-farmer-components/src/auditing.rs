@@ -139,8 +139,8 @@ where
             }
 
             let sector = plot.offset(
-                usize::from(sector_metadata.sector_index)
-                    * sector_size(sector_metadata.pieces_in_sector),
+                u64::from(sector_metadata.sector_index)
+                    * sector_size(sector_metadata.pieces_in_sector) as u64,
             );
 
             let mut s_bucket = vec![0; sector_auditing_info.s_bucket_audit_size];
@@ -186,7 +186,7 @@ struct SectorAuditingDetails {
     /// Size in bytes
     s_bucket_audit_size: usize,
     /// Offset in bytes
-    s_bucket_audit_offset_in_sector: usize,
+    s_bucket_audit_offset_in_sector: u64,
 }
 
 fn collect_sector_auditing_details(
@@ -200,19 +200,19 @@ fn collect_sector_auditing_details(
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
     let s_bucket_audit_size = Scalar::FULL_BYTES
         * usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
-    let s_bucket_audit_offset = Scalar::FULL_BYTES
+    let s_bucket_audit_offset = Scalar::FULL_BYTES as u64
         * sector_metadata
             .s_bucket_sizes
             .iter()
             .take(s_bucket_audit_index.into())
             .copied()
-            .map(usize::from)
-            .sum::<usize>();
+            .map(u64::from)
+            .sum::<u64>();
 
     let sector_contents_map_size =
         SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
 
-    let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
+    let s_bucket_audit_offset_in_sector = sector_contents_map_size as u64 + s_bucket_audit_offset;
 
     SectorAuditingDetails {
         sector_id,

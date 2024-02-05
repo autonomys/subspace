@@ -29,7 +29,7 @@ pub enum ReadingError {
     #[error("Failed to read chunk at location {chunk_location}")]
     FailedToReadChunk {
         /// Chunk location
-        chunk_location: usize,
+        chunk_location: u64,
         /// Low-level error
         error: io::Error,
     },
@@ -44,7 +44,7 @@ pub enum ReadingError {
         /// Indicates whether chunk was encoded
         encoded_chunk_used: bool,
         /// Chunk location
-        chunk_location: usize,
+        chunk_location: u64,
         /// Lower-level error
         error: String,
     },
@@ -133,7 +133,7 @@ where
             |((maybe_record_chunk, maybe_chunk_details), (s_bucket, &s_bucket_offset))| {
                 let (chunk_offset, encoded_chunk_used) = maybe_chunk_details?;
 
-                let chunk_location = chunk_offset + s_bucket_offset as usize;
+                let chunk_location = chunk_offset as u64 + u64::from(s_bucket_offset);
 
                 Some((
                     maybe_record_chunk,
@@ -153,8 +153,8 @@ where
                     sector
                         .read_at(
                             &mut record_chunk,
-                            SectorContentsMap::encoded_size(pieces_in_sector)
-                                + chunk_location * Scalar::FULL_BYTES,
+                            SectorContentsMap::encoded_size(pieces_in_sector) as u64
+                                + chunk_location * Scalar::FULL_BYTES as u64,
                         )
                         .map_err(|error| ReadingError::FailedToReadChunk {
                             chunk_location,
@@ -195,8 +195,8 @@ where
                             &sector
                                 .read_at(
                                     vec![0; Scalar::FULL_BYTES],
-                                    SectorContentsMap::encoded_size(pieces_in_sector)
-                                        + chunk_location * Scalar::FULL_BYTES,
+                                    SectorContentsMap::encoded_size(pieces_in_sector) as u64
+                                        + chunk_location * Scalar::FULL_BYTES as u64,
                                 )
                                 .await
                                 .map_err(|error| ReadingError::FailedToReadChunk {
@@ -321,11 +321,11 @@ where
     S: ReadAtSync,
     A: ReadAtAsync,
 {
-    let sector_metadata_start = SectorContentsMap::encoded_size(pieces_in_sector)
-        + sector_record_chunks_size(pieces_in_sector);
+    let sector_metadata_start = SectorContentsMap::encoded_size(pieces_in_sector) as u64
+        + sector_record_chunks_size(pieces_in_sector) as u64;
     // Move to the beginning of the commitment and witness we care about
     let record_metadata_offset =
-        sector_metadata_start + RecordMetadata::encoded_size() * usize::from(piece_offset);
+        sector_metadata_start + RecordMetadata::encoded_size() as u64 * u64::from(piece_offset);
 
     let mut record_metadata_bytes = vec![0; RecordMetadata::encoded_size()];
     match sector {

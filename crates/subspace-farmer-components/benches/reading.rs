@@ -194,8 +194,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Elements(sectors_count));
         group.bench_function("piece/disk", |b| {
             b.iter(|| {
-                for sector_index in 0..sectors_count as usize {
-                    let sector = plot_file.offset(sector_index * sector_size);
+                for sector_index in 0..sectors_count {
+                    let sector = plot_file.offset(sector_index * sector_size as u64);
                     read_piece::<PosTable, _, _>(
                         black_box(piece_offset),
                         black_box(&plotted_sector.sector_id),

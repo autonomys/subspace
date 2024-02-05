@@ -125,8 +125,7 @@ where
 /// thread pool
 pub trait ReadAtSync: Send + Sync {
     /// Get implementation of [`ReadAtSync`] that add specified offset to all attempted reads
-    // TODO: Should offset and reads be in u64?
-    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
+    fn offset(&self, offset: u64) -> ReadAtOffset<'_, Self>
     where
         Self: Sized,
     {
@@ -137,11 +136,11 @@ pub trait ReadAtSync: Send + Sync {
     }
 
     /// Fill the buffer by reading bytes at a specific offset
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()>;
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()>;
 }
 
 impl ReadAtSync for ! {
-    fn read_at(&self, _buf: &mut [u8], _offset: usize) -> io::Result<()> {
+    fn read_at(&self, _buf: &mut [u8], _offset: u64) -> io::Result<()> {
         unreachable!("Is never called")
     }
 }
@@ -187,7 +186,7 @@ where
 /// concurrent async combinators
 pub trait ReadAtAsync {
     /// Get implementation of [`ReadAtAsync`] that add specified offset to all attempted reads
-    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
+    fn offset(&self, offset: u64) -> ReadAtOffset<'_, Self>
     where
         Self: Sized,
     {
@@ -198,14 +197,14 @@ pub trait ReadAtAsync {
     }
 
     /// Fill the buffer by reading bytes at a specific offset and return the buffer back
-    fn read_at<B>(&self, buf: B, offset: usize) -> impl Future<Output = io::Result<B>>
+    fn read_at<B>(&self, buf: B, offset: u64) -> impl Future<Output = io::Result<B>>
     where
         AsyncReadBytes<B>: From<B>,
         B: AsMut<[u8]> + Unpin + 'static;
 }
 
 impl ReadAtAsync for ! {
-    async fn read_at<B>(&self, _buf: B, _offset: usize) -> io::Result<B>
+    async fn read_at<B>(&self, _buf: B, _offset: u64) -> io::Result<B>
     where
         AsyncReadBytes<B>: From<B>,
         B: AsMut<[u8]> + Unpin + 'static,
@@ -215,56 +214,56 @@ impl ReadAtAsync for ! {
 }
 
 impl ReadAtSync for [u8] {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
-        if buf.len() + offset > self.len() {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        if buf.len() as u64 + offset > self.len() as u64 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Buffer length with offset exceeds own length",
             ));
         }
 
-        buf.copy_from_slice(&self[offset..][..buf.len()]);
+        buf.copy_from_slice(&self[offset as usize..][..buf.len()]);
 
         Ok(())
     }
 }
 
 impl ReadAtSync for &[u8] {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
-        if buf.len() + offset > self.len() {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        if buf.len() as u64 + offset > self.len() as u64 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Buffer length with offset exceeds own length",
             ));
         }
 
-        buf.copy_from_slice(&self[offset..][..buf.len()]);
+        buf.copy_from_slice(&self[offset as usize..][..buf.len()]);
 
         Ok(())
     }
 }
 
 impl ReadAtSync for Vec<u8> {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
     }
 }
 
 impl ReadAtSync for &Vec<u8> {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
     }
 }
 
 impl ReadAtSync for File {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
-        self.read_exact_at(buf, offset as u64)
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        self.read_exact_at(buf, offset)
     }
 }
 
 impl ReadAtSync for &File {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
-        self.read_exact_at(buf, offset as u64)
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        self.read_exact_at(buf, offset)
     }
 }
 
@@ -272,14 +271,14 @@ impl ReadAtSync for &File {
 #[derive(Debug, Copy, Clone)]
 pub struct ReadAtOffset<'a, T> {
     inner: &'a T,
-    offset: usize,
+    offset: u64,
 }
 
 impl<T> ReadAtSync for ReadAtOffset<'_, T>
 where
     T: ReadAtSync,
 {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.inner.read_at(buf, offset + self.offset)
     }
 }
@@ -288,7 +287,7 @@ impl<T> ReadAtSync for &ReadAtOffset<'_, T>
 where
     T: ReadAtSync,
 {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.inner.read_at(buf, offset + self.offset)
     }
 }
@@ -297,7 +296,7 @@ impl<T> ReadAtAsync for ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {
-    async fn read_at<B>(&self, buf: B, offset: usize) -> io::Result<B>
+    async fn read_at<B>(&self, buf: B, offset: u64) -> io::Result<B>
     where
         AsyncReadBytes<B>: From<B>,
         B: AsMut<[u8]> + Unpin + 'static,
@@ -310,7 +309,7 @@ impl<T> ReadAtAsync for &ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {
-    async fn read_at<B>(&self, buf: B, offset: usize) -> io::Result<B>
+    async fn read_at<B>(&self, buf: B, offset: u64) -> io::Result<B>
     where
         AsyncReadBytes<B>: From<B>,
         B: AsMut<[u8]> + Unpin + 'static,
