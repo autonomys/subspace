@@ -29,7 +29,7 @@ use subspace_farmer::single_disk_farm::{
 };
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
-use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
+use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
@@ -359,7 +359,7 @@ where
         None
     };
 
-    let readers_and_pieces = Arc::new(Mutex::new(None));
+    let plotted_pieces = Arc::new(Mutex::new(None));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -396,7 +396,7 @@ where
             first_farm_directory,
             keypair,
             dsn,
-            Arc::downgrade(&readers_and_pieces),
+            Arc::downgrade(&plotted_pieces),
             node_client.clone(),
             piece_cache.clone(),
             should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
@@ -432,7 +432,7 @@ where
         piece_provider,
         piece_cache.clone(),
         node_client.clone(),
-        Arc::clone(&readers_and_pieces),
+        Arc::clone(&plotted_pieces),
     ));
 
     let piece_cache_worker_fut = run_future_in_dedicated_thread(
@@ -630,7 +630,7 @@ where
 
     // Collect already plotted pieces
     {
-        let mut future_readers_and_pieces = ReadersAndPieces::new(piece_readers);
+        let mut future_plotted_pieces = PlottedPieces::new(piece_readers);
 
         for (disk_farm_index, single_disk_farm) in single_disk_farms.iter().enumerate() {
             let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
@@ -645,7 +645,7 @@ where
                 .for_each(
                     |(sector_index, plotted_sector_result)| match plotted_sector_result {
                         Ok(plotted_sector) => {
-                            future_readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
+                            future_plotted_pieces.add_sector(disk_farm_index, &plotted_sector);
                         }
                         Err(error) => {
                             error!(
@@ -659,7 +659,7 @@ where
                 );
         }
 
-        readers_and_pieces.lock().replace(future_readers_and_pieces);
+        plotted_pieces.lock().replace(future_plotted_pieces);
     }
 
     info!("Finished collecting already plotted pieces successfully");
@@ -671,7 +671,7 @@ where
             let disk_farm_index = disk_farm_index.try_into().expect(
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
-            let readers_and_pieces = Arc::clone(&readers_and_pieces);
+            let plotted_pieces = Arc::clone(&plotted_pieces);
             let span = info_span!("", %disk_farm_index);
 
             // Collect newly plotted pieces
@@ -681,15 +681,15 @@ where
                     let _span_guard = span.enter();
 
                     {
-                        let mut readers_and_pieces = readers_and_pieces.lock();
-                        let readers_and_pieces = readers_and_pieces
+                        let mut plotted_pieces = plotted_pieces.lock();
+                        let plotted_pieces = plotted_pieces
                             .as_mut()
                             .expect("Initial value was populated above; qed");
 
                         if let Some(old_plotted_sector) = &maybe_old_plotted_sector {
-                            readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                            plotted_pieces.delete_sector(disk_farm_index, old_plotted_sector);
                         }
-                        readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
+                        plotted_pieces.add_sector(disk_farm_index, plotted_sector);
                     }
                 };
 
@@ -770,7 +770,7 @@ where
 
     // Drop original instance such that the only remaining instances are in `SingleDiskFarm`
     // event handlers
-    drop(readers_and_pieces);
+    drop(plotted_pieces);
 
     let farm_fut = run_future_in_dedicated_thread(
         move || async move {

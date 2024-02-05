@@ -1,6 +1,6 @@
 pub mod farmer_piece_getter;
 pub mod piece_validator;
-pub mod readers_and_pieces;
+pub mod plotted_pieces;
 pub mod ss58;
 #[cfg(test)]
 mod tests;
