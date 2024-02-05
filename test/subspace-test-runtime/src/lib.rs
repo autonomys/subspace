@@ -808,8 +808,12 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
 fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
     if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
         match &ext.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { .. }) => None,
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { .. }) => None,
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                Some(Messenger::validate_relay_message(msg).is_ok())
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                Some(Messenger::validate_relay_message_response(msg).is_ok())
+            }
             _ => None,
         }
     } else {
