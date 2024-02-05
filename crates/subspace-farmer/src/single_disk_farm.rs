@@ -142,13 +142,6 @@ impl SingleDiskFarmInfo {
     /// Load `SingleDiskFarm` from path is supposed to be stored, `None` means no info file was
     /// found, happens during first start.
     pub fn load_from(directory: &Path) -> io::Result<Option<Self>> {
-        // TODO: Remove this compatibility hack after enough time has passed
-        if directory.join("single_disk_plot.json").exists() {
-            fs::rename(
-                directory.join("single_disk_plot.json"),
-                directory.join(Self::FILE_NAME),
-            )?;
-        }
         let bytes = match fs::read(directory.join(Self::FILE_NAME)) {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -1407,20 +1400,11 @@ impl SingleDiskFarm {
 
         DiskPieceCache::wipe(directory)?;
 
-        // TODO: Remove this compatibility hack after enough time has passed
-        if directory.join("single_disk_plot.json").exists() {
-            info!(
-                "Deleting info file at {}",
-                directory.join("single_disk_plot.json").display()
-            );
-            fs::remove_file(directory.join("single_disk_plot.json"))
-        } else {
-            info!(
-                "Deleting info file at {}",
-                single_disk_info_info_path.display()
-            );
-            fs::remove_file(single_disk_info_info_path)
-        }
+        info!(
+            "Deleting info file at {}",
+            single_disk_info_info_path.display()
+        );
+        fs::remove_file(single_disk_info_info_path)
     }
 
     /// Check the farm for corruption and repair errors (caused by disk errors or something else),
