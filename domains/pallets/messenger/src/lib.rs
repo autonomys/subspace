@@ -87,7 +87,9 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
-pub(crate) struct ValidatedRelayMessage<Balance> {
+/// A validated relay message.
+#[derive(Debug)]
+pub struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
     next_nonce: Nonce,
     should_init_channel: bool,
@@ -306,7 +308,7 @@ mod pallet {
                         msg,
                         next_nonce,
                         should_init_channel,
-                    } = Self::do_validate_relay_message(xdm)?;
+                    } = Self::validate_relay_message(xdm)?;
                     if msg.nonce != next_nonce {
                         log::error!(
                             "Unexpected message nonce, channel next nonce {:?}, msg nonce {:?}",
@@ -323,7 +325,7 @@ mod pallet {
                     Self::pre_dispatch_relay_message(msg, should_init_channel)
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+                    let (msg, next_nonce) = Self::validate_relay_message_response(xdm)?;
                     if msg.nonce != next_nonce {
                         log::error!(
                             "Unexpected message response nonce, channel next nonce {:?}, msg nonce {:?}",
@@ -351,7 +353,7 @@ mod pallet {
                         msg,
                         next_nonce,
                         should_init_channel: _,
-                    } = Self::do_validate_relay_message(xdm)?;
+                    } = Self::validate_relay_message(xdm)?;
 
                     let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
                     // Only add the requires tag if the msg nonce is in future
@@ -370,7 +372,7 @@ mod pallet {
                         .build()
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+                    let (msg, next_nonce) = Self::validate_relay_message_response(xdm)?;
 
                     let mut valid_tx_builder =
                         ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
@@ -695,7 +697,7 @@ mod pallet {
             Ok(channel_id)
         }
 
-        pub(crate) fn do_validate_relay_message(
+        pub fn validate_relay_message(
             xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
@@ -792,7 +794,7 @@ mod pallet {
             Ok(())
         }
 
-        pub(crate) fn do_validate_relay_message_response(
+        pub fn validate_relay_message_response(
             xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
         ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
