@@ -27,6 +27,7 @@ use messages::{
     MessageId,
 };
 use sp_domains::DomainId;
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_std::vec::Vec;
 
 /// Trait to handle XDM rewards.
@@ -36,6 +37,24 @@ pub trait OnXDMRewards<Balance> {
 
 impl<Balance> OnXDMRewards<Balance> for () {
     fn on_xdm_rewards(_: Balance) {}
+}
+
+/// Trait to verify MMR proofs
+pub trait MmrProofVerifier<MmrHash, StateRoot> {
+    /// Returns consensus state root if the given MMR proof is valid
+    fn verify_proof_and_extract_consensus_state_root(
+        leaf: EncodableOpaqueLeaf,
+        proof: Proof<MmrHash>,
+    ) -> Option<StateRoot>;
+}
+
+impl<MmrHash, StateRoot> MmrProofVerifier<MmrHash, StateRoot> for () {
+    fn verify_proof_and_extract_consensus_state_root(
+        _leaf: EncodableOpaqueLeaf,
+        _proof: Proof<MmrHash>,
+    ) -> Option<StateRoot> {
+        None
+    }
 }
 
 sp_api::decl_runtime_apis! {

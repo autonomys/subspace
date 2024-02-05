@@ -51,11 +51,13 @@ sp-core = { version = "21.0.0", default-features = false, git = "https://github.
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
+sp-mmr-primitives = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-storage = { version = "13.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", optional = true }
+sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../crates/sp-subspace-mmr" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives", default-features = false }
@@ -105,10 +107,12 @@ std = [
     "sp-session/std",
     "sp-inherents/std",
     "sp-messenger/std",
+    "sp-mmr-primitives/std",
     "sp-offchain/std",
     "sp-runtime/std",
     "sp-std/std",
     "sp-storage?/std",
+    "sp-subspace-mmr/std",
     "sp-transaction-pool/std",
     "sp-version/std",
     "subspace-core-primitives/std",
