@@ -8,13 +8,11 @@ use sc_transaction_pool::{BasicPool, ChainApi, FullChainApi, RevalidationType};
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
-use sp_domains::DomainsApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_runtime::transaction_validity::TransactionValidity;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
@@ -29,20 +27,16 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<CClient, CBlock, Block, Client> =
-    BasicPool<FullChainApiWrapper<CClient, CBlock, Block, Client>, Block>;
+pub type FullPool<Block, Client> = BasicPool<FullChainApiWrapper<Block, Client>, Block>;
 
 #[derive(Clone)]
-pub struct FullChainApiWrapper<CClient, CBlock, Block, Client> {
+pub struct FullChainApiWrapper<Block, Client> {
     inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
-    consensus_client: Arc<CClient>,
-    marker: PhantomData<CBlock>,
 }
 
-impl<CClient, CBlock, Block, Client> FullChainApiWrapper<CClient, CBlock, Block, Client>
+impl<Block, Client> FullChainApiWrapper<Block, Client>
 where
-    CBlock: BlockT,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -55,7 +49,6 @@ where
     Client::Api: TaggedTransactionQueue<Block>,
 {
     fn new(
-        consensus_client: Arc<CClient>,
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
         task_manager: &TaskManager,
@@ -67,21 +60,15 @@ where
                 &task_manager.spawn_essential_handle(),
             )),
             client,
-            consensus_client,
-            marker: Default::default(),
         }
     }
 }
 
 pub type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;
 
-impl<CClient, CBlock, Block, Client> ChainApi
-    for FullChainApiWrapper<CClient, CBlock, Block, Client>
+impl<Block, Client> ChainApi for FullChainApiWrapper<Block, Client>
 where
-    CBlock: BlockT,
     Block: BlockT,
-    NumberFor<CBlock>: From<NumberFor<Block>>,
-    CBlock::Hash: From<Block::Hash>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + BlockIdTo<Block>
@@ -91,8 +78,6 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>>,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
 {
     type Block = Block;
     type Error = sc_transaction_pool::error::Error;
@@ -106,10 +91,9 @@ where
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
         let chain_api = self.inner.clone();
-        let consensus_client = self.consensus_client.clone();
         let client = self.client.clone();
         async move {
-            if !is_valid_xdm(&consensus_client, at, &client, &uxt)? {
+            if !is_valid_xdm(at, &client, &uxt)? {
                 return Err(TxPoolError::Pool(
                     sc_transaction_pool_api::error::Error::ImmediatelyDropped,
                 ));
@@ -155,17 +139,13 @@ where
     }
 }
 
-pub(crate) fn new_full<CClient, CBlock, Block, Client>(
+pub(crate) fn new_full<Block, Client>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,
-    consensus_client: Arc<CClient>,
-) -> Arc<FullPool<CClient, CBlock, Block, Client>>
+) -> Arc<FullPool<Block, Client>>
 where
-    CBlock: BlockT,
     Block: BlockT,
-    NumberFor<CBlock>: From<NumberFor<Block>>,
-    CBlock::Hash: From<Block::Hash>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -177,12 +157,9 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>>,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(
-        consensus_client,
         client.clone(),
         prometheus,
         task_manager,

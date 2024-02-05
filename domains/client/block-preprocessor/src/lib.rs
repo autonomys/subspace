@@ -320,12 +320,7 @@ where
             // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
             // and the other extrinsic of the bundle will be continue processed, now the whole
             // bundle is considered as invalid and excluded from further processing.
-            if !is_valid_xdm::<CClient, CBlock, Block, _>(
-                &self.consensus_client,
-                at,
-                &self.client,
-                &extrinsic,
-            )? {
+            if !is_valid_xdm::<Block, _>(at, &self.client, &extrinsic)? {
                 // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
                     index as u32,

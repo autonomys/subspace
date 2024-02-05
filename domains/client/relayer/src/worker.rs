@@ -7,7 +7,7 @@ use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::ChainId;
-use sp_messenger::RelayerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
@@ -79,7 +79,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
         + ProvideRuntimeApi<Block>,
     DC::Api: RelayerApi<Block, NumberFor<Block>>,
     CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-    CCC::Api: DomainsApi<CCBlock, Block::Header>,
+    CCC::Api: DomainsApi<CCBlock, Block::Header> + MessengerApi<CCBlock, NumberFor<CCBlock>>,
     SO: SyncOracle + Send,
 {
     let relay_confirmation_depth = match Relayer::relay_confirmation_depth(&domain_client) {

@@ -185,7 +185,7 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let proof: Proof<u64, H256, H256> = Proof {
+    let proof: Proof<H256, H256> = Proof {
         consensus_chain_mmr_proof: Default::default(),
         domain_proof: None,
         message_proof: storage_proof,
@@ -212,7 +212,7 @@ fn test_storage_proof_verification_missing_value() {
 
     let (_state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, U256::one());
-    let proof: Proof<u64, H256, H256> = Proof {
+    let proof: Proof<H256, H256> = Proof {
         consensus_chain_mmr_proof: Default::default(),
         domain_proof: None,
         message_proof: storage_proof,
@@ -241,7 +241,7 @@ fn test_storage_proof_verification() {
 
     let (_state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let proof: Proof<u64, H256, H256> = Proof {
+    let proof: Proof<H256, H256> = Proof {
         consensus_chain_mmr_proof: Default::default(),
         domain_proof: None,
         message_proof: storage_proof,
@@ -494,7 +494,7 @@ fn channel_relay_request_and_response(
         channel_id,
         nonce,
         proof: Proof {
-            consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<_, _, H256>::default(),
+            consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<_, H256>::default(),
             domain_proof: None,
             message_proof,
         },
@@ -552,7 +552,7 @@ fn channel_relay_request_and_response(
         channel_id,
         nonce,
         proof: Proof {
-            consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<_, _, H256>::default(),
+            consensus_chain_mmr_proof: ConsensusChainMmrLeafProof::<_, H256>::default(),
             domain_proof: None,
             message_proof,
         },

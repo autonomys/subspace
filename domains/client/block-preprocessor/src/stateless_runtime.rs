@@ -7,7 +7,7 @@ use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
-use sp_messenger::messages::{ExtractedStateRootsFromProof, MessageId};
+use sp_messenger::messages::MessageId;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
@@ -86,12 +86,6 @@ impl<Block, Executor> FetchRuntimeCode for StatelessRuntime<Block, Executor> {
     }
 }
 
-pub type ExtractedStateRoots<Block> = ExtractedStateRootsFromProof<
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
-    <Block as BlockT>::Hash,
->;
-
 pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
 impl<Block, Executor> StatelessRuntime<Block, Executor>
@@ -153,18 +147,6 @@ where
             .map_err(|err| {
                 ApiError::Application(format!("Failed to invoke call to {fn_name}: {err}").into())
             })
-    }
-
-    pub fn extract_state_roots(
-        &self,
-        ext: &Block::Extrinsic,
-    ) -> Result<ExtractedStateRoots<Block>, ApiError> {
-        let maybe_state_roots = <Self as MessengerApi<Block, _>>::extract_xdm_proof_state_roots(
-            self,
-            Default::default(),
-            ext.encode(),
-        )?;
-        maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
 
     pub fn outbox_storage_key(&self, message_id: MessageId) -> Result<Vec<u8>, ApiError> {

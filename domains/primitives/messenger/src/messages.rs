@@ -1,16 +1,11 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
-use frame_support::storage::generator::StorageMap;
-use frame_support::storage::storage_prefix;
-use frame_support::Identity;
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
-use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
@@ -196,36 +191,24 @@ pub struct Message<Balance> {
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
-/// Block info used as part of the Cross chain message proof.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct BlockInfo<Number, Hash> {
-    /// Block number of the chain.
-    pub block_number: Number,
-    /// Block hash of the chain.
-    pub block_hash: Hash,
-}
-
 /// Consensus chain MMR leaf and its Proof at specific block
 #[derive(Debug, Encode, Decode, Eq, PartialEq, TypeInfo)]
-pub struct ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash> {
+pub struct ConsensusChainMmrLeafProof<BlockHash, MmrHash> {
     /// Consensus block info from which this proof was generated.
-    pub block_info: BlockInfo<BlockNumber, BlockHash>,
+    pub consensus_block_hash: BlockHash,
     /// Encoded MMR leaf
     pub opaque_mmr_leaf: EncodableOpaqueLeaf,
     /// MMR proof for the leaf above.
     pub proof: MmrProof<MmrHash>,
 }
 
-// TODO: remove this once the usage is unnecessary
-impl<BlockNumber, BlockHash, MmrHash> Default
-    for ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash>
+impl<BlockHash, MmrHash> Default for ConsensusChainMmrLeafProof<BlockHash, MmrHash>
 where
-    BlockNumber: Default,
     BlockHash: Default,
 {
     fn default() -> Self {
         Self {
-            block_info: BlockInfo::default(),
+            consensus_block_hash: Default::default(),
             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
             proof: MmrProof {
                 leaf_indices: vec![],
@@ -236,16 +219,14 @@ where
     }
 }
 
-impl<BlockNumber, BlockHash, MmrHash> Clone
-    for ConsensusChainMmrLeafProof<BlockNumber, BlockHash, MmrHash>
+impl<BlockHash, MmrHash> Clone for ConsensusChainMmrLeafProof<BlockHash, MmrHash>
 where
-    BlockNumber: Clone,
     BlockHash: Clone,
     MmrHash: Clone,
 {
     fn clone(&self) -> Self {
         Self {
-            block_info: self.block_info.clone(),
+            consensus_block_hash: self.consensus_block_hash.clone(),
             opaque_mmr_leaf: EncodableOpaqueLeaf(self.opaque_mmr_leaf.0.clone()),
             proof: self.proof.clone(),
         }
@@ -254,9 +235,9 @@ where
 
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<CBlockNumber, CBlockHash, MmrHash> {
+pub struct Proof<CBlockHash, MmrHash> {
     /// Consensus chain MMR leaf proof.
-    pub consensus_chain_mmr_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    pub consensus_chain_mmr_proof: ConsensusChainMmrLeafProof<CBlockHash, MmrHash>,
     /// Storage proof that src domain chain's block is out of the challenge period on Consensus chain.
     /// This is None when the src_chain is Consensus.
     pub domain_proof: Option<StorageProof>,
@@ -264,14 +245,12 @@ pub struct Proof<CBlockNumber, CBlockHash, MmrHash> {
     pub message_proof: StorageProof,
 }
 
-impl<CBlockNumber: Default, CBlockHash: Default, MmrHash: Default>
-    Proof<CBlockNumber, CBlockHash, MmrHash>
-{
+impl<CBlockHash: Default, MmrHash: Default> Proof<CBlockHash, MmrHash> {
     #[cfg(feature = "runtime-benchmarks")]
     pub fn dummy() -> Self {
         Proof {
             consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
-                block_info: BlockInfo::default(),
+                consensus_block_hash: Default::default(),
                 opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
                 proof: MmrProof {
                     leaf_indices: vec![],
@@ -285,22 +264,9 @@ impl<CBlockNumber: Default, CBlockHash: Default, MmrHash: Default>
     }
 }
 
-/// Holds the Block info and state roots from which a proof was constructed.
-#[derive(Debug, Default, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
-    /// Consensus chain block info when proof was constructed
-    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
-    /// State root of Consensus chain at above number and block hash.
-    pub consensus_chain_state_root: StateRoot,
-    /// Storage proof that src chain state_root is registered on Consensus chain.
-    /// This is optional when the src_chain is the consensus chain.
-    /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub domain_info: Option<(DomainId, BlockInfo<BlockNumber, BlockHash>, StateRoot)>,
-}
-
 /// Cross Domain message contains Message and its proof on src_chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<CBlockNumber, CBlockHash, MmrHash> {
+pub struct CrossDomainMessage<CBlockHash, MmrHash> {
     /// Chain which initiated this message.
     pub src_chain_id: ChainId,
     /// Chain this message is intended for.
@@ -310,7 +276,7 @@ pub struct CrossDomainMessage<CBlockNumber, CBlockHash, MmrHash> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Proof of message processed on src_chain.
-    pub proof: Proof<CBlockNumber, CBlockHash, MmrHash>,
+    pub proof: Proof<CBlockHash, MmrHash>,
     /// The message weight tag
     pub weight_tag: MessageWeightTag,
 }
@@ -339,11 +305,10 @@ pub struct BlockMessagesWithStorageKey {
     pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
-// TODO: remove or update this accordingly
-impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
+impl<BlockHash, StateRoot> CrossDomainMessage<BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
         r_msg: BlockMessageWithStorageKey,
-        proof: Proof<BlockNumber, BlockHash, StateRoot>,
+        proof: Proof<BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
             src_chain_id: r_msg.src_chain_id,
@@ -353,54 +318,5 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
             proof,
             weight_tag: r_msg.weight_tag,
         }
-    }
-}
-
-// TODO: remove or update this accordingly
-/// This is a representation of actual StateRoots storage in pallet-domains.
-/// Any change in key or value there should be changed here accordingly.
-pub struct DomainStateRootStorage<Number, Hash, StateRoot>(PhantomData<(Number, Hash, StateRoot)>);
-
-impl<Number, Hash, StateRoot> StorageMap<(DomainId, Number, Hash), StateRoot>
-    for DomainStateRootStorage<Number, Hash, StateRoot>
-where
-    Number: FullCodec + TypeInfo + 'static,
-    Hash: FullCodec + TypeInfo + 'static,
-    StateRoot: FullCodec + TypeInfo + 'static,
-{
-    type Query = Option<StateRoot>;
-    type Hasher = Identity;
-
-    fn pallet_prefix() -> &'static [u8] {
-        "Domains".as_ref()
-    }
-
-    fn storage_prefix() -> &'static [u8] {
-        "StateRoots".as_ref()
-    }
-
-    fn prefix_hash() -> [u8; 32] {
-        storage_prefix(Self::pallet_prefix(), Self::storage_prefix())
-    }
-
-    fn from_optional_value_to_query(v: Option<StateRoot>) -> Self::Query {
-        v
-    }
-
-    fn from_query_to_optional_value(v: Self::Query) -> Option<StateRoot> {
-        v
-    }
-}
-
-impl<Number, Hash, StateRoot> DomainStateRootStorage<Number, Hash, StateRoot>
-where
-    Number: FullCodec + TypeInfo + 'static,
-    Hash: FullCodec + TypeInfo + 'static,
-    StateRoot: FullCodec + TypeInfo + 'static,
-{
-    pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
-        StorageKey(Self::storage_map_final_key::<(DomainId, Number, Hash)>((
-            domain_id, number, hash,
-        )))
     }
 }

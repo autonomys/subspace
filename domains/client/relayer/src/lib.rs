@@ -11,10 +11,10 @@ use scale_info::TypeInfo;
 use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{
-    BlockInfo, BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId,
-    ConsensusChainMmrLeafProof, CrossDomainMessage, DomainStateRootStorage, Proof,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ConsensusChainMmrLeafProof,
+    CrossDomainMessage, Proof,
 };
-use sp_messenger::RelayerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
@@ -82,7 +82,7 @@ impl From<sp_api::ApiError> for Error {
     }
 }
 
-type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
+type ProofOf<Block> = Proof<<Block as BlockT>::Hash, <Block as BlockT>::Hash>;
 type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
 impl<Client, Block> Relayer<Client, Block>
@@ -115,18 +115,15 @@ where
     ) -> Result<ProofOf<Block>, Error> {
         consensus_chain_client
             .header(block_hash)?
-            .map(|header| (*header.number(), header.hash(), *header.state_root()))
-            .and_then(|(block_number, block_hash, _state_root)| {
+            .map(|header| (header.hash(), *header.state_root()))
+            .and_then(|(block_hash, _state_root)| {
                 let proof = consensus_chain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 // TODO: derive the correct proof here
                 Some(Proof {
                     consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
-                        block_info: BlockInfo {
-                            block_number,
-                            block_hash,
-                        },
+                        consensus_block_hash: block_hash,
                         opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
                         proof: MmrProof {
                             leaf_indices: vec![],
@@ -142,8 +139,8 @@ where
     }
 
     fn construct_cross_chain_message_and_submit<
-        Submitter: Fn(CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>) -> Result<(), Error>,
-        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash, Block::Hash>, Error>,
+        Submitter: Fn(CrossDomainMessage<Block::Hash, Block::Hash>) -> Result<(), Error>,
+        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<Block::Hash, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
         msgs: Vec<BlockMessageWithStorageKey>,
@@ -284,7 +281,7 @@ where
         NumberFor<CCBlock>: Into<NumberFor<Block>>,
         CCBlock::Hash: Into<Block::Hash>,
         CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-        CCC::Api: DomainsApi<CCBlock, Block::Header>,
+        CCC::Api: DomainsApi<CCBlock, Block::Header> + MessengerApi<CCBlock, NumberFor<CCBlock>>,
     {
         let chain_id = Self::chain_id(domain_client)?;
         let ChainId::Domain(domain_id) = chain_id else {
@@ -349,12 +346,8 @@ where
         }
 
         // generate domain proof that points to the state root of the domain block on Consensus chain.
-        let storage_key =
-            DomainStateRootStorage::<NumberFor<Block>, Block::Hash, Block::Hash>::storage_key(
-                domain_id,
-                *domain_block_header.number(),
-                domain_block_header.hash(),
-            );
+        let storage_key = consensus_chain_api
+            .confirmed_domain_block_storage_key(best_consensus_chain_hash, domain_id)?;
 
         // construct storage proof for the core domain state root using system domain backend.
         let domain_state_root_proof = consensus_chain_client.read_proof(
@@ -362,17 +355,12 @@ where
             &mut [storage_key.as_ref()].into_iter(),
         )?;
 
-        let consensus_chain_block_info = BlockInfo {
-            block_number: *best_consensus_chain_block_header.number(),
-            block_hash: best_consensus_chain_hash,
-        };
-
         Self::construct_cross_chain_message_and_submit(
             confirmed_block_hash,
             filtered_messages.outbox,
             |block_hash, key| {
                 Self::construct_domain_storage_proof_for_key_at(
-                    consensus_chain_block_info.clone(),
+                    best_consensus_chain_hash,
                     domain_client,
                     block_hash,
                     key,
@@ -388,7 +376,7 @@ where
             filtered_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_domain_storage_proof_for_key_at(
-                    consensus_chain_block_info.clone(),
+                    best_consensus_chain_hash,
                     domain_client,
                     block_id,
                     key,
@@ -403,8 +391,8 @@ where
     }
 
     /// Constructs the proof for the given key using the domain backend.
-    fn construct_domain_storage_proof_for_key_at<CNumber, CHash>(
-        consensus_chain_block_info: BlockInfo<CNumber, CHash>,
+    fn construct_domain_storage_proof_for_key_at<CHash>(
+        consensus_chain_block_hash: CHash,
         domain_client: &Arc<Client>,
         block_hash: Block::Hash,
         key: &[u8],
@@ -412,7 +400,6 @@ where
         domain_proof: StorageProof,
     ) -> Result<ProofOf<Block>, Error>
     where
-        CNumber: Into<NumberFor<Block>>,
         CHash: Into<Block::Hash>,
     {
         domain_client
@@ -425,10 +412,7 @@ where
                 // TODO: Derive correct domain proof
                 Some(Proof {
                     consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
-                        block_info: BlockInfo {
-                            block_number: consensus_chain_block_info.block_number.into(),
-                            block_hash: consensus_chain_block_info.block_hash.into(),
-                        },
+                        consensus_block_hash: consensus_chain_block_hash.into(),
                         opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
                         proof: MmrProof {
                             leaf_indices: vec![],
@@ -446,7 +430,7 @@ where
     /// Sends an Outbox message from src_domain to dst_domain.
     fn gossip_outbox_message(
         client: &Arc<Client>,
-        msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
+        msg: CrossDomainMessage<Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_hash = client.info().best_hash;
@@ -468,7 +452,7 @@ where
     /// this message is the response of the Inbox message execution.
     fn gossip_inbox_message_response(
         client: &Arc<Client>,
-        msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
+        msg: CrossDomainMessage<Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_hash = client.info().best_hash;

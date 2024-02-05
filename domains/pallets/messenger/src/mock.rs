@@ -90,7 +90,6 @@ macro_rules! impl_runtime {
             type SelfChainId = SelfChainId;
             type Currency = Balances;
             type ConfirmationDepth = RelayerConfirmationDepth;
-            type DomainInfo = ();
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
             type OnXDMRewards = ();

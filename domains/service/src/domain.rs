@@ -53,7 +53,7 @@ pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
     CBlock,
     FullClient<Block, RuntimeApi>,
     CClient,
-    FullPool<CBlock, CClient, RuntimeApi>,
+    FullPool<RuntimeApi>,
     FullBackend<Block>,
     RuntimeExecutor,
 >;
@@ -105,12 +105,12 @@ where
     /// Operator.
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi>,
     /// Transaction pool
-    pub transaction_pool: Arc<FullPool<CBlock, CClient, RuntimeApi>>,
+    pub transaction_pool: Arc<FullPool<RuntimeApi>>,
     _phantom_data: PhantomData<AccountId>,
 }
 
-pub type FullPool<CBlock, CClient, RuntimeApi> =
-    crate::transaction_pool::FullPool<CClient, CBlock, Block, FullClient<Block, RuntimeApi>>;
+pub type FullPool<RuntimeApi> =
+    crate::transaction_pool::FullPool<Block, FullClient<Block, RuntimeApi>>;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
@@ -124,7 +124,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
         FullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block>,
-        FullPool<CBlock, CClient, RuntimeApi>,
+        FullPool<RuntimeApi>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
@@ -190,12 +190,7 @@ where
         telemetry
     });
 
-    let transaction_pool = crate::transaction_pool::new_full(
-        config,
-        &task_manager,
-        client.clone(),
-        consensus_client.clone(),
-    );
+    let transaction_pool = crate::transaction_pool::new_full(config, &task_manager, client.clone());
 
     let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
         block_import_provider,
@@ -312,8 +307,8 @@ where
     Provider: RpcProvider<
             Block,
             FullClient<Block, RuntimeApi>,
-            FullPool<CBlock, CClient, RuntimeApi>,
-            FullChainApiWrapper<CClient, CBlock, Block, FullClient<Block, RuntimeApi>>,
+            FullPool<RuntimeApi>,
+            FullChainApiWrapper<Block, FullClient<Block, RuntimeApi>>,
             TFullBackend<Block>,
             AccountId,
             CreateInherentDataProvider<CClient, CBlock>,
