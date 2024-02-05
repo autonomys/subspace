@@ -11929,7 +11929,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-transaction-payment",
- "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",

@@ -19,10 +19,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 frame-support = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 frame-system = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-# TODO: Should, idealy, be optional, but `sp-runtime`'s `serde` feature is enabled unconditionally by something in
-#  Substrate and as the result our custom `Block` implementation has to derive `serde` traits essentially
-#  unconditionally or else it doesn't compile
-serde = { version = "1.0.195", default-features = false, features = ["alloc", "derive"] }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-io = { version = "23.0.0", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
@@ -33,7 +29,6 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 default = ["std"]
 std = [
     "pallet-transaction-payment/std",
-    "serde/std",
     "sp-core/std",
     "sp-runtime/std",
     "sp-std/std",
