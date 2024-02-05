@@ -47,8 +47,6 @@ If you're connected directly without any router, then again nothing needs to be 
 .\NODE_FILE_NAME.exe run `
 --base-path PATH_TO_NODE `
 --chain gemini-3h `
---blocks-pruning 256 `
---state-pruning archive-canonical `
 --farmer `
 --name "INSERT_YOUR_ID"
 ```
@@ -99,8 +97,6 @@ If you're connected directly without any router, then again nothing needs to be 
 ./NODE_FILE_NAME run \
   --base-path PATH_TO_NODE \
   --chain gemini-3h \
-  --blocks-pruning 256 \
-  --state-pruning archive-canonical \
   --farmer \
   --name "INSERT_YOUR_ID"
 ```
@@ -154,8 +150,6 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ./NODE_FILE_NAME run \
   --base-path PATH_TO_NODE \
   --chain gemini-3h \
-  --blocks-pruning 256 \
-  --state-pruning archive-canonical \
   --farmer \
   --name "INSERT_YOUR_ID"
 ```
@@ -219,8 +213,6 @@ services:
       "run",
       "--chain", "gemini-3h",
       "--base-path", "/var/subspace",
-      "--blocks-pruning", "256",
-      "--state-pruning", "archive-canonical",
       "--listen-on", "/ip4/0.0.0.0/tcp/30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/udp/30433/quic-v1",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",

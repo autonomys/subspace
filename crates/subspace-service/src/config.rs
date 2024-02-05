@@ -83,7 +83,7 @@ pub struct SubstrateConfiguration {
     /// Network configuration
     pub network: SubstrateNetworkConfiguration,
     /// State pruning settings
-    pub state_pruning: Option<PruningMode>,
+    pub state_pruning: PruningMode,
     /// Number of blocks to keep in the db.
     ///
     /// NOTE: only finalized blocks are subject for removal!
@@ -159,7 +159,7 @@ impl From<SubstrateConfiguration> for Configuration {
             data_path: configuration.base_path.clone(),
             // Substrate's default
             trie_cache_maximum_size: Some(64 * 1024 * 1024),
-            state_pruning: configuration.state_pruning,
+            state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
             wasm_method: Default::default(),
             wasm_runtime_overrides: None,
