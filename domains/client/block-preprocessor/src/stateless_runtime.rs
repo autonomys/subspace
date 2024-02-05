@@ -7,7 +7,7 @@ use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
-use sp_messenger::messages::ExtractedStateRootsFromProof;
+use sp_messenger::messages::{ExtractedStateRootsFromProof, MessageId};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
@@ -165,6 +165,24 @@ where
             ext.encode(),
         )?;
         maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
+    }
+
+    pub fn outbox_storage_key(&self, message_id: MessageId) -> Result<Vec<u8>, ApiError> {
+        let storage_key = <Self as MessengerApi<Block, _>>::outbox_storage_key(
+            self,
+            Default::default(),
+            message_id,
+        )?;
+        Ok(storage_key)
+    }
+
+    pub fn inbox_response_storage_key(&self, message_id: MessageId) -> Result<Vec<u8>, ApiError> {
+        let storage_key = <Self as MessengerApi<Block, _>>::inbox_response_storage_key(
+            self,
+            Default::default(),
+            message_id,
+        )?;
+        Ok(storage_key)
     }
 
     pub fn extract_signer(

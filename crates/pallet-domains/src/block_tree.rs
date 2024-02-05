@@ -6,12 +6,12 @@ use crate::{
     DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
     InboxedBundleAuthor, LatestConfirmedDomainBlock, Pallet, ReceiptHashFor,
 };
-use codec::{Codec, Decode, Encode};
+use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
+use sp_domains::{ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
@@ -35,39 +35,6 @@ pub enum Error {
     InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
     InvalidStateRoot,
-}
-
-/// Type holding the block details of confirmed domain block.
-#[derive(TypeInfo, Encode, Decode, Debug, Clone, PartialEq, Eq)]
-pub struct ConfirmedDomainBlock<DomainBlockNumber: Codec, DomainHash: Codec> {
-    /// Block number of the confirmed domain block.
-    pub block_number: DomainBlockNumber,
-    /// Block hash of the confirmed domain block.
-    pub block_hash: DomainHash,
-    /// Parent block hash of the confirmed domain block.
-    pub parent_block_receipt_hash: DomainHash,
-    /// State root of the domain block.
-    pub state_root: DomainHash,
-    /// Extrinsic root of the domain block.
-    pub extrinsics_root: DomainHash,
-}
-
-#[cfg(test)]
-impl<DomainBlockNumber, DomainHash> From<DomainBlockNumber>
-    for ConfirmedDomainBlock<DomainBlockNumber, DomainHash>
-where
-    DomainBlockNumber: Codec,
-    DomainHash: Codec + Default,
-{
-    fn from(value: DomainBlockNumber) -> Self {
-        ConfirmedDomainBlock {
-            block_number: value,
-            block_hash: Default::default(),
-            parent_block_receipt_hash: Default::default(),
-            state_root: Default::default(),
-            extrinsics_root: Default::default(),
-        }
-    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

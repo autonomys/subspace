@@ -477,7 +477,6 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
 #[cfg(test)]
 mod tests {
-    use crate::block_tree::ConfirmedDomainBlock;
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
@@ -500,7 +499,7 @@ mod tests {
     use frame_support::traits::fungible::InspectHold;
     use frame_support::weights::Weight;
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorAllowList, OperatorPair};
+    use sp_domains::{ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorPair};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::{BTreeMap, BTreeSet};

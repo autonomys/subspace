@@ -128,7 +128,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
-            RuntimeExecutor,
+            Arc<RuntimeExecutor>,
             SharedBlockImport<Block>,
         ),
     >,
@@ -172,10 +172,12 @@ where
     )?;
     let client = Arc::new(client);
 
+    let executor = Arc::new(executor);
     client
         .execution_extensions()
         .set_extensions_factory(DomainExtensionsFactory::<_, CBlock, Block> {
             consensus_client: consensus_client.clone(),
+            executor: executor.clone(),
             _marker: Default::default(),
         });
 
@@ -420,8 +422,6 @@ where
         sync_service: sync_service.clone(),
         telemetry: telemetry.as_mut(),
     })?;
-
-    let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);

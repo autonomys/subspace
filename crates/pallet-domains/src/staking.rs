@@ -1233,7 +1233,6 @@ where
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::block_tree::ConfirmedDomainBlock;
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         Config, Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlock,
@@ -1254,8 +1253,8 @@ pub(crate) mod tests {
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
     use sp_domains::{
-        DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
-        ZERO_OPERATOR_SIGNING_KEY,
+        ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorId, OperatorPair,
+        OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};

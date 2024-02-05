@@ -57,6 +57,32 @@ impl<MmrHash, StateRoot> MmrProofVerifier<MmrHash, StateRoot> for () {
     }
 }
 
+/// Trait that return various storage keys for storages on Consensus chain and domains
+pub trait StorageKeys {
+    /// Returns the storage key for confirmed domain block on conensus chain
+    fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>>;
+
+    /// Returns the outbox storage key for given chain.
+    fn outbox_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>>;
+
+    /// Returns the inbox responses storage key for given chain.
+    fn inbox_responses_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>>;
+}
+
+impl StorageKeys for () {
+    fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn outbox_storage_key(_chain_id: ChainId, _message_id: MessageId) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn inbox_responses_storage_key(_chain_id: ChainId, _message_id: MessageId) -> Option<Vec<u8>> {
+        None
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi< BlockNumber>
@@ -101,5 +127,14 @@ sp_api::decl_runtime_apis! {
             domain_block_info: BlockInfo<BlockNumber, Block::Hash>,
             domain_state_root: Block::Hash,
         ) -> bool;
+
+        /// Returns the confirmed domain block storage for given domain.
+        fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8>;
+
+        /// Returns storage key for outbox for a given message_id.
+        fn outbox_storage_key(message_id: MessageId) -> Vec<u8>;
+
+        /// Returns storage key for inbox response for a given message_id.
+        fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8>;
     }
 }

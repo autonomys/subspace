@@ -96,6 +96,7 @@ macro_rules! impl_runtime {
             type OnXDMRewards = ();
             type MmrHash = H256;
             type MmrProofVerifier = ();
+            type StorageKeys = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

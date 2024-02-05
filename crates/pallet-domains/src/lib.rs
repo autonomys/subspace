@@ -117,8 +117,8 @@ mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, BlockTreeNode, ConfirmedDomainBlock,
-        Error as BlockTreeError, ReceiptType,
+        execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
+        ReceiptType,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
@@ -159,8 +159,8 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainId, EpochIndex, GenesisDomain, OperatorAllowList,
+        OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -1982,6 +1982,10 @@ impl<T: Config> Pallet<T> {
         domain_number: DomainBlockNumberFor<T>,
     ) -> Option<ReceiptHashFor<T>> {
         BlockTree::<T>::get(domain_id, domain_number)
+    }
+
+    pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
+        LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
     }
 }
 

@@ -32,6 +32,9 @@ use sp_api::__private::Extensions;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_core::H256;
+use sp_domains::DomainsApi;
+use sp_messenger::MessengerApi;
+use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, Zero};
 use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
@@ -42,6 +45,7 @@ use std::sync::Arc;
 #[cfg(not(feature = "runtime-benchmarks"))]
 pub type HostFunctions = (
     sp_io::SubstrateHostFunctions,
+    sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
 );
 
@@ -49,6 +53,7 @@ pub type HostFunctions = (
 #[cfg(feature = "runtime-benchmarks")]
 pub type HostFunctions = (
     sp_io::SubstrateHostFunctions,
+    sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
     frame_benchmarking::benchmarking::HostFunctions,
 );
@@ -63,6 +68,7 @@ pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 
 pub(crate) struct DomainExtensionsFactory<CClient, CBlock, Block> {
     consensus_client: Arc<CClient>,
+    executor: Arc<RuntimeExecutor>,
     _marker: PhantomData<(CBlock, Block)>,
 }
 
@@ -73,7 +79,9 @@ where
     CBlock: BlockT,
     CBlock::Hash: From<H256>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
+    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + DomainsApi<CBlock, Block::Header>,
 {
     fn extensions_for(
         &self,
@@ -83,6 +91,13 @@ where
         let mut exts = Extensions::new();
         exts.register(SubspaceMmrExtension::new(Arc::new(
             SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(self.consensus_client.clone()),
+        )));
+
+        exts.register(MessengerExtension::new(Arc::new(
+            MessengerHostFunctionsImpl::<CBlock, _, Block, _>::new(
+                self.consensus_client.clone(),
+                self.executor.clone(),
+            ),
         )));
 
         exts
