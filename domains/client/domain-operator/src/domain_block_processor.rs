@@ -396,6 +396,8 @@ where
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
             block_fees,
+            // TODO: Fetch transfers from the runtime
+            transfers: Default::default(),
         };
 
         Ok(DomainBlockResult {
@@ -973,6 +975,7 @@ mod tests {
             execution_trace: sp_std::vec![],
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 

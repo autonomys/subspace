@@ -453,6 +453,7 @@ pub(crate) fn create_dummy_receipt(
         execution_trace,
         execution_trace_root,
         block_fees: Default::default(),
+        transfers: Default::default(),
     }
 }
 

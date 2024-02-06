@@ -433,6 +433,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// Compute and Domain storage fees are shared across operators and Consensus
     /// storage fees are given to the consensus block author.
     pub block_fees: BlockFees<Balance>,
+    /// List of transfers from this Domain to other chains
+    pub transfers: BTreeMap<ChainId, Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
@@ -510,6 +512,7 @@ impl<
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 
@@ -546,6 +549,7 @@ impl<
             execution_trace,
             execution_trace_root,
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 }
