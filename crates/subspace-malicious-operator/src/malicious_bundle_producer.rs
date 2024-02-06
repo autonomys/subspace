@@ -28,7 +28,7 @@ use sp_runtime::{generic, RuntimeAppPublic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime::{
     CheckStorageAccess, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
 };
@@ -183,12 +183,12 @@ where
             .await
     }
 
-    pub async fn start<NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static>(
+    pub async fn start<NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static>(
         mut self,
         new_slot_notification_stream: NSNS,
     ) {
         let mut new_slot_notification_stream = Box::pin(new_slot_notification_stream);
-        while let Some((slot, global_randomness)) = new_slot_notification_stream.next().await {
+        while let Some((slot, proof_of_time)) = new_slot_notification_stream.next().await {
             if let Some((operator_id, signing_key)) =
                 self.malicious_operator_status.registered_operator()
             {
@@ -197,7 +197,7 @@ where
                         operator_id,
                         OperatorSlotInfo {
                             slot,
-                            global_randomness,
+                            proof_of_time,
                         },
                     )
                     .await;

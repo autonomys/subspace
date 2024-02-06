@@ -74,7 +74,7 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::{Randomness, Solution};
+use subspace_core_primitives::{PotOutput, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::transaction_pool::FullPool;
@@ -248,7 +248,7 @@ pub struct MockConsensusNode {
     next_slot: u64,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
-    new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, Randomness)>>,
+    new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, PotOutput)>>,
     /// The acknowledgement sender subscribers
     #[allow(clippy::type_complexity)]
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
@@ -436,7 +436,10 @@ impl MockConsensusNode {
         &mut self,
         slot: Slot,
     ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
-        let value = (slot, Randomness::from(Hash::random().to_fixed_bytes()));
+        let random_val: [u8; 16] = Hash::random().to_fixed_bytes()[..16]
+            .try_into()
+            .expect("slice with length of 16 must able convert into [u8; 16]; qed");
+        let value = (slot, PotOutput::from(random_val));
         self.new_slot_notification_subscribers
             .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
 
@@ -459,7 +462,7 @@ impl MockConsensusNode {
     }
 
     /// Subscribe the new slot notification
-    pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, Randomness)> {
+    pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, PotOutput)> {
         let (tx, rx) = mpsc::unbounded();
         self.new_slot_notification_subscribers.push(tx);
         rx

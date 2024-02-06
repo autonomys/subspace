@@ -443,7 +443,7 @@ where
             .then(|slot_notification| async move {
                 (
                     slot_notification.new_slot_info.slot,
-                    slot_notification.new_slot_info.global_randomness,
+                    slot_notification.new_slot_info.proof_of_time,
                 )
             });
 

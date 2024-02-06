@@ -159,7 +159,8 @@ async fn start_farming<PosTable, Client>(
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
             let global_challenge = new_slot_info
-                .global_randomness
+                .proof_of_time
+                .derive_global_randomness()
                 .derive_global_challenge(new_slot_info.slot.into());
             let audit_result = audit_sector_sync(
                 &public_key,

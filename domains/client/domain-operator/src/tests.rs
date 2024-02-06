@@ -39,7 +39,7 @@ use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Balance;
 use subspace_test_service::{
@@ -3732,12 +3732,15 @@ async fn test_bad_receipt_chain() {
     let parent_bad_receipt_hash = bad_receipt_hash;
     let slot = ferdie.produce_slot();
     let bundle = {
+        let random_val: [u8; 16] = Hash::random().to_fixed_bytes()[..16]
+            .try_into()
+            .expect("slice with length of 16 must able convert into [u8; 16]; qed");
         bundle_producer
             .produce_bundle(
                 0,
                 OperatorSlotInfo {
                     slot,
-                    global_randomness: Randomness::from(Hash::random().to_fixed_bytes()),
+                    proof_of_time: PotOutput::from(random_val),
                 },
             )
             .await

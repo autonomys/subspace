@@ -41,7 +41,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 
@@ -270,7 +270,7 @@ where
         + FraudProofApi<CBlock, Header>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>

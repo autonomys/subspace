@@ -116,7 +116,7 @@ where
     ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
         let OperatorSlotInfo {
             slot,
-            global_randomness,
+            proof_of_time,
         } = slot_info;
 
         let domain_best_number = self.client.info().best_number;
@@ -148,7 +148,7 @@ where
                 consensus_chain_best_hash,
                 self.domain_id,
                 operator_id,
-                global_randomness,
+                proof_of_time,
             )?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
