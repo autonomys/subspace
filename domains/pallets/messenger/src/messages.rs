@@ -5,10 +5,10 @@ use crate::{
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use scale_info::TypeInfo;
+use sp_domains::ChainId;
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, Message, MessageId,
-    MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
-    VersionedPayload,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, Message, MessageId, MessageWeightTag,
+    Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse, VersionedPayload,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};

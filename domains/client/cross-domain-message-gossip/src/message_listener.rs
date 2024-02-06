@@ -3,7 +3,7 @@ use futures::{Stream, StreamExt};
 use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_blockchain::HeaderBackend;
-use sp_messenger::messages::ChainId;
+use sp_domains::ChainId;
 use sp_runtime::codec::Decode;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;

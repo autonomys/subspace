@@ -21,7 +21,7 @@ use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_messenger::messages::ChainId;
+use sp_domains::ChainId;
 use std::env;
 use subspace_runtime::{Block, RuntimeApi};
 use tracing::{debug, error, info, info_span, warn};

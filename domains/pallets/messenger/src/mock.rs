@@ -2,8 +2,8 @@ use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRoo
 use frame_support::storage::generator::StorageDoubleMap;
 use frame_support::weights::Weight;
 use sp_core::storage::StorageKey;
+use sp_domains::ChainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
-use sp_messenger::messages::ChainId;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::DispatchResult;
 use sp_state_machine::backend::Backend;
@@ -27,8 +27,8 @@ macro_rules! impl_runtime {
         use frame_support::parameter_types;
         use pallet_balances::AccountData;
         use sp_core::H256;
+        use sp_domains::ChainId;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
-        use sp_messenger::messages::ChainId;
         use sp_runtime::traits::{
             BlakeTwo256, ConstU16, ConstU32, ConstU64, Convert, IdentityLookup,
         };

@@ -38,9 +38,8 @@ use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
-use sp_messenger::messages::{
-    ChainId, ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce,
-};
+use sp_domains::ChainId;
+use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
@@ -108,10 +107,11 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
+    use sp_domains::ChainId;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;

@@ -6,8 +6,8 @@ use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use pallet_balances::AccountData;
 use sp_core::H256;
+use sp_domains::ChainId;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
-use sp_messenger::messages::ChainId;
 use sp_runtime::traits::{BlakeTwo256, Convert, IdentityLookup};
 use sp_runtime::{BuildStorage, DispatchError};
 

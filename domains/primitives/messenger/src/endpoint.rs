@@ -1,8 +1,8 @@
-use crate::messages::ChainId;
 use codec::{Decode, Encode};
 use frame_support::weights::Weight;
 use frame_support::Parameter;
 use scale_info::TypeInfo;
+use sp_domains::ChainId;
 use sp_runtime::traits::Member;
 use sp_runtime::{sp_std, DispatchError, DispatchResult};
 use sp_std::vec::Vec;

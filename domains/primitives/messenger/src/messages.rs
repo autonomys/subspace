@@ -1,8 +1,7 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use serde::{Deserialize, Serialize};
-use sp_domains::DomainId;
+use sp_domains::ChainId;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
@@ -113,65 +112,6 @@ impl MessageWeightTag {
             ) => MessageWeightTag::EndpointResponse(endpoint),
             _ => MessageWeightTag::None,
         }
-    }
-}
-
-/// Identifier of a chain.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Hash,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    MaxEncodedLen,
-)]
-pub enum ChainId {
-    Consensus,
-    Domain(DomainId),
-}
-
-impl ChainId {
-    #[inline]
-    pub fn consensus_chain_id() -> Self {
-        Self::Consensus
-    }
-
-    #[inline]
-    pub fn is_consensus_chain(&self) -> bool {
-        match self {
-            ChainId::Consensus => true,
-            ChainId::Domain(_) => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_domain_chain(&self) -> Option<DomainId> {
-        match self {
-            ChainId::Consensus => None,
-            ChainId::Domain(domain_id) => Some(*domain_id),
-        }
-    }
-}
-
-impl From<u32> for ChainId {
-    #[inline]
-    fn from(x: u32) -> Self {
-        Self::Domain(DomainId::new(x))
-    }
-}
-
-impl From<DomainId> for ChainId {
-    #[inline]
-    fn from(x: DomainId) -> Self {
-        Self::Domain(x)
     }
 }
 

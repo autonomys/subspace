@@ -60,12 +60,12 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
-    OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    ChainId, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor,
+    OpaqueBundle, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
+use sp_messenger::messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{

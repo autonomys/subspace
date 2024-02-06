@@ -2,7 +2,8 @@
 //! Test primitive crates that expose necessary extensions that are used in tests.
 
 use codec::{Decode, Encode};
-use sp_messenger::messages::{ChainId, ChannelId};
+use sp_domains::ChainId;
+use sp_messenger::messages::ChannelId;
 use subspace_runtime_primitives::Moment;
 
 sp_api::decl_runtime_apis! {

@@ -6,10 +6,10 @@ use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
+use sp_domains::ChainId;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
 };
-use sp_messenger::messages::ChainId;
 use sp_runtime::traits::Convert;
 use std::marker::PhantomData;
 

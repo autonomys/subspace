@@ -9,7 +9,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::twox_256;
-use sp_messenger::messages::ChainId;
+use sp_domains::ChainId;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::{BTreeMap, HashSet};
 use std::future::poll_fn;

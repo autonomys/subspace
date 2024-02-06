@@ -947,6 +947,65 @@ impl ExtrinsicDigest {
     }
 }
 
+/// Identifier of a chain.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+    MaxEncodedLen,
+)]
+pub enum ChainId {
+    Consensus,
+    Domain(DomainId),
+}
+
+impl ChainId {
+    #[inline]
+    pub fn consensus_chain_id() -> Self {
+        Self::Consensus
+    }
+
+    #[inline]
+    pub fn is_consensus_chain(&self) -> bool {
+        match self {
+            ChainId::Consensus => true,
+            ChainId::Domain(_) => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_domain_chain(&self) -> Option<DomainId> {
+        match self {
+            ChainId::Consensus => None,
+            ChainId::Domain(domain_id) => Some(*domain_id),
+        }
+    }
+}
+
+impl From<u32> for ChainId {
+    #[inline]
+    fn from(x: u32) -> Self {
+        Self::Domain(DomainId::new(x))
+    }
+}
+
+impl From<DomainId> for ChainId {
+    #[inline]
+    fn from(x: DomainId) -> Self {
+        Self::Domain(x)
+    }
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,

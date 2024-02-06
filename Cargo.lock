@@ -2038,6 +2038,7 @@ dependencies = [
  "sc-utils",
  "sp-blockchain",
  "sp-core",
+ "sp-domains",
  "sp-messenger",
  "sp-runtime",
  "tracing",
@@ -2728,6 +2729,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
+ "sp-domains",
  "sp-messenger",
  "subspace-runtime-primitives",
 ]
@@ -7588,6 +7590,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-domains",
  "sp-io",
  "sp-messenger",
  "sp-runtime",

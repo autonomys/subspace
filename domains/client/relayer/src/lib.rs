@@ -9,9 +9,9 @@ use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use scale_info::TypeInfo;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::DomainsApi;
+use sp_domains::{ChainId, DomainsApi};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, ConsensusChainMmrLeafProof,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ConsensusChainMmrLeafProof,
     CrossDomainMessage, Proof,
 };
 use sp_messenger::{MessengerApi, RelayerApi};

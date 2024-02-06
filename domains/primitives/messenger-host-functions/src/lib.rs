@@ -19,8 +19,8 @@
 
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_domains::DomainId;
-use sp_messenger::messages::{ChainId, MessageId};
+use sp_domains::{ChainId, DomainId};
+use sp_messenger::messages::MessageId;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 

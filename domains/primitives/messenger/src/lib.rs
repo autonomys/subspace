@@ -21,8 +21,8 @@ pub mod endpoint;
 pub mod messages;
 
 use codec::{Decode, Encode};
-use messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
-use sp_domains::DomainId;
+use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
+use sp_domains::{ChainId, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_std::vec::Vec;
 

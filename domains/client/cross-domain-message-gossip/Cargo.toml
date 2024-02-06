@@ -21,6 +21,7 @@ sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/sub
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 tracing = "0.1.40"

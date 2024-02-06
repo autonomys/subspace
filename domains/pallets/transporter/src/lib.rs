@@ -24,7 +24,7 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
-use sp_messenger::messages::ChainId;
+use sp_domains::ChainId;
 
 #[cfg(test)]
 mod mock;
@@ -73,11 +73,11 @@ mod pallet {
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
+    use sp_domains::ChainId;
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
-    use sp_messenger::messages::ChainId;
     use sp_runtime::traits::Convert;
     use sp_std::vec;
 
