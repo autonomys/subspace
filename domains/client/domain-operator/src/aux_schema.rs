@@ -254,6 +254,7 @@ mod tests {
             execution_trace: Default::default(),
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 

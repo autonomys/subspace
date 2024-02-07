@@ -195,6 +195,57 @@ impl PassBy for DomainId {
     type PassBy = pass_by::Codec<Self>;
 }
 
+/// Identifier of a chain.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+    MaxEncodedLen,
+)]
+pub enum ChainId {
+    Consensus,
+    Domain(DomainId),
+}
+
+impl ChainId {
+    #[inline]
+    pub fn consensus_chain_id() -> Self {
+        Self::Consensus
+    }
+
+    #[inline]
+    pub fn is_consensus_chain(&self) -> bool {
+        match self {
+            ChainId::Consensus => true,
+            ChainId::Domain(_) => false,
+        }
+    }
+}
+
+impl From<u32> for ChainId {
+    #[inline]
+    fn from(x: u32) -> Self {
+        Self::Domain(DomainId::new(x))
+    }
+}
+
+impl From<DomainId> for ChainId {
+    #[inline]
+    fn from(x: DomainId) -> Self {
+        Self::Domain(x)
+    }
+}
+
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
@@ -433,6 +484,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// Compute and Domain storage fees are shared across operators and Consensus
     /// storage fees are given to the consensus block author.
     pub block_fees: BlockFees<Balance>,
+    /// List of transfers from this Domain to other chains
+    pub transfers: BTreeMap<ChainId, Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
@@ -510,6 +563,7 @@ impl<
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 
@@ -546,6 +600,7 @@ impl<
             execution_trace,
             execution_trace_root,
             block_fees: Default::default(),
+            transfers: Default::default(),
         }
     }
 }
