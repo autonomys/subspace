@@ -159,8 +159,8 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainId, EpochIndex, GenesisDomain, OperatorAllowList,
+        OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -495,28 +495,12 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
-    /// The latest confirmed block number of each domain.
-    #[pallet::storage]
-    pub(super) type LatestConfirmedDomainBlockNumber<T: Config> =
-        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
-
     /// Whether the head receipt have extended in the current consensus block
     ///
     /// Temporary storage only exist during block execution
     #[pallet::storage]
     pub(super) type HeadReceiptExtended<T: Config> =
         StorageMap<_, Identity, DomainId, bool, ValueQuery>;
-
-    /// State root mapped again each domain (block, hash)
-    /// This acts as an index for other protocols like XDM to fetch state roots faster.
-    #[pallet::storage]
-    pub(super) type StateRoots<T: Config> = StorageMap<
-        _,
-        Identity,
-        (DomainId, DomainBlockNumberFor<T>, T::DomainHash),
-        T::DomainHash,
-        OptionQuery,
-    >;
 
     /// The consensus block hash used to verify ER,
     /// only store the consensus block hash for a domain
@@ -570,6 +554,16 @@ mod pallet {
     #[pallet::storage]
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
+
+    /// Storage to hold all the domain's latest confirmed block.
+    #[pallet::storage]
+    pub(super) type LatestConfirmedDomainBlock<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        ConfirmedDomainBlock<DomainBlockNumberFor<T>, T::DomainHash>,
+        OptionQuery,
+    >;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -897,11 +891,6 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        LatestConfirmedDomainBlockNumber::<T>::insert(
-                            domain_id,
-                            confirmed_block_info.domain_block_number,
-                        );
-
                         if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
@@ -996,17 +985,9 @@ mod pallet {
                     let receipt_hash = BlockTree::<T>::take(domain_id, to_prune)
                         .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
-                    let BlockTreeNode {
-                        execution_receipt,
-                        operator_ids,
-                    } = BlockTreeNodes::<T>::take(receipt_hash)
-                        .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
-
-                    let _ = StateRoots::<T>::take((
-                        domain_id,
-                        execution_receipt.domain_block_number,
-                        execution_receipt.domain_block_hash,
-                    ));
+                    let BlockTreeNode { operator_ids, .. } =
+                        BlockTreeNodes::<T>::take(receipt_hash)
+                            .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                     // NOTE: the operator id will be deduplicated since we are using `BTreeMap`
                     // and slashed reason will hold earliest bad execution receipt hash which this
@@ -1506,14 +1487,6 @@ impl<T: Config> Pallet<T> {
         Some(HeadDomainNumber::<T>::get(domain_id))
     }
 
-    pub fn domain_state_root(
-        domain_id: DomainId,
-        domain_block_number: DomainBlockNumberFor<T>,
-        domain_block_hash: T::DomainHash,
-    ) -> Option<T::DomainHash> {
-        StateRoots::<T>::get((domain_id, domain_block_number, domain_block_hash))
-    }
-
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
         DomainRegistry::<T>::get(domain_id)
             .map(|domain_object| domain_object.domain_config.runtime_id)
@@ -1911,7 +1884,7 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<DomainBlockNumberFor<T>> {
         let oldest_nonconfirmed_er_number =
-            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
+            Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
 
         if BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some() {
             Some(oldest_nonconfirmed_er_number)
@@ -1922,6 +1895,14 @@ impl<T: Config> Pallet<T> {
             // - When using consensus block to derive the challenge period forward (unimplemented yet)
             None
         }
+    }
+
+    /// Returns the latest confirmed domain block number for a given domain
+    /// Zero block is always a default confirmed block.
+    pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
+        LatestConfirmedDomainBlock::<T>::get(domain_id)
+            .map(|block| block.block_number)
+            .unwrap_or_default()
     }
 
     /// Returns the domain block limit of the given domain.
@@ -1941,7 +1922,7 @@ impl<T: Config> Pallet<T> {
 
         // Start from the oldest non-confirmed ER to the head domain number
         let mut to_check =
-            LatestConfirmedDomainBlockNumber::<T>::get(domain_id).saturating_add(One::one());
+            Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
         let head_number = HeadDomainNumber::<T>::get(domain_id);
 
         while to_check <= head_number {

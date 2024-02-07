@@ -1,12 +1,12 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
+use codec::{Decode, Encode, FullCodec};
 use frame_support::storage::generator::StorageMap;
 use frame_support::storage::storage_prefix;
 use frame_support::Identity;
 use scale_info::TypeInfo;
-use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
+pub use sp_domains::ChainId;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
@@ -117,57 +117,6 @@ impl MessageWeightTag {
             ) => MessageWeightTag::EndpointResponse(endpoint),
             _ => MessageWeightTag::None,
         }
-    }
-}
-
-/// Identifier of a chain.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Hash,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Encode,
-    Decode,
-    TypeInfo,
-    Serialize,
-    Deserialize,
-    MaxEncodedLen,
-)]
-pub enum ChainId {
-    Consensus,
-    Domain(DomainId),
-}
-
-impl ChainId {
-    #[inline]
-    pub fn consensus_chain_id() -> Self {
-        Self::Consensus
-    }
-
-    #[inline]
-    pub fn is_consensus_chain(&self) -> bool {
-        match self {
-            ChainId::Consensus => true,
-            ChainId::Domain(_) => false,
-        }
-    }
-}
-
-impl From<u32> for ChainId {
-    #[inline]
-    fn from(x: u32) -> Self {
-        Self::Domain(DomainId::new(x))
-    }
-}
-
-impl From<DomainId> for ChainId {
-    #[inline]
-    fn from(x: DomainId) -> Self {
-        Self::Domain(x)
     }
 }
 
