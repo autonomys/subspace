@@ -1,6 +1,5 @@
 //! Domain block tree
 
-use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
     DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
@@ -313,12 +312,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     operator_ids,
                 } = BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
 
-                _ = StateRoots::<T>::take((
-                    domain_id,
-                    to_prune,
-                    execution_receipt.domain_block_hash,
-                ));
-
                 // Collect the paid bundle storage fees and the invalid bundle author
                 let mut paid_bundle_storage_fees = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
@@ -395,14 +388,6 @@ fn add_new_receipt_to_block_tree<T: Config>(
     // Construct and add a new domain block to the block tree
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = execution_receipt.domain_block_number;
-    StateRoots::<T>::insert(
-        (
-            domain_id,
-            domain_block_number,
-            execution_receipt.domain_block_hash,
-        ),
-        execution_receipt.final_state_root,
-    );
 
     BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
     let block_tree_node = BlockTreeNode {
@@ -437,14 +422,6 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     };
     // NOTE: no need to update the head receipt number as `HeadReceiptNumber` is using `ValueQuery`
     BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
-    StateRoots::<T>::insert(
-        (
-            domain_id,
-            domain_block_number,
-            block_tree_node.execution_receipt.domain_block_hash,
-        ),
-        block_tree_node.execution_receipt.final_state_root,
-    );
     BlockTreeNodes::<T>::insert(er_hash, block_tree_node);
 }
 

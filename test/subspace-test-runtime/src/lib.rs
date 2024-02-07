@@ -532,8 +532,8 @@ impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo 
         Domains::domain_best_number(domain_id)
     }
 
-    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
-        Domains::domain_state_root(domain_id, number, hash)
+    fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash> {
+        None
     }
 }
 
@@ -1253,8 +1253,8 @@ impl_runtime_apis! {
             Domains::domain_best_number(domain_id)
         }
 
-        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
-            Domains::domain_state_root(domain_id, number, hash)
+        fn domain_state_root(_domain_id: DomainId, _number: DomainNumber, _hash: DomainHash) -> Option<DomainHash>{
+            None
         }
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {

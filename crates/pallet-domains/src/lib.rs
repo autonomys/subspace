@@ -502,17 +502,6 @@ mod pallet {
     pub(super) type HeadReceiptExtended<T: Config> =
         StorageMap<_, Identity, DomainId, bool, ValueQuery>;
 
-    /// State root mapped again each domain (block, hash)
-    /// This acts as an index for other protocols like XDM to fetch state roots faster.
-    #[pallet::storage]
-    pub(super) type StateRoots<T: Config> = StorageMap<
-        _,
-        Identity,
-        (DomainId, DomainBlockNumberFor<T>, T::DomainHash),
-        T::DomainHash,
-        OptionQuery,
-    >;
-
     /// The consensus block hash used to verify ER,
     /// only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
@@ -996,17 +985,9 @@ mod pallet {
                     let receipt_hash = BlockTree::<T>::take(domain_id, to_prune)
                         .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
-                    let BlockTreeNode {
-                        execution_receipt,
-                        operator_ids,
-                    } = BlockTreeNodes::<T>::take(receipt_hash)
-                        .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
-
-                    let _ = StateRoots::<T>::take((
-                        domain_id,
-                        execution_receipt.domain_block_number,
-                        execution_receipt.domain_block_hash,
-                    ));
+                    let BlockTreeNode { operator_ids, .. } =
+                        BlockTreeNodes::<T>::take(receipt_hash)
+                            .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                     // NOTE: the operator id will be deduplicated since we are using `BTreeMap`
                     // and slashed reason will hold earliest bad execution receipt hash which this
@@ -1504,14 +1485,6 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_best_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
         Some(HeadDomainNumber::<T>::get(domain_id))
-    }
-
-    pub fn domain_state_root(
-        domain_id: DomainId,
-        domain_block_number: DomainBlockNumberFor<T>,
-        domain_block_hash: T::DomainHash,
-    ) -> Option<T::DomainHash> {
-        StateRoots::<T>::get((domain_id, domain_block_number, domain_block_hash))
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
