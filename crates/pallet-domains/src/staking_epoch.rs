@@ -481,8 +481,8 @@ mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
-        LatestConfirmedDomainBlockNumber, NominatorCount, OperatorIdOwner, OperatorSigningKey,
-        Operators, PendingOperatorSwitches, Withdrawals,
+        LatestConfirmedDomainBlock, NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators,
+        PendingOperatorSwitches, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -499,7 +499,7 @@ mod tests {
     use frame_support::traits::fungible::InspectHold;
     use frame_support::weights::Weight;
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorAllowList, OperatorPair};
+    use sp_domains::{ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorPair};
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
     use std::collections::{BTreeMap, BTreeSet};
@@ -638,7 +638,16 @@ mod tests {
 
             // de-register operator
             let domain_block_number = 100;
-            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
+            LatestConfirmedDomainBlock::<Test>::insert(
+                domain_id,
+                ConfirmedDomainBlock {
+                    block_number: domain_block_number,
+                    block_hash: Default::default(),
+                    parent_block_receipt_hash: Default::default(),
+                    state_root: Default::default(),
+                    extrinsics_root: Default::default(),
+                },
+            );
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
             // finalize and add to pending operator unlocks
@@ -647,7 +656,16 @@ mod tests {
             // staking withdrawal is 5 blocks,
             // to unlock funds, confirmed block should be atleast 105
             let domain_block_number = 105;
-            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
+            LatestConfirmedDomainBlock::<Test>::insert(
+                domain_id,
+                ConfirmedDomainBlock {
+                    block_number: domain_block_number,
+                    block_hash: Default::default(),
+                    parent_block_receipt_hash: Default::default(),
+                    state_root: Default::default(),
+                    extrinsics_root: Default::default(),
+                },
+            );
 
             assert_ok!(do_unlock_operator::<Test>(operator_id));
 

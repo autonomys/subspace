@@ -36,7 +36,7 @@ use core::ops::{Add, Sub};
 use core::str::FromStr;
 use domain_runtime_primitives::BlockFees;
 use hexlit::hex;
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_application_crypto::sr25519;
@@ -608,6 +608,21 @@ impl<CHash: Default> ProofOfElection<CHash> {
             consensus_block_hash: Default::default(),
         }
     }
+}
+
+/// Type holding the block details of confirmed domain block.
+#[derive(TypeInfo, Encode, Decode, Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmedDomainBlock<DomainBlockNumber: Codec, DomainHash: Codec> {
+    /// Block number of the confirmed domain block.
+    pub block_number: DomainBlockNumber,
+    /// Block hash of the confirmed domain block.
+    pub block_hash: DomainHash,
+    /// Parent block hash of the confirmed domain block.
+    pub parent_block_receipt_hash: DomainHash,
+    /// State root of the domain block.
+    pub state_root: DomainHash,
+    /// Extrinsic root of the domain block.
+    pub extrinsics_root: DomainHash,
 }
 
 /// Type that represents an operator allow list for Domains.

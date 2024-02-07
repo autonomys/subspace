@@ -4,14 +4,14 @@ use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
     DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
-    InboxedBundleAuthor, LatestConfirmedDomainBlockNumber, ReceiptHashFor,
+    InboxedBundleAuthor, LatestConfirmedDomainBlock, Pallet, ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
+use sp_domains::{ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
@@ -109,7 +109,7 @@ pub(crate) fn execution_receipt_type<T: Config>(
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
     let latest_confirmed_domain_block_number =
-        LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
+        Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
 
     match receipt_number.cmp(&next_receipt_number) {
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
@@ -351,6 +351,18 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.consensus_block_number,
                 );
 
+                LatestConfirmedDomainBlock::<T>::insert(
+                    domain_id,
+                    ConfirmedDomainBlock {
+                        block_number: to_prune,
+                        block_hash: execution_receipt.domain_block_hash,
+                        parent_block_receipt_hash: execution_receipt
+                            .parent_domain_block_receipt_hash,
+                        state_root: execution_receipt.final_state_root,
+                        extrinsics_root: execution_receipt.domain_block_extrinsic_root,
+                    },
+                );
+
                 return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
                     operator_ids,
@@ -407,6 +419,18 @@ pub(crate) fn import_genesis_receipt<T: Config>(
 ) {
     let er_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = genesis_receipt.domain_block_number;
+
+    LatestConfirmedDomainBlock::<T>::insert(
+        domain_id,
+        ConfirmedDomainBlock {
+            block_number: domain_block_number,
+            block_hash: genesis_receipt.domain_block_hash,
+            parent_block_receipt_hash: Default::default(),
+            state_root: genesis_receipt.final_state_root,
+            extrinsics_root: genesis_receipt.domain_block_extrinsic_root,
+        },
+    );
+
     let block_tree_node = BlockTreeNode {
         execution_receipt: genesis_receipt,
         operator_ids: sp_std::vec![],
