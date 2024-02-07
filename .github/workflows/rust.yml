@@ -57,7 +57,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -148,7 +148,7 @@ jobs:
   cargo-test:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 

@@ -106,13 +106,13 @@ jobs:
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-14"') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-14"') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
             rustflags: ""
