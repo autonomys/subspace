@@ -628,6 +628,17 @@ parameter_types! {
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
+pub struct BlockSlot;
+impl pallet_domains::BlockSlot for BlockSlot {
+    fn current_slot() -> sp_consensus_slots::Slot {
+        Subspace::current_slot()
+    }
+
+    fn future_slot() -> sp_consensus_slots::Slot {
+        Subspace::current_slot() + Slot::from(BlockAuthoringDelay::get())
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -657,6 +668,7 @@ impl pallet_domains::Config for Runtime {
     type MinNominatorStake = MinNominatorStake;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockSlot = BlockSlot;
 }
 
 parameter_types! {

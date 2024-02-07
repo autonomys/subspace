@@ -2,7 +2,7 @@ use crate::block_tree::BlockTreeNode;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::staking::Operator;
 use crate::{
-    self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
+    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
     ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
     OperatorStatus, Operators, ReceiptHashFor,
@@ -223,6 +223,17 @@ impl StorageFee<Balance> for DummyStorageFee {
     fn note_storage_fees(_fee: Balance) {}
 }
 
+pub struct DummyBlockSlot;
+impl BlockSlot for DummyBlockSlot {
+    fn current_slot() -> sp_consensus_slots::Slot {
+        0u64.into()
+    }
+
+    fn future_slot() -> sp_consensus_slots::Slot {
+        0u64.into()
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
@@ -252,6 +263,7 @@ impl pallet_domains::Config for Test {
     type SudoId = ();
     type PalletId = DomainsPalletId;
     type StorageFee = DummyStorageFee;
+    type BlockSlot = DummyBlockSlot;
 }
 
 pub struct ExtrinsicStorageFees;

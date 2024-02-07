@@ -7168,6 +7168,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-consensus-slots",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
  "sp-domains-fraud-proof",
