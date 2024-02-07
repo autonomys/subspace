@@ -170,8 +170,7 @@ async fn benchmark_bundle_with_evm_tx(
     const TX_TYPES: u32 = 4;
     let mut thread_rng = rand::thread_rng();
     let between = Uniform::from(0..TX_TYPES);
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -754,7 +753,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce a bundle that contains the just sent extrinsic
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 3);
+    assert_eq!(bundle.extrinsics.len(), 3);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -762,7 +761,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce one more bundle, this bundle should contains the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let receipt = bundle.unwrap().into_receipt();
+    let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
     // All the transaction fee is collected as operator reward
