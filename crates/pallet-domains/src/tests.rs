@@ -48,7 +48,6 @@ use sp_std::sync::Arc;
 use sp_trie::trie_types::TrieDBMutBuilderV1;
 use sp_trie::{LayoutV1, PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
-use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::{Randomness, U256 as P256};
 use subspace_runtime_primitives::{Moment, StorageFee, SSC};
 
@@ -116,23 +115,10 @@ parameter_types! {
     pub const BlockTreePruningDepth: u32 = 16;
 }
 
-static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
-
 pub struct ConfirmationDepthK;
-
-impl ConfirmationDepthK {
-    fn set(new: BlockNumber) {
-        CONFIRMATION_DEPTH_K.store(new, Ordering::SeqCst);
-    }
-
-    fn get() -> BlockNumber {
-        CONFIRMATION_DEPTH_K.load(Ordering::SeqCst)
-    }
-}
-
 impl Get<BlockNumber> for ConfirmationDepthK {
     fn get() -> BlockNumber {
-        Self::get()
+        10
     }
 }
 
@@ -656,110 +642,6 @@ pub(crate) fn get_block_tree_node_at<T: Config>(
     BlockTreeNode<BlockNumberFor<T>, T::Hash, DomainBlockNumberFor<T>, T::DomainHash, BalanceOf<T>>,
 > {
     BlockTree::<T>::get(domain_id, block_number).and_then(BlockTreeNodes::<T>::get)
-}
-
-// TODO: Unblock once bundle producer election v2 is finished.
-#[test]
-#[ignore]
-fn test_stale_bundle_should_be_rejected() {
-    // Small macro in order to be more readable.
-    //
-    // We only care about whether the error type is `StaleBundle`.
-    macro_rules! assert_stale {
-        ($validate_bundle_result:expr) => {
-            assert_eq!(
-                $validate_bundle_result,
-                Err(pallet_domains::BundleError::StaleBundle)
-            )
-        };
-    }
-
-    macro_rules! assert_not_stale {
-        ($validate_bundle_result:expr) => {
-            assert_ne!(
-                $validate_bundle_result,
-                Err(pallet_domains::BundleError::StaleBundle)
-            )
-        };
-    }
-
-    ConfirmationDepthK::set(1);
-    new_test_ext().execute_with(|| {
-        // Create a bundle at genesis block -> #1
-        let bundle0 = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
-        System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(1);
-        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
-
-        // Create a bundle at block #1 -> #2
-        let block_hash1 = Hash::random();
-        let bundle1 = create_dummy_bundle(DOMAIN_ID, 1, block_hash1);
-        System::initialize(&2, &block_hash1, &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(2);
-        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
-        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
-    });
-
-    ConfirmationDepthK::set(2);
-    new_test_ext().execute_with(|| {
-        // Create a bundle at genesis block -> #1
-        let bundle0 = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
-        System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(1);
-        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
-
-        // Create a bundle at block #1 -> #2
-        let block_hash1 = Hash::random();
-        let bundle1 = create_dummy_bundle(DOMAIN_ID, 1, block_hash1);
-        System::initialize(&2, &block_hash1, &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(2);
-        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
-        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
-
-        // Create a bundle at block #2 -> #3
-        let block_hash2 = Hash::random();
-        let bundle2 = create_dummy_bundle(DOMAIN_ID, 2, block_hash2);
-        System::initialize(&3, &block_hash2, &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(3);
-        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
-        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
-        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle2));
-    });
-
-    ConfirmationDepthK::set(10);
-    let confirmation_depth_k = ConfirmationDepthK::get();
-    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
-        .map(|n| {
-            let consensus_block_hash = Hash::random();
-            (
-                create_dummy_bundle(DOMAIN_ID, n, consensus_block_hash),
-                consensus_block_hash,
-            )
-        })
-        .unzip();
-
-    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
-        System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(1);
-        System::finalize();
-
-        for b in 2..=n {
-            System::set_block_number(b);
-            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
-            <Domains as Hooks<BlockNumber>>::on_initialize(b);
-            System::finalize();
-        }
-    };
-
-    new_test_ext().execute_with(|| {
-        run_to_block(confirmation_depth_k + 2, block_hashes);
-        for bundle in dummy_bundles.iter().take(2) {
-            assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(bundle));
-        }
-        for bundle in dummy_bundles.iter().skip(2) {
-            assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(bundle));
-        }
-    });
 }
 
 #[test]

@@ -51,8 +51,10 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
-use sp_consensus_subspace::FarmerPublicKey;
+use sp_consensus_subspace::digests::{
+    extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
+};
+use sp_consensus_subspace::{FarmerPublicKey, PotExtension};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle};
@@ -68,6 +70,7 @@ use sp_runtime::traits::{
 use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_timestamp::Timestamp;
+use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -178,16 +181,35 @@ type StorageChanges = sp_api::StorageChanges<Block>;
 struct MockExtensionsFactory<Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
     executor: Arc<Executor>,
+    mock_pot_verifier: Arc<MockPotVerfier>,
     _phantom: PhantomData<DomainBlock>,
 }
 
 impl<Client, DomainBlock, Executor> MockExtensionsFactory<Client, DomainBlock, Executor> {
-    fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+    fn new(
+        consensus_client: Arc<Client>,
+        executor: Arc<Executor>,
+        mock_pot_verifier: Arc<MockPotVerfier>,
+    ) -> Self {
         Self {
             consensus_client,
             executor,
+            mock_pot_verifier,
             _phantom: Default::default(),
         }
+    }
+}
+
+#[derive(Default)]
+struct MockPotVerfier(Mutex<HashMap<u64, PotOutput>>);
+
+impl MockPotVerfier {
+    fn is_valid(&self, slot: u64, pot: PotOutput) -> bool {
+        self.0.lock().get(&slot).map(|p| *p == pot).unwrap_or(false)
+    }
+
+    fn inject_pot(&self, slot: u64, pot: PotOutput) {
+        self.0.lock().insert(slot, pot);
     }
 }
 
@@ -217,9 +239,41 @@ where
         exts.register(SubspaceMmrExtension::new(Arc::new(
             SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.consensus_client.clone()),
         )));
+        exts.register(PotExtension::new({
+            let client = Arc::clone(&self.consensus_client);
+            let mock_pot_verifier = Arc::clone(&self.mock_pot_verifier);
+            Box::new(
+                move |parent_hash, slot, proof_of_time, _quick_verification| {
+                    let parent_hash = {
+                        let mut converted_parent_hash = Block::Hash::default();
+                        converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
+                        converted_parent_hash
+                    };
+
+                    let parent_header = match client.header(parent_hash) {
+                        Ok(Some(parent_header)) => parent_header,
+                        _ => return false,
+                    };
+                    let parent_pre_digest = match extract_pre_digest(&parent_header) {
+                        Ok(parent_pre_digest) => parent_pre_digest,
+                        _ => return false,
+                    };
+
+                    let parent_slot = parent_pre_digest.slot();
+                    if slot <= *parent_slot {
+                        return false;
+                    }
+
+                    mock_pot_verifier.is_valid(slot, proof_of_time)
+                },
+            )
+        }));
         exts
     }
 }
+
+type NewSlot = (Slot, PotOutput);
+
 /// A mock Subspace consensus node instance used for testing.
 pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
@@ -246,6 +300,8 @@ pub struct MockConsensusNode {
     pub network_starter: Option<NetworkStarter>,
     /// The next slot number
     next_slot: u64,
+    /// The mock pot verifier
+    mock_pot_verifier: Arc<MockPotVerfier>,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
     new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, PotOutput)>>,
@@ -290,11 +346,13 @@ impl MockConsensusNode {
                 .expect("Fail to new full parts");
 
         let client = Arc::new(client);
+        let mock_pot_verifier = Arc::new(MockPotVerfier::default());
         client
             .execution_extensions()
             .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
                 client.clone(),
                 Arc::new(executor.clone()),
+                Arc::clone(&mock_pot_verifier),
             ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
@@ -368,6 +426,7 @@ impl MockConsensusNode {
             rpc_handlers,
             network_starter: Some(network_starter),
             next_slot: 1,
+            mock_pot_verifier,
             new_slot_notification_subscribers: Vec::new(),
             acknowledgement_sender_subscribers: Vec::new(),
             block_import,
@@ -425,33 +484,35 @@ impl MockConsensusNode {
     }
 
     /// Produce a slot only, without waiting for the potential slot handlers.
-    pub fn produce_slot(&mut self) -> Slot {
+    pub fn produce_slot(&mut self) -> NewSlot {
         let slot = Slot::from(self.next_slot);
+        let proof_of_time = PotOutput::from(
+            <&[u8] as TryInto<[u8; 16]>>::try_into(&Hash::random().to_fixed_bytes()[..16])
+                .expect("slice with length of 16 must able convert into [u8; 16]; qed"),
+        );
+        self.mock_pot_verifier.inject_pot(*slot, proof_of_time);
         self.next_slot += 1;
-        slot
+
+        (slot, proof_of_time)
     }
 
     /// Notify the executor about the new slot and wait for the bundle produced at this slot.
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
-        slot: Slot,
+        new_slot: NewSlot,
     ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
-        let random_val: [u8; 16] = Hash::random().to_fixed_bytes()[..16]
-            .try_into()
-            .expect("slice with length of 16 must able convert into [u8; 16]; qed");
-        let value = (slot, PotOutput::from(random_val));
         self.new_slot_notification_subscribers
-            .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
+            .retain(|subscriber| subscriber.unbounded_send(new_slot).is_ok());
 
         self.confirm_acknowledgement().await;
-        self.get_bundle_from_tx_pool(slot.into())
+        self.get_bundle_from_tx_pool(new_slot)
     }
 
     /// Produce a new slot and wait for a bundle produced at this slot.
     pub async fn produce_slot_and_wait_for_bundle_submission(
         &mut self,
     ) -> (
-        Slot,
+        NewSlot,
         Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>>,
     ) {
         let slot = self.produce_slot();
@@ -535,7 +596,7 @@ impl MockConsensusNode {
     /// Get the bundle that created at `slot` from the transaction pool
     pub fn get_bundle_from_tx_pool(
         &self,
-        slot: u64,
+        new_slot: NewSlot,
     ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
@@ -543,7 +604,7 @@ impl MockConsensusNode {
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
             {
-                if opaque_bundle.sealed_header.slot_number() == slot {
+                if opaque_bundle.sealed_header.slot_number() == *new_slot.0 {
                     return Some(opaque_bundle);
                 }
             }
@@ -701,7 +762,9 @@ impl MockConsensusNode {
         let inherent_txns = block_builder.create_inherents(inherent_data)?;
 
         for tx in inherent_txns.into_iter().chain(extrinsics) {
-            sc_block_builder::BlockBuilder::push(&mut block_builder, tx)?;
+            if let Err(err) = sc_block_builder::BlockBuilder::push(&mut block_builder, tx) {
+                tracing::error!("Invalid transaction while building block: {}", err);
+            }
         }
 
         let (block, storage_changes, _) = block_builder.build()?.into_inner();
@@ -743,7 +806,7 @@ impl MockConsensusNode {
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_block_with_slot_at(
         &mut self,
-        slot: Slot,
+        new_slot: NewSlot,
         parent_hash: <Block as BlockT>::Hash,
         maybe_extrinsics: Option<Vec<<Block as BlockT>::Extrinsic>>,
     ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
@@ -765,7 +828,9 @@ impl MockConsensusNode {
             .map(|t| self.transaction_pool.hash_of(t))
             .collect();
 
-        let (block, storage_changes) = self.build_block(slot, parent_hash, extrinsics).await?;
+        let (block, storage_changes) = self
+            .build_block(new_slot.0, parent_hash, extrinsics)
+            .await?;
 
         log_new_block(&block, block_timer.elapsed().as_millis());
 
@@ -785,7 +850,7 @@ impl MockConsensusNode {
     /// Produce a new block on top of the current best block, with the extrinsics collected from
     /// the transaction pool.
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
-    pub async fn produce_block_with_slot(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_block_with_slot(&mut self, slot: NewSlot) -> Result<(), Box<dyn Error>> {
         self.produce_block_with_slot_at(slot, self.client.info().best_hash, None)
             .await?;
         Ok(())
