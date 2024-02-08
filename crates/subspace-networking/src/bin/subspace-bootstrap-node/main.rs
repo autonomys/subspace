@@ -7,6 +7,7 @@ use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
 use libp2p::{identity, Multiaddr, PeerId};
+use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -221,7 +222,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .then(|| {
                     start_prometheus_metrics_server(
                         metrics_endpoints,
-                        RegistryAdapter::Libp2p(metrics_registry),
+                        RegistryAdapter::Libp2p(Arc::new(Mutex::new(metrics_registry))),
                     )
                 })
                 .transpose()?;

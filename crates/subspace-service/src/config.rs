@@ -1,5 +1,6 @@
 use crate::dsn::DsnConfig;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
+use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
@@ -224,7 +225,7 @@ pub enum SubspaceNetworking {
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
         /// DSN metrics registry
-        metrics_registry: Option<Registry>,
+        metrics_registry: Option<Arc<Mutex<Registry>>>,
     },
     /// Networking must be instantiated internally
     Create {

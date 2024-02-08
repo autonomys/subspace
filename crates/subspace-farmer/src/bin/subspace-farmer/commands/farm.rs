@@ -406,7 +406,7 @@ where
     let _prometheus_worker = if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
             metrics_endpoints,
-            RegistryAdapter::Libp2p(prometheus_metrics_registry),
+            RegistryAdapter::Libp2p(Arc::new(Mutex::new(prometheus_metrics_registry))),
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);

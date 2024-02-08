@@ -714,7 +714,11 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes, dsn_metrics_registry)
+            (
+                node,
+                dsn_config.bootstrap_nodes,
+                dsn_metrics_registry.map(|registry| Arc::new(Mutex::new(registry))),
+            )
         }
     };
 
@@ -1041,9 +1045,12 @@ where
     // We replace the Substrate implementation of metrics server with our own.
     if let Some(prometheus_config) = config.base.prometheus_config.take() {
         let registry = if let Some(dsn_metrics_registry) = dsn_metrics_registry {
-            RegistryAdapter::Both(dsn_metrics_registry, prometheus_config.registry)
+            RegistryAdapter::Both(
+                dsn_metrics_registry,
+                Arc::new(Mutex::new(prometheus_config.registry)),
+            )
         } else {
-            RegistryAdapter::Substrate(prometheus_config.registry)
+            RegistryAdapter::Substrate(Arc::new(Mutex::new(prometheus_config.registry)))
         };
 
         let metrics_server =

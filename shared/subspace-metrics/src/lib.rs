@@ -17,29 +17,30 @@ use std::error::Error;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::ops::DerefMut;
+use std::ops::Deref;
 use std::sync::Arc;
 use tracing::{error, info, warn};
-
-type SharedRegistry = Arc<Mutex<RegistryAdapter>>;
 
 /// An metrics registry adapter for Libp2p and Substrate frameworks.
 /// It specifies which metrics registry or registries are in use.
 pub enum RegistryAdapter {
     /// Uses only the Libp2p metrics registry.
-    Libp2p(Libp2pMetricsRegistry),
+    Libp2p(Arc<Mutex<Libp2pMetricsRegistry>>),
     /// Uses only the Substrate metrics registry.
-    Substrate(SubstrateMetricsRegistry),
+    Substrate(Arc<Mutex<SubstrateMetricsRegistry>>),
     /// We use both Substrate and Libp2p metrics registries.
-    Both(Libp2pMetricsRegistry, SubstrateMetricsRegistry),
+    Both(
+        Arc<Mutex<Libp2pMetricsRegistry>>,
+        Arc<Mutex<SubstrateMetricsRegistry>>,
+    ),
 }
 
 #[get("/metrics")]
-async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn Error>> {
-    let encoded_metrics = match registry.lock().deref_mut() {
+async fn metrics(registry: Data<RegistryAdapter>) -> Result<HttpResponse, Box<dyn Error>> {
+    let encoded_metrics = match registry.get_ref() {
         RegistryAdapter::Libp2p(libp2p_registry) => {
             let mut encoded = String::new();
-            encode(&mut encoded, libp2p_registry)?;
+            encode(&mut encoded, libp2p_registry.lock().deref())?;
 
             encoded
         }
@@ -47,20 +48,23 @@ async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn
             let encoder = TextEncoder::new();
             let mut encoded = String::new();
             unsafe {
-                encoder.encode(&substrate_registry.gather(), &mut encoded.as_mut_vec())?;
+                encoder.encode(
+                    &substrate_registry.lock().deref().gather(),
+                    &mut encoded.as_mut_vec(),
+                )?;
             }
             encoded
         }
         RegistryAdapter::Both(libp2p_registry, substrate_registry) => {
             // We combine outputs of both metrics registries in one string.
             let mut libp2p_encoded = String::new();
-            encode(&mut libp2p_encoded, libp2p_registry)?;
+            encode(&mut libp2p_encoded, libp2p_registry.lock().deref())?;
 
             let encoder = TextEncoder::new();
             let mut substrate_encoded = String::new();
             unsafe {
                 encoder.encode(
-                    &substrate_registry.gather(),
+                    &substrate_registry.lock().deref().gather(),
                     &mut substrate_encoded.as_mut_vec(),
                 )?;
             }
@@ -80,8 +84,7 @@ pub fn start_prometheus_metrics_server(
     mut endpoints: Vec<SocketAddr>,
     registry: RegistryAdapter,
 ) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
-    let shared_registry = Arc::new(Mutex::new(registry));
-    let data = Data::new(shared_registry);
+    let data = Data::new(registry);
 
     let app_factory = move || App::new().app_data(data.clone()).service(metrics);
     let result = HttpServer::new(app_factory.clone())
