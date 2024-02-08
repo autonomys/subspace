@@ -7,7 +7,6 @@
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{get, App, HttpResponse, HttpServer};
-use parking_lot::Mutex;
 use prometheus::{Registry as SubstrateRegistry, TextEncoder};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as PrometheusClientRegistry;
@@ -15,11 +14,7 @@ use std::error::Error;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::ops::DerefMut;
-use std::sync::Arc;
 use tracing::{error, info, warn};
-
-type SharedRegistry = Arc<Mutex<RegistryAdapter>>;
 
 /// Metrics registry adapter for prometheus-client and Substrate frameworks.
 /// It specifies which metrics registry or registries are in use.
@@ -33,10 +28,10 @@ pub enum RegistryAdapter {
 }
 
 #[get("/metrics")]
-async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn Error>> {
+async fn metrics(registry: Data<RegistryAdapter>) -> Result<HttpResponse, Box<dyn Error>> {
     let mut encoded_metrics = String::new();
 
-    match registry.lock().deref_mut() {
+    match &**registry {
         RegistryAdapter::PrometheusClient(libp2p_registry) => {
             encode(&mut encoded_metrics, libp2p_registry)?;
         }
@@ -61,8 +56,7 @@ pub fn start_prometheus_metrics_server(
     mut endpoints: Vec<SocketAddr>,
     registry: RegistryAdapter,
 ) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
-    let shared_registry = Arc::new(Mutex::new(registry));
-    let data = Data::new(shared_registry);
+    let data = Data::new(registry);
 
     let app_factory = move || App::new().app_data(data.clone()).service(metrics);
     let result = HttpServer::new(app_factory.clone())

@@ -16,7 +16,6 @@ include = [
 
 [dependencies]
 actix-web = "4.4.1"
-parking_lot = "0.12.1"
 prometheus = { version = "0.13.0", default-features = false }
 prometheus-client = "0.22.0"
 tracing = "0.1.40"

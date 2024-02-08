@@ -11720,7 +11720,6 @@ name = "subspace-metrics"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "parking_lot 0.12.1",
  "prometheus",
  "prometheus-client 0.22.0",
  "tracing",
