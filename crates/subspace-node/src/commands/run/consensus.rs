@@ -1,6 +1,7 @@
 use crate::commands::run::shared::RpcOptions;
 use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
+use prometheus_client::registry::Registry;
 use sc_chain_spec::GenericChainSpec;
 use sc_cli::{
     generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
@@ -408,6 +409,12 @@ pub(super) struct ConsensusChainOptions {
     timekeeper_options: TimekeeperOptions,
 }
 
+pub(super) struct PrometheusConfiguration {
+    pub(super) listen_on: SocketAddr,
+    pub(super) prometheus_registry: Registry,
+    pub(super) substrate_registry: substrate_prometheus_endpoint::Registry,
+}
+
 pub(super) struct ConsensusChainConfiguration {
     pub(super) maybe_tmp_dir: Option<TempDir>,
     pub(super) subspace_configuration: SubspaceConfiguration,
@@ -415,6 +422,7 @@ pub(super) struct ConsensusChainConfiguration {
     /// External entropy, used initially when PoT chain starts to derive the first seed
     pub(super) pot_external_entropy: Vec<u8>,
     pub(super) storage_monitor: StorageMonitorParams,
+    pub(super) prometheus_configuration: Option<PrometheusConfiguration>,
 }
 
 pub(super) fn create_consensus_chain_configuration(
@@ -640,6 +648,7 @@ pub(super) fn create_consensus_chain_configuration(
         }
     };
 
+    let substrate_registry = consensus_chain_config.prometheus_registry().cloned();
     Ok(ConsensusChainConfiguration {
         maybe_tmp_dir,
         subspace_configuration: SubspaceConfiguration {
@@ -655,5 +664,12 @@ pub(super) fn create_consensus_chain_configuration(
         dev,
         pot_external_entropy,
         storage_monitor,
+        prometheus_configuration: prometheus_listen_on.zip(substrate_registry).map(
+            |(listen_on, substrate_registry)| PrometheusConfiguration {
+                listen_on,
+                prometheus_registry: Registry::default(),
+                substrate_registry,
+            },
+        ),
     })
 }
