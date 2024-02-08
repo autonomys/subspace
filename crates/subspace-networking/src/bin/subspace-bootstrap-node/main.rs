@@ -221,7 +221,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .then(|| {
                     start_prometheus_metrics_server(
                         metrics_endpoints,
-                        RegistryAdapter::Libp2p(metrics_registry),
+                        RegistryAdapter::PrometheusClient(metrics_registry),
                     )
                 })
                 .transpose()?;
