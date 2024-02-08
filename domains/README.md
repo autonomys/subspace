@@ -12,26 +12,28 @@ The domain operator listening to the block import events of the consensus chain,
 
 NOTE: currently, the domain chain does not support to syncing from other operator nodes and need to be deterministically derived from the consensus chain block by block.
 
-### Build from source
-
-The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
-
 #### Create Operator key:
 Operator needs key pair to participate in Bundle production.
 You can create a key using following command:
 ```bash
-target/production/subspace-node key generate --scheme sr25519
+target/production/subspace-node domain key create --base-path {subspace-node-base-path} --domain-id {domain-id}
 ```
 
-Backup the key. Take `Public key (hex)` of the Keypair. The public key is part of the Operator config.
+Ensure to replace `{subspace-node-base-path}` and `{domain-id}` with the path to your node, and the domain ID value you want to become an operator on.
+
+Backup the key. Take `Public key (hex)` of the keypair. The public key is part of the Operator config.
+
+The key is automatically added to the keystore located under `/{subspace-node-base-path}/domains/{domain-id}`. 
 
 #### Insert key to Keystore:
-The above generated key is added to the Keystore so that Operator node can use to participate in Bundle production.
+If you decided to switch domains or already have the secret phrase available, you might prefer to use `domain key insert` command.
+
 The key is inserted using the following command:
 ```bash
-target/production/subspace-node domain insert-key \
-      --base-path {subspace-node-base-path} --domain-id {domain-id} --keypair-suri {secret-phrase}
+target/production/subspace-node domain key insert \
+--base-path {subspace-node-base-path} --domain-id {domain-id} --keystore-suri {secret-phrase}
 ```
+
 The above command assumes `{subspace-node-base-path}` as the location of node data. `{domain-id}` is a domain for which to insert the key and `{secret-phrase}` is the secret phrase to use for keypair derivation.
 
 #### Register Operator:
@@ -89,3 +91,7 @@ Once the project has been built, the following command can be used to explore al
 ```bash
 target/production/subspace-node --dev -- --help
 ```
+
+### Build from source
+
+The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
