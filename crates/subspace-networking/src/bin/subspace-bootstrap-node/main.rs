@@ -85,8 +85,8 @@ enum Command {
         external_addresses: Vec<Multiaddr>,
         /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
         /// one specified endpoint. Format: 127.0.0.1:8080
-        #[arg(long, alias = "metrics-endpoint")]
-        metrics_endpoints: Vec<SocketAddr>,
+        #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
+        prometheus_listen_on: Vec<SocketAddr>,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -149,7 +149,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             allow_private_ips,
             protocol_version,
             external_addresses,
-            metrics_endpoints,
+            prometheus_listen_on,
         } => {
             debug!(
                 "Libp2p protocol stack instantiated with version: {} ",
@@ -160,10 +160,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let keypair = identity::Keypair::from(decoded_keypair);
 
             // Metrics
-            let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+            let should_start_prometheus_server = !prometheus_listen_on.is_empty();
             let mut metrics_registry = Registry::default();
             let dsn_metrics_registry =
-                metrics_endpoints_are_specified.then_some(&mut metrics_registry);
+                should_start_prometheus_server.then_some(&mut metrics_registry);
 
             let known_peers_registry_config = KnownPeersManagerConfig {
                 enable_known_peers_source: false,
@@ -217,10 +217,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             info!("Subspace Bootstrap Node started");
 
-            let prometheus_task = metrics_endpoints_are_specified
+            let prometheus_task = should_start_prometheus_server
                 .then(|| {
                     start_prometheus_metrics_server(
-                        metrics_endpoints,
+                        prometheus_listen_on,
                         RegistryAdapter::PrometheusClient(metrics_registry),
                     )
                 })
