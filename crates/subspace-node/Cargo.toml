@@ -40,6 +40,7 @@ hex = "0.4.3"
 hex-literal = "0.4.1"
 mimalloc = "0.1.39"
 parity-scale-codec = "3.6.9"
+prometheus-client = "0.22.0"
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
@@ -66,11 +67,13 @@ sp-keystore = { version = "0.27.0", git = "https://github.com/subspace/polkadot-
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"

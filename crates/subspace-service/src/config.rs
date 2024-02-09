@@ -1,6 +1,5 @@
 use crate::dsn::DsnConfig;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use prometheus_client::registry::Registry;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
@@ -223,8 +222,6 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
-        /// DSN metrics registry
-        metrics_registry: Option<Registry>,
     },
     /// Networking must be instantiated internally
     Create {

@@ -107,8 +107,8 @@ pub(crate) struct FarmingArgs {
     no_info: bool,
     /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
-    #[arg(long, alias = "metrics-endpoint")]
-    metrics_endpoints: Vec<SocketAddr>,
+    #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
+    prometheus_listen_on: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time
@@ -314,7 +314,7 @@ where
         dev,
         tmp,
         mut disk_farms,
-        metrics_endpoints,
+        prometheus_listen_on,
         sector_downloading_concurrency,
         sector_encoding_concurrency,
         farm_during_initial_plotting,
@@ -384,7 +384,7 @@ where
     // Metrics
     let mut prometheus_metrics_registry = Registry::default();
     let farmer_metrics = FarmerMetrics::new(&mut prometheus_metrics_registry);
-    let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+    let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
     let (node, mut node_runner) = {
         if dsn.bootstrap_nodes.is_empty() {
@@ -399,14 +399,14 @@ where
             Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
             piece_cache.clone(),
-            metrics_endpoints_are_specified.then_some(&mut prometheus_metrics_registry),
+            should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
         )?
     };
 
-    let _prometheus_worker = if metrics_endpoints_are_specified {
+    let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
-            metrics_endpoints,
-            RegistryAdapter::Libp2p(prometheus_metrics_registry),
+            prometheus_listen_on,
+            RegistryAdapter::PrometheusClient(prometheus_metrics_registry),
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);
