@@ -175,7 +175,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::{SaturatedConversion, Saturating};
+    use sp_runtime::Saturating;
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -467,7 +467,7 @@ mod pallet {
         _,
         Identity,
         DomainId,
-        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId>,
+        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -1155,7 +1155,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
-            domain_config: DomainConfig<T::AccountId>,
+            domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
@@ -1296,7 +1296,7 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
-        pub genesis_domain: Option<GenesisDomain<T::AccountId>>,
+        pub genesis_domain: Option<GenesisDomain<T::AccountId, BalanceOf<T>>>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -1330,6 +1330,7 @@ mod pallet {
                     bundle_slot_probability: genesis_domain.bundle_slot_probability,
                     target_bundles_per_block: genesis_domain.target_bundles_per_block,
                     operator_allow_list: genesis_domain.operator_allow_list,
+                    initial_balances: genesis_domain.initial_balances,
                 };
                 let domain_owner = genesis_domain.owner_account_id;
                 let domain_id =
@@ -1339,9 +1340,7 @@ mod pallet {
                 // Register domain_owner as the genesis operator.
                 let operator_config = OperatorConfig {
                     signing_key: genesis_domain.signing_key.clone(),
-                    minimum_nominator_stake: genesis_domain
-                        .minimum_nominator_stake
-                        .saturated_into(),
+                    minimum_nominator_stake: genesis_domain.minimum_nominator_stake,
                     nomination_tax: genesis_domain.nomination_tax,
                 };
                 let operator_stake = T::MinOperatorStake::get();
@@ -1516,8 +1515,13 @@ impl<T: Config> Pallet<T> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
-        let raw_genesis =
-            runtime_object.into_complete_raw_genesis(domain_id, domain_obj.domain_runtime_info);
+        let raw_genesis = runtime_object
+            .into_complete_raw_genesis::<T>(
+                domain_id,
+                domain_obj.domain_runtime_info,
+                domain_obj.domain_config.initial_balances,
+            )
+            .ok()?;
         Some((
             DomainInstanceData {
                 runtime_type,

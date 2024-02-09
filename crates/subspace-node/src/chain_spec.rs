@@ -471,6 +471,7 @@ fn subspace_genesis_config(
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
+                initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(spec_id),
             }),
         },
     }

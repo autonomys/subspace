@@ -13,8 +13,7 @@ extern crate alloc;
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, MultiAccountId, TryConvertBack, EXISTENTIAL_DEPOSIT,
-    MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -49,8 +48,8 @@ use sp_messenger::messages::{
 };
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
     ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
@@ -424,30 +423,13 @@ parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
 
-pub struct AccountId20Converter;
-
-impl Convert<AccountId, MultiAccountId> for AccountId20Converter {
-    fn convert(account_id: AccountId) -> MultiAccountId {
-        MultiAccountId::AccountId20(account_id.into())
-    }
-}
-
-impl TryConvertBack<AccountId, MultiAccountId> for AccountId20Converter {
-    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
-        match multi_account_id {
-            MultiAccountId::AccountId20(acc) => Some(AccountId::from(acc)),
-            _ => None,
-        }
-    }
-}
-
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
-    type AccountIdConverter = AccountId20Converter;
+    type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 

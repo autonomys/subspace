@@ -1,18 +1,21 @@
 //! Runtime registry for domains
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
-use crate::{Config, Event};
+use crate::{BalanceOf, Config, Event};
 use alloc::string::String;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::EVMChainId;
+use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
 use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
+use frame_system::AccountInfo;
 use scale_info::TypeInfo;
 use sp_core::Hasher;
-use sp_domains::storage::RawGenesis;
+use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{DomainId, DomainsDigestItem, RuntimeId, RuntimeType};
-use sp_runtime::traits::{CheckedAdd, Get};
+use sp_runtime::traits::{CheckedAdd, Get, Zero};
 use sp_runtime::DigestItem;
+use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 
@@ -28,6 +31,8 @@ pub enum Error {
     MaxScheduledBlockNumber,
     FailedToDecodeRawGenesis,
     RuntimeCodeNotFoundInRawGenesis,
+    InitialBalanceOverflow,
+    InvalidAccountIdType,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -56,21 +61,79 @@ impl Default for DomainRuntimeInfo {
     }
 }
 
+fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
+    balances: BTreeMap<AccountId, BalanceOf<T>>,
+) -> Result<Vec<(StorageKey, StorageData)>, Error> {
+    let mut initial_storages = vec![];
+    let total_balance = balances
+        .iter()
+        .try_fold(BalanceOf::<T>::zero(), |total, (_, balance)| {
+            total.checked_add(balance)
+        })
+        .ok_or(Error::InitialBalanceOverflow)?;
+
+    let total_issuance_key = sp_domains::domain_total_issuance_storage_key();
+    initial_storages.push((total_issuance_key, StorageData(total_balance.encode())));
+
+    for (account_id, balance) in balances {
+        let account_storage_key = sp_domains::domain_account_storage_key(account_id);
+        let account_info = AccountInfo {
+            nonce: domain_runtime_primitives::Nonce::zero(),
+            consumers: 0,
+            // providers are set to 1 for new accounts
+            providers: 1,
+            sufficients: 0,
+            data: pallet_balances::AccountData {
+                free: balance,
+                ..Default::default()
+            },
+        };
+        initial_storages.push((account_storage_key, StorageData(account_info.encode())))
+    }
+
+    Ok(initial_storages)
+}
+
 impl<Number, Hash> RuntimeObject<Number, Hash> {
     // Return a complete raw genesis with runtime code and domain id set properly
-    pub fn into_complete_raw_genesis(
+    pub fn into_complete_raw_genesis<T: Config>(
         self,
         domain_id: DomainId,
         domain_runtime_info: DomainRuntimeInfo,
-    ) -> RawGenesis {
+        initial_balances: Vec<(MultiAccountId, BalanceOf<T>)>,
+    ) -> Result<RawGenesis, Error> {
         let RuntimeObject {
             mut raw_genesis, ..
         } = self;
         raw_genesis.set_domain_id(domain_id);
         match domain_runtime_info {
-            DomainRuntimeInfo::EVM { chain_id } => raw_genesis.set_evm_chain_id(chain_id),
+            DomainRuntimeInfo::EVM { chain_id } => {
+                raw_genesis.set_evm_chain_id(chain_id);
+                let initial_balances = initial_balances
+                    .into_iter()
+                    .try_fold(
+                        BTreeMap::<AccountId20, BalanceOf<T>>::new(),
+                        |mut acc, (account_id, balance)| {
+                            let account_id =
+                                domain_runtime_primitives::AccountId20Converter::try_convert_back(
+                                    account_id,
+                                )?;
+                            let balance = if let Some(previous_balance) = acc.get(&account_id) {
+                                previous_balance.checked_add(&balance)?
+                            } else {
+                                balance
+                            };
+                            acc.insert(account_id, balance);
+                            Some(acc)
+                        },
+                    )
+                    .ok_or(Error::InvalidAccountIdType)?;
+                raw_genesis
+                    .set_top_storages(derive_initial_balances_storages::<T, _>(initial_balances)?);
+            }
         }
-        raw_genesis
+
+        Ok(raw_genesis)
     }
 }
 

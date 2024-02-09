@@ -20,11 +20,13 @@
 extern crate alloc;
 
 use alloc::string::String;
+pub use fp_account::AccountId20;
 use frame_support::dispatch::{DispatchClass, PerDispatchClass};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use serde::{Deserialize, Serialize};
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
 use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
@@ -131,7 +133,7 @@ where
 }
 
 /// MultiAccountId used by all the domains to describe their account type.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Serialize, Deserialize)]
 pub enum MultiAccountId {
     /// 32 byte account Id.
     AccountId32([u8; 32]),
@@ -160,6 +162,24 @@ impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
     fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
         match multi_account_id {
             MultiAccountId::AccountId32(acc) => Some(AccountId::new(acc)),
+            _ => None,
+        }
+    }
+}
+
+/// An AccountId20 to MultiAccount converter.
+pub struct AccountId20Converter;
+
+impl Convert<AccountId20, MultiAccountId> for AccountId20Converter {
+    fn convert(account_id: AccountId20) -> MultiAccountId {
+        MultiAccountId::AccountId20(account_id.into())
+    }
+}
+
+impl TryConvertBack<AccountId20, MultiAccountId> for AccountId20Converter {
+    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId20> {
+        match multi_account_id {
+            MultiAccountId::AccountId20(acc) => Some(AccountId20::from(acc)),
             _ => None,
         }
     }

@@ -1,3 +1,4 @@
+use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
 use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, Precompiles};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
@@ -7,7 +8,7 @@ use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{OperatorAllowList, OperatorPublicKey, RuntimeType};
-use sp_runtime::traits::IdentifyAccount;
+use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -17,8 +18,8 @@ use subspace_runtime::{
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
-pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
-    let endowed_accounts = [
+fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
+    [
         // Alith key
         AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
         // Baltathar key
@@ -27,8 +28,15 @@ pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesi
         AccountId20::from(hex!("798d4Ba9baf0064Ec19eB4F0a1a45785ae9D6DFc")),
         // Dorothy
         AccountId20::from(hex!("773539d4Ac0e786233D90A233654ccEE26a613D9")),
-    ];
-    let sudo_account = endowed_accounts[0];
+    ]
+    .into_iter()
+    .map(|k| (AccountId20Converter::convert(k), 1_000_000 * SSC))
+    .collect()
+}
+
+pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
+    // Alith is sudo account
+    let sudo_account = AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"));
 
     // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
     #[allow(deprecated)]
@@ -50,14 +58,7 @@ pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesi
                 sudo: evm_domain_runtime::SudoConfig {
                     key: Some(sudo_account),
                 },
-                balances: evm_domain_runtime::BalancesConfig {
-                    // TODO: remove `endowed_accounts` once XDM is ready
-                    balances: endowed_accounts
-                        .iter()
-                        .cloned()
-                        .map(|k| (k, 1_000_000 * SSC))
-                        .collect(),
-                },
+                balances: evm_domain_runtime::BalancesConfig::default(),
                 // this is set to default and chain_id will be set into genesis during the domain
                 // instantiation on Consensus runtime.
                 evm_chain_id: EVMChainIdConfig::default(),
@@ -148,6 +149,7 @@ struct GenesisDomainParams {
     operator_allow_list: OperatorAllowList<AccountId>,
     operator_signing_key: OperatorPublicKey,
     raw_genesis_storage: Vec<u8>,
+    initial_balances: Vec<(MultiAccountId, Balance)>,
 }
 
 pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
@@ -198,6 +200,7 @@ pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisC
                     operator_allow_list: OperatorAllowList::Anyone,
                     operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
                     raw_genesis_storage: raw_genesis_storage.clone(),
+                    initial_balances: endowed_accounts(),
                 },
             )
         },
@@ -277,6 +280,7 @@ fn subspace_genesis_config(
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
+                initial_balances: genesis_domain_params.initial_balances,
             }),
         },
     }

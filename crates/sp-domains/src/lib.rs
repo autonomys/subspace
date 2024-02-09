@@ -34,7 +34,9 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::BlockFees;
+use domain_runtime_primitives::{BlockFees, MultiAccountId};
+use frame_support::storage::storage_prefix;
+use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -702,7 +704,7 @@ impl<AccountId: Ord> OperatorAllowList<AccountId> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisDomain<AccountId: Ord> {
+pub struct GenesisDomain<AccountId: Ord, Balance> {
     // Domain runtime items
     pub runtime_name: String,
     pub runtime_type: RuntimeType,
@@ -722,6 +724,9 @@ pub struct GenesisDomain<AccountId: Ord> {
     pub signing_key: OperatorPublicKey,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
+
+    // initial balances
+    pub initial_balances: Vec<(MultiAccountId, Balance)>,
 }
 
 /// Types of runtime pallet domains currently supports
@@ -809,7 +814,7 @@ impl DomainsDigestItem for DigestItem {
 /// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
 pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
     StorageKey(
-        frame_support::storage::storage_prefix(
+        storage_prefix(
             // This is the name used for the `pallet_evm_chain_id` in the `construct_runtime` macro
             // i.e. `EVMChainId: pallet_evm_chain_id = 82,`
             "EVMChainId".as_bytes(),
@@ -818,6 +823,42 @@ pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
         )
         .to_vec(),
     )
+}
+
+/// Total issuance storage for Domains.
+///
+/// This function should ideally use Host function to fetch the storage key
+/// from the domain runtime. But since the Host function is not available at Genesis, we have to
+/// assume the storage keys.
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
+pub fn domain_total_issuance_storage_key() -> StorageKey {
+    StorageKey(
+        storage_prefix(
+            // This is the name used for the `pallet_balances` in the `construct_runtime` macro
+            "Balances".as_bytes(),
+            // This is the storage item name used inside the `pallet_balances`
+            "TotalIssuance".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// Account info on frame_system on Domains
+///
+/// This function should ideally use Host function to fetch the storage key
+/// from the domain runtime. But since the Host function is not available at Genesis, we have to
+/// assume the storage keys.
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
+pub fn domain_account_storage_key<AccountId: Encode>(who: AccountId) -> StorageKey {
+    let storage_prefix = storage_prefix("System".as_bytes(), "Account".as_bytes());
+    let key_hashed = who.using_encoded(Blake2_128Concat::hash);
+
+    let mut final_key = Vec::with_capacity(storage_prefix.len() + key_hashed.len());
+
+    final_key.extend_from_slice(&storage_prefix);
+    final_key.extend_from_slice(key_hashed.as_ref());
+
+    StorageKey(final_key)
 }
 
 /// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`

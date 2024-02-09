@@ -18,6 +18,7 @@ frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "h
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 log = { version = "0.4.20", default-features = false }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
@@ -33,7 +34,7 @@ subspace-runtime-primitives = { version = "0.1.0", default-features = false, pat
 
 [dev-dependencies]
 domain-pallet-executive = { version = "0.1.0", default-features = false, path = "../../domains/pallets/executive" }
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+hex-literal = "0.4.1"
 pallet-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 pallet-block-fees = { version = "0.1.0", default-features = false, path = "../../domains/pallets/block-fees" }
 sp-externalities = { version = "0.19.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
@@ -49,6 +50,7 @@ std = [
     "frame-support/std",
     "frame-system/std",
     "log/std",
+    "pallet-balances/std",
     "scale-info/std",
     "sp-consensus-slots/std",
     "sp-consensus-subspace/std",

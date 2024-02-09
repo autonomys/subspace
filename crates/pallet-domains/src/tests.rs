@@ -547,6 +547,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         },
     )
     .unwrap();
@@ -721,6 +722,7 @@ fn test_bundle_fromat_verification() {
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         };
         let domain_obj = DomainObject {
             owner_account_id: Default::default(),
