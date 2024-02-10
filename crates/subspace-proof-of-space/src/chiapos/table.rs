@@ -16,10 +16,10 @@ use core::mem;
 use core::simd::num::SimdUint;
 use core::simd::Simd;
 #[cfg(any(feature = "parallel", test))]
+use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;
-#[cfg(any(feature = "parallel", test))]
-use std::sync::mpsc;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
@@ -759,42 +759,32 @@ where
         // Iteration stopped, but we did not store the last bucket yet
         buckets.push(bucket);
 
-        let (entries_sender, entries_receiver) = mpsc::sync_channel(1);
+        let counter = AtomicUsize::new(0);
 
-        let t_n_handle = std::thread::spawn(move || {
-            let num_values = 1 << K;
-            let mut t_n = Vec::with_capacity(num_values);
+        let t_n = rayon::broadcast(|_ctx| {
+            let mut entries = Vec::new();
+            let mut rmap_scratch = Vec::new();
 
-            while let Ok(entries) = entries_receiver.recv() {
-                t_n.extend(entries);
+            loop {
+                let offset = counter.fetch_add(1, Ordering::Relaxed);
+                if offset >= buckets.len() - 1 {
+                    break;
+                }
+
+                match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                    last_table,
+                    buckets[offset],
+                    buckets[offset + 1],
+                    &mut rmap_scratch,
+                    left_targets,
+                    &mut entries,
+                );
             }
 
-            t_n
+            entries
         });
 
-        buckets
-            .par_windows(2)
-            .fold(
-                || (Vec::new(), Vec::new()),
-                |(mut entries, mut rmap_scratch), buckets| {
-                    match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                        last_table,
-                        buckets[0],
-                        buckets[1],
-                        &mut rmap_scratch,
-                        left_targets,
-                        &mut entries,
-                    );
-                    (entries, rmap_scratch)
-                },
-            )
-            .for_each(move |(entries, _rmap_scratch)| {
-                entries_sender
-                    .send(entries)
-                    .expect("Receiver is waiting until sender is exhausted; qed");
-            });
-
-        let mut t_n = t_n_handle.join().expect("Not joining itself; qed");
+        let mut t_n = t_n.into_iter().flatten().collect::<Vec<_>>();
         t_n.par_sort_unstable();
 
         let mut ys = vec![Default::default(); t_n.len()];

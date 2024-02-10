@@ -43,6 +43,4 @@ std = [
 ]
 parallel = [
     "dep:rayon",
-    # Parallel implementation requires std due to usage of channels to achieve highest performance
-    "std",
 ]
