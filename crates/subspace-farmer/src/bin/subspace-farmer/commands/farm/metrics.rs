@@ -1,4 +1,5 @@
 use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
@@ -16,6 +17,7 @@ pub(super) struct FarmerMetrics {
     sector_encoding_time: Family<Vec<(String, String)>, Histogram>,
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
     sector_plotting_time: Family<Vec<(String, String)>, Histogram>,
+    sector_progress: Family<Vec<(String, String)>, Gauge<f64, AtomicU64>>,
     pub(super) sector_downloading: Counter<u64, AtomicU64>,
     pub(super) sector_downloaded: Counter<u64, AtomicU64>,
     pub(super) sector_encoding: Counter<u64, AtomicU64>,
@@ -104,6 +106,15 @@ impl FarmerMetrics {
             sector_plotting_time.clone(),
         );
 
+        let sector_progress = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "sector_progress_gauge",
+            "Sector plotting progress percentage",
+            Unit::Other("percent".to_string()),
+            sector_progress.clone(),
+        );
+
         let sector_downloading = Counter::<_, _>::default();
 
         sub_registry.register_with_unit(
@@ -184,6 +195,7 @@ impl FarmerMetrics {
             sector_encoding_time,
             sector_writing_time,
             sector_plotting_time,
+            sector_progress,
             sector_downloading,
             sector_downloaded,
             sector_encoding,
@@ -286,4 +298,17 @@ impl FarmerMetrics {
             )])
             .observe(time.as_secs_f64());
     }
-}
+
+    pub(super) fn update_sector_progress(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        progress: f32,
+    ) {
+        self.sector_progress
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .set(progress as f64);
+    }
+} 
