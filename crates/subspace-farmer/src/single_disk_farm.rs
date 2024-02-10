@@ -901,7 +901,7 @@ impl SingleDiskFarm {
             (Some(sender), Some(receiver))
         };
 
-        let span = info_span!("single_disk_farm", %disk_farm_index);
+        let span = info_span!("", %disk_farm_index);
 
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
