@@ -699,7 +699,15 @@ where
                     let farmer_metrics = farmer_metrics.clone();
 
                     move |(_sector_index, sector_state)| match sector_state {
-                        SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
+                        SectorUpdate::Plotting(SectorPlottingDetails::Starting {
+                            progress,
+                            last_queued, ..
+                        }) => {
+                            if *last_queued {
+                                farmer_metrics.update_sector_progress(&single_disk_farm_id, 100.0);
+                            } else {
+                                farmer_metrics.update_sector_progress(&single_disk_farm_id, *progress);
+                            };
                             farmer_metrics.sector_plotting.inc();
                         }
                         SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
@@ -830,4 +838,4 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
     );
 
     Keypair::from(keypair)
-}
+} 
