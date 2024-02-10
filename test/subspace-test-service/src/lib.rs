@@ -303,13 +303,10 @@ pub struct MockConsensusNode {
     /// The mock pot verifier
     mock_pot_verifier: Arc<MockPotVerfier>,
     /// The slot notification subscribers
-    #[allow(clippy::type_complexity)]
     new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, PotOutput)>>,
     /// The acknowledgement sender subscribers
-    #[allow(clippy::type_complexity)]
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
     /// Block import pipeline
-    #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<Client, Block>,
     xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
