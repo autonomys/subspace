@@ -787,18 +787,18 @@ where
         let mut t_n = t_n.into_iter().flatten().collect::<Vec<_>>();
         t_n.par_sort_unstable();
 
-        let mut ys = vec![Default::default(); t_n.len()];
-        let mut positions = vec![Default::default(); t_n.len()];
-        let mut metadatas = vec![Default::default(); t_n.len()];
+        let mut ys = Vec::with_capacity(t_n.len());
+        let mut positions = Vec::with_capacity(t_n.len());
+        let mut metadatas = Vec::with_capacity(t_n.len());
 
-        // Going in parallel saves a bit of time
-        t_n.into_par_iter()
-            .zip(ys.par_iter_mut().zip(&mut positions).zip(&mut metadatas))
-            .for_each(|(input, output)| {
-                *output.0 .0 = input.0;
-                *output.0 .1 = input.1;
-                *output.1 = input.2;
-            });
+        for (y, [left_position, right_position], metadata) in t_n {
+            ys.push(y);
+            positions.push([left_position, right_position]);
+            // Last table doesn't have metadata
+            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
+                metadatas.push(metadata);
+            }
+        }
 
         Self::Other {
             ys,
