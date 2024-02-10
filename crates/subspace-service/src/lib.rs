@@ -45,6 +45,7 @@ use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
@@ -104,7 +105,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{BlockNumber, PotSeed, REWARD_SIGNING_CONTEXT};
-use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -143,10 +143,6 @@ pub enum Error {
     /// Telemetry error.
     #[error(transparent)]
     Telemetry(#[from] sc_telemetry::Error),
-
-    /// Prometheus error.
-    #[error(transparent)]
-    Prometheus(#[from] substrate_prometheus_endpoint::PrometheusError),
 
     /// Subspace networking (DSN) error.
     #[error(transparent)]
@@ -626,6 +622,7 @@ type FullNode<RuntimeApi> = NewFull<FullClient<RuntimeApi>>;
 pub async fn new_full<PosTable, RuntimeApi>(
     mut config: SubspaceConfiguration,
     partial_components: PartialComponents<RuntimeApi>,
+    prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi>, Error>
@@ -666,12 +663,11 @@ where
     } = other;
 
     let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
-    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
+    let (node, bootstrap_nodes) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-            metrics_registry,
-        } => (node, bootstrap_nodes, metrics_registry),
+        } => (node, bootstrap_nodes),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -681,10 +677,10 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let (node, mut node_runner, dsn_metrics_registry) = create_dsn_instance(
+            let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                config.base.prometheus_config.is_some(),
+                prometheus_registry,
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -714,7 +710,7 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes, dsn_metrics_registry)
+            (node, dsn_config.bootstrap_nodes)
         }
     };
 
@@ -1039,24 +1035,7 @@ where
     }
 
     // We replace the Substrate implementation of metrics server with our own.
-    if let Some(prometheus_config) = config.base.prometheus_config.take() {
-        let registry = if let Some(dsn_metrics_registry) = dsn_metrics_registry {
-            RegistryAdapter::Both(dsn_metrics_registry, prometheus_config.registry)
-        } else {
-            RegistryAdapter::Substrate(prometheus_config.registry)
-        };
-
-        let metrics_server =
-            start_prometheus_metrics_server(vec![prometheus_config.port], registry)?.map(|error| {
-                debug!(?error, "Metrics server error.");
-            });
-
-        task_manager.spawn_handle().spawn(
-            "node-metrics-server",
-            Some("node-metrics-server"),
-            metrics_server,
-        );
-    };
+    config.base.prometheus_config.take();
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network_service.clone(),

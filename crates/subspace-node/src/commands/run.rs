@@ -23,6 +23,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use tracing::{debug, error, info, info_span, warn};
 
@@ -86,6 +87,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         dev,
         pot_external_entropy,
         storage_monitor,
+        mut prometheus_configuration,
     } = create_consensus_chain_configuration(consensus, enable_color, domain_options.is_some())?;
 
     let maybe_domain_configuration = domain_options
@@ -130,6 +132,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
                 partial_components,
+                prometheus_configuration
+                    .as_mut()
+                    .map(|prometheus_configuration| {
+                        &mut prometheus_configuration.prometheus_registry
+                    }),
                 true,
                 SlotProportion::new(3f32 / 4f32),
             );
@@ -273,6 +280,26 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         };
 
         consensus_chain_node.network_starter.start_network();
+
+        if let Some(prometheus_configuration) = prometheus_configuration.take() {
+            let metrics_server = start_prometheus_metrics_server(
+                vec![prometheus_configuration.listen_on],
+                RegistryAdapter::Both(
+                    prometheus_configuration.prometheus_registry,
+                    prometheus_configuration.substrate_registry,
+                ),
+            )
+            .map_err(|error| Error::SubspaceService(error.into()))?
+            .map(|error| {
+                debug!(?error, "Metrics server error.");
+            });
+
+            consensus_chain_node.task_manager.spawn_handle().spawn(
+                "metrics-server",
+                None,
+                metrics_server,
+            );
+        };
 
         consensus_chain_node.task_manager
     };
