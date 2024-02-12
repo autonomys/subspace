@@ -26,7 +26,6 @@ use hex_literal::hex;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sp_runtime::traits::Convert;
-use std::str::FromStr;
 use subspace_runtime_primitives::{Balance, SSC};
 
 /// Development keys that will be injected automatically on polkadotjs apps
@@ -148,16 +147,8 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                 Some(accounts[0]),
             )
         }
-        SpecId::Gemini => {
-            let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
-                .expect("Invalid Sudo account");
-            testnet_genesis(Some(sudo_account))
-        }
-        SpecId::DevNet => {
-            let sudo_account = AccountId::from_str("b66a91845249464309fad766fd0ece8144547736")
-                .expect("Invalid Sudo account");
-            testnet_genesis(Some(sudo_account))
-        }
+        SpecId::Gemini => testnet_genesis(None),
+        SpecId::DevNet => testnet_genesis(None),
     }
 }
 

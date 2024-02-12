@@ -2033,7 +2033,7 @@ async fn test_invalid_transfers_fraud_proof() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
