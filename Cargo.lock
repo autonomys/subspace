@@ -7581,6 +7581,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-domains",
  "sp-io",
  "sp-messenger",
  "sp-runtime",

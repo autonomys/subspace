@@ -21,10 +21,13 @@
 
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
+use frame_support::ensure;
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
+use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
+use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 
 #[cfg(test)]
 mod mock;
@@ -73,6 +76,7 @@ mod pallet {
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
+    use sp_domains::DomainId;
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
@@ -89,7 +93,7 @@ mod pallet {
         /// Gets the chain_id of the current execution environment.
         type SelfChainId: Get<ChainId>;
 
-        /// Gets the endpoint_id of the this pallet in a given execution environment.
+        /// Gets the endpoint_id of this pallet in a given execution environment.
         type SelfEndpointId: Get<EndpointId>;
 
         /// Currency used by this pallet.
@@ -122,6 +126,12 @@ mod pallet {
         Transfer<BalanceOf<T>>,
         OptionQuery,
     >;
+
+    /// Domain balances.
+    #[pallet::storage]
+    #[pallet::getter(fn domain_balances)]
+    pub(super) type DomainBalances<T: Config> =
+        StorageMap<_, Identity, DomainId, BalanceOf<T>, ValueQuery>;
 
     /// Events emitted by pallet-transporter.
     #[pallet::event]
@@ -177,6 +187,12 @@ mod pallet {
         UnexpectedMessage,
         /// Emits when the account id type is invalid.
         InvalidAccountId,
+        /// Emits when from_chain do not have enough funds to finalize the transfer.
+        LowBalanceOnDomain,
+        /// Emits when the transfer tracking was called from non-consensus chain
+        NonConsensusChain,
+        /// Emits when balance overflow
+        BalanceOverflow,
     }
 
     #[pallet::call]
@@ -333,5 +349,46 @@ mod pallet {
         fn message_response_weight(&self) -> Weight {
             T::WeightInfo::message_response()
         }
+    }
+}
+
+impl<T: Config> sp_domains::DomainsTransfersTracker<BalanceOf<T>> for Pallet<T> {
+    type Error = Error<T>;
+
+    fn balance_on_domain(domain_id: DomainId) -> Result<BalanceOf<T>, Self::Error> {
+        ensure!(
+            T::SelfChainId::get().is_consensus_chain(),
+            Error::NonConsensusChain
+        );
+
+        Ok(DomainBalances::<T>::get(domain_id))
+    }
+
+    fn transfer_in(domain_id: DomainId, amount: BalanceOf<T>) -> Result<(), Self::Error> {
+        ensure!(
+            T::SelfChainId::get().is_consensus_chain(),
+            Error::NonConsensusChain
+        );
+
+        DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
+            *current_balance = current_balance
+                .checked_add(&amount)
+                .ok_or(Error::BalanceOverflow)?;
+            Ok(())
+        })
+    }
+
+    fn transfer_out(domain_id: DomainId, amount: BalanceOf<T>) -> Result<(), Self::Error> {
+        ensure!(
+            T::SelfChainId::get().is_consensus_chain(),
+            Error::NonConsensusChain
+        );
+
+        DomainBalances::<T>::try_mutate(domain_id, |current_balance| {
+            *current_balance = current_balance
+                .checked_sub(&amount)
+                .ok_or(Error::LowBalanceOnDomain)?;
+            Ok(())
+        })
     }
 }

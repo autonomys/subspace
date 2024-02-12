@@ -1059,6 +1059,20 @@ impl ExtrinsicDigest {
     }
 }
 
+/// Trait that tracks the balances on Domains.
+pub trait DomainsTransfersTracker<Balance> {
+    type Error;
+
+    /// Marks transfer into domain.
+    fn transfer_in(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
+
+    /// Marks a transfer from domain.
+    fn transfer_out(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
+
+    /// Returns the total balance on domain.
+    fn balance_on_domain(domain_id: DomainId) -> Result<Balance, Self::Error>;
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
