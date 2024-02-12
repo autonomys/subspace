@@ -60,7 +60,7 @@ use sp_domains_fraud_proof::verification::{
     verify_bundle_equivocation_fraud_proof, verify_invalid_block_fees_fraud_proof,
     verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_valid_bundle_fraud_proof,
+    verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -622,6 +622,8 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since block fees are not mismatched.
         InvalidBlockFeesFraudProof,
+        /// Invalid fraud proof since transfers are not mismatched.
+        InvalidTransfersFraudProof,
         /// Invalid domain block hash fraud proof.
         InvalidDomainBlockHashFraudProof,
         /// Invalid domain extrinsic fraud proof
@@ -1710,6 +1712,22 @@ impl<T: Config> Pallet<T> {
                             "Block fees proof verification failed: {err:?}"
                         );
                         FraudProofError::InvalidBlockFeesFraudProof
+                    })?;
+                }
+                FraudProof::InvalidTransfers(req) => {
+                    verify_invalid_transfers_fraud_proof::<
+                        T::Block,
+                        DomainBlockNumberFor<T>,
+                        T::DomainHash,
+                        BalanceOf<T>,
+                        DomainHashingFor<T>,
+                    >(bad_receipt, req)
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::domains",
+                            "Domain transfers proof verification failed: {err:?}"
+                        );
+                        FraudProofError::InvalidTransfersFraudProof
                     })?;
                 }
                 FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {

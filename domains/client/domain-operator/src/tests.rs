@@ -5,7 +5,7 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_runtime_primitives::{DomainCoreApi, Hash, Transfers};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
@@ -31,6 +31,7 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
     InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
@@ -41,7 +42,7 @@ use sp_state_machine::backend::AsTrieBackend;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::Balance;
+use subspace_runtime_primitives::{Balance, SSC};
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
@@ -1957,6 +1958,114 @@ async fn test_invalid_block_fees_proof_creation() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_transfers_fraud_proof() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let target_bundle = bundle.unwrap();
+    assert_eq!(target_bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let mut opaque_bundle = bundle.unwrap();
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        receipt.transfers = Transfers {
+            transfers_in: 10 * SSC,
+            transfers_out: 20 * SSC,
+        };
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
+    ferdie
+        .prune_tx_from_pool(&original_submit_bundle_tx)
+        .await
+        .unwrap();
+    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+
+    ferdie
+        .submit_transaction(bad_submit_bundle_tx)
+        .await
+        .unwrap();
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        matches!(
+            fp,
+            FraudProof::InvalidTransfers(InvalidTransfersProof { .. })
+        )
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // it will generate and submit a fraud proof
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_domain_block_hash_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -2452,7 +2561,7 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
                 .iter()
                 .map(Encode::encode)
                 .collect(),
-            sp_core::storage::StateVersion::V1
+            sp_core::storage::StateVersion::V1,
         )
     );
 }

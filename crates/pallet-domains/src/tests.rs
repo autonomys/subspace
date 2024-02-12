@@ -394,6 +394,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     self.maybe_illegal_extrinsic_index,
                 )
             }
+            FraudProofVerificationInfoRequest::StorageKey { .. } => {
+                FraudProofVerificationInfoResponse::StorageKey(None)
+            }
         };
 
         Some(response)

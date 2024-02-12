@@ -211,6 +211,15 @@ pub struct BlockFees<Balance> {
     pub domain_execution_fee: Balance,
 }
 
+/// Type that holds the transfers(in/out) for a given chain.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
+pub struct Transfers<Balance> {
+    /// Total transfers that came into the domain.
+    pub transfers_in: Balance,
+    /// Total transfers that went out of the domain.
+    pub transfers_out: Balance,
+}
+
 impl<Balance> BlockFees<Balance>
 where
     Balance: CheckedAdd,
@@ -296,23 +305,28 @@ sp_api::decl_runtime_apis! {
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError>;
 
-        /// Returns extrinsic Era if present
+        /// Returns extrinsic Era if present.
         fn extrinsic_era(
           extrinsic: &<Block as BlockT>::Extrinsic
         ) -> Option<Era>;
 
-        /// Return the extrinsic weight
+        /// Returns the extrinsic weight.
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
 
-        /// The accumulated transaction fee of all transactions included in the block
+        /// The accumulated transaction fee of all transactions included in the block.
         fn block_fees() -> BlockFees<Balance>;
 
-        /// Return the block digest
+        /// Returns the block digest.
         fn block_digest() -> Digest;
 
-        /// Return the consumed weight of the block
-        #[api_version(2)]
+        /// Returns the consumed weight of the block.
         fn block_weight() -> Weight;
+
+        /// Returns the transfers for this domain in the block.
+        fn transfers() -> Transfers<Balance>;
+
+        /// Returns the storage key for the Transfers on Domain.
+        fn transfers_storage_key() -> Vec<u8>;
     }
 }
 

@@ -34,7 +34,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::{BlockFees, MultiAccountId};
+use domain_runtime_primitives::{BlockFees, MultiAccountId, Transfers};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
@@ -453,14 +453,6 @@ pub struct BundleDigest<Hash> {
     pub extrinsics_root: Hash,
     /// The size of the bundle body in bytes.
     pub size: u32,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
-pub struct Transfers<Balance> {
-    /// Total transfers that came into the domain.
-    pub transfers_in: Balance,
-    /// Total transfers that went out of the domain.
-    pub transfers_out: Balance,
 }
 
 /// Receipt of a domain block execution.

@@ -248,4 +248,8 @@ where
             block_hash,
         )
     }
+
+    pub fn transfers_storage_key(&self) -> Result<Vec<u8>, ApiError> {
+        <Self as DomainCoreApi<Block>>::transfers_storage_key(self, Default::default())
+    }
 }

@@ -13,7 +13,8 @@ extern crate alloc;
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, Transfers, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
+    SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -324,6 +325,7 @@ impl pallet_block_fees::Config for Runtime {
 }
 
 pub struct FinalDomainTransactionByteFee;
+
 impl Get<Balance> for FinalDomainTransactionByteFee {
     fn get() -> Balance {
         BlockFees::final_domain_transaction_byte_fee()
@@ -340,6 +342,7 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 pub struct ExtrinsicStorageFees;
+
 impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
     fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
         let dispatch_info = xt.get_dispatch_info();
@@ -838,7 +841,6 @@ impl_runtime_apis! {
         }
     }
 
-    #[api_version(2)]
     impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -958,6 +960,14 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
+        }
+
+        fn transfers() -> Transfers<Balance> {
+            Transporter::chain_transfers()
+        }
+
+        fn transfers_storage_key() -> Vec<u8> {
+            Transporter::transfers_storage_key()
         }
     }
 

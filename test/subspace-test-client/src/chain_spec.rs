@@ -49,8 +49,15 @@ pub fn subspace_local_testnet_config() -> TestChainSpec {
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
+                // Alice also get more funds that are used during the domain instantiation
                 vec![
-                    (get_account_id_from_seed("Alice"), 1_000 * SSC),
+                    (
+                        get_account_id_from_seed("Alice"),
+                        (5_000
+                            + crate::domain_chain_spec::endowed_accounts().len() as Balance
+                                * 2_000_000)
+                            * SSC,
+                    ),
                     (get_account_id_from_seed("Bob"), 1_000 * SSC),
                     (get_account_id_from_seed("Charlie"), 1_000 * SSC),
                     (get_account_id_from_seed("Dave"), 1_000 * SSC),

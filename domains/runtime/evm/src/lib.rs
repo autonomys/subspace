@@ -17,7 +17,7 @@ pub use domain_runtime_primitives::{
     EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, Transfers, SLOT_DURATION,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -327,6 +327,7 @@ impl pallet_block_fees::Config for Runtime {
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
 pub struct FinalDomainTransactionByteFee;
+
 impl Get<Balance> for FinalDomainTransactionByteFee {
     fn get() -> Balance {
         BlockFees::final_domain_transaction_byte_fee()
@@ -343,6 +344,7 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 pub struct ExtrinsicStorageFees;
+
 impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
     fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
         let dispatch_info = xt.get_dispatch_info();
@@ -854,7 +856,6 @@ impl_runtime_apis! {
         }
     }
 
-    #[api_version(2)]
     impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -974,6 +975,14 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
+        }
+
+        fn transfers() -> Transfers<Balance> {
+            Transporter::chain_transfers()
+        }
+
+        fn transfers_storage_key() -> Vec<u8> {
+            Transporter::transfers_storage_key()
         }
     }
 

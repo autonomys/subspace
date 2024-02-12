@@ -72,11 +72,12 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
     use codec::{Decode, Encode};
+    use domain_runtime_primitives::Transfers;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
-    use sp_domains::{DomainId, Transfers};
+    use sp_domains::DomainId;
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
@@ -84,6 +85,7 @@ mod pallet {
     use sp_messenger::messages::ChainId;
     use sp_runtime::traits::{CheckedAdd, Convert};
     use sp_std::vec;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -268,8 +270,15 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            ChainTransfers::<T>::kill();
+            ChainTransfers::<T>::set(Default::default());
             T::DbWeight::get().writes(1)
+        }
+    }
+
+    impl<T: Config> Pallet<T> {
+        pub fn transfers_storage_key() -> Vec<u8> {
+            use frame_support::storage::generator::StorageValue;
+            ChainTransfers::<T>::storage_value_final_key().to_vec()
         }
     }
 

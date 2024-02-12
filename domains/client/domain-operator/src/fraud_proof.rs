@@ -16,7 +16,8 @@ use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
     InvalidBlockFeesProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, ValidBundleDigest,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTransfersProof,
+    ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -57,7 +58,7 @@ pub enum FraudProofError {
         decoding_error: codec::Error,
     },
     #[error(
-        "Invalid extrinsic index for creating illegal tx fraud proof, \
+    "Invalid extrinsic index for creating illegal tx fraud proof, \
         expected extrinsic index: {index},\
         is_true_invalid: {is_true_invalid} and validity response is: {extrinsics_validity_response:?}"
     )]
@@ -149,6 +150,25 @@ where
         }))
     }
 
+    pub(crate) fn generate_invalid_transfers_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let block_hash = local_receipt.domain_block_hash;
+        let runtime_api = self.client.runtime_api();
+        let key = runtime_api.transfers_storage_key(block_hash)?;
+        let proof = self
+            .client
+            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
+        Ok(FraudProof::InvalidTransfers(InvalidTransfersProof {
+            domain_id,
+            bad_receipt_hash,
+            storage_proof: proof,
+        }))
+    }
+
     pub(crate) fn generate_invalid_domain_block_hash_proof(
         &self,
         domain_id: DomainId,
@@ -203,7 +223,7 @@ where
                         .to_string()
                         .into(),
                 )
-                .into())
+                .into());
             }
         };
 
@@ -294,7 +314,7 @@ where
             StorageProofProvider::<
                 LayoutV1<HeaderHashingFor<Block::Header>>,
             >::generate_enumerated_proof_of_inclusion(
-                encoded_extrinsics.as_slice(), extrinsic_index
+                encoded_extrinsics.as_slice(), extrinsic_index,
             )
                 .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?
         };
