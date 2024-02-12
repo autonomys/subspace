@@ -4,8 +4,8 @@ use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Weak};
+use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::node_client::NodeClientExt;
-use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
@@ -45,9 +45,9 @@ pub(super) fn configure_dsn(
     }: DsnArgs,
     weak_plotted_pieces: Weak<Mutex<Option<PlottedPieces>>>,
     node_client: NodeRpcClient,
-    piece_cache: PieceCache,
+    farmer_cache: FarmerCache,
     prometheus_metrics_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
+) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error> {
     let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
         path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
         ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
@@ -62,7 +62,7 @@ pub(super) fn configure_dsn(
     let default_config = Config::new(
         protocol_prefix,
         keypair,
-        piece_cache.clone(),
+        farmer_cache.clone(),
         prometheus_metrics_registry,
     );
     let config = Config {
@@ -75,11 +75,11 @@ pub(super) fn configure_dsn(
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
                 let weak_plotted_pieces = weak_plotted_pieces.clone();
-                let piece_cache = piece_cache.clone();
+                let farmer_cache = farmer_cache.clone();
 
                 async move {
                     let key = RecordKey::from(piece_index.to_multihash());
-                    let piece_from_cache = piece_cache.get_piece(key).await;
+                    let piece_from_cache = farmer_cache.get_piece(key).await;
 
                     if let Some(piece) = piece_from_cache {
                         Some(PieceByIndexResponse { piece: Some(piece) })

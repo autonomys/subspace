@@ -1,5 +1,5 @@
+use crate::farmer_cache::FarmerCache;
 use crate::node_client::Error;
-use crate::piece_cache::PieceCache;
 use crate::single_disk_farm::piece_cache::DiskPieceCache;
 use crate::NodeClient;
 use futures::channel::{mpsc, oneshot};
@@ -185,12 +185,13 @@ async fn basic() {
     let path2 = tempdir().unwrap();
 
     {
-        let (piece_cache, piece_cache_worker) =
-            PieceCache::new(node_client.clone(), public_key.to_peer_id());
+        let (farmer_cache, farmer_cache_worker) =
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
 
-        let piece_cache_worker_exited = tokio::spawn(piece_cache_worker.run(piece_getter.clone()));
+        let farmer_cache_worker_exited =
+            tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
 
-        let initialized_fut = piece_cache
+        let initialized_fut = farmer_cache
             .replace_backing_caches(vec![
                 DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
                 DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
@@ -208,14 +209,14 @@ async fn basic() {
             assert_eq!(requested_pieces, expected_pieces);
 
             for piece_index in requested_pieces {
-                piece_cache
+                farmer_cache
                     .get_piece(RecordKey::from(piece_index.to_multihash()))
                     .await
                     .unwrap();
             }
 
             // Other piece indices are not requested or cached
-            assert!(piece_cache
+            assert!(farmer_cache
                 .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
                 .await
                 .is_none());
@@ -275,7 +276,7 @@ async fn basic() {
 
             let stored_pieces = vec![PieceIndex::from(196), PieceIndex::from(276)];
             for piece_index in &stored_pieces {
-                piece_cache
+                farmer_cache
                     .get_piece(RecordKey::from(piece_index.to_multihash()))
                     .await
                     .unwrap();
@@ -284,7 +285,7 @@ async fn basic() {
             for piece_index in requested_pieces {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
-                    assert!(piece_cache
+                    assert!(farmer_cache
                         .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
                         .await
                         .is_none());
@@ -341,7 +342,7 @@ async fn basic() {
 
             let stored_pieces = vec![PieceIndex::from(823), PieceIndex::from(859)];
             for piece_index in &stored_pieces {
-                piece_cache
+                farmer_cache
                     .get_piece(RecordKey::from(piece_index.to_multihash()))
                     .await
                     .unwrap();
@@ -350,7 +351,7 @@ async fn basic() {
             for piece_index in requested_pieces {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
-                    assert!(piece_cache
+                    assert!(farmer_cache
                         .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
                         .await
                         .is_none());
@@ -358,28 +359,28 @@ async fn basic() {
             }
         }
 
-        drop(piece_cache);
+        drop(farmer_cache);
 
-        piece_cache_worker_exited.await.unwrap();
+        farmer_cache_worker_exited.await.unwrap();
     }
 
     {
         // Clear requested pieces
         pieces.lock().clear();
 
-        let (piece_cache, piece_cache_worker) =
-            PieceCache::new(node_client.clone(), public_key.to_peer_id());
+        let (farmer_cache, farmer_cache_worker) =
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
 
-        let piece_cache_worker_exited = tokio::spawn(piece_cache_worker.run(piece_getter));
+        let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
 
         // Reopen with the same backing caches
-        let initialized_fut = piece_cache
+        let initialized_fut = farmer_cache
             .replace_backing_caches(vec![
                 DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
                 DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
             ])
             .await;
-        drop(piece_cache);
+        drop(farmer_cache);
 
         // Wait for piece cache to be initialized
         initialized_fut.await.unwrap();
@@ -398,6 +399,6 @@ async fn basic() {
         // Make worker exit
         archived_segment_headers_sender.close().await.unwrap();
 
-        piece_cache_worker_exited.await.unwrap();
+        farmer_cache_worker_exited.await.unwrap();
     }
 }

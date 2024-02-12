@@ -22,7 +22,7 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
     SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
@@ -380,7 +380,7 @@ where
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
-    let (piece_cache, piece_cache_worker) = PieceCache::new(node_client.clone(), peer_id);
+    let (farmer_cache, farmer_cache_worker) = FarmerCache::new(node_client.clone(), peer_id);
 
     // Metrics
     let mut prometheus_metrics_registry = Registry::default();
@@ -399,7 +399,7 @@ where
             dsn,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
-            piece_cache.clone(),
+            farmer_cache.clone(),
             should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
         )?
     };
@@ -431,18 +431,18 @@ where
 
     let piece_getter = Arc::new(FarmerPieceGetter::new(
         piece_provider,
-        piece_cache.clone(),
+        farmer_cache.clone(),
         node_client.clone(),
         Arc::clone(&plotted_pieces),
     ));
 
-    let piece_cache_worker_fut = run_future_in_dedicated_thread(
+    let farmer_cache_worker_fut = run_future_in_dedicated_thread(
         {
-            let future = piece_cache_worker.run(piece_getter.clone());
+            let future = farmer_cache_worker.run(piece_getter.clone());
 
             move || future
         },
-        "cache-worker".to_string(),
+        "farmer-cache-worker".to_string(),
     )?;
 
     let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
@@ -601,7 +601,7 @@ where
         single_disk_farms.push(single_disk_farm);
     }
 
-    let cache_acknowledgement_receiver = piece_cache
+    let cache_acknowledgement_receiver = farmer_cache
         .replace_backing_caches(
             single_disk_farms
                 .iter()
@@ -609,7 +609,7 @@ where
                 .collect(),
         )
         .await;
-    drop(piece_cache);
+    drop(farmer_cache);
 
     // Wait for cache initialization before starting plotting
     tokio::spawn(async move {
@@ -833,11 +833,11 @@ where
     // This defines order in which things are dropped
     let networking_fut = networking_fut;
     let farm_fut = farm_fut;
-    let piece_cache_worker_fut = piece_cache_worker_fut;
+    let farmer_cache_worker_fut = farmer_cache_worker_fut;
 
     let networking_fut = pin!(networking_fut);
     let farm_fut = pin!(farm_fut);
-    let piece_cache_worker_fut = pin!(piece_cache_worker_fut);
+    let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
     futures::select!(
         // Signal future
@@ -854,8 +854,8 @@ where
         },
 
         // Piece cache worker future
-        _ = piece_cache_worker_fut.fuse() => {
-            info!("Piece cache worker exited.")
+        _ = farmer_cache_worker_fut.fuse() => {
+            info!("Farmer cache worker exited.")
         },
     );
 

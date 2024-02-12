@@ -1,4 +1,4 @@
-use crate::piece_cache::PieceCache;
+use crate::farmer_cache::FarmerCache;
 use crate::utils::plotted_pieces::PlottedPieces;
 use crate::NodeClient;
 use async_trait::async_trait;
@@ -16,7 +16,7 @@ const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
 pub struct FarmerPieceGetter<PV, NC> {
     piece_provider: PieceProvider<PV>,
-    piece_cache: PieceCache,
+    farmer_cache: FarmerCache,
     node_client: NC,
     plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
 }
@@ -24,13 +24,13 @@ pub struct FarmerPieceGetter<PV, NC> {
 impl<PV, NC> FarmerPieceGetter<PV, NC> {
     pub fn new(
         piece_provider: PieceProvider<PV>,
-        piece_cache: PieceCache,
+        farmer_cache: FarmerCache,
         node_client: NC,
         plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
     ) -> Self {
         Self {
             piece_provider,
-            piece_cache,
+            farmer_cache,
             node_client,
             plotted_pieces,
         }
@@ -57,9 +57,9 @@ where
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let key = RecordKey::from(piece_index.to_multihash());
 
-        trace!(%piece_index, "Getting piece from local cache");
-        if let Some(piece) = self.piece_cache.get_piece(key).await {
-            trace!(%piece_index, "Got piece from local cache successfully");
+        trace!(%piece_index, "Getting piece from farmer cache");
+        if let Some(piece) = self.farmer_cache.get_piece(key).await {
+            trace!(%piece_index, "Got piece from farmer cache successfully");
             return Ok(Some(piece));
         }
 

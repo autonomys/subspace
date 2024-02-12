@@ -36,9 +36,9 @@
 //! are `target ± ½ * solution range` (while also handing overflow/underflow) when interpreted as
 //! 64-bit unsigned integers.
 
+pub mod farmer_cache;
 pub(crate) mod identity;
 pub mod node_client;
-pub mod piece_cache;
 pub mod reward_signing;
 pub mod single_disk_farm;
 pub mod thread_pool_manager;
