@@ -672,7 +672,7 @@ where
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
-            let span = info_span!("farm", %disk_farm_index);
+            let span = info_span!("", %disk_farm_index);
 
             // Collect newly plotted pieces
             let on_plotted_sector_callback =
