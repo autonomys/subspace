@@ -455,6 +455,14 @@ pub struct BundleDigest<Hash> {
     pub size: u32,
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
+pub struct Transfers<Balance> {
+    /// Total transfers that came into the domain.
+    pub transfers_in: Balance,
+    /// Total transfers that went out of the domain.
+    pub transfers_out: Balance,
+}
+
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
@@ -487,7 +495,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// storage fees are given to the consensus block author.
     pub block_fees: BlockFees<Balance>,
     /// List of transfers from this Domain to other chains
-    pub transfers: BTreeMap<ChainId, Balance>,
+    pub transfers: Transfers<Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>

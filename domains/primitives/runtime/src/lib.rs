@@ -28,7 +28,9 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
-use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
+use sp_runtime::traits::{
+    Block as BlockT, CheckedAdd, Convert, IdentifyAccount, NumberFor, Verify,
+};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{Digest, MultiAddress, MultiSignature, Perbill};
 use sp_std::vec::Vec;
@@ -209,12 +211,21 @@ pub struct BlockFees<Balance> {
     pub domain_execution_fee: Balance,
 }
 
-impl<Balance> BlockFees<Balance> {
+impl<Balance> BlockFees<Balance>
+where
+    Balance: CheckedAdd,
+{
     pub fn new(domain_execution_fee: Balance, consensus_storage_fee: Balance) -> Self {
         BlockFees {
             consensus_storage_fee,
             domain_execution_fee,
         }
+    }
+
+    /// Returns the total fees that was collected and burned on the Domain.
+    pub fn total_fees(&self) -> Option<Balance> {
+        self.consensus_storage_fee
+            .checked_add(&self.domain_execution_fee)
     }
 }
 
@@ -308,6 +319,7 @@ sp_api::decl_runtime_apis! {
 #[cfg(test)]
 mod test {
     use super::block_weights;
+
     #[test]
     fn test_block_weights() {
         // validate and build block weights

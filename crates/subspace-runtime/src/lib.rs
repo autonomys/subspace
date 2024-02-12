@@ -617,6 +617,7 @@ impl pallet_domains::Config for Runtime {
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
+    type DomainsTransfersTracker = Transporter;
 }
 
 parameter_types! {

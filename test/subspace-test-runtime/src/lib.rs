@@ -612,6 +612,7 @@ parameter_types! {
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
 pub struct BlockSlot;
+
 impl pallet_domains::BlockSlot for BlockSlot {
     fn current_slot() -> sp_consensus_slots::Slot {
         Subspace::current_slot()
@@ -652,6 +653,7 @@ impl pallet_domains::Config for Runtime {
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
+    type DomainsTransfersTracker = Transporter;
 }
 
 parameter_types! {

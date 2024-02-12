@@ -11,16 +11,16 @@ use crate::{
 use alloc::string::String;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::MultiAccountId;
-use frame_support::traits::fungible::{Inspect, MutateHold};
-use frame_support::traits::tokens::{Fortitude, Preservation};
+use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    derive_domain_block_hash, DomainId, DomainsDigestItem, OperatorAllowList, RuntimeId,
-    RuntimeType,
+    derive_domain_block_hash, DomainId, DomainsDigestItem, DomainsTransfersTracker,
+    OperatorAllowList, RuntimeId, RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -44,6 +44,8 @@ pub enum Error {
     FailedToGenerateGenesisStateRoot,
     DomainNotFound,
     NotDomainOwner,
+    InitialBalanceOverflow,
+    TransfersTracker,
     FailedToGenerateRawGenesis(crate::runtime_registry::Error),
 }
 
@@ -66,6 +68,20 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
     pub operator_allow_list: OperatorAllowList<AccountId>,
     // Initial balances for Domain.
     pub initial_balances: Vec<(MultiAccountId, Balance)>,
+}
+
+impl<AccountId, Balance> DomainConfig<AccountId, Balance>
+where
+    AccountId: Ord,
+    Balance: Zero + CheckedAdd,
+{
+    pub(crate) fn total_issuance(&self) -> Option<Balance> {
+        self.initial_balances
+            .iter()
+            .try_fold(Balance::zero(), |total, (_, balance)| {
+                total.checked_add(balance)
+            })
+    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -146,13 +162,29 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         }
     };
 
-    // TODO: burn the total initial balance for domain from the domain owner account
+    // burn total issuance on domain from owners account and track the domain balance
+    let total_issuance = domain_config
+        .total_issuance()
+        .ok_or(Error::InitialBalanceOverflow)?;
+
+    T::Currency::burn_from(
+        &owner_account_id,
+        total_issuance,
+        Precision::Exact,
+        Fortitude::Polite,
+    )
+    .map_err(|_| Error::InsufficientFund)?;
+
+    T::DomainsTransfersTracker::transfer_in(domain_id, total_issuance)
+        .map_err(|_| Error::TransfersTracker)?;
+
     let genesis_receipt = {
         let state_version = runtime_obj.version.state_version();
         let raw_genesis = runtime_obj
             .into_complete_raw_genesis::<T>(
                 domain_id,
                 domain_runtime_info,
+                total_issuance,
                 domain_config.initial_balances.clone(),
             )
             .map_err(Error::FailedToGenerateRawGenesis)?;
@@ -443,6 +475,8 @@ mod tests {
             Balances::make_free_balance_be(
                 &creator,
                 <Test as Config>::DomainInstantiationDeposit::get()
+                    // for domain total issuance
+                    + 1_000_000 * SSC
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
@@ -460,6 +494,15 @@ mod tests {
                 ))),
                 1_000_000 * SSC,
             )];
+
+            // Set enough fund to creator
+            Balances::make_free_balance_be(
+                &creator,
+                <Test as Config>::DomainInstantiationDeposit::get()
+                    // for domain total issuance
+                    + 1_000_000 * SSC
+                    + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
+            );
 
             // should be successful
             let domain_id =

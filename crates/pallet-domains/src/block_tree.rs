@@ -10,8 +10,10 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorId};
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
+use sp_domains::{
+    ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt, OperatorId,
+};
+use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
@@ -34,6 +36,8 @@ pub enum Error {
     InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
     InvalidStateRoot,
+    BalanceOverflow,
+    DomainTransfersTracking,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -343,6 +347,26 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     domain_id,
                     execution_receipt.consensus_block_number,
                 );
+
+                // tracking the transfer
+                // 1. Block fees are burned on domain, so it is considered transferred out
+                // 2. XDM transfers from the Domain
+                // 3. XDM transfers into the domain
+                let transfer_out_balance = execution_receipt
+                    .block_fees
+                    .total_fees()
+                    .and_then(|total| total.checked_add(&execution_receipt.transfers.transfers_out))
+                    .ok_or(Error::BalanceOverflow)?;
+
+                // track the transfers out and then track transfers in
+                T::DomainsTransfersTracker::transfer_out(domain_id, transfer_out_balance)
+                    .map_err(|_| Error::DomainTransfersTracking)?;
+
+                T::DomainsTransfersTracker::transfer_in(
+                    domain_id,
+                    execution_receipt.transfers.transfers_in,
+                )
+                .map_err(|_| Error::DomainTransfersTracking)?;
 
                 LatestConfirmedDomainBlock::<T>::insert(
                     domain_id,
@@ -687,7 +711,7 @@ mod tests {
                 H256::random(),
                 stale_receipt,
             );
-            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
 
             assert_eq!(
                 BlockTreeNodes::<Test>::get(stale_receipt_hash)
@@ -735,7 +759,7 @@ mod tests {
                 H256::random(),
                 previous_head_receipt,
             );
-            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
         });
     }
 

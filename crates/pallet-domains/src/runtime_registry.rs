@@ -31,7 +31,6 @@ pub enum Error {
     MaxScheduledBlockNumber,
     FailedToDecodeRawGenesis,
     RuntimeCodeNotFoundInRawGenesis,
-    InitialBalanceOverflow,
     InvalidAccountIdType,
 }
 
@@ -62,19 +61,11 @@ impl Default for DomainRuntimeInfo {
 }
 
 fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
+    total_issuance: BalanceOf<T>,
     balances: BTreeMap<AccountId, BalanceOf<T>>,
-) -> Result<Vec<(StorageKey, StorageData)>, Error> {
-    let mut initial_storages = vec![];
-    let total_balance = balances
-        .iter()
-        .try_fold(BalanceOf::<T>::zero(), |total, (_, balance)| {
-            total.checked_add(balance)
-        })
-        .ok_or(Error::InitialBalanceOverflow)?;
-
+) -> Vec<(StorageKey, StorageData)> {
     let total_issuance_key = sp_domains::domain_total_issuance_storage_key();
-    initial_storages.push((total_issuance_key, StorageData(total_balance.encode())));
-
+    let mut initial_storages = vec![(total_issuance_key, StorageData(total_issuance.encode()))];
     for (account_id, balance) in balances {
         let account_storage_key = sp_domains::domain_account_storage_key(account_id);
         let account_info = AccountInfo {
@@ -91,7 +82,7 @@ fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
         initial_storages.push((account_storage_key, StorageData(account_info.encode())))
     }
 
-    Ok(initial_storages)
+    initial_storages
 }
 
 impl<Number, Hash> RuntimeObject<Number, Hash> {
@@ -100,6 +91,7 @@ impl<Number, Hash> RuntimeObject<Number, Hash> {
         self,
         domain_id: DomainId,
         domain_runtime_info: DomainRuntimeInfo,
+        total_issuance: BalanceOf<T>,
         initial_balances: Vec<(MultiAccountId, BalanceOf<T>)>,
     ) -> Result<RawGenesis, Error> {
         let RuntimeObject {
@@ -128,8 +120,10 @@ impl<Number, Hash> RuntimeObject<Number, Hash> {
                         },
                     )
                     .ok_or(Error::InvalidAccountIdType)?;
-                raw_genesis
-                    .set_top_storages(derive_initial_balances_storages::<T, _>(initial_balances)?);
+                raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
+                    total_issuance,
+                    initial_balances,
+                ));
             }
         }
 

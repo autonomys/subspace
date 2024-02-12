@@ -166,8 +166,8 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainId, EpochIndex, GenesisDomain, OperatorAllowList,
-        OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, EpochIndex,
+        GenesisDomain, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -321,6 +321,9 @@ mod pallet {
 
         /// The block slot
         type BlockSlot: BlockSlot;
+
+        /// Transfers tracker.
+        type DomainsTransfersTracker: DomainsTransfersTracker<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -343,6 +346,7 @@ mod pallet {
 
     /// Starting EVM chain ID for evm runtimes.
     pub struct StartingEVMChainId;
+
     impl Get<EVMChainId> for StartingEVMChainId {
         fn get() -> EVMChainId {
             // after looking at `https://chainlist.org/?testnets=false`
@@ -1515,10 +1519,12 @@ impl<T: Config> Pallet<T> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
+        let total_issuance = domain_obj.domain_config.total_issuance()?;
         let raw_genesis = runtime_object
             .into_complete_raw_genesis::<T>(
                 domain_id,
                 domain_obj.domain_runtime_info,
+                total_issuance,
                 domain_obj.domain_config.initial_balances,
             )
             .ok()?;

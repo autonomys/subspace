@@ -76,13 +76,13 @@ mod pallet {
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
-    use sp_domains::DomainId;
+    use sp_domains::{DomainId, Transfers};
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
     use sp_messenger::messages::ChainId;
-    use sp_runtime::traits::Convert;
+    use sp_runtime::traits::{CheckedAdd, Convert};
     use sp_std::vec;
 
     #[pallet::config]
@@ -132,6 +132,13 @@ mod pallet {
     #[pallet::getter(fn domain_balances)]
     pub(super) type DomainBalances<T: Config> =
         StorageMap<_, Identity, DomainId, BalanceOf<T>, ValueQuery>;
+
+    /// A temporary storage that tracks total transfers from this chain.
+    /// Clears on on_initialize for every block.
+    #[pallet::storage]
+    #[pallet::getter(fn chain_transfers)]
+    pub(super) type ChainTransfers<T: Config> =
+        StorageValue<_, Transfers<BalanceOf<T>>, ValueQuery>;
 
     /// Events emitted by pallet-transporter.
     #[pallet::event]
@@ -245,7 +252,24 @@ mod pallet {
                 chain_id: dst_chain_id,
                 message_id,
             });
+
+            ChainTransfers::<T>::try_mutate(|transfers| {
+                transfers.transfers_out = transfers
+                    .transfers_out
+                    .checked_add(&amount)
+                    .ok_or(Error::<T>::BalanceOverflow)?;
+                Ok::<(), Error<T>>(())
+            })?;
+
             Ok(())
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            ChainTransfers::<T>::kill();
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -283,6 +307,15 @@ mod pallet {
                 .ok_or(Error::<T>::InvalidAccountId)?;
 
             let _imbalance = T::Currency::deposit_creating(&account_id, req.amount);
+
+            ChainTransfers::<T>::try_mutate(|transfers| {
+                transfers.transfers_in = transfers
+                    .transfers_in
+                    .checked_add(&req.amount)
+                    .ok_or(Error::<T>::BalanceOverflow)?;
+                Ok::<(), Error<T>>(())
+            })?;
+
             frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
                 Event::<T>::IncomingTransferSuccessful {
                     chain_id: src_chain_id,
@@ -331,6 +364,15 @@ mod pallet {
                         T::AccountIdConverter::try_convert_back(transfer.sender.account_id)
                             .ok_or(Error::<T>::InvalidAccountId)?;
                     let _imbalance = T::Currency::deposit_creating(&account_id, transfer.amount);
+
+                    ChainTransfers::<T>::try_mutate(|transfers| {
+                        transfers.transfers_in = transfers
+                            .transfers_in
+                            .checked_add(&transfer.amount)
+                            .ok_or(Error::<T>::BalanceOverflow)?;
+                        Ok::<(), Error<T>>(())
+                    })?;
+
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferFailed {
