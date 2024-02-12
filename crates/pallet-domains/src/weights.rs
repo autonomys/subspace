@@ -26,7 +26,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_domains.
@@ -316,8 +316,8 @@ impl WeightInfo for () {
 		//  Estimated: `12367`
 		// Minimum execution time: 102_000_000 picoseconds.
 		Weight::from_parts(118_000_000, 12367)
-			.saturating_add(RocksDbWeight::get().reads(10_u64))
-			.saturating_add(RocksDbWeight::get().writes(12_u64))
+			.saturating_add(ParityDbWeight::get().reads(10_u64))
+			.saturating_add(ParityDbWeight::get().writes(12_u64))
 	}
 	/// Storage: Domains DomainStakingSummary (r:1 w:1)
 	/// Proof Skipped: Domains DomainStakingSummary (max_values: None, max_size: None, mode: Measured)
@@ -353,8 +353,8 @@ impl WeightInfo for () {
 		//  Estimated: `523490`
 		// Minimum execution time: 12_571_000_000 picoseconds.
 		Weight::from_parts(12_688_000_000, 523490)
-			.saturating_add(RocksDbWeight::get().reads(409_u64))
-			.saturating_add(RocksDbWeight::get().writes(406_u64))
+			.saturating_add(ParityDbWeight::get().reads(409_u64))
+			.saturating_add(ParityDbWeight::get().writes(406_u64))
 	}
 	/// Storage: Domains NextRuntimeId (r:1 w:1)
 	/// Proof Skipped: Domains NextRuntimeId (max_values: Some(1), max_size: None, mode: Measured)
@@ -366,8 +366,8 @@ impl WeightInfo for () {
 		//  Estimated: `1528`
 		// Minimum execution time: 14_372_000_000 picoseconds.
 		Weight::from_parts(14_986_000_000, 1528)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
-			.saturating_add(RocksDbWeight::get().writes(2_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
 	/// Storage: Domains RuntimeRegistry (r:1 w:0)
 	/// Proof Skipped: Domains RuntimeRegistry (max_values: None, max_size: None, mode: Measured)
@@ -379,8 +379,8 @@ impl WeightInfo for () {
 		//  Estimated: `442147`
 		// Minimum execution time: 25_485_000_000 picoseconds.
 		Weight::from_parts(26_355_000_000, 442147)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 	/// Storage: Domains RuntimeRegistry (r:1 w:0)
 	/// Proof Skipped: Domains RuntimeRegistry (max_values: None, max_size: None, mode: Measured)
@@ -408,8 +408,8 @@ impl WeightInfo for () {
 		//  Estimated: `442304`
 		// Minimum execution time: 228_000_000 picoseconds.
 		Weight::from_parts(247_000_000, 442304)
-			.saturating_add(RocksDbWeight::get().reads(7_u64))
-			.saturating_add(RocksDbWeight::get().writes(8_u64))
+			.saturating_add(ParityDbWeight::get().reads(7_u64))
+			.saturating_add(ParityDbWeight::get().writes(8_u64))
 	}
 	/// Storage: Domains PendingStakingOperationCount (r:1 w:1)
 	/// Proof Skipped: Domains PendingStakingOperationCount (max_values: None, max_size: None, mode: Measured)
@@ -433,8 +433,8 @@ impl WeightInfo for () {
 		//  Estimated: `6215`
 		// Minimum execution time: 66_000_000 picoseconds.
 		Weight::from_parts(70_000_000, 6215)
-			.saturating_add(RocksDbWeight::get().reads(5_u64))
-			.saturating_add(RocksDbWeight::get().writes(8_u64))
+			.saturating_add(ParityDbWeight::get().reads(5_u64))
+			.saturating_add(ParityDbWeight::get().writes(8_u64))
 	}
 	/// Storage: Domains Operators (r:1 w:0)
 	/// Proof Skipped: Domains Operators (max_values: None, max_size: None, mode: Measured)
@@ -456,8 +456,8 @@ impl WeightInfo for () {
 		//  Estimated: `6215`
 		// Minimum execution time: 65_000_000 picoseconds.
 		Weight::from_parts(69_000_000, 6215)
-			.saturating_add(RocksDbWeight::get().reads(7_u64))
-			.saturating_add(RocksDbWeight::get().writes(4_u64))
+			.saturating_add(ParityDbWeight::get().reads(7_u64))
+			.saturating_add(ParityDbWeight::get().writes(4_u64))
 	}
 	/// Storage: Domains OperatorIdOwner (r:1 w:0)
 	/// Proof Skipped: Domains OperatorIdOwner (max_values: None, max_size: None, mode: Measured)
@@ -475,8 +475,8 @@ impl WeightInfo for () {
 		//  Estimated: `6517`
 		// Minimum execution time: 35_000_000 picoseconds.
 		Weight::from_parts(38_000_000, 6517)
-			.saturating_add(RocksDbWeight::get().reads(6_u64))
-			.saturating_add(RocksDbWeight::get().writes(4_u64))
+			.saturating_add(ParityDbWeight::get().reads(6_u64))
+			.saturating_add(ParityDbWeight::get().writes(4_u64))
 	}
 	/// Storage: Domains OperatorIdOwner (r:1 w:0)
 	/// Proof Skipped: Domains OperatorIdOwner (max_values: None, max_size: None, mode: Measured)
@@ -494,8 +494,8 @@ impl WeightInfo for () {
 		//  Estimated: `4008`
 		// Minimum execution time: 30_000_000 picoseconds.
 		Weight::from_parts(33_000_000, 4008)
-			.saturating_add(RocksDbWeight::get().reads(5_u64))
-			.saturating_add(RocksDbWeight::get().writes(4_u64))
+			.saturating_add(ParityDbWeight::get().reads(5_u64))
+			.saturating_add(ParityDbWeight::get().writes(4_u64))
 	}
 	/// Storage: Domains PendingDeposits (r:1 w:0)
 	/// Proof Skipped: Domains PendingDeposits (max_values: None, max_size: None, mode: Measured)
@@ -517,8 +517,8 @@ impl WeightInfo for () {
 		//  Estimated: `4253`
 		// Minimum execution time: 36_000_000 picoseconds.
 		Weight::from_parts(38_000_000, 4253)
-			.saturating_add(RocksDbWeight::get().reads(7_u64))
-			.saturating_add(RocksDbWeight::get().writes(3_u64))
+			.saturating_add(ParityDbWeight::get().reads(7_u64))
+			.saturating_add(ParityDbWeight::get().writes(3_u64))
 	}
 	/// Storage: Domains Nominators (r:1 w:0)
 	/// Proof Skipped: Domains Nominators (max_values: None, max_size: None, mode: Measured)
@@ -534,7 +534,7 @@ impl WeightInfo for () {
 		//  Estimated: `3979`
 		// Minimum execution time: 24_000_000 picoseconds.
 		Weight::from_parts(26_000_000, 3979)
-			.saturating_add(RocksDbWeight::get().reads(3_u64))
-			.saturating_add(RocksDbWeight::get().writes(2_u64))
+			.saturating_add(ParityDbWeight::get().reads(3_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
 }
