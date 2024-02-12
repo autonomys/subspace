@@ -132,13 +132,13 @@ pub(super) async fn start_worker<
                 // NOTE: this is only necessary for the test.
                 biased;
 
-                Some((slot, global_randomness)) = new_slot_notification_stream.next() => {
+                Some((slot, proof_of_time)) = new_slot_notification_stream.next() => {
                     let res = bundle_producer
                         .produce_bundle(
                             operator_id,
                             OperatorSlotInfo {
                                 slot,
-                                global_randomness,
+                                proof_of_time,
                             },
                         )
                         .instrument(span.clone())

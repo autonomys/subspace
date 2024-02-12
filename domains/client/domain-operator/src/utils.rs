@@ -3,15 +3,15 @@ use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
 pub struct OperatorSlotInfo {
     /// Slot
     pub slot: Slot,
-    /// Global randomness
-    pub global_randomness: Randomness,
+    /// The PoT output for `slot`
+    pub proof_of_time: PotOutput,
 }
 
 #[derive(Debug, Clone)]
