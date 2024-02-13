@@ -665,8 +665,8 @@ where
     info!("Finished collecting already plotted pieces successfully");
 
     for (_, single_disk_farm) in single_disk_farms.iter().enumerate() {
-        farmer_metrics.update_farm_size(single_disk_farm.id(), single_disk_farm.total_sectors_count() as i64);
-        farmer_metrics.update_farm_plotted(single_disk_farm.id(), single_disk_farm.plotted_sectors_count().await as u64);
+        farmer_metrics.update_farm_size(single_disk_farm.id(), single_disk_farm.total_sectors_count());
+        farmer_metrics.inc_farm_plotted(single_disk_farm.id(), single_disk_farm.plotted_sectors_count().await.try_into().unwrap());
     }
 
     let mut single_disk_farms_stream = single_disk_farms
@@ -738,16 +738,16 @@ where
                             farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
                             farmer_metrics.sector_plotted.inc();
                             if let Some(_) = &old_plotted_sector {
-                                farmer_metrics.update_farm_replotted(&single_disk_farm_id, 1);
+                                farmer_metrics.inc_farm_replotted(&single_disk_farm_id);
                             } else {
-                                farmer_metrics.update_farm_plotted(&single_disk_farm_id, 1);
+                                farmer_metrics.inc_farm_plotted(&single_disk_farm_id, 1);
                             }
                         }
                         SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
-                            farmer_metrics.update_farm_expired(&single_disk_farm_id, 1);
+                            farmer_metrics.inc_farm_about_to_expire(&single_disk_farm_id, 1);
                         }
                         SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
-                            farmer_metrics.update_farm_expired(&single_disk_farm_id, 1);
+                            farmer_metrics.inc_farm_expired(&single_disk_farm_id, 1);
                         }
                         _ => {}
                     }
