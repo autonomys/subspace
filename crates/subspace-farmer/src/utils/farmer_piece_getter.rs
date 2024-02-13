@@ -1,5 +1,5 @@
 use crate::piece_cache::PieceCache;
-use crate::utils::readers_and_pieces::ReadersAndPieces;
+use crate::utils::plotted_pieces::PlottedPieces;
 use crate::NodeClient;
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -18,7 +18,7 @@ pub struct FarmerPieceGetter<PV, NC> {
     piece_provider: PieceProvider<PV>,
     piece_cache: PieceCache,
     node_client: NC,
-    readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
+    plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
 }
 
 impl<PV, NC> FarmerPieceGetter<PV, NC> {
@@ -26,13 +26,13 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
         piece_provider: PieceProvider<PV>,
         piece_cache: PieceCache,
         node_client: NC,
-        readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
+        plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
     ) -> Self {
         Self {
             piece_provider,
             piece_cache,
             node_client,
-            readers_and_pieces,
+            plotted_pieces,
         }
     }
 
@@ -96,10 +96,10 @@ where
 
         trace!(%piece_index, "Getting piece from local plot");
         let maybe_read_piece_fut = self
-            .readers_and_pieces
+            .plotted_pieces
             .lock()
             .as_ref()
-            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index));
+            .and_then(|plotted_pieces| plotted_pieces.read_piece(&piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {
