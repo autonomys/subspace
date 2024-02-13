@@ -3,7 +3,7 @@ use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicI64};
 use std::time::Duration;
 use subspace_farmer::single_disk_farm::farming::ProvingResult;
 use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
@@ -17,7 +17,10 @@ pub(super) struct FarmerMetrics {
     sector_encoding_time: Family<Vec<(String, String)>, Histogram>,
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
     sector_plotting_time: Family<Vec<(String, String)>, Histogram>,
-    sector_progress: Family<Vec<(String, String)>, Gauge<f64, AtomicU64>>,
+    farm_size: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
+    farm_plotted: Family<Vec<(String, String)>, Counter<u64, AtomicU64>>,
+    farm_expired: Family<Vec<(String, String)>, Counter<u64, AtomicU64>>,
+    farm_replotted: Family<Vec<(String, String)>, Counter<u64, AtomicU64>>,
     pub(super) sector_downloading: Counter<u64, AtomicU64>,
     pub(super) sector_downloaded: Counter<u64, AtomicU64>,
     pub(super) sector_encoding: Counter<u64, AtomicU64>,
@@ -106,13 +109,40 @@ impl FarmerMetrics {
             sector_plotting_time.clone(),
         );
 
-        let sector_progress = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+        let farm_size = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
 
         sub_registry.register_with_unit(
-            "sector_progress_gauge",
-            "Sector plotting progress percentage",
-            Unit::Other("percent".to_string()),
-            sector_progress.clone(),
+            "farm_size",
+            "Farm size (sectors)",
+            Unit::Other("sectors".to_string()),
+            farm_size.clone(),
+        );
+
+        let farm_plotted = Family::<_, _>::new_with_constructor(Counter::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_plotted",
+            "Number of plotted farm sectors",
+            Unit::Other("sectors".to_string()),
+            farm_plotted.clone(),
+        );
+
+        let farm_expired = Family::<_, _>::new_with_constructor(Counter::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_expired",
+            "Number of expired farm sectors",
+            Unit::Other("sectors".to_string()),
+            farm_expired.clone(),
+        );
+
+        let farm_replotted = Family::<_, _>::new_with_constructor(Counter::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_replotted",
+            "Number of replotted farm sectors",
+            Unit::Other("sectors".to_string()),
+            farm_replotted.clone(),
         );
 
         let sector_downloading = Counter::<_, _>::default();
@@ -195,7 +225,10 @@ impl FarmerMetrics {
             sector_encoding_time,
             sector_writing_time,
             sector_plotting_time,
-            sector_progress,
+            farm_size,
+            farm_plotted,
+            farm_expired,
+            farm_replotted,
             sector_downloading,
             sector_downloaded,
             sector_encoding,
@@ -299,16 +332,55 @@ impl FarmerMetrics {
             .observe(time.as_secs_f64());
     }
 
-    pub(super) fn update_sector_progress(
+    pub(super) fn update_farm_size(
         &self,
         single_disk_farm_id: &SingleDiskFarmId,
-        progress: f32,
+        sectors: i64,
     ) {
-        self.sector_progress
+        self.farm_size
             .get_or_create(&vec![(
                 "farm_id".to_string(),
                 single_disk_farm_id.to_string(),
             )])
-            .set(progress as f64);
+            .set(sectors);
     }
-} 
+
+    pub(super) fn update_farm_plotted(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: u64,
+    ) {
+        self.farm_plotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(sectors);
+    }
+
+    pub(super) fn update_farm_expired(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: u64,
+    ) {
+        self.farm_expired
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(sectors);
+    }
+
+    pub(super) fn update_farm_replotted(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: u64,
+    ) {
+        self.farm_replotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(sectors);
+    }
+}
