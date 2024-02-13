@@ -63,6 +63,7 @@ use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
@@ -221,7 +222,9 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>
+        + BundleProducerElectionApi<Block, Balance>
+        + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(

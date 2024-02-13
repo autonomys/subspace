@@ -243,7 +243,8 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainBlock::Header>
-        + BundleProducerElectionApi<Block, Balance>,
+        + BundleProducerElectionApi<Block, Balance>
+        + MmrApi<Block, H256, NumberFor<Block>>,
 {
     fn extensions_for(
         &self,
@@ -421,7 +422,8 @@ where
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + BundleProducerElectionApi<Block, Balance>
-        + ObjectsApi<Block>,
+        + ObjectsApi<Block>
+        + MmrApi<Block, H256, NumberFor<Block>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -582,7 +584,8 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + SubspaceApi<Block, FarmerPublicKey>
+        + MmrApi<Block, H256, NumberFor<Block>>,
 {
     /// Task manager.
     pub task_manager: TaskManager,

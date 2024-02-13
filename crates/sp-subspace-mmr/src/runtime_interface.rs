@@ -5,6 +5,7 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_externalities::ExternalitiesExt;
+use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime_interface::runtime_interface;
 
 /// MMR related runtime interface
@@ -23,4 +24,19 @@ pub trait SubspaceMmrRuntimeInterface {
 pub struct LeafData {
     pub state_root: H256,
     pub extrinsics_root: H256,
+}
+
+#[runtime_interface]
+pub trait DomainMmrRuntimeInterface {
+    /// Verifies the given MMR proof using the leaves provided
+    #[allow(dead_code)]
+    fn verify_mmr_proof(
+        &mut self,
+        leaves: Vec<EncodableOpaqueLeaf>,
+        encoded_proof: Vec<u8>,
+    ) -> bool {
+        self.extension::<SubspaceMmrExtension>()
+            .expect("No `SubspaceMmrExtension` associated for the current context!")
+            .verify_mmr_proof(leaves, encoded_proof)
+    }
 }

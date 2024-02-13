@@ -1,6 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
-use crate::{FullBackend, FullClient, RuntimeExecutor};
+use crate::{DomainExtensionsFactory, FullBackend, FullClient, RuntimeExecutor};
 use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
@@ -10,7 +10,9 @@ use domain_runtime_primitives::{Balance, DomainCoreApi, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
+use sc_client_api::{
+    BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider, ProofProvider,
+};
 use sc_consensus::SharedBlockImport;
 use sc_network::NetworkPeers;
 use sc_rpc_api::DenyUnsafe;
@@ -28,11 +30,12 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::{Decode, Encode};
+use sp_core::{Decode, Encode, H256};
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
+use sp_mmr_primitives::MmrApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_session::SessionKeys;
@@ -141,7 +144,9 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi:
         TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>> + ApiExt<Block>,
@@ -166,6 +171,13 @@ where
         executor.clone(),
     )?;
     let client = Arc::new(client);
+
+    client
+        .execution_extensions()
+        .set_extensions_factory(DomainExtensionsFactory::<_, CBlock, Block> {
+            consensus_client: consensus_client.clone(),
+            _marker: Default::default(),
+        });
 
     let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
 
@@ -267,7 +279,8 @@ where
         + RelayerApi<CBlock, NumberFor<CBlock>>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
-        + FraudProofApi<CBlock, Header>,
+        + FraudProofApi<CBlock, Header>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static,

@@ -20,6 +20,8 @@
 #[cfg(feature = "std")]
 pub mod host_functions;
 mod runtime_interface;
+#[cfg(feature = "std")]
+pub use runtime_interface::domain_mmr_runtime_interface::HostFunctions as DomainHostFunctions;
 pub use runtime_interface::subspace_mmr_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::subspace_mmr_runtime_interface::HostFunctions;
