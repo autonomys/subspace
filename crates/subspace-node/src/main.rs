@@ -28,7 +28,6 @@ use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_service::HostFunctions as DomainHostFunctions;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
@@ -37,6 +36,7 @@ use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
+use subspace_service::domains::HostFunctions as DomainHostFunctions;
 use subspace_service::HostFunctions;
 use tracing::warn;
 

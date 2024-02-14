@@ -3,7 +3,7 @@ use codec::Decode;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
-use sp_mmr_primitives::{EncodableOpaqueLeaf, MmrApi, Proof};
+pub use sp_mmr_primitives::{EncodableOpaqueLeaf, MmrApi, Proof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;

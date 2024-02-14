@@ -63,6 +63,7 @@ use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
+use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{
@@ -81,6 +82,7 @@ use std::time;
 use subspace_core_primitives::{PotOutput, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
+use subspace_service::domains::ExtensionsFactory as DomainsExtensionFactory;
 use subspace_service::transaction_pool::FullPool;
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
@@ -224,6 +226,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
+        + MessengerApi<Block, NumberFor<Block>>
         + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
@@ -237,6 +240,10 @@ where
             FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
                 self.consensus_client.clone(),
                 self.executor.clone(),
+                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                    self.consensus_client.clone(),
+                    self.executor.clone(),
+                )),
             ),
         )));
         exts.register(SubspaceMmrExtension::new(Arc::new(
@@ -345,13 +352,18 @@ impl MockConsensusNode {
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
+        let domain_executor = sc_service::new_wasm_executor(&config);
         let client = Arc::new(client);
         let mock_pot_verifier = Arc::new(MockPotVerfier::default());
         client
             .execution_extensions()
-            .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
+            .set_extensions_factory(MockExtensionsFactory::<
+                _,
+                DomainBlock,
+                subspace_service::domains::RuntimeExecutor,
+            >::new(
                 client.clone(),
-                Arc::new(executor.clone()),
+                Arc::new(domain_executor),
                 Arc::clone(&mock_pot_verifier),
             ));
 

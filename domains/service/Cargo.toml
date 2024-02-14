@@ -63,6 +63,7 @@ sp-subspace-mmr = { version = "0.1.0", path = "../../crates/sp-subspace-mmr" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
+subspace-service = { version = "0.1.0", path = "../../crates/subspace-service" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 tokio = "1.35.1"

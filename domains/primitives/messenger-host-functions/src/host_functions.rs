@@ -7,7 +7,7 @@ use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
-use sp_messenger::MessengerApi;
+pub use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;

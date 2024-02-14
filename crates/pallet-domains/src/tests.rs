@@ -75,6 +75,7 @@ frame_support::construct_runtime!(
 type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u128;
+
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -116,6 +117,7 @@ parameter_types! {
 }
 
 pub struct ConfirmationDepthK;
+
 impl Get<BlockNumber> for ConfirmationDepthK {
     fn get() -> BlockNumber {
         10
@@ -193,6 +195,7 @@ impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
 }
 
 const SLOT_DURATION: u64 = 1000;
+
 impl pallet_timestamp::Config for Test {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
@@ -202,6 +205,7 @@ impl pallet_timestamp::Config for Test {
 }
 
 pub struct DummyStorageFee;
+
 impl StorageFee<Balance> for DummyStorageFee {
     fn transaction_byte_fee() -> Balance {
         SSC
@@ -210,6 +214,7 @@ impl StorageFee<Balance> for DummyStorageFee {
 }
 
 pub struct DummyBlockSlot;
+
 impl BlockSlot for DummyBlockSlot {
     fn current_slot() -> sp_consensus_slots::Slot {
         0u64.into()
@@ -253,6 +258,7 @@ impl pallet_domains::Config for Test {
 }
 
 pub struct ExtrinsicStorageFees;
+
 impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFees {
     fn extract_signer(_xt: MockUncheckedExtrinsic<Test>) -> (Option<AccountId>, DispatchInfo) {
         (None, DispatchInfo::default())
@@ -385,6 +391,7 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
 
     fn execution_proof_check(
         &self,
+        _domain_id: (u32, H256),
         _pre_state_root: H256,
         _encoded_proof: Vec<u8>,
         _execution_method: &str,

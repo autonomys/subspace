@@ -25,6 +25,7 @@
 )]
 
 pub mod config;
+pub mod domains;
 pub mod dsn;
 mod metrics;
 pub mod rpc;
@@ -39,6 +40,7 @@ use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
+use domains::ExtensionsFactory as DomainsExtensionFactory;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
 use futures::FutureExt;
@@ -228,6 +230,7 @@ struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     client: Arc<Client>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
+    domains_executor: Arc<domains::RuntimeExecutor>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
@@ -366,9 +369,13 @@ where
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, RuntimeExecutor>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _>::new(
                 self.client.clone(),
-                self.executor.clone(),
+                self.domains_executor.clone(),
+                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                    self.client.clone(),
+                    self.domains_executor.clone(),
+                )),
             ),
         )));
 
@@ -450,6 +457,7 @@ where
         .transpose()?;
 
     let executor = sc_service::new_wasm_executor(config);
+    let domains_executor = sc_service::new_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
@@ -477,6 +485,7 @@ where
             client: Arc::clone(&client),
             pot_verifier: pot_verifier.clone(),
             executor: executor.clone(),
+            domains_executor: Arc::new(domains_executor),
             _pos_table: PhantomData,
         });
 

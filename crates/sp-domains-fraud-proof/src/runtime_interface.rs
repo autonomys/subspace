@@ -1,6 +1,7 @@
 #[cfg(feature = "std")]
 use crate::FraudProofExtension;
 use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
+use domain_runtime_primitives::BlockNumber;
 use sp_core::H256;
 use sp_domains::DomainId;
 #[cfg(feature = "std")]
@@ -38,6 +39,7 @@ pub trait FraudProofRuntimeInterface {
     /// Check the execution proof
     fn execution_proof_check(
         &mut self,
+        domain_block_id: (BlockNumber, H256),
         pre_state_root: H256,
         encoded_proof: Vec<u8>,
         execution_method: &str,
@@ -47,6 +49,7 @@ pub trait FraudProofRuntimeInterface {
         self.extension::<FraudProofExtension>()
             .expect("No `FraudProofExtension` associated for the current context!")
             .execution_proof_check(
+                domain_block_id,
                 pre_state_root,
                 encoded_proof,
                 execution_method,

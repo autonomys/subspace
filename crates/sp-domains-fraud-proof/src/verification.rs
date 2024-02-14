@@ -8,7 +8,7 @@ use crate::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use codec::{Decode, Encode};
-use domain_runtime_primitives::BlockFees;
+use domain_runtime_primitives::{BlockFees, BlockNumber};
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
@@ -21,7 +21,9 @@ use sp_domains::{
     HeaderNumberFor, InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
 };
 use sp_runtime::generic::Digest;
-use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{
+    Block as BlockT, Hash, Header as HeaderT, NumberFor, UniqueSaturatedInto,
+};
 use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
@@ -219,6 +221,7 @@ where
     CBlock::Hash: Into<H256>,
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + From<H256>,
+    DomainHeader::Number: UniqueSaturatedInto<BlockNumber> + From<BlockNumber>,
 {
     let InvalidStateTransitionProof {
         domain_id,
@@ -241,6 +244,10 @@ where
         .call_data::<CBlock, DomainHeader, Balance>(&bad_receipt, &bad_receipt_parent)?;
 
     let execution_result = fraud_proof_runtime_interface::execution_proof_check(
+        (
+            bad_receipt_parent.domain_block_number.saturated_into(),
+            bad_receipt_parent.domain_block_hash.into(),
+        ),
         pre_state_root,
         proof.encode(),
         execution_phase.execution_method(),

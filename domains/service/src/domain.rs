@@ -1,6 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
-use crate::{DomainExtensionsFactory, FullBackend, FullClient, RuntimeExecutor};
+use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
@@ -46,6 +46,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::Nonce;
+use subspace_service::domains::{ExtensionsFactory, RuntimeExecutor};
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
@@ -173,13 +174,9 @@ where
     let client = Arc::new(client);
 
     let executor = Arc::new(executor);
-    client
-        .execution_extensions()
-        .set_extensions_factory(DomainExtensionsFactory::<_, CBlock, Block> {
-            consensus_client: consensus_client.clone(),
-            executor: executor.clone(),
-            _marker: Default::default(),
-        });
+    client.execution_extensions().set_extensions_factory(
+        ExtensionsFactory::<_, CBlock, Block, _>::new(consensus_client.clone(), executor.clone()),
+    );
 
     let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
 

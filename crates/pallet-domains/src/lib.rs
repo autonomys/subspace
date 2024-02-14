@@ -343,6 +343,7 @@ mod pallet {
 
     /// Starting EVM chain ID for evm runtimes.
     pub struct StartingEVMChainId;
+
     impl Get<EVMChainId> for StartingEVMChainId {
         fn get() -> EVMChainId {
             // after looking at `https://chainlist.org/?testnets=false`

@@ -5,18 +5,22 @@ use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
+    BlockNumber, CheckExtrinsicsValidityError, CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
 };
+use hash_db::Hasher;
+use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
+use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_externalities::Extensions;
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
+use sp_state_machine::{create_proof_check_backend, Error, OverlayedChanges, StateMachine};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use std::borrow::Cow;
@@ -53,6 +57,7 @@ pub trait FraudProofHostFunctions: Send + Sync {
     /// Check the execution proof
     fn execution_proof_check(
         &self,
+        domain_block_id: (BlockNumber, H256),
         pre_state_root: H256,
         // TODO: implement `PassBy` for `sp_trie::StorageProof` in upstream to pass it directly here
         encoded_proof: Vec<u8>,
@@ -78,16 +83,22 @@ impl FraudProofExtension {
 pub struct FraudProofHostFunctionsImpl<Block, Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
     executor: Arc<Executor>,
+    domain_extensions_factory: Box<dyn ExtensionsFactory<DomainBlock>>,
     _phantom: PhantomData<(Block, DomainBlock)>,
 }
 
 impl<Block, Client, DomainBlock, Executor>
     FraudProofHostFunctionsImpl<Block, Client, DomainBlock, Executor>
 {
-    pub fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+    pub fn new(
+        consensus_client: Arc<Client>,
+        executor: Arc<Executor>,
+        domain_extensions_factory: Box<dyn ExtensionsFactory<DomainBlock>>,
+    ) -> Self {
         FraudProofHostFunctionsImpl {
             consensus_client,
             executor,
+            domain_extensions_factory,
             _phantom: Default::default(),
         }
     }
@@ -327,7 +338,7 @@ where
         &self,
         consensus_block_hash: H256,
         domain_id: DomainId,
-        domain_block_id: (u32, H256),
+        domain_block_id: (BlockNumber, H256),
         domain_block_state_root: H256,
         bundle_extrinsics: Vec<OpaqueExtrinsic>,
         storage_proof: StorageProof,
@@ -337,6 +348,7 @@ where
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
 
         let raw_response = self.execution_proof_check(
+            domain_block_id,
             domain_block_state_root,
             storage_proof.encode(),
             CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
@@ -362,6 +374,7 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256> + Into<H256>,
+    NumberFor<DomainBlock>: From<BlockNumber>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -516,6 +529,7 @@ where
 
     fn execution_proof_check(
         &self,
+        domain_block_id: (BlockNumber, H256),
         pre_state_root: H256,
         encoded_proof: Vec<u8>,
         execution_method: &str,
@@ -532,7 +546,12 @@ where
             heap_pages: None,
         };
 
-        sp_state_machine::execution_proof_check::<<DomainBlock::Header as HeaderT>::Hashing, _>(
+        let (domain_block_number, domain_block_hash) = domain_block_id;
+        let mut domain_extensions = self
+            .domain_extensions_factory
+            .extensions_for(domain_block_hash.into(), domain_block_number.into());
+
+        execution_proof_check::<<DomainBlock::Header as HeaderT>::Hashing, _>(
             pre_state_root.into(),
             proof,
             &mut Default::default(),
@@ -540,7 +559,42 @@ where
             execution_method,
             call_data,
             &runtime_code,
+            &mut domain_extensions,
         )
         .ok()
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Executes the given proof using the runtime
+/// The only difference between sp_state_machine::execution_proof_check is Extensions
+pub(crate) fn execution_proof_check<H, Exec>(
+    root: H::Out,
+    proof: StorageProof,
+    overlay: &mut OverlayedChanges<H>,
+    exec: &Exec,
+    method: &str,
+    call_data: &[u8],
+    runtime_code: &RuntimeCode,
+    extensions: &mut Extensions,
+) -> Result<Vec<u8>, Box<dyn Error>>
+where
+    H: Hasher,
+    H::Out: Ord + 'static + codec::Codec,
+    Exec: CodeExecutor + Clone + 'static,
+{
+    let trie_backend = create_proof_check_backend::<H>(root, proof)?;
+    let result = StateMachine::<_, H, Exec>::new(
+        &trie_backend,
+        overlay,
+        exec,
+        method,
+        call_data,
+        extensions,
+        runtime_code,
+        CallContext::Offchain,
+    )
+    .execute();
+
+    result
 }

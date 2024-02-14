@@ -9,7 +9,6 @@ mod transaction_pool;
 pub use self::domain::{new_full, DomainOperator, DomainParams, FullPool, NewFull};
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
-use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider};
 use sc_consensus::ImportQueue;
 use sc_network::config::Roles;
@@ -28,81 +27,16 @@ use sc_service::{
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
-use sp_api::__private::Extensions;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
-use sp_core::H256;
-use sp_domains::DomainsApi;
-use sp_messenger::MessengerApi;
-use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
-use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, Zero};
-use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
-use std::marker::PhantomData;
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, Zero};
 use std::sync::Arc;
-
-/// Host functions required for Subspace domain
-#[cfg(not(feature = "runtime-benchmarks"))]
-pub type HostFunctions = (
-    sp_io::SubstrateHostFunctions,
-    sp_messenger_host_functions::HostFunctions,
-    sp_subspace_mmr::DomainHostFunctions,
-);
-
-/// Host functions required for Subspace domain
-#[cfg(feature = "runtime-benchmarks")]
-pub type HostFunctions = (
-    sp_io::SubstrateHostFunctions,
-    sp_messenger_host_functions::HostFunctions,
-    sp_subspace_mmr::DomainHostFunctions,
-    frame_benchmarking::benchmarking::HostFunctions,
-);
-
-/// Runtime executor for Subspace domain
-pub type RuntimeExecutor = sc_executor::WasmExecutor<HostFunctions>;
+pub use subspace_service::domains::RuntimeExecutor;
 
 /// Domain full client.
 pub type FullClient<Block, RuntimeApi> = TFullClient<Block, RuntimeApi, RuntimeExecutor>;
 
 pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
-
-pub(crate) struct DomainExtensionsFactory<CClient, CBlock, Block> {
-    consensus_client: Arc<CClient>,
-    executor: Arc<RuntimeExecutor>,
-    _marker: PhantomData<(CBlock, Block)>,
-}
-
-impl<CClient, CBlock, Block> ExtensionsFactory<Block>
-    for DomainExtensionsFactory<CClient, CBlock, Block>
-where
-    Block: BlockT,
-    CBlock: BlockT,
-    CBlock::Hash: From<H256>,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
-        + DomainsApi<CBlock, Block::Header>,
-{
-    fn extensions_for(
-        &self,
-        _block_hash: Block::Hash,
-        _block_number: NumberFor<Block>,
-    ) -> Extensions {
-        let mut exts = Extensions::new();
-        exts.register(SubspaceMmrExtension::new(Arc::new(
-            SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(self.consensus_client.clone()),
-        )));
-
-        exts.register(MessengerExtension::new(Arc::new(
-            MessengerHostFunctionsImpl::<CBlock, _, Block, _>::new(
-                self.consensus_client.clone(),
-                self.executor.clone(),
-            ),
-        )));
-
-        exts
-    }
-}
 
 /// Build the network service, the network status sinks and an RPC sender.
 ///
