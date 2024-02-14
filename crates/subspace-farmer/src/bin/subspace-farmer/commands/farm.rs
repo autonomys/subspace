@@ -2,13 +2,13 @@ mod dsn;
 mod metrics;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::commands::farm::metrics::FarmerMetrics;
+use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
-use futures::stream::FuturesUnordered;
+use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
@@ -665,25 +665,23 @@ where
 
     info!("Finished collecting already plotted pieces successfully");
 
-    for single_disk_farm in single_disk_farms.iter() {
-        farmer_metrics.update_farm_size(
-            single_disk_farm.id(),
-            single_disk_farm.total_sectors_count(),
-        );
-        farmer_metrics.inc_farm_plotted(
-            single_disk_farm.id(),
-            single_disk_farm
-                .plotted_sectors_count()
-                .await
-                .try_into()
-                .unwrap(),
-        );
-    }
+    let total_and_plotted_sectors = single_disk_farms
+        .iter()
+        .map(|single_disk_farm| async {
+            let total_sector_count = single_disk_farm.total_sectors_count();
+            let plotted_sectors_count = single_disk_farm.plotted_sectors_count().await;
+
+            (total_sector_count, plotted_sectors_count)
+        })
+        .collect::<FuturesOrdered<_>>()
+        .collect::<Vec<_>>()
+        .await;
 
     let mut single_disk_farms_stream = single_disk_farms
         .into_iter()
         .enumerate()
-        .map(|(disk_farm_index, single_disk_farm)| {
+        .zip(total_and_plotted_sectors)
+        .map(|((disk_farm_index, single_disk_farm), sector_counts)| {
             let disk_farm_index = disk_farm_index.try_into().expect(
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
@@ -709,6 +707,17 @@ where
                     }
                 };
 
+            let (total_sector_count, plotted_sectors_count) = sector_counts;
+            farmer_metrics.update_sectors_total(
+                single_disk_farm.id(),
+                total_sector_count - plotted_sectors_count,
+                SectorState::NotPlotted,
+            );
+            farmer_metrics.update_sectors_total(
+                single_disk_farm.id(),
+                plotted_sectors_count,
+                SectorState::Plotted,
+            );
             single_disk_farm
                 .on_sector_update(Arc::new({
                     let single_disk_farm_id = *single_disk_farm.id();
@@ -748,19 +757,24 @@ where
                             on_plotted_sector_callback(plotted_sector, old_plotted_sector);
                             farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
                             farmer_metrics.sector_plotted.inc();
-                            if old_plotted_sector.is_some() {
-                                farmer_metrics.inc_farm_replotted(&single_disk_farm_id);
-                            } else {
-                                farmer_metrics.inc_farm_plotted(&single_disk_farm_id, 1);
-                            }
+                            farmer_metrics
+                                .update_sector_state(&single_disk_farm_id, SectorState::Plotted);
                         }
                         SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
-                            farmer_metrics.inc_farm_about_to_expire(&single_disk_farm_id, 1);
+                            farmer_metrics.update_sector_state(
+                                &single_disk_farm_id,
+                                SectorState::AboutToExpire,
+                            );
                         }
                         SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
-                            farmer_metrics.inc_farm_expired(&single_disk_farm_id, 1);
+                            farmer_metrics
+                                .update_sector_state(&single_disk_farm_id, SectorState::Expired);
                         }
-                        _ => {}
+                        SectorUpdate::Expiration(SectorExpirationDetails::Determined {
+                            ..
+                        }) => {
+                            // Not interested in here
+                        }
                     }
                 }))
                 .detach();

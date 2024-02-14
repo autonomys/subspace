@@ -1275,8 +1275,13 @@ impl SingleDiskFarm {
     }
 
     /// Number of sectors successfully plotted so far
-    pub async fn plotted_sectors_count(&self) -> usize {
-        self.sectors_metadata.read().await.len()
+    pub async fn plotted_sectors_count(&self) -> SectorIndex {
+        self.sectors_metadata
+            .read()
+            .await
+            .len()
+            .try_into()
+            .expect("Number of sectors never exceeds `SectorIndex` type; qed")
     }
 
     /// Read information about sectors plotted so far
