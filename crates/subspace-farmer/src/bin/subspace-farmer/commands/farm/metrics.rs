@@ -1,9 +1,11 @@
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
+use subspace_core_primitives::SectorIndex;
 use subspace_farmer::single_disk_farm::farming::ProvingResult;
 use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
 
@@ -16,6 +18,10 @@ pub(super) struct FarmerMetrics {
     sector_encoding_time: Family<Vec<(String, String)>, Histogram>,
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
     sector_plotting_time: Family<Vec<(String, String)>, Histogram>,
+    farm_size: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
+    farm_plotted: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
+    farm_expired: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
+    farm_about_to_expire: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
     pub(super) sector_downloading: Counter<u64, AtomicU64>,
     pub(super) sector_downloaded: Counter<u64, AtomicU64>,
     pub(super) sector_encoding: Counter<u64, AtomicU64>,
@@ -104,6 +110,42 @@ impl FarmerMetrics {
             sector_plotting_time.clone(),
         );
 
+        let farm_size = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_size",
+            "Farm size",
+            Unit::Other("sectors".to_string()),
+            farm_size.clone(),
+        );
+
+        let farm_plotted = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_plotted",
+            "Number of plotted farm sectors",
+            Unit::Other("sectors".to_string()),
+            farm_plotted.clone(),
+        );
+
+        let farm_expired = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_expired",
+            "Number of expired farm sectors",
+            Unit::Other("sectors".to_string()),
+            farm_expired.clone(),
+        );
+
+        let farm_about_to_expire = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "farm_about_to_expire",
+            "Number of farm sectors about to expire",
+            Unit::Other("sectors".to_string()),
+            farm_about_to_expire.clone(),
+        );
+
         let sector_downloading = Counter::<_, _>::default();
 
         sub_registry.register_with_unit(
@@ -184,6 +226,10 @@ impl FarmerMetrics {
             sector_encoding_time,
             sector_writing_time,
             sector_plotting_time,
+            farm_size,
+            farm_plotted,
+            farm_expired,
+            farm_about_to_expire,
             sector_downloading,
             sector_downloaded,
             sector_encoding,
@@ -285,5 +331,101 @@ impl FarmerMetrics {
                 single_disk_farm_id.to_string(),
             )])
             .observe(time.as_secs_f64());
+    }
+
+    pub(super) fn update_farm_size(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: SectorIndex,
+    ) {
+        self.farm_size
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .set(i64::from(sectors));
+    }
+
+    pub(super) fn inc_farm_plotted(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: SectorIndex,
+    ) {
+        self.farm_plotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(i64::from(sectors));
+    }
+
+    pub(super) fn inc_farm_expired(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: SectorIndex,
+    ) {
+        self.farm_expired
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(i64::from(sectors));
+        self.farm_plotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .dec_by(i64::from(sectors));
+    }
+
+    pub(super) fn inc_farm_about_to_expire(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: SectorIndex,
+    ) {
+        self.farm_about_to_expire
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc_by(i64::from(sectors));
+        self.farm_plotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .dec_by(i64::from(sectors));
+    }
+
+    pub(super) fn inc_farm_replotted(&self, single_disk_farm_id: &SingleDiskFarmId) {
+        self.farm_plotted
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .inc();
+        if self
+            .farm_expired
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .get()
+            > 0
+        {
+            self.farm_expired
+                .get_or_create(&vec![(
+                    "farm_id".to_string(),
+                    single_disk_farm_id.to_string(),
+                )])
+                .dec();
+        } else {
+            self.farm_about_to_expire
+                .get_or_create(&vec![(
+                    "farm_id".to_string(),
+                    single_disk_farm_id.to_string(),
+                )])
+                .dec();
+        }
     }
 }
