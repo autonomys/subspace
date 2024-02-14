@@ -71,12 +71,9 @@ pub struct DsnConfig {
 pub(crate) fn create_dsn_instance(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
-    enable_metrics: bool,
-) -> Result<(Node, NodeRunner<()>, Option<Registry>), DsnConfigurationError> {
+    prometheus_registry: Option<&mut Registry>,
+) -> Result<(Node, NodeRunner<()>), DsnConfigurationError> {
     trace!("Subspace networking starting.");
-
-    let mut metrics_registry = Registry::default();
-    let dsn_metrics_registry = enable_metrics.then_some(&mut metrics_registry);
 
     let networking_parameters_registry = {
         let network_path = dsn_config.network_path;
@@ -101,7 +98,7 @@ pub(crate) fn create_dsn_instance(
 
     let keypair = dsn_config.keypair.clone();
     let default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_version, keypair, (), dsn_metrics_registry);
+        subspace_networking::Config::new(dsn_protocol_version, keypair, (), prometheus_registry);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -126,13 +123,5 @@ pub(crate) fn create_dsn_instance(
         ..default_networking_config
     };
 
-    subspace_networking::construct(networking_config)
-        .map(|(node, node_runner)| {
-            (
-                node,
-                node_runner,
-                enable_metrics.then_some(metrics_registry),
-            )
-        })
-        .map_err(Into::into)
+    subspace_networking::construct(networking_config).map_err(Into::into)
 }

@@ -32,7 +32,7 @@ async fn main() {
 
     match start_prometheus_metrics_server(
         vec![prometheus_metrics_server_address],
-        RegistryAdapter::Libp2p(metric_registry),
+        RegistryAdapter::PrometheusClient(metric_registry),
     ) {
         Err(err) => {
             error!(

@@ -3,7 +3,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
-use crate::utils::OperatorSlotInfo;
+use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
@@ -39,7 +39,7 @@ use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Balance;
 use subspace_test_service::{
@@ -324,7 +324,11 @@ async fn test_processing_empty_consensus_block() {
     let domain_genesis_hash = alice.client.info().best_hash;
     for _ in 0..10 {
         // Produce consensus block with no tx thus no bundle
-        ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
+        let slot = ferdie.produce_slot();
+        ferdie
+            .produce_block_with_slot_at(slot, ferdie.client.info().best_hash, Some(vec![]))
+            .await
+            .unwrap();
 
         let consensus_best_hash = ferdie.client.info().best_hash;
         let consensus_best_number = ferdie.client.info().best_number;
@@ -1162,7 +1166,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1322,7 +1326,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1358,7 +1362,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1477,7 +1481,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1615,7 +1619,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1651,7 +1655,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1790,7 +1794,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1895,7 +1899,7 @@ async fn test_invalid_block_fees_proof_creation() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -1998,7 +2002,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -2101,7 +2105,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
@@ -2184,7 +2188,7 @@ async fn test_bundle_equivocation_fraud_proof() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
 
     ferdie
         .submit_transaction(original_submit_bundle_tx)
@@ -2500,7 +2504,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
     ferdie
         .submit_transaction(submit_bundle_tx_with_bad_receipt)
         .await
@@ -2742,7 +2746,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn duplicated_and_stale_bundle_should_be_rejected() {
+async fn duplicated_bundle_should_be_rejected() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -2792,21 +2796,152 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         }
         e => panic!("Unexpected error: {e}"),
     }
+}
 
-    // Wait for `BlockTreePruningDepth + 1` blocks which is 16 + 1 in test
-    produce_blocks!(ferdie, alice, 17).await.unwrap();
+#[tokio::test(flavor = "multi_thread")]
+async fn stale_and_in_future_bundle_should_be_rejected() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-    // Bundle is now rejected because its receipt is pruned.
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+    let slot_info = |slot, proof_of_time| OperatorSlotInfo {
+        slot,
+        proof_of_time,
+    };
+    let operator_id = 0;
+    let mut bundle_producer = {
+        let domain_bundle_proposer = DomainBundleProposer::new(
+            GENESIS_DOMAIN_ID,
+            alice.client.clone(),
+            ferdie.client.clone(),
+            alice.operator.transaction_pool.clone(),
+        );
+        let (bundle_sender, _bundle_receiver) =
+            sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
+        DomainBundleProducer::new(
+            GENESIS_DOMAIN_ID,
+            ferdie.client.clone(),
+            alice.client.clone(),
+            domain_bundle_proposer,
+            Arc::new(bundle_sender),
+            alice.operator.keystore.clone(),
+            false,
+        )
+    };
+
+    let (_, bundle1) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (_, bundle2) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    ferdie.clear_tx_pool().await.unwrap();
+
+    // Produce one block that only included `bundle1`
+    produce_block_with!(
+        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(bundle1)]),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // `bundle2` will be rejected because its PoT is stale
     match ferdie
-        .submit_transaction(submit_bundle_tx)
+        .submit_transaction(bundle_to_tx(bundle2))
         .await
         .unwrap_err()
     {
         sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
-            assert_eq!(invalid_tx, InvalidTransactionCode::ExecutionReceipt.into())
+            assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
         }
         e => panic!("Unexpected error: {e}"),
     }
+
+    // Bundle with unknow PoT and in future slot will be rejected before entring the tx pool
+    let (valid_slot, valid_pot) = ferdie.produce_slot();
+    let slot_in_future = u64::MAX.into();
+    let unknow_pot = PotOutput::from(
+        <&[u8] as TryInto<[u8; 16]>>::try_into(
+            &subspace_runtime_primitives::Hash::random().to_fixed_bytes()[..16],
+        )
+        .expect("slice with length of 16 must able convert into [u8; 16]; qed"),
+    );
+
+    let valid_bundle = bundle_producer
+        .produce_bundle(operator_id, slot_info(valid_slot, valid_pot))
+        .await
+        .unwrap()
+        .unwrap();
+    let bundle_with_unknow_pot = bundle_producer
+        .produce_bundle(operator_id, slot_info(valid_slot, unknow_pot))
+        .await
+        .unwrap()
+        .unwrap();
+    let bundle_with_slot_in_future = bundle_producer
+        .produce_bundle(operator_id, slot_info(slot_in_future, valid_pot))
+        .await
+        .unwrap()
+        .unwrap();
+    for bundle in [
+        bundle_with_unknow_pot.clone(),
+        bundle_with_slot_in_future.clone(),
+    ] {
+        match ferdie
+            .submit_transaction(bundle_to_tx(bundle))
+            .await
+            .unwrap_err()
+        {
+            sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(
+                invalid_tx,
+            )) => {
+                assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
+            }
+            e => panic!("Unexpected error: {e}"),
+        }
+    }
+    ferdie
+        .submit_transaction(bundle_to_tx(valid_bundle))
+        .await
+        .unwrap();
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Even try building consensus block with these invalid bundles, they will fail to pass
+    // the `pre_dispatch` check, and won't included in the consensus block
+    let pre_ferdie_best_number = ferdie.client.info().best_number;
+    let pre_alice_best_number = alice.client.info().best_number;
+
+    ferdie
+        .produce_block_with_extrinsics(vec![
+            bundle_to_tx(bundle_with_unknow_pot),
+            bundle_to_tx(bundle_with_slot_in_future),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(ferdie.client.info().best_number, pre_ferdie_best_number + 1);
+    assert_eq!(alice.client.info().best_number, pre_alice_best_number);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2837,6 +2972,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
+    let pre_alice_best_number = alice.client.info().best_number;
     let mut parent_hash = ferdie.client.info().best_hash;
 
     let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -2850,23 +2986,22 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         .await
         .unwrap();
 
-    // Create fork and build one more blocks on it to make it the new best fork
+    // Create fork that also contains the bundle and build one more blocks on it to make
+    // it the new best fork
     parent_hash = ferdie
+        .produce_block_with_slot_at(slot, parent_hash, Some(vec![submit_bundle_tx]))
+        .await
+        .unwrap();
+    let slot = ferdie.produce_slot();
+    ferdie
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
         .unwrap();
-    ferdie
-        .produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![]))
-        .await
-        .unwrap();
 
-    // Bundle can be successfully submitted to the new fork, or it is also possible
-    // that the `submit_bundle_tx` in the retracted block has been resubmitted to the
-    // tx pool in the background by the `txpool-notifications` worker.
-    match ferdie.submit_transaction(submit_bundle_tx).await {
-        Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
-        Err(err) => panic!("Unexpected error: {err}"),
-    }
+    assert_eq!(alice.client.info().best_number, pre_alice_best_number + 1);
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+    assert_eq!(alice.client.info().best_number, pre_alice_best_number + 2);
 }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.
@@ -3661,7 +3796,7 @@ async fn test_bad_receipt_chain() {
         .prune_tx_from_pool(&original_submit_bundle_tx)
         .await
         .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
     ferdie
         .submit_transaction(bad_submit_bundle_tx)
         .await
@@ -3680,19 +3815,17 @@ async fn test_bad_receipt_chain() {
     // Produce a bundle with another bad ER that use previous bad ER as parent
     let parent_bad_receipt_hash = bad_receipt_hash;
     let slot = ferdie.produce_slot();
-    let bundle = {
-        bundle_producer
-            .produce_bundle(
-                0,
-                OperatorSlotInfo {
-                    slot,
-                    global_randomness: Randomness::from(Hash::random().to_fixed_bytes()),
-                },
-            )
-            .await
-            .expect("produce bundle must success")
-            .expect("must win the challenge")
-    };
+    let bundle = bundle_producer
+        .produce_bundle(
+            0,
+            OperatorSlotInfo {
+                slot: slot.0,
+                proof_of_time: slot.1,
+            },
+        )
+        .await
+        .expect("produce bundle must success")
+        .expect("must win the challenge");
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle;
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;

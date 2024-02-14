@@ -8,7 +8,7 @@ pub(crate) fn scrub(disk_farms: &[PathBuf]) {
         .into_par_iter()
         .enumerate()
         .for_each(|(disk_farm_index, directory)| {
-            let span = info_span!("single_disk_farm", %disk_farm_index);
+            let span = info_span!("", %disk_farm_index);
             let _span_guard = span.enter();
             info!(
                 path = %directory.display(),

@@ -69,8 +69,8 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{
-    BlockNumber, PotCheckpoints, PotOutput, PublicKey, Randomness, RewardSignature, SectorId,
-    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
+    BlockNumber, PotCheckpoints, PotOutput, PublicKey, RewardSignature, SectorId, Solution,
+    SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
@@ -136,8 +136,8 @@ where
 pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
-    /// Global randomness
-    pub global_randomness: Randomness,
+    /// The PoT output for `slot`
+    pub proof_of_time: PotOutput,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
@@ -272,7 +272,6 @@ where
         }
 
         let proof_of_time = checkpoints.output();
-        let global_randomness = proof_of_time.derive_global_randomness();
 
         // NOTE: Best hash is not necessarily going to be the parent of corresponding block, but
         // solution range shouldn't be too far off
@@ -293,7 +292,7 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_randomness,
+            proof_of_time,
             solution_range,
             voting_solution_range,
         };

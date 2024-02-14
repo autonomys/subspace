@@ -96,7 +96,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::Balance;
 
 pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
@@ -138,7 +138,7 @@ pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS> {
     pub _phantom: PhantomData<CBlock>,
 }
 
-type NewSlotNotification = (Slot, Randomness);
+type NewSlotNotification = (Slot, PotOutput);
 
 pub struct OperatorParams<
     Block,

@@ -593,6 +593,17 @@ const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 // Stake Withdrawal locking period must be >= Block tree pruning depth
 const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get());
 
+pub struct BlockSlot;
+impl pallet_domains::BlockSlot for BlockSlot {
+    fn current_slot() -> sp_consensus_slots::Slot {
+        Subspace::current_slot()
+    }
+
+    fn future_slot() -> sp_consensus_slots::Slot {
+        Subspace::current_slot() + Slot::from(BlockAuthoringDelay::get())
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -622,6 +633,7 @@ impl pallet_domains::Config for Runtime {
     type SudoId = SudoId;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
+    type BlockSlot = BlockSlot;
 }
 
 parameter_types! {

@@ -227,6 +227,7 @@ fn main() -> Result<(), Error> {
             let consensus_chain_node = subspace_service::new_full::<PosTable, _>(
                 consensus_chain_config,
                 partial_components,
+                None,
                 true,
                 SlotProportion::new(3f32 / 4f32),
             )

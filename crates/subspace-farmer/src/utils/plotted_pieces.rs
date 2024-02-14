@@ -13,14 +13,15 @@ struct PieceDetails {
     piece_offset: PieceOffset,
 }
 
-/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
+/// Wrapper data structure for pieces plotted under multiple plots.
 #[derive(Debug)]
-pub struct ReadersAndPieces {
+pub struct PlottedPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
 }
 
-impl ReadersAndPieces {
+impl PlottedPieces {
+    /// Initialize with readers for each farm
     pub fn new(readers: Vec<PieceReader>) -> Self {
         Self {
             readers,
@@ -33,7 +34,7 @@ impl ReadersAndPieces {
         self.pieces.contains_key(piece_index)
     }
 
-    /// Read piece from one of the associated readers.
+    /// Read plotted piece from oneof the farms.
     ///
     /// If piece doesn't exist `None` is returned, if by the time future is polled piece is no
     /// longer in the plot, future will resolve with `None`.
@@ -69,6 +70,7 @@ impl ReadersAndPieces {
         })
     }
 
+    /// Add new sector to collect plotted pieces
     pub fn add_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
@@ -90,6 +92,7 @@ impl ReadersAndPieces {
         }
     }
 
+    /// Add old sector from plotted pieces (happens on replotting)
     pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
@@ -121,6 +124,7 @@ impl ReadersAndPieces {
         }
     }
 
+    /// Iterator over all unique piece indices plotted
     pub fn piece_indices(&self) -> impl Iterator<Item = &PieceIndex> {
         self.pieces.keys()
     }

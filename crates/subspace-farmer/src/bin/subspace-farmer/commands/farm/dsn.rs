@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::{Arc, Weak};
 use subspace_farmer::node_client::NodeClientExt;
 use subspace_farmer::piece_cache::PieceCache;
-use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
+use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
@@ -43,7 +43,7 @@ pub(super) fn configure_dsn(
         external_addresses,
         disable_bootstrap_on_start,
     }: DsnArgs,
-    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
+    weak_plotted_pieces: Weak<Mutex<Option<PlottedPieces>>>,
     node_client: NodeRpcClient,
     piece_cache: PieceCache,
     prometheus_metrics_registry: Option<&mut Registry>,
@@ -74,14 +74,14 @@ pub(super) fn configure_dsn(
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
-                let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                let weak_plotted_pieces = weak_plotted_pieces.clone();
                 let piece_cache = piece_cache.clone();
 
                 async move {
                     let key = RecordKey::from(piece_index.to_multihash());
-                    let piece_from_store = piece_cache.get_piece(key).await;
+                    let piece_from_cache = piece_cache.get_piece(key).await;
 
-                    if let Some(piece) = piece_from_store {
+                    if let Some(piece) = piece_from_cache {
                         Some(PieceByIndexResponse { piece: Some(piece) })
                     } else {
                         debug!(
@@ -90,16 +90,16 @@ pub(super) fn configure_dsn(
                         );
 
                         let read_piece_fut = {
-                            let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                                Some(readers_and_pieces) => readers_and_pieces,
+                            let plotted_pieces = match weak_plotted_pieces.upgrade() {
+                                Some(plotted_pieces) => plotted_pieces,
                                 None => {
                                     debug!("A readers and pieces are already dropped");
                                     return None;
                                 }
                             };
-                            let readers_and_pieces = readers_and_pieces.lock();
-                            let readers_and_pieces = match readers_and_pieces.as_ref() {
-                                Some(readers_and_pieces) => readers_and_pieces,
+                            let plotted_pieces = plotted_pieces.lock();
+                            let plotted_pieces = match plotted_pieces.as_ref() {
+                                Some(plotted_pieces) => plotted_pieces,
                                 None => {
                                     debug!(
                                         ?piece_index,
@@ -109,9 +109,7 @@ pub(super) fn configure_dsn(
                                 }
                             };
 
-                            readers_and_pieces
-                                .read_piece(&piece_index)?
-                                .in_current_span()
+                            plotted_pieces.read_piece(&piece_index)?.in_current_span()
                         };
 
                         let piece = read_piece_fut.await;

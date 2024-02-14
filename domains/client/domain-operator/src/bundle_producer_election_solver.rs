@@ -13,7 +13,7 @@ use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::Balance;
 use tracing::log;
 
@@ -54,7 +54,7 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         operator_id: OperatorId,
-        global_randomness: Randomness,
+        proof_of_time: PotOutput,
     ) -> sp_blockchain::Result<Option<(ProofOfElection<CBlock::Hash>, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             total_domain_stake,
@@ -69,7 +69,9 @@ where
             None => return Ok(None),
         };
 
-        let global_challenge = global_randomness.derive_global_challenge(slot.into());
+        let global_challenge = proof_of_time
+            .derive_global_randomness()
+            .derive_global_challenge(slot.into());
         let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
         // Ideally, we can already cache operator signing key since we do not allow changing such key
@@ -97,7 +99,7 @@ where
                         let proof_of_election = ProofOfElection {
                             domain_id,
                             slot_number: slot.into(),
-                            global_randomness,
+                            proof_of_time,
                             vrf_signature,
                             operator_id,
                             consensus_block_hash,

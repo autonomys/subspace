@@ -45,6 +45,8 @@ use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
+use sp_consensus_subspace::consensus::is_proof_of_time_valid;
+use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -66,7 +68,7 @@ use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 pub use staking::OperatorConfig;
-use subspace_core_primitives::U256;
+use subspace_core_primitives::{BlockHash, SlotNumber, U256};
 use subspace_runtime_primitives::Balance;
 
 pub(crate) type BalanceOf<T> =
@@ -81,6 +83,11 @@ pub trait HoldIdentifier<T: Config> {
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
     fn storage_fund_withdrawal(operator_id: OperatorId) -> FungibleHoldId<T>;
+}
+
+pub trait BlockSlot {
+    fn current_slot() -> sp_consensus_slots::Slot;
+    fn future_slot() -> sp_consensus_slots::Slot;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -143,8 +150,8 @@ mod pallet {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
-        OpaqueBundleOf, ReceiptHashFor, STORAGE_VERSION,
+        BalanceOf, BlockSlot, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier,
+        NominatorId, OpaqueBundleOf, ReceiptHashFor, STORAGE_VERSION,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -311,6 +318,9 @@ mod pallet {
 
         /// Storage fee interface used to deal with bundle storage fee
         type StorageFee: StorageFee<BalanceOf<Self>>;
+
+        /// The block slot
+        type BlockSlot: BlockSlot;
     }
 
     #[pallet::pallet]
@@ -585,10 +595,16 @@ mod pallet {
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
         BundleTooLarge,
-        // Bundle with an invalid extrinsic root
+        /// Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
         /// This bundle duplicated with an already submitted bundle
         DuplicatedBundle,
+        /// Invalid proof of time in the proof of election  
+        InvalidProofOfTime,
+        /// The bundle is built on a slot in the future
+        SlotInTheFuture,
+        /// The bundle is built on a slot in the past
+        SlotInThePast,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1380,7 +1396,7 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
+                Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle, true)
                     .map_err(|_| InvalidTransaction::Call.into())
                     .and_then(|_| {
                         charge_bundle_storage_fee::<T>(
@@ -1398,7 +1414,7 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
-                    if let Err(e) = Self::validate_bundle(opaque_bundle) {
+                    if let Err(e) = Self::validate_bundle(opaque_bundle, false) {
                         match e {
                             // These errors are common due to networking delay or chain re-org,
                             // using a lower log level to avoid the noise.
@@ -1406,7 +1422,9 @@ mod pallet {
                             | BundleError::Receipt(BlockTreeError::StaleReceipt)
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
                             | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
-                            | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock) => {
+                            | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
+                            | BundleError::SlotInThePast
+                            | BundleError::SlotInTheFuture => {
                                 log::debug!(
                                     target: "runtime::domains",
                                     "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
@@ -1571,7 +1589,10 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+    fn validate_bundle(
+        opaque_bundle: &OpaqueBundleOf<T>,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
@@ -1606,8 +1627,36 @@ impl<T: Config> Pallet<T> {
         Self::check_extrinsics_root(opaque_bundle)?;
 
         let proof_of_election = &sealed_header.header.proof_of_election;
+        let slot_number = proof_of_election.slot_number;
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
+
+        // Check if the bundle is built with slot and valid proof-of-time that produced between the parent block
+        // and the current block
+        //
+        // NOTE: during `validate_unsigned` `current_slot` is query from the parent block and during `pre_dispatch`
+        // the `future_slot` is query from the current block.
+        if pre_dispatch {
+            ensure!(
+                slot_number <= *T::BlockSlot::future_slot(),
+                BundleError::SlotInTheFuture
+            )
+        } else {
+            ensure!(
+                slot_number > *T::BlockSlot::current_slot(),
+                BundleError::SlotInThePast
+            );
+        }
+        if !is_proof_of_time_valid(
+            BlockHash::try_from(frame_system::Pallet::<T>::parent_hash().as_ref())
+                .expect("Must be able to convert to block hash type"),
+            SlotNumber::from(slot_number),
+            WrappedPotOutput::from(proof_of_election.proof_of_time),
+            // Quick verification when entering transaction pool, but not when constructing the block
+            !pre_dispatch,
+        ) {
+            return Err(BundleError::InvalidProofOfTime);
+        }
 
         sp_domains::bundle_producer_election::check_proof_of_election(
             &operator.signing_key,

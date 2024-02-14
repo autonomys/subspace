@@ -62,7 +62,7 @@ pub fn create_domain_key(options: CreateDomainKeyOptions) -> Result<(), Error> {
     store_key_in_keystore(path, &phrase, password)?;
 
     info!("Successfully generated and imported keypair!");
-    info!("Public key: {}", hex::encode(public_key.0));
+    info!("Public key: 0x{}", hex::encode(public_key.0));
     info!("Seed: \"{}\"", phrase.expose_secret());
     if has_password {
         info!("Password: as specified in CLI options");

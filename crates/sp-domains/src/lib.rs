@@ -60,7 +60,7 @@ use sp_trie::TrieLayout;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
-use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
+use subspace_core_primitives::{bidirectional_distance, Blake3Hash, PotOutput, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
@@ -611,8 +611,8 @@ pub struct ProofOfElection<CHash> {
     pub domain_id: DomainId,
     /// The slot number.
     pub slot_number: u64,
-    /// Global randomness.
-    pub global_randomness: Randomness,
+    /// The PoT output for `slot_number`.
+    pub proof_of_time: PotOutput,
     /// VRF signature.
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
@@ -627,7 +627,8 @@ impl<CHash> ProofOfElection<CHash> {
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), ProofOfElectionError> {
         let global_challenge = self
-            .global_randomness
+            .proof_of_time
+            .derive_global_randomness()
             .derive_global_challenge(self.slot_number);
         bundle_producer_election::verify_vrf_signature(
             self.domain_id,
@@ -657,7 +658,7 @@ impl<CHash: Default> ProofOfElection<CHash> {
         Self {
             domain_id,
             slot_number: 0u64,
-            global_randomness: Randomness::default(),
+            proof_of_time: PotOutput::default(),
             vrf_signature,
             operator_id,
             consensus_block_hash: Default::default(),
