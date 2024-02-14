@@ -25,7 +25,8 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
-    SectorPlottingDetails, SectorExpirationDetails, SectorUpdate, SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
+    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
+    SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
@@ -664,9 +665,19 @@ where
 
     info!("Finished collecting already plotted pieces successfully");
 
-    for (_, single_disk_farm) in single_disk_farms.iter().enumerate() {
-        farmer_metrics.update_farm_size(single_disk_farm.id(), single_disk_farm.total_sectors_count());
-        farmer_metrics.inc_farm_plotted(single_disk_farm.id(), single_disk_farm.plotted_sectors_count().await.try_into().unwrap());
+    for single_disk_farm in single_disk_farms.iter() {
+        farmer_metrics.update_farm_size(
+            single_disk_farm.id(),
+            single_disk_farm.total_sectors_count(),
+        );
+        farmer_metrics.inc_farm_plotted(
+            single_disk_farm.id(),
+            single_disk_farm
+                .plotted_sectors_count()
+                .await
+                .try_into()
+                .unwrap(),
+        );
     }
 
     let mut single_disk_farms_stream = single_disk_farms
@@ -737,7 +748,7 @@ where
                             on_plotted_sector_callback(plotted_sector, old_plotted_sector);
                             farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
                             farmer_metrics.sector_plotted.inc();
-                            if let Some(_) = &old_plotted_sector {
+                            if old_plotted_sector.is_some() {
                                 farmer_metrics.inc_farm_replotted(&single_disk_farm_id);
                             } else {
                                 farmer_metrics.inc_farm_plotted(&single_disk_farm_id, 1);

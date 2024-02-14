@@ -1,13 +1,13 @@
 use prometheus_client::metrics::counter::Counter;
-use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use std::sync::atomic::{AtomicU64, AtomicI64};
+use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
+use subspace_core_primitives::SectorIndex;
 use subspace_farmer::single_disk_farm::farming::ProvingResult;
 use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
-use subspace_core_primitives::SectorIndex;
 
 #[derive(Debug, Clone)]
 pub(super) struct FarmerMetrics {
@@ -397,22 +397,22 @@ impl FarmerMetrics {
             .dec_by(i64::from(sectors));
     }
 
-    pub(super) fn inc_farm_replotted(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-    ) {
+    pub(super) fn inc_farm_replotted(&self, single_disk_farm_id: &SingleDiskFarmId) {
         self.farm_plotted
             .get_or_create(&vec![(
                 "farm_id".to_string(),
                 single_disk_farm_id.to_string(),
             )])
             .inc();
-        if self.farm_expired
-               .get_or_create(&vec![(
-                   "farm_id".to_string(),
-                   single_disk_farm_id.to_string(),
-               )])
-               .get() > 0 {
+        if self
+            .farm_expired
+            .get_or_create(&vec![(
+                "farm_id".to_string(),
+                single_disk_farm_id.to_string(),
+            )])
+            .get()
+            > 0
+        {
             self.farm_expired
                 .get_or_create(&vec![(
                     "farm_id".to_string(),
