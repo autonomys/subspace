@@ -255,7 +255,15 @@ impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracke
         Ok(())
     }
 
-    fn cancel_transfer(
+    fn claim_rejected_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reject_transfer(
         _from_chain_id: ChainId,
         _to_chain_id: ChainId,
         _amount: Balance,

@@ -39,6 +39,7 @@ pub enum Error {
     InvalidStateRoot,
     BalanceOverflow,
     DomainTransfersTracking,
+    InvalidDomainTransfers,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -354,6 +355,13 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     .total_fees()
                     .ok_or(Error::BalanceOverflow)?;
 
+                ensure!(
+                    execution_receipt
+                        .transfers
+                        .is_valid(ChainId::Domain(domain_id)),
+                    Error::BalanceOverflow
+                );
+
                 update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
                     .map_err(|_| Error::DomainTransfersTracking)?;
 
@@ -409,7 +417,8 @@ fn update_domain_transfers<T: Config>(
     let Transfers {
         transfers_in,
         transfers_out,
-        transfers_reverted,
+        transfers_rejected,
+        rejected_transfers_claimed,
     } = transfers;
 
     // confirm incoming transfers
@@ -425,11 +434,18 @@ fn update_domain_transfers<T: Config>(
         T::DomainsTransfersTracker::note_transfer(er_chain_id, *to_chain_id, *amount)
     })?;
 
-    // cancel existing transfers
-    transfers_reverted
+    // note rejected transfers
+    transfers_rejected
+        .iter()
+        .try_for_each(|(from_chain_id, amount)| {
+            T::DomainsTransfersTracker::reject_transfer(*from_chain_id, er_chain_id, *amount)
+        })?;
+
+    // claim rejected transfers
+    rejected_transfers_claimed
         .iter()
         .try_for_each(|(to_chain_id, amount)| {
-            T::DomainsTransfersTracker::cancel_transfer(er_chain_id, *to_chain_id, *amount)
+            T::DomainsTransfersTracker::claim_rejected_transfer(er_chain_id, *to_chain_id, *amount)
         })?;
 
     // deduct execution fees from domain

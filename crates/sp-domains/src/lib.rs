@@ -300,7 +300,18 @@ pub struct Transfers<Balance> {
     /// Total transfers that went out of the domain.
     pub transfers_out: BTreeMap<ChainId, Balance>,
     /// Total transfers from this domain that were reverted.
-    pub transfers_reverted: BTreeMap<ChainId, Balance>,
+    pub rejected_transfers_claimed: BTreeMap<ChainId, Balance>,
+    /// Total transfers to this domain that were rejected.
+    pub transfers_rejected: BTreeMap<ChainId, Balance>,
+}
+
+impl<Balance> Transfers<Balance> {
+    pub fn is_valid(&self, chain_id: ChainId) -> bool {
+        !self.transfers_rejected.contains_key(&chain_id)
+            && !self.transfers_in.contains_key(&chain_id)
+            && !self.transfers_out.contains_key(&chain_id)
+            && !self.rejected_transfers_claimed.contains_key(&chain_id)
+    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -1136,8 +1147,15 @@ pub trait DomainsTransfersTracker<Balance> {
         amount: Balance,
     ) -> Result<(), Self::Error>;
 
-    /// Cancels an initiated transfer between chains.
-    fn cancel_transfer(
+    /// Claims a rejected transfer between chains.
+    fn claim_rejected_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Rejects a initiated transfer between chains.
+    fn reject_transfer(
         from_chain_id: ChainId,
         to_chain_id: ChainId,
         amount: Balance,

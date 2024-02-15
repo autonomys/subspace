@@ -2020,7 +2020,8 @@ async fn test_invalid_transfers_fraud_proof() {
         receipt.transfers = Transfers {
             transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
             transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
-            transfers_reverted: Default::default(),
+            rejected_transfers_claimed: Default::default(),
+            transfers_rejected: Default::default(),
         };
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
