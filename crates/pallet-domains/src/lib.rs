@@ -969,7 +969,7 @@ mod pallet {
 
         #[pallet::call_index(1)]
         // TODO: proper weight
-        #[pallet::weight((Weight::from_all(10_000), Pays::No))]
+        #[pallet::weight((Weight::from_all(10_000), DispatchClass::Operational, Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
