@@ -175,7 +175,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     )
     .map_err(|_| Error::InsufficientFund)?;
 
-    T::DomainsTransfersTracker::transfer_in(domain_id, total_issuance)
+    T::DomainsTransfersTracker::initialize_domain_balance(domain_id, total_issuance)
         .map_err(|_| Error::TransfersTracker)?;
 
     let genesis_receipt = {

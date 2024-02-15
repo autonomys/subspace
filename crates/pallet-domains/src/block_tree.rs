@@ -11,9 +11,10 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt, OperatorId,
+    ChainId, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt, OperatorId,
+    Transfers,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
@@ -348,25 +349,13 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.consensus_block_number,
                 );
 
-                // tracking the transfer
-                // 1. Block fees are burned on domain, so it is considered transferred out
-                // 2. XDM transfers from the Domain
-                // 3. XDM transfers into the domain
-                let transfer_out_balance = execution_receipt
+                let block_fees = execution_receipt
                     .block_fees
                     .total_fees()
-                    .and_then(|total| total.checked_add(&execution_receipt.transfers.transfers_out))
                     .ok_or(Error::BalanceOverflow)?;
 
-                // track the transfers out and then track transfers in
-                T::DomainsTransfersTracker::transfer_out(domain_id, transfer_out_balance)
+                update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
                     .map_err(|_| Error::DomainTransfersTracking)?;
-
-                T::DomainsTransfersTracker::transfer_in(
-                    domain_id,
-                    execution_receipt.transfers.transfers_in,
-                )
-                .map_err(|_| Error::DomainTransfersTracking)?;
 
                 LatestConfirmedDomainBlock::<T>::insert(
                     domain_id,
@@ -402,6 +391,51 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
     }
     Ok(None)
+}
+
+type TransferTrackerError<T> =
+    <<T as Config>::DomainsTransfersTracker as DomainsTransfersTracker<BalanceOf<T>>>::Error;
+
+/// Updates domain transfers for following scenarios
+/// 1. Block fees are burned on domain
+/// 2. Confirming incoming XDM transfers to the Domain
+/// 3. Noting outgoing transfers from the domain
+/// 4. Cancelling outgoing transfers from the domain.
+fn update_domain_transfers<T: Config>(
+    domain_id: DomainId,
+    transfers: &Transfers<BalanceOf<T>>,
+    block_fees: BalanceOf<T>,
+) -> Result<(), TransferTrackerError<T>> {
+    let Transfers {
+        transfers_in,
+        transfers_out,
+        transfers_reverted,
+    } = transfers;
+
+    // confirm incoming transfers
+    let er_chain_id = ChainId::Domain(domain_id);
+    transfers_in
+        .iter()
+        .try_for_each(|(from_chain_id, amount)| {
+            T::DomainsTransfersTracker::confirm_transfer(*from_chain_id, er_chain_id, *amount)
+        })?;
+
+    // note outgoing transfers
+    transfers_out.iter().try_for_each(|(to_chain_id, amount)| {
+        T::DomainsTransfersTracker::note_transfer(er_chain_id, *to_chain_id, *amount)
+    })?;
+
+    // cancel existing transfers
+    transfers_reverted
+        .iter()
+        .try_for_each(|(to_chain_id, amount)| {
+            T::DomainsTransfersTracker::cancel_transfer(er_chain_id, *to_chain_id, *amount)
+        })?;
+
+    // deduct execution fees from domain
+    T::DomainsTransfersTracker::reduce_domain_balance(domain_id, block_fees)?;
+
+    Ok(())
 }
 
 fn add_new_receipt_to_block_tree<T: Config>(

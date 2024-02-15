@@ -26,7 +26,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
     InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
@@ -230,15 +230,38 @@ pub struct MockDomainsTransfersTracker;
 impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracker {
     type Error = ();
 
-    fn balance_on_domain(_domain_id: DomainId) -> Result<Balance, Self::Error> {
-        Ok(Default::default())
-    }
-
-    fn transfer_in(_domain_id: DomainId, _amount: Balance) -> Result<(), Self::Error> {
+    fn initialize_domain_balance(
+        _domain_id: DomainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn transfer_out(_domain_id: DomainId, _amount: Balance) -> Result<(), Self::Error> {
+    fn note_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn confirm_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn cancel_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reduce_domain_balance(_domain_id: DomainId, _amount: Balance) -> Result<(), Self::Error> {
         Ok(())
     }
 }

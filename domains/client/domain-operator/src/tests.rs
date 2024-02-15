@@ -27,8 +27,8 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    Bundle, BundleValidity, DomainsApi, HeaderHashingFor, InboxedBundle, InvalidBundleType,
-    Transfers,
+    Bundle, BundleValidity, ChainId, DomainsApi, HeaderHashingFor, InboxedBundle,
+    InvalidBundleType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
@@ -41,6 +41,7 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as 
 use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -2017,8 +2018,9 @@ async fn test_invalid_transfers_fraud_proof() {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.transfers = Transfers {
-            transfers_in: 10 * SSC,
-            transfers_out: 20 * SSC,
+            transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+            transfers_out: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
+            transfers_reverted: Default::default(),
         };
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()

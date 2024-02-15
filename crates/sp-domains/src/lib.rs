@@ -233,6 +233,14 @@ impl ChainId {
             ChainId::Domain(_) => false,
         }
     }
+
+    #[inline]
+    pub fn maybe_domain_chain(&self) -> Option<DomainId> {
+        match self {
+            ChainId::Consensus => None,
+            ChainId::Domain(domain_id) => Some(*domain_id),
+        }
+    }
 }
 
 impl From<u32> for ChainId {
@@ -280,9 +288,11 @@ where
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
 pub struct Transfers<Balance> {
     /// Total transfers that came into the domain.
-    pub transfers_in: Balance,
+    pub transfers_in: BTreeMap<ChainId, Balance>,
     /// Total transfers that went out of the domain.
-    pub transfers_out: Balance,
+    pub transfers_out: BTreeMap<ChainId, Balance>,
+    /// Total transfers from this domain that were reverted.
+    pub transfers_reverted: BTreeMap<ChainId, Balance>,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -1100,14 +1110,33 @@ impl ExtrinsicDigest {
 pub trait DomainsTransfersTracker<Balance> {
     type Error;
 
-    /// Marks transfer into domain.
-    fn transfer_in(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
+    /// Initializes the domain balance
+    fn initialize_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 
-    /// Marks a transfer from domain.
-    fn transfer_out(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
+    /// Notes a transfer between chains.
+    /// Balance on from_chain_id is reduced if it is a domain chain
+    fn note_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
 
-    /// Returns the total balance on domain.
-    fn balance_on_domain(domain_id: DomainId) -> Result<Balance, Self::Error>;
+    /// Confirms a transfer between chains.
+    fn confirm_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Cancels an initiated transfer between chains.
+    fn cancel_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Reduces a given amount from the domain balance
+    fn reduce_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 }
 
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
