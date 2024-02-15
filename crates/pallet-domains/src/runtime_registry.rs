@@ -5,7 +5,7 @@ use crate::{BalanceOf, Config, Event};
 use alloc::string::String;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
-use frame_support::PalletError;
+use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use frame_system::AccountInfo;
 use scale_info::TypeInfo;
@@ -32,6 +32,9 @@ pub enum Error {
     FailedToDecodeRawGenesis,
     RuntimeCodeNotFoundInRawGenesis,
     InvalidAccountIdType,
+    MaxInitialDomainAccounts,
+    MinInitialAccountBalance,
+    BalanceOverflow,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -101,25 +104,36 @@ impl<Number, Hash> RuntimeObject<Number, Hash> {
         match domain_runtime_info {
             DomainRuntimeInfo::EVM { chain_id } => {
                 raw_genesis.set_evm_chain_id(chain_id);
-                let initial_balances = initial_balances
-                    .into_iter()
-                    .try_fold(
-                        BTreeMap::<AccountId20, BalanceOf<T>>::new(),
-                        |mut acc, (account_id, balance)| {
-                            let account_id =
-                                domain_runtime_primitives::AccountId20Converter::try_convert_back(
-                                    account_id,
-                                )?;
-                            let balance = if let Some(previous_balance) = acc.get(&account_id) {
-                                previous_balance.checked_add(&balance)?
-                            } else {
-                                balance
-                            };
-                            acc.insert(account_id, balance);
-                            Some(acc)
-                        },
-                    )
-                    .ok_or(Error::InvalidAccountIdType)?;
+                let initial_balances = initial_balances.into_iter().try_fold(
+                    BTreeMap::<AccountId20, BalanceOf<T>>::new(),
+                    |mut acc, (account_id, balance)| {
+                        let account_id =
+                            domain_runtime_primitives::AccountId20Converter::try_convert_back(
+                                account_id,
+                            )
+                            .ok_or(Error::InvalidAccountIdType)?;
+
+                        let balance = if let Some(previous_balance) = acc.get(&account_id) {
+                            previous_balance
+                                .checked_add(&balance)
+                                .ok_or(Error::BalanceOverflow)?
+                        } else {
+                            balance
+                        };
+
+                        ensure!(
+                            balance >= T::MinInitialDomainAccountBalance::get(),
+                            Error::MinInitialAccountBalance
+                        );
+
+                        acc.insert(account_id, balance);
+                        Ok(acc)
+                    },
+                )?;
+                ensure!(
+                    initial_balances.len() as u32 <= T::MaxInitialDomainAccounts::get(),
+                    Error::MaxInitialDomainAccounts
+                );
                 raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
                     total_issuance,
                     initial_balances,

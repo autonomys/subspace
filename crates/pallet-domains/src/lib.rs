@@ -324,6 +324,12 @@ mod pallet {
 
         /// Transfers tracker.
         type DomainsTransfersTracker: DomainsTransfersTracker<BalanceOf<Self>>;
+
+        /// Upper limit for total initial accounts domains
+        type MaxInitialDomainAccounts: Get<u32>;
+
+        /// Minimum balance for each initial domain account
+        type MinInitialDomainAccountBalance: Get<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]

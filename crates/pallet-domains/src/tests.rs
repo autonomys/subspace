@@ -184,6 +184,8 @@ parameter_types! {
     pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
+    pub const MaxInitialDomainAccounts: u32 = 10;
+    pub const MinInitialDomainAccountBalance: Balance = SSC;
 }
 
 pub struct MockRandomness;
@@ -297,6 +299,8 @@ impl pallet_domains::Config for Test {
     type StorageFee = DummyStorageFee;
     type BlockSlot = DummyBlockSlot;
     type DomainsTransfersTracker = MockDomainsTransfersTracker;
+    type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
+    type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
 }
 
 pub struct ExtrinsicStorageFees;

@@ -606,6 +606,8 @@ parameter_types! {
     pub const MaxNominators: u32 = 100;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
+    pub const MaxInitialDomainAccounts: u32 = 20;
+    pub const MinInitialDomainAccountBalance: Balance = SSC;
 }
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
@@ -654,6 +656,8 @@ impl pallet_domains::Config for Runtime {
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
     type DomainsTransfersTracker = Transporter;
+    type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
+    type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
 }
 
 parameter_types! {
