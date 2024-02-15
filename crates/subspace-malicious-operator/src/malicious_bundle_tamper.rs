@@ -125,7 +125,8 @@ where
 
         match bad_receipt_type {
             BadReceiptType::BlockFees => {
-                receipt.block_fees = BlockFees::new(random_seed.into(), random_seed.into());
+                receipt.block_fees =
+                    BlockFees::new(random_seed.into(), random_seed.into(), random_seed.into());
             }
             // TODO: modify the length of `execution_trace` once the honest operator can handle
             BadReceiptType::ExecutionTrace => {

@@ -23,8 +23,10 @@ use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
+    OnUnbalanced,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -295,6 +297,15 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
+/// `DustRemovalHandler` used to collect all the SSC dust left when the account is reaped.
+pub struct DustRemovalHandler;
+
+impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
+    fn on_nonzero_unbalanced(dusted_amount: Credit<AccountId, Balances>) {
+        BlockFees::note_burned_balance(dusted_amount.peek());
+    }
+}
+
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -302,7 +313,7 @@ impl pallet_balances::Config for Runtime {
     type Balance = Balance;
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
-    type DustRemoval = ();
+    type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;

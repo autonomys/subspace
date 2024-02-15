@@ -177,6 +177,14 @@ mod pallet {
             });
         }
 
+        /// Note burned balance on domains
+        pub fn note_burned_balance(burned_balance: T::Balance) {
+            CollectedBlockFees::<T>::mutate(|block_fees| {
+                block_fees.burned_balance =
+                    block_fees.burned_balance.saturating_add(burned_balance);
+            });
+        }
+
         /// Return the final domain transaction byte fee, which consist of:
         /// - The `ConsensusChainByteFee` for the consensus chain storage cost since the domain
         ///   transaction need to be bundled and submitted to the consensus chain first.

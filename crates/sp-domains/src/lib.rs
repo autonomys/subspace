@@ -264,16 +264,23 @@ pub struct BlockFees<Balance> {
     /// The domain execution fee including the storage and compute fee on domain chain,
     /// tip, and the XDM reward.
     pub domain_execution_fee: Balance,
+    /// Burned balances on domain chain
+    pub burned_balance: Balance,
 }
 
 impl<Balance> BlockFees<Balance>
 where
     Balance: CheckedAdd,
 {
-    pub fn new(domain_execution_fee: Balance, consensus_storage_fee: Balance) -> Self {
+    pub fn new(
+        domain_execution_fee: Balance,
+        consensus_storage_fee: Balance,
+        burned_balance: Balance,
+    ) -> Self {
         BlockFees {
             consensus_storage_fee,
             domain_execution_fee,
+            burned_balance,
         }
     }
 
@@ -281,6 +288,7 @@ where
     pub fn total_fees(&self) -> Option<Balance> {
         self.consensus_storage_fee
             .checked_add(&self.domain_execution_fee)
+            .and_then(|balance| balance.checked_add(&self.burned_balance))
     }
 }
 

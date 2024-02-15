@@ -918,6 +918,7 @@ fn test_invalid_block_fees_fraud_proof() {
                     .block_fees
                     .consensus_storage_fee
                     + 1,
+                domain_block.execution_receipt.block_fees.burned_balance + 1,
             ),
         );
         domain_block.execution_receipt.final_state_root = root;
