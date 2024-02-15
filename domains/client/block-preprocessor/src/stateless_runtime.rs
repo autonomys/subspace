@@ -1,12 +1,11 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::{
-    Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError, DomainCoreApi,
-};
+use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
+use sp_domains::core_api::DomainCoreApi;
 use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};

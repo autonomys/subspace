@@ -884,7 +884,7 @@ fn test_invalid_block_fees_fraud_proof() {
             domain_id,
             bad_receipt_hash,
             // set different reward in the storage and generate proof for that value
-            domain_runtime_primitives::BlockFees::new(
+            sp_domains::BlockFees::new(
                 domain_block
                     .execution_receipt
                     .block_fees
@@ -909,7 +909,7 @@ type FraudProofFor<T> =
 fn generate_invalid_block_fees_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHashFor<T>,
-    block_fees: domain_runtime_primitives::BlockFees<BalanceOf<T>>,
+    block_fees: sp_domains::BlockFees<BalanceOf<T>>,
 ) -> (FraudProofFor<T>, T::Hash) {
     let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
     let mut root = T::Hash::default();

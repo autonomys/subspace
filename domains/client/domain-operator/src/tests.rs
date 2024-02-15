@@ -5,7 +5,7 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{DomainCoreApi, Hash, Transfers};
+use domain_runtime_primitives::Hash;
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
@@ -24,9 +24,11 @@ use sp_core::storage::StateVersion;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     Bundle, BundleValidity, DomainsApi, HeaderHashingFor, InboxedBundle, InvalidBundleType,
+    Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,

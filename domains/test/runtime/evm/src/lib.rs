@@ -13,8 +13,7 @@ extern crate alloc;
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, Transfers, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
-    SLOT_DURATION,
+    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -41,7 +40,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::DomainId;
+use sp_domains::{DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
@@ -841,7 +840,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
+    impl sp_domains::core_api::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
@@ -944,7 +943,7 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_fees() -> domain_runtime_primitives::BlockFees<Balance> {
+        fn block_fees() -> sp_domains::BlockFees<Balance> {
             BlockFees::collected_block_fees()
         }
 

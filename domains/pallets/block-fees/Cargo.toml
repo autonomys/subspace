@@ -8,8 +8,8 @@ homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 description = "Subspace node pallet for charging and re-distributing domain transaction fees"
 include = [
-  "/src",
-  "/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [dependencies]
@@ -20,18 +20,20 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees", default-features = false }
+sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 
 [features]
 default = ["std"]
 std = [
-  "codec/std",
-  "domain-runtime-primitives/std",
-  "frame-support/std",
-  "frame-system/std",
-  "scale-info/std",
-  "sp-block-fees/std",
-  "sp-runtime/std",
-  "sp-std/std",
+    "codec/std",
+    "domain-runtime-primitives/std",
+    "frame-support/std",
+    "frame-system/std",
+    "scale-info/std",
+    "sp-block-fees/std",
+    "sp-domains/std",
+    "sp-runtime/std",
+    "sp-std/std",
 ]

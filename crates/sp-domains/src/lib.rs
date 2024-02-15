@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod bundle_producer_election;
+pub mod core_api;
 pub mod extrinsics;
 pub mod merkle_tree;
 pub mod proof_provider_and_verifier;
@@ -34,7 +35,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::{BlockFees, MultiAccountId, Transfers};
+use domain_runtime_primitives::MultiAccountId;
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
@@ -246,6 +247,42 @@ impl From<DomainId> for ChainId {
     fn from(x: DomainId) -> Self {
         Self::Domain(x)
     }
+}
+
+#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
+pub struct BlockFees<Balance> {
+    /// The consensus chain storage fee
+    pub consensus_storage_fee: Balance,
+    /// The domain execution fee including the storage and compute fee on domain chain,
+    /// tip, and the XDM reward.
+    pub domain_execution_fee: Balance,
+}
+
+impl<Balance> BlockFees<Balance>
+where
+    Balance: CheckedAdd,
+{
+    pub fn new(domain_execution_fee: Balance, consensus_storage_fee: Balance) -> Self {
+        BlockFees {
+            consensus_storage_fee,
+            domain_execution_fee,
+        }
+    }
+
+    /// Returns the total fees that was collected and burned on the Domain.
+    pub fn total_fees(&self) -> Option<Balance> {
+        self.consensus_storage_fee
+            .checked_add(&self.domain_execution_fee)
+    }
+}
+
+/// Type that holds the transfers(in/out) for a given chain.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
+pub struct Transfers<Balance> {
+    /// Total transfers that came into the domain.
+    pub transfers_in: Balance,
+    /// Total transfers that went out of the domain.
+    pub transfers_out: Balance,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]

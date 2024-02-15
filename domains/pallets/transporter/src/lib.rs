@@ -72,12 +72,11 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
     use codec::{Decode, Encode};
-    use domain_runtime_primitives::Transfers;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
-    use sp_domains::DomainId;
+    use sp_domains::{DomainId, Transfers};
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,

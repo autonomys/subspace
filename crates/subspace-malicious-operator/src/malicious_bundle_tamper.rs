@@ -1,12 +1,13 @@
 use domain_client_operator::{ExecutionReceiptFor, OpaqueBundleFor};
-use domain_runtime_primitives::{BlockFees, DomainCoreApi};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BundleValidity, HeaderHashingFor, InvalidBundleType, OperatorPublicKey, OperatorSignature,
+    BlockFees, BundleValidity, HeaderHashingFor, InvalidBundleType, OperatorPublicKey,
+    OperatorSignature,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};

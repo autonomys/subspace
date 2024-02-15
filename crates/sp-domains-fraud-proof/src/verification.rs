@@ -8,7 +8,6 @@ use crate::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
 };
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{BlockFees, Transfers};
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
@@ -17,8 +16,9 @@ use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuf
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
-    BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
+    BlockFees, BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
     HeaderNumberFor, InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
+    Transfers,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};

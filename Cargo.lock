@@ -7136,6 +7136,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-block-fees",
+ "sp-domains",
  "sp-runtime",
  "sp-std",
 ]
