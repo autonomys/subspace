@@ -1979,18 +1979,16 @@ async fn test_invalid_transfers_fraud_proof() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.transfers = Transfers {
             transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
