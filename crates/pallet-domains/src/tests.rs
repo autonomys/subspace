@@ -184,7 +184,7 @@ parameter_types! {
     pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
-    pub const MaxInitialDomainAccounts: u32 = 10;
+    pub const MaxInitialDomainAccounts: u32 = 5;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
 }
 

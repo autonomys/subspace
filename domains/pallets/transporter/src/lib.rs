@@ -30,6 +30,7 @@ use sp_domains::{DomainId, DomainsTransfersTracker, Transfers};
 use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
+use sp_std::vec;
 
 #[cfg(test)]
 mod mock;

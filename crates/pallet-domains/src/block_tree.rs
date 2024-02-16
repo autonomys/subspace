@@ -359,7 +359,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt
                         .transfers
                         .is_valid(ChainId::Domain(domain_id)),
-                    Error::BalanceOverflow
+                    Error::InvalidDomainTransfers
                 );
 
                 update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)

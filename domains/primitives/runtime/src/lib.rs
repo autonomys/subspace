@@ -132,7 +132,9 @@ where
 }
 
 /// MultiAccountId used by all the domains to describe their account type.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Serialize, Deserialize)]
+#[derive(
+    Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Serialize, Deserialize, Ord, PartialOrd,
+)]
 pub enum MultiAccountId {
     /// 32 byte account Id.
     AccountId32([u8; 32]),

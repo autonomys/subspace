@@ -46,6 +46,9 @@ pub enum Error {
     NotDomainOwner,
     InitialBalanceOverflow,
     TransfersTracker,
+    MinInitialAccountBalance,
+    MaxInitialDomainAccounts,
+    DuplicateInitialAccounts,
     FailedToGenerateRawGenesis(crate::runtime_registry::Error),
 }
 
@@ -73,7 +76,7 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
 impl<AccountId, Balance> DomainConfig<AccountId, Balance>
 where
     AccountId: Ord,
-    Balance: Zero + CheckedAdd,
+    Balance: Zero + CheckedAdd + PartialOrd,
 {
     pub(crate) fn total_issuance(&self) -> Option<Balance> {
         self.initial_balances
@@ -81,6 +84,37 @@ where
             .try_fold(Balance::zero(), |total, (_, balance)| {
                 total.checked_add(balance)
             })
+    }
+
+    pub(crate) fn check_initial_balances<T: Config>(&self) -> Result<(), Error>
+    where
+        Balance: From<BalanceOf<T>>,
+    {
+        let accounts: BTreeSet<MultiAccountId> = self
+            .initial_balances
+            .iter()
+            .map(|(acc, _)| acc)
+            .cloned()
+            .collect();
+
+        ensure!(
+            accounts.len() == self.initial_balances.len(),
+            Error::DuplicateInitialAccounts
+        );
+
+        ensure!(
+            self.initial_balances.len() as u32 <= T::MaxInitialDomainAccounts::get(),
+            Error::MaxInitialDomainAccounts
+        );
+
+        for (_, balance) in &self.initial_balances {
+            ensure!(
+                *balance >= T::MinInitialDomainAccountBalance::get().into(),
+                Error::MinInitialAccountBalance
+            );
+        }
+
+        Ok(())
     }
 }
 
@@ -136,6 +170,8 @@ pub(crate) fn can_instantiate_domain<T: Config>(
             >= T::DomainInstantiationDeposit::get(),
         Error::InsufficientFund
     );
+
+    domain_config.check_initial_balances::<T>()?;
 
     Ok(())
 }
@@ -486,6 +522,85 @@ mod tests {
                 Error::FailedToGenerateRawGenesis(
                     crate::runtime_registry::Error::InvalidAccountIdType
                 )
+            );
+
+            // duplicate accounts
+            domain_config.initial_balances = vec![
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+            ];
+
+            assert_err!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Error::DuplicateInitialAccounts
+            );
+
+            // max accounts
+            domain_config.initial_balances = vec![
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cbc"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566ccc"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cdc"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cec"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+                (
+                    AccountId20Converter::convert(AccountId20::from(hex!(
+                        "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cfc"
+                    ))),
+                    1_000_000 * SSC,
+                ),
+            ];
+
+            assert_err!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Error::MaxInitialDomainAccounts
+            );
+
+            // min balance accounts
+            domain_config.initial_balances = vec![(
+                AccountId20Converter::convert(AccountId20::from(hex!(
+                    "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
+                ))),
+                1,
+            )];
+
+            assert_err!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Error::MinInitialAccountBalance
             );
 
             domain_config.initial_balances = vec![(
