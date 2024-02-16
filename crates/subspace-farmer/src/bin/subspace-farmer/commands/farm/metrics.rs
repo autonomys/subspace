@@ -54,7 +54,7 @@ impl FarmerMetrics {
         let sub_registry = registry.sub_registry_with_prefix("subspace_farmer");
 
         let auditing_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -65,7 +65,7 @@ impl FarmerMetrics {
         );
 
         let proving_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -84,7 +84,7 @@ impl FarmerMetrics {
         );
 
         let sector_downloading_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -95,7 +95,7 @@ impl FarmerMetrics {
         );
 
         let sector_encoding_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -106,7 +106,7 @@ impl FarmerMetrics {
         );
 
         let sector_writing_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -117,7 +117,7 @@ impl FarmerMetrics {
         );
 
         let sector_plotting_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -149,7 +149,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_downloaded_counter",
-            "Number of sectors being downloaded",
+            "Number of downloaded sectors",
             Unit::Other("sectors".to_string()),
             sector_downloaded.clone(),
         );
@@ -158,7 +158,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_encoding_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being encoded",
             Unit::Other("sectors".to_string()),
             sector_encoding.clone(),
         );
@@ -167,7 +167,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_encoded_counter",
-            "Number of sectors being downloaded",
+            "Number of encoded sectors",
             Unit::Other("sectors".to_string()),
             sector_encoded.clone(),
         );
@@ -176,7 +176,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_writing_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being written",
             Unit::Other("sectors".to_string()),
             sector_writing.clone(),
         );
@@ -185,7 +185,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_written_counter",
-            "Number of sectors being downloaded",
+            "Number of written sectors",
             Unit::Other("sectors".to_string()),
             sector_written.clone(),
         );
@@ -194,7 +194,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_plotting_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being plotted",
             Unit::Other("sectors".to_string()),
             sector_plotting.clone(),
         );
@@ -203,7 +203,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_plotted_counter",
-            "Number of sectors being downloaded",
+            "Number of plotted sectors",
             Unit::Other("sectors".to_string()),
             sector_plotted.clone(),
         );
