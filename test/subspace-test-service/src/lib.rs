@@ -523,13 +523,6 @@ impl MockConsensusNode {
         panic!("Failed to produce bundle after {MAX_PRODUCE_BUNDLE_TRY:?} tries, something must be wrong");
     }
 
-    /// Produce a new slot and wait for the slot is handled but not ensure bundle is submitted
-    pub async fn produce_slot_and_wait_for_handling(&mut self) -> NewSlot {
-        let slot = self.produce_slot();
-        self.notify_new_slot_and_wait_for_bundle(slot).await;
-        slot
-    }
-
     /// Subscribe the new slot notification
     pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, PotOutput)> {
         let (tx, rx) = mpsc::unbounded();
@@ -870,7 +863,7 @@ impl MockConsensusNode {
         &mut self,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(), Box<dyn Error>> {
-        let slot = self.produce_slot_and_wait_for_handling().await;
+        let slot = self.produce_slot();
         self.produce_block_with_slot_at(slot, self.client.info().best_hash, Some(extrinsics))
             .await?;
         Ok(())
@@ -880,7 +873,7 @@ impl MockConsensusNode {
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
-            let slot = self.produce_slot_and_wait_for_handling().await;
+            let slot = self.produce_slot();
             self.produce_block_with_slot(slot).await?;
         }
         Ok(())
