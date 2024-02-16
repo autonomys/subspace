@@ -60,7 +60,7 @@ use sp_domains_fraud_proof::verification::{
     verify_bundle_equivocation_fraud_proof, verify_invalid_block_fees_fraud_proof,
     verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_valid_bundle_fraud_proof,
+    verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -166,8 +166,8 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainId, EpochIndex, GenesisDomain, OperatorAllowList,
-        OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, EpochIndex,
+        GenesisDomain, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -175,7 +175,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::{SaturatedConversion, Saturating};
+    use sp_runtime::Saturating;
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -321,6 +321,15 @@ mod pallet {
 
         /// The block slot
         type BlockSlot: BlockSlot;
+
+        /// Transfers tracker.
+        type DomainsTransfersTracker: DomainsTransfersTracker<BalanceOf<Self>>;
+
+        /// Upper limit for total initial accounts domains
+        type MaxInitialDomainAccounts: Get<u32>;
+
+        /// Minimum balance for each initial domain account
+        type MinInitialDomainAccountBalance: Get<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -343,6 +352,7 @@ mod pallet {
 
     /// Starting EVM chain ID for evm runtimes.
     pub struct StartingEVMChainId;
+
     impl Get<EVMChainId> for StartingEVMChainId {
         fn get() -> EVMChainId {
             // after looking at `https://chainlist.org/?testnets=false`
@@ -467,7 +477,7 @@ mod pallet {
         _,
         Identity,
         DomainId,
-        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId>,
+        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -618,6 +628,8 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since block fees are not mismatched.
         InvalidBlockFeesFraudProof,
+        /// Invalid fraud proof since transfers are not mismatched.
+        InvalidTransfersFraudProof,
         /// Invalid domain block hash fraud proof.
         InvalidDomainBlockHashFraudProof,
         /// Invalid domain extrinsic fraud proof
@@ -969,7 +981,7 @@ mod pallet {
 
         #[pallet::call_index(1)]
         // TODO: proper weight
-        #[pallet::weight((Weight::from_all(10_000), Pays::No))]
+        #[pallet::weight((Weight::from_all(10_000), DispatchClass::Operational, Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
@@ -1155,7 +1167,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
-            domain_config: DomainConfig<T::AccountId>,
+            domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
@@ -1296,7 +1308,7 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
-        pub genesis_domain: Option<GenesisDomain<T::AccountId>>,
+        pub genesis_domain: Option<GenesisDomain<T::AccountId, BalanceOf<T>>>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -1330,6 +1342,7 @@ mod pallet {
                     bundle_slot_probability: genesis_domain.bundle_slot_probability,
                     target_bundles_per_block: genesis_domain.target_bundles_per_block,
                     operator_allow_list: genesis_domain.operator_allow_list,
+                    initial_balances: genesis_domain.initial_balances,
                 };
                 let domain_owner = genesis_domain.owner_account_id;
                 let domain_id =
@@ -1339,9 +1352,7 @@ mod pallet {
                 // Register domain_owner as the genesis operator.
                 let operator_config = OperatorConfig {
                     signing_key: genesis_domain.signing_key.clone(),
-                    minimum_nominator_stake: genesis_domain
-                        .minimum_nominator_stake
-                        .saturated_into(),
+                    minimum_nominator_stake: genesis_domain.minimum_nominator_stake,
                     nomination_tax: genesis_domain.nomination_tax,
                 };
                 let operator_stake = T::MinOperatorStake::get();
@@ -1516,8 +1527,15 @@ impl<T: Config> Pallet<T> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
-        let raw_genesis =
-            runtime_object.into_complete_raw_genesis(domain_id, domain_obj.domain_runtime_info);
+        let total_issuance = domain_obj.domain_config.total_issuance()?;
+        let raw_genesis = runtime_object
+            .into_complete_raw_genesis::<T>(
+                domain_id,
+                domain_obj.domain_runtime_info,
+                total_issuance,
+                domain_obj.domain_config.initial_balances,
+            )
+            .ok()?;
         Some((
             DomainInstanceData {
                 runtime_type,
@@ -1700,6 +1718,22 @@ impl<T: Config> Pallet<T> {
                             "Block fees proof verification failed: {err:?}"
                         );
                         FraudProofError::InvalidBlockFeesFraudProof
+                    })?;
+                }
+                FraudProof::InvalidTransfers(req) => {
+                    verify_invalid_transfers_fraud_proof::<
+                        T::Block,
+                        DomainBlockNumberFor<T>,
+                        T::DomainHash,
+                        BalanceOf<T>,
+                        DomainHashingFor<T>,
+                    >(bad_receipt, req)
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::domains",
+                            "Domain transfers proof verification failed: {err:?}"
+                        );
+                        FraudProofError::InvalidTransfersFraudProof
                     })?;
                 }
                 FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {

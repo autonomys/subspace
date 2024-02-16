@@ -17,6 +17,7 @@
 //! EVM domain configurations.
 
 use crate::chain_spec_utils::chain_spec_properties;
+use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
     SudoConfig, SystemConfig, WASM_BINARY,
@@ -24,8 +25,8 @@ use evm_domain_runtime::{
 use hex_literal::hex;
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use std::str::FromStr;
-use subspace_runtime_primitives::SSC;
+use sp_runtime::traits::Convert;
+use subspace_runtime_primitives::{Balance, SSC};
 
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId> {
@@ -142,40 +143,26 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
         SpecId::Dev => {
             let accounts = get_dev_accounts();
             testnet_genesis(
-                accounts.clone(),
                 // Alith is Sudo
                 Some(accounts[0]),
             )
         }
-        SpecId::Gemini => {
-            let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
-                .expect("Invalid Sudo account");
-            testnet_genesis(
-                vec![
-                    // Sudo account
-                    sudo_account,
-                ],
-                Some(sudo_account),
-            )
-        }
-        SpecId::DevNet => {
-            let sudo_account = AccountId::from_str("b66a91845249464309fad766fd0ece8144547736")
-                .expect("Invalid Sudo account");
-            testnet_genesis(
-                vec![
-                    // Sudo account
-                    sudo_account,
-                ],
-                Some(sudo_account),
-            )
-        }
+        SpecId::Gemini => testnet_genesis(None),
+        SpecId::DevNet => testnet_genesis(None),
     }
 }
 
-fn testnet_genesis(
-    endowed_accounts: Vec<AccountId>,
-    maybe_sudo_account: Option<AccountId>,
-) -> RuntimeGenesisConfig {
+pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAccountId, Balance)> {
+    match spec_id {
+        SpecId::Dev => get_dev_accounts()
+            .into_iter()
+            .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * SSC))
+            .collect(),
+        SpecId::DevNet | SpecId::Gemini => vec![],
+    }
+}
+
+fn testnet_genesis(maybe_sudo_account: Option<AccountId>) -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
@@ -187,14 +174,7 @@ fn testnet_genesis(
         sudo: SudoConfig {
             key: maybe_sudo_account,
         },
-        balances: BalancesConfig {
-            // TODO: remove `endowed_accounts` once XDM is ready
-            balances: endowed_accounts
-                .iter()
-                .cloned()
-                .map(|k| (k, 1_000_000 * SSC))
-                .collect(),
-        },
+        balances: BalancesConfig::default(),
         // this is set to default and chain_id will be set into genesis during the domain
         // instantiation on Consensus runtime.
         evm_chain_id: EVMChainIdConfig::default(),

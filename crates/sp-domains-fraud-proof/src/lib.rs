@@ -80,6 +80,13 @@ impl From<InvalidTransactionCode> for TransactionValidity {
     }
 }
 
+/// Type that specifies the request of storage keys
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum StorageKeyRequest {
+    /// Domain's transfers storage key
+    Transfers,
+}
+
 /// Request type to fetch required verification information for fraud proof through Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProofVerificationInfoRequest {
@@ -137,6 +144,11 @@ pub enum FraudProofVerificationInfoRequest {
         /// Storage proof for the keys used in validating the extrinsic
         storage_proof: StorageProof,
     },
+    /// Request to fetch a specific storage key
+    StorageKey {
+        domain_id: DomainId,
+        req: StorageKeyRequest,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -183,6 +195,8 @@ pub enum FraudProofVerificationInfoResponse {
     OperatorStake(Balance),
     /// Result of check extrinsics in single context
     CheckExtrinsicsInSingleContext(Option<u32>),
+    /// Result of the storage key request
+    StorageKey(Option<Vec<u8>>),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -279,6 +293,13 @@ impl FraudProofVerificationInfoResponse {
             FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(result) => {
                 Some(result)
             }
+            _ => None,
+        }
+    }
+
+    pub fn into_storage_key(self) -> Option<Vec<u8>> {
+        match self {
+            FraudProofVerificationInfoResponse::StorageKey(result) => result,
             _ => None,
         }
     }

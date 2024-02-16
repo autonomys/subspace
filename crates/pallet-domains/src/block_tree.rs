@@ -10,7 +10,10 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorId};
+use sp_domains::{
+    ChainId, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt, OperatorId,
+    Transfers,
+};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
@@ -34,6 +37,9 @@ pub enum Error {
     InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
     InvalidStateRoot,
+    BalanceOverflow,
+    DomainTransfersTracking,
+    InvalidDomainTransfers,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -344,6 +350,21 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.consensus_block_number,
                 );
 
+                let block_fees = execution_receipt
+                    .block_fees
+                    .total_fees()
+                    .ok_or(Error::BalanceOverflow)?;
+
+                ensure!(
+                    execution_receipt
+                        .transfers
+                        .is_valid(ChainId::Domain(domain_id)),
+                    Error::InvalidDomainTransfers
+                );
+
+                update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
+                    .map_err(|_| Error::DomainTransfersTracking)?;
+
                 LatestConfirmedDomainBlock::<T>::insert(
                     domain_id,
                     ConfirmedDomainBlock {
@@ -378,6 +399,59 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
     }
     Ok(None)
+}
+
+type TransferTrackerError<T> =
+    <<T as Config>::DomainsTransfersTracker as DomainsTransfersTracker<BalanceOf<T>>>::Error;
+
+/// Updates domain transfers for following scenarios
+/// 1. Block fees are burned on domain
+/// 2. Confirming incoming XDM transfers to the Domain
+/// 3. Noting outgoing transfers from the domain
+/// 4. Cancelling outgoing transfers from the domain.
+fn update_domain_transfers<T: Config>(
+    domain_id: DomainId,
+    transfers: &Transfers<BalanceOf<T>>,
+    block_fees: BalanceOf<T>,
+) -> Result<(), TransferTrackerError<T>> {
+    let Transfers {
+        transfers_in,
+        transfers_out,
+        transfers_rejected,
+        rejected_transfers_claimed,
+    } = transfers;
+
+    // confirm incoming transfers
+    let er_chain_id = ChainId::Domain(domain_id);
+    transfers_in
+        .iter()
+        .try_for_each(|(from_chain_id, amount)| {
+            T::DomainsTransfersTracker::confirm_transfer(*from_chain_id, er_chain_id, *amount)
+        })?;
+
+    // note outgoing transfers
+    transfers_out.iter().try_for_each(|(to_chain_id, amount)| {
+        T::DomainsTransfersTracker::note_transfer(er_chain_id, *to_chain_id, *amount)
+    })?;
+
+    // note rejected transfers
+    transfers_rejected
+        .iter()
+        .try_for_each(|(from_chain_id, amount)| {
+            T::DomainsTransfersTracker::reject_transfer(*from_chain_id, er_chain_id, *amount)
+        })?;
+
+    // claim rejected transfers
+    rejected_transfers_claimed
+        .iter()
+        .try_for_each(|(to_chain_id, amount)| {
+            T::DomainsTransfersTracker::claim_rejected_transfer(er_chain_id, *to_chain_id, *amount)
+        })?;
+
+    // deduct execution fees from domain
+    T::DomainsTransfersTracker::reduce_domain_balance(domain_id, block_fees)?;
+
+    Ok(())
 }
 
 fn add_new_receipt_to_block_tree<T: Config>(
@@ -687,7 +761,7 @@ mod tests {
                 H256::random(),
                 stale_receipt,
             );
-            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
 
             assert_eq!(
                 BlockTreeNodes::<Test>::get(stale_receipt_hash)
@@ -735,7 +809,7 @@ mod tests {
                 H256::random(),
                 previous_head_receipt,
             );
-            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
         });
     }
 

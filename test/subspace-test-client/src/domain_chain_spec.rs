@@ -6,7 +6,6 @@ use evm_domain_test_runtime::{
 use sp_core::{ecdsa, Pair, Public};
 use sp_domains::DomainId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
-use subspace_runtime_primitives::SSC;
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -23,7 +22,7 @@ where
     .into_account()
 }
 
-fn endowed_accounts() -> Vec<AccountId20> {
+pub(crate) fn endowed_accounts() -> Vec<AccountId20> {
     vec![
         get_account_id_from_seed::<ecdsa::Public>("Alice"),
         get_account_id_from_seed::<ecdsa::Public>("Bob"),
@@ -52,13 +51,7 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
 
     RuntimeGenesisConfig {
         system: evm_domain_test_runtime::SystemConfig::default(),
-        balances: evm_domain_test_runtime::BalancesConfig {
-            balances: endowed_accounts()
-                .iter()
-                .cloned()
-                .map(|k| (k, 2_000_000 * SSC))
-                .collect(),
-        },
+        balances: evm_domain_test_runtime::BalancesConfig::default(),
         sudo: evm_domain_test_runtime::SudoConfig { key: Some(alice) },
         evm_chain_id: evm_domain_test_runtime::EVMChainIdConfig {
             chain_id: 100,

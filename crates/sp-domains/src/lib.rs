@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod bundle_producer_election;
+pub mod core_api;
 pub mod extrinsics;
 pub mod merkle_tree;
 pub mod proof_provider_and_verifier;
@@ -34,7 +35,9 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::BlockFees;
+use domain_runtime_primitives::MultiAccountId;
+use frame_support::storage::storage_prefix;
+use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
 use parity_scale_codec::{Codec, Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -230,6 +233,14 @@ impl ChainId {
             ChainId::Domain(_) => false,
         }
     }
+
+    #[inline]
+    pub fn maybe_domain_chain(&self) -> Option<DomainId> {
+        match self {
+            ChainId::Consensus => None,
+            ChainId::Domain(domain_id) => Some(*domain_id),
+        }
+    }
 }
 
 impl From<u32> for ChainId {
@@ -243,6 +254,63 @@ impl From<DomainId> for ChainId {
     #[inline]
     fn from(x: DomainId) -> Self {
         Self::Domain(x)
+    }
+}
+
+#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
+pub struct BlockFees<Balance> {
+    /// The consensus chain storage fee
+    pub consensus_storage_fee: Balance,
+    /// The domain execution fee including the storage and compute fee on domain chain,
+    /// tip, and the XDM reward.
+    pub domain_execution_fee: Balance,
+    /// Burned balances on domain chain
+    pub burned_balance: Balance,
+}
+
+impl<Balance> BlockFees<Balance>
+where
+    Balance: CheckedAdd,
+{
+    pub fn new(
+        domain_execution_fee: Balance,
+        consensus_storage_fee: Balance,
+        burned_balance: Balance,
+    ) -> Self {
+        BlockFees {
+            consensus_storage_fee,
+            domain_execution_fee,
+            burned_balance,
+        }
+    }
+
+    /// Returns the total fees that was collected and burned on the Domain.
+    pub fn total_fees(&self) -> Option<Balance> {
+        self.consensus_storage_fee
+            .checked_add(&self.domain_execution_fee)
+            .and_then(|balance| balance.checked_add(&self.burned_balance))
+    }
+}
+
+/// Type that holds the transfers(in/out) for a given chain.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone, Default)]
+pub struct Transfers<Balance> {
+    /// Total transfers that came into the domain.
+    pub transfers_in: BTreeMap<ChainId, Balance>,
+    /// Total transfers that went out of the domain.
+    pub transfers_out: BTreeMap<ChainId, Balance>,
+    /// Total transfers from this domain that were reverted.
+    pub rejected_transfers_claimed: BTreeMap<ChainId, Balance>,
+    /// Total transfers to this domain that were rejected.
+    pub transfers_rejected: BTreeMap<ChainId, Balance>,
+}
+
+impl<Balance> Transfers<Balance> {
+    pub fn is_valid(&self, chain_id: ChainId) -> bool {
+        !self.transfers_rejected.contains_key(&chain_id)
+            && !self.transfers_in.contains_key(&chain_id)
+            && !self.transfers_out.contains_key(&chain_id)
+            && !self.rejected_transfers_claimed.contains_key(&chain_id)
     }
 }
 
@@ -485,7 +553,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// storage fees are given to the consensus block author.
     pub block_fees: BlockFees<Balance>,
     /// List of transfers from this Domain to other chains
-    pub transfers: BTreeMap<ChainId, Balance>,
+    pub transfers: Transfers<Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
@@ -702,7 +770,7 @@ impl<AccountId: Ord> OperatorAllowList<AccountId> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisDomain<AccountId: Ord> {
+pub struct GenesisDomain<AccountId: Ord, Balance> {
     // Domain runtime items
     pub runtime_name: String,
     pub runtime_type: RuntimeType,
@@ -722,6 +790,9 @@ pub struct GenesisDomain<AccountId: Ord> {
     pub signing_key: OperatorPublicKey,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
+
+    // initial balances
+    pub initial_balances: Vec<(MultiAccountId, Balance)>,
 }
 
 /// Types of runtime pallet domains currently supports
@@ -809,7 +880,7 @@ impl DomainsDigestItem for DigestItem {
 /// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
 pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
     StorageKey(
-        frame_support::storage::storage_prefix(
+        storage_prefix(
             // This is the name used for the `pallet_evm_chain_id` in the `construct_runtime` macro
             // i.e. `EVMChainId: pallet_evm_chain_id = 82,`
             "EVMChainId".as_bytes(),
@@ -818,6 +889,42 @@ pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
         )
         .to_vec(),
     )
+}
+
+/// Total issuance storage for Domains.
+///
+/// This function should ideally use Host function to fetch the storage key
+/// from the domain runtime. But since the Host function is not available at Genesis, we have to
+/// assume the storage keys.
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
+pub fn domain_total_issuance_storage_key() -> StorageKey {
+    StorageKey(
+        storage_prefix(
+            // This is the name used for the `pallet_balances` in the `construct_runtime` macro
+            "Balances".as_bytes(),
+            // This is the storage item name used inside the `pallet_balances`
+            "TotalIssuance".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// Account info on frame_system on Domains
+///
+/// This function should ideally use Host function to fetch the storage key
+/// from the domain runtime. But since the Host function is not available at Genesis, we have to
+/// assume the storage keys.
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
+pub fn domain_account_storage_key<AccountId: Encode>(who: AccountId) -> StorageKey {
+    let storage_prefix = storage_prefix("System".as_bytes(), "Account".as_bytes());
+    let key_hashed = who.using_encoded(Blake2_128Concat::hash);
+
+    let mut final_key = Vec::with_capacity(storage_prefix.len() + key_hashed.len());
+
+    final_key.extend_from_slice(&storage_prefix);
+    final_key.extend_from_slice(key_hashed.as_ref());
+
+    StorageKey(final_key)
 }
 
 /// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
@@ -1016,6 +1123,46 @@ impl ExtrinsicDigest {
             ExtrinsicDigest::Data(ext)
         }
     }
+}
+
+/// Trait that tracks the balances on Domains.
+pub trait DomainsTransfersTracker<Balance> {
+    type Error;
+
+    /// Initializes the domain balance
+    fn initialize_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
+
+    /// Notes a transfer between chains.
+    /// Balance on from_chain_id is reduced if it is a domain chain
+    fn note_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Confirms a transfer between chains.
+    fn confirm_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Claims a rejected transfer between chains.
+    fn claim_rejected_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Rejects a initiated transfer between chains.
+    fn reject_transfer(
+        from_chain_id: ChainId,
+        to_chain_id: ChainId,
+        amount: Balance,
+    ) -> Result<(), Self::Error>;
+
+    /// Reduces a given amount from the domain balance
+    fn reduce_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 }
 
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
