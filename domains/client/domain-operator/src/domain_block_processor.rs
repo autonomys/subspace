@@ -6,7 +6,6 @@ use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
-use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
     BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
@@ -18,6 +17,7 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
@@ -333,7 +333,9 @@ where
         //     }
         // }
 
-        let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
+        let runtime_api = self.client.runtime_api();
+
+        let mut roots = runtime_api.intermediate_roots(header_hash)?;
 
         let encoded_state_root = state_root
             .encode()
@@ -381,7 +383,8 @@ where
 
         // Get the accumulated transaction fee of all transactions included in the block
         // and used as the operator reward
-        let block_fees = self.client.runtime_api().block_fees(header_hash)?;
+        let block_fees = runtime_api.block_fees(header_hash)?;
+        let transfers = runtime_api.transfers(header_hash)?;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
@@ -396,8 +399,7 @@ where
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
             block_fees,
-            // TODO: Fetch transfers from the runtime
-            transfers: Default::default(),
+            transfers,
         };
 
         Ok(DomainBlockResult {
@@ -640,7 +642,10 @@ where
                 // the extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
                 // can be `OutOfRangeTx` and `InvalidXDM` at the same time) thus use the checking order and
                 // consider the first check as the mismatch.
-                Ordering::Equal => match local_invalid_type.checking_order().cmp(&external_invalid_type.checking_order()) {
+                Ordering::Equal => match local_invalid_type
+                    .checking_order()
+                    .cmp(&external_invalid_type.checking_order())
+                {
                     Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
                     Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
                     Ordering::Equal => unreachable!(
@@ -926,6 +931,17 @@ where
                 });
         }
 
+        if bad_receipt.transfers != local_receipt.transfers {
+            return self
+                .fraud_proof_generator
+                .generate_invalid_transfers_proof(self.domain_id, &local_receipt, bad_receipt_hash)
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate invalid transfers fraud proof: {err}"
+                    )))
+                });
+        }
+
         if bad_receipt.domain_block_hash != local_receipt.domain_block_hash {
             return self
                 .fraud_proof_generator
@@ -995,11 +1011,11 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![InboxedBundle::invalid(
                     InvalidBundleType::UndecodableTx(0),
-                    Default::default()
+                    Default::default(),
                 )]),
                 &create_test_execution_receipt(vec![InboxedBundle::invalid(
                     InvalidBundleType::UndecodableTx(0),
-                    Default::default()
+                    Default::default(),
                 )]),
             )
             .unwrap(),
@@ -1141,11 +1157,11 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![InboxedBundle::valid(
                     H256::random(),
-                    Default::default()
+                    Default::default(),
                 ),]),
                 &create_test_execution_receipt(vec![InboxedBundle::invalid(
                     InvalidBundleType::IllegalTx(3),
-                    Default::default()
+                    Default::default(),
                 ),]),
             )
             .unwrap(),
@@ -1160,11 +1176,11 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![InboxedBundle::invalid(
                     InvalidBundleType::IllegalTx(3),
-                    Default::default()
+                    Default::default(),
                 ),]),
                 &create_test_execution_receipt(vec![InboxedBundle::valid(
                     H256::random(),
-                    Default::default()
+                    Default::default(),
                 ),]),
             )
             .unwrap(),

@@ -2647,10 +2647,12 @@ dependencies = [
 name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "fp-account",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-api",
  "sp-core",
  "sp-runtime",
@@ -7134,6 +7136,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-block-fees",
+ "sp-domains",
  "sp-runtime",
  "sp-std",
 ]
@@ -7161,6 +7164,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "hex-literal",
  "log",
  "pallet-balances",
  "pallet-block-fees",
@@ -7578,6 +7582,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-domains",
  "sp-io",
  "sp-messenger",
  "sp-runtime",
@@ -12017,6 +12022,7 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "evm-domain-test-runtime",
  "fp-evm",
  "futures",

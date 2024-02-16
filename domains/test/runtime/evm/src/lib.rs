@@ -13,8 +13,7 @@ extern crate alloc;
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, MultiAccountId, TryConvertBack, EXISTENTIAL_DEPOSIT,
-    MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -41,7 +40,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::DomainId;
+use sp_domains::{DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
@@ -49,8 +48,8 @@ use sp_messenger::messages::{
 };
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
     ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
@@ -325,6 +324,7 @@ impl pallet_block_fees::Config for Runtime {
 }
 
 pub struct FinalDomainTransactionByteFee;
+
 impl Get<Balance> for FinalDomainTransactionByteFee {
     fn get() -> Balance {
         BlockFees::final_domain_transaction_byte_fee()
@@ -341,6 +341,7 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 pub struct ExtrinsicStorageFees;
+
 impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
     fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
         let dispatch_info = xt.get_dispatch_info();
@@ -424,30 +425,13 @@ parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
 
-pub struct AccountId20Converter;
-
-impl Convert<AccountId, MultiAccountId> for AccountId20Converter {
-    fn convert(account_id: AccountId) -> MultiAccountId {
-        MultiAccountId::AccountId20(account_id.into())
-    }
-}
-
-impl TryConvertBack<AccountId, MultiAccountId> for AccountId20Converter {
-    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
-        match multi_account_id {
-            MultiAccountId::AccountId20(acc) => Some(AccountId::from(acc)),
-            _ => None,
-        }
-    }
-}
-
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
-    type AccountIdConverter = AccountId20Converter;
+    type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
@@ -856,8 +840,7 @@ impl_runtime_apis! {
         }
     }
 
-    #[api_version(2)]
-    impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
+    impl sp_domains::core_api::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
@@ -960,7 +943,7 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_fees() -> domain_runtime_primitives::BlockFees<Balance> {
+        fn block_fees() -> sp_domains::BlockFees<Balance> {
             BlockFees::collected_block_fees()
         }
 
@@ -976,6 +959,14 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
+        }
+
+        fn transfers() -> Transfers<Balance> {
+            Transporter::chain_transfers()
+        }
+
+        fn transfers_storage_key() -> Vec<u8> {
+            Transporter::transfers_storage_key()
         }
     }
 

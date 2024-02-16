@@ -24,11 +24,11 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use codec::{Codec, MaxEncodedLen};
-    use domain_runtime_primitives::BlockFees;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
     use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_domains::BlockFees;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating};
     use sp_runtime::{FixedPointOperand, SaturatedConversion};
     use sp_std::fmt::Debug;
@@ -98,10 +98,10 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
         #[pallet::weight((
-            // TODO: proper weight
-			Weight::from_all(10_000),
-			DispatchClass::Mandatory
-		))]
+        // TODO: proper weight
+        Weight::from_all(10_000),
+        DispatchClass::Mandatory
+        ))]
         pub fn set_next_consensus_chain_byte_fee(
             origin: OriginFor<T>,
             #[pallet::compact] transaction_byte_fee: T::Balance,
@@ -174,6 +174,14 @@ mod pallet {
             CollectedBlockFees::<T>::mutate(|block_fees| {
                 block_fees.consensus_storage_fee =
                     block_fees.consensus_storage_fee.saturating_add(storage_fee);
+            });
+        }
+
+        /// Note burned balance on domains
+        pub fn note_burned_balance(burned_balance: T::Balance) {
+            CollectedBlockFees::<T>::mutate(|block_fees| {
+                block_fees.burned_balance =
+                    block_fees.burned_balance.saturating_add(burned_balance);
             });
         }
 

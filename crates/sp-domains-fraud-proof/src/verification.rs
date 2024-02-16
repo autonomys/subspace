@@ -1,14 +1,13 @@
 use crate::fraud_proof::{
     InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    ValidBundleProof, VerificationError,
+    InvalidTransfersProof, ValidBundleProof, VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
 };
 use codec::{Decode, Encode};
-use domain_runtime_primitives::BlockFees;
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
@@ -17,8 +16,9 @@ use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuf
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
-    BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
+    BlockFees, BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
     HeaderNumberFor, InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
+    Transfers,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
@@ -344,6 +344,61 @@ where
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
     if bad_receipt.block_fees == block_fees {
+        return Err(VerificationError::InvalidProof);
+    }
+
+    Ok(())
+}
+
+/// Verifies invalid transfers fraud proof.
+pub fn verify_invalid_transfers_fraud_proof<
+    CBlock,
+    DomainNumber,
+    DomainHash,
+    Balance,
+    DomainHashing,
+>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    proof: &InvalidTransfersProof<DomainHash>,
+) -> Result<(), VerificationError<DomainHash>>
+where
+    CBlock: BlockT,
+    CBlock::Hash: Into<H256>,
+    Balance: PartialEq + Decode,
+    DomainHashing: Hasher<Out = DomainHash>,
+{
+    let InvalidTransfersProof {
+        domain_id,
+        storage_proof,
+        ..
+    } = proof;
+
+    let storage_key = get_fraud_proof_verification_info(
+        bad_receipt.consensus_block_hash.into(),
+        FraudProofVerificationInfoRequest::StorageKey {
+            domain_id: *domain_id,
+            req: StorageKeyRequest::Transfers,
+        },
+    )
+    .and_then(FraudProofVerificationInfoResponse::into_storage_key)
+    .ok_or(VerificationError::FailedToGetDomainTransfersStorageKey)?;
+    let storage_proof = storage_proof.clone();
+
+    let transfers = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Transfers<Balance>>(
+        &bad_receipt.final_state_root,
+        storage_proof,
+        StorageKey(storage_key),
+    )
+    .map_err(|_| VerificationError::InvalidStorageProof)?;
+
+    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+    if bad_receipt.transfers == transfers {
         return Err(VerificationError::InvalidProof);
     }
 

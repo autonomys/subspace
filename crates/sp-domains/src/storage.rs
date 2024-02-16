@@ -57,6 +57,12 @@ impl RawGenesis {
             .insert(evm_chain_id_storage_key(), StorageData(chain_id.encode()));
     }
 
+    pub fn set_top_storages(&mut self, storages: Vec<(StorageKey, StorageData)>) {
+        for (k, v) in storages {
+            let _ = self.top.insert(k, v);
+        }
+    }
+
     fn set_runtime_code(&mut self, code: Vec<u8>) {
         let _ = self.top.insert(
             StorageKey(well_known_keys::CODE.to_vec()),
