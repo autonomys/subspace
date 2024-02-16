@@ -148,8 +148,7 @@ async fn test_domain_chain_fork_choice() {
     let mut alice_import_notification_stream = alice.client.every_import_notification_stream();
 
     // Fork B produce a consenus block that contains bundles
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let fork_b_block_hash = ferdie
         .produce_block_with_slot_at(slot, common_consensus_hash, None)
         .await
@@ -166,8 +165,7 @@ async fn test_domain_chain_fork_choice() {
     assert_eq!(alice.client.info().best_hash, domain_hash_3);
 
     // Produce one more consensus block on fork B to make it the best fork
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let fork_b_block_hash = ferdie
         .produce_block_with_slot_at(slot, fork_b_block_hash, Some(vec![]))
         .await
@@ -272,12 +270,9 @@ async fn test_domain_block_production() {
 
     // Simply producing more block on fork C
     for _ in 0..10 {
-        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                opaque_bundle: bundle.unwrap(),
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into();
         // Produce consensus block that only contains the `submit_bundle` extrinsic instead of
@@ -427,7 +422,7 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
 
         // Produce a bundle and submit to the tx pool of the consensus node
         let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+        assert_eq!(bundle.extrinsics.len(), 1);
     }
 
     let slot = ferdie.produce_slot();
@@ -620,7 +615,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let hash_2 = consensus_node.client.hash(2).unwrap().unwrap();
     let header_2 = consensus_node.client.header(hash_2).unwrap().unwrap();
     assert_eq!(
-        receipts_consensus_info(signed_bundle.unwrap()),
+        receipts_consensus_info(signed_bundle),
         consensus_block_info(header_2)
     );
 }
@@ -850,8 +845,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
@@ -859,7 +853,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
     // We get the receipt of target bundle
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let valid_receipt = bundle.unwrap().into_receipt();
+    let valid_receipt = bundle.into_receipt();
     assert_eq!(valid_receipt.execution_trace.len(), 5);
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
 
@@ -1112,29 +1106,22 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let original_length = bundle
-        .as_ref()
-        .map(|opaque_bundle| {
-            opaque_bundle
-                .sealed_header
-                .header
-                .receipt
-                .execution_trace
-                .len()
-        })
-        .expect("Bundle should exists; qed");
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
+    let original_length = opaque_bundle
+        .sealed_header
+        .header
+        .receipt
+        .execution_trace
+        .len();
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         assert_eq!(receipt.execution_trace.len(), 5);
 
@@ -1309,20 +1296,18 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let extrinsics: Vec<Vec<u8>>;
     let bundle_extrinsic_root;
     let bad_submit_bundle_tx = {
-        let mut opaque_bundle = bundle.unwrap();
         opaque_bundle.extrinsics.push(inherent_extrinsic());
         extrinsics = opaque_bundle
             .extrinsics
@@ -1357,11 +1342,10 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
         .unwrap();
 
     // produce another bundle that marks the previous extrinsic as invalid.
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
         // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
         bad_receipt.inboxed_bundles =
@@ -1459,8 +1443,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     let extrinsics: Vec<Vec<u8>> = target_bundle
         .extrinsics
@@ -1475,11 +1458,10 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
         .unwrap();
 
     // produce another bundle that marks the previous valid extrinsic as invalid.
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
         // bad receipt marks this particular bundle as invalid even though bundle does not contain
         // inherent extrinsic
@@ -1570,16 +1552,15 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     };
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 0);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     let alice_balance = alice.free_balance(Alice.to_account_id());
     let mut alice_nonce = alice.account_nonce();
@@ -1616,7 +1597,6 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     let extrinsics: Vec<Vec<u8>>;
     let bundle_extrinsic_root;
     let bad_submit_bundle_tx = {
-        let mut opaque_bundle = bundle.unwrap();
         opaque_bundle.extrinsics = vec![
             transfer_to_charlie_with_big_tip_1.into(),
             transfer_to_charlie_with_big_tip_2.into(),
@@ -1655,11 +1635,10 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
         .unwrap();
 
     // produce another bundle that marks the previous extrinsic as invalid.
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
         // bad receipt marks this particular bundle as valid even though bundle contains illegal extrinsic
         bad_receipt.inboxed_bundles =
@@ -1784,8 +1763,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 2);
     let bundle_extrinsic_root = target_bundle.extrinsics_root();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
@@ -1793,11 +1771,10 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
         .unwrap();
 
     // produce another bundle that marks the previous valid extrinsic as invalid.
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
         // bad receipt marks this particular bundle as invalid even though bundle does not contain
         // illegal tx
@@ -1899,18 +1876,16 @@ async fn test_invalid_block_fees_proof_creation() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.block_fees = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -2004,18 +1979,16 @@ async fn test_invalid_transfers_fraud_proof() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.transfers = Transfers {
             transfers_in: BTreeMap::from([(ChainId::Consensus, 10 * SSC)]),
@@ -2114,18 +2087,16 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_hash = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -2219,18 +2190,16 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         .expect("Failed to send extrinsic");
 
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let target_bundle = bundle.unwrap();
+    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_extrinsic_root = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -2315,8 +2284,8 @@ async fn test_bundle_equivocation_fraud_proof() {
         .into()
     };
 
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
 
     // Remove the original bundle submission and resubmit it again.
     // This is done since when the bundle is submitted through offchain transaction submission
@@ -2341,7 +2310,6 @@ async fn test_bundle_equivocation_fraud_proof() {
     // change the bundle contents such that we derive a new bundle
     // with same slot and proof of election such that this leads to bundle equivocation.
     let equivocated_bundle_tx = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_extrinsic_root = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -2436,8 +2404,6 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
 
     // Produce a bundle and submit to the tx pool of the consensus node
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    let bundle = bundle.unwrap();
     assert_eq!(bundle.extrinsics.len(), 2);
 
     // produce block and import domain block
@@ -2453,8 +2419,6 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    let bundle = bundle.unwrap();
     let er = bundle.receipt();
     assert_eq!(er.execution_trace.len(), 6);
     assert_eq!(er.execution_trace[5], er.final_state_root);
@@ -2506,8 +2470,6 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
 
     // Produce a bundle and submit to the tx pool of the consensus node
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    let bundle = bundle.unwrap();
     assert_eq!(bundle.extrinsics.len(), 1);
 
     // we produce another bundle with similar transaction
@@ -2531,8 +2493,6 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
 
     // Produce a bundle and submit to the tx pool of the consensus node
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    let bundle = bundle.unwrap();
     assert_eq!(bundle.extrinsics.len(), 1);
 
     // produce block and import domain block
@@ -2550,8 +2510,6 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    let bundle = bundle.unwrap();
     let er = bundle.sealed_header.header.receipt;
 
     assert_eq!(er.execution_trace.len(), 6);
@@ -2611,8 +2569,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
             .expect("Failed to send extrinsic");
 
         // Produce a bundle and submit to the tx pool of the consensus node
-        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        assert!(bundle.is_some());
+        let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
         // In the last iteration, produce a consensus block which will included all the previous bundles
         if i == 2 {
@@ -2639,11 +2596,10 @@ async fn test_valid_bundle_proof_generation_and_verification() {
 
     // Produce a bundle that will include the reciept of the last 3 bundles and modified the receipt's
     // `inboxed_bundles` field to make it invalid
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone());
     let bundle_index = 1;
     let (bad_receipt, submit_bundle_tx_with_bad_receipt) = {
-        let mut bundle = bundle.unwrap();
         assert_eq!(bundle.receipt().inboxed_bundles.len(), 3);
 
         bundle.sealed_header.header.receipt.inboxed_bundles[bundle_index].bundle =
@@ -2842,8 +2798,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get a bundle from alice's tx pool and used as bundle template.
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let _bundle_template = bundle.unwrap();
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let _alice_key = alice.key;
     // Drop alice in order to control the execution chain by submitting the receipts manually later.
     drop(alice);
@@ -2930,13 +2885,10 @@ async fn duplicated_bundle_should_be_rejected() {
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx: OpaqueExtrinsic =
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                opaque_bundle: bundle.unwrap(),
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into();
 
@@ -3022,7 +2974,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
 
     // Produce one block that only included `bundle1`
     produce_block_with!(
-        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(bundle1.unwrap())]),
+        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(bundle1)]),
         alice
     )
     .await
@@ -3030,7 +2982,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
 
     // `bundle2` will be rejected because its PoT is stale
     match ferdie
-        .submit_transaction(bundle_to_tx(bundle2.unwrap()))
+        .submit_transaction(bundle_to_tx(bundle2))
         .await
         .unwrap_err()
     {
@@ -3135,12 +3087,9 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let pre_alice_best_number = alice.client.info().best_number;
     let mut parent_hash = ferdie.client.info().best_hash;
 
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_bundle {
-            opaque_bundle: bundle.unwrap(),
-        }
-        .into(),
+        pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
     )
     .into();
 
@@ -3661,7 +3610,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
 
     // Produce a bundle that contains the just sent extrinsic
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -3669,7 +3618,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
 
     // Produce one more bundle, this bundle should contains the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let receipt = bundle.unwrap().into_receipt();
+    let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
     // Transaction fee (including the tip) is deducted from alice's account
@@ -3741,19 +3690,18 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
         .expect("Failed to send extrinsic");
 
     // Fork A with bundle that contains above transaction
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let consensus_block_hash_fork_a = ferdie
         .produce_block_with_slot_at(
             slot,
             common_block_hash,
-            Some(vec![bundle_to_tx(bundle.clone().unwrap())]),
+            Some(vec![bundle_to_tx(opaque_bundle.clone())]),
         )
         .await
         .unwrap();
 
     // Fork B
     let bundle = {
-        let mut opaque_bundle = bundle.unwrap();
         opaque_bundle.extrinsics = vec![];
         opaque_bundle.sealed_header.header.bundle_extrinsics_root =
             sp_domains::EMPTY_EXTRINSIC_ROOT;
@@ -3865,7 +3813,8 @@ async fn test_skip_empty_bundle_production() {
     let consensus_block_number = ferdie.client.info().best_number;
     let domain_block_number = alice.client.info().best_number;
 
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let slot = ferdie.produce_slot();
+    let bundle = ferdie.notify_new_slot_and_wait_for_bundle(slot).await;
     ferdie.produce_block_with_slot(slot).await.unwrap();
 
     // Alice will skip producing bundle since there is no domain extrinsic
@@ -3875,11 +3824,10 @@ async fn test_skip_empty_bundle_production() {
 
     // Send a domain extrinsic, Alice will start producing bundle
     alice.send_system_remark().await;
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(bundle.is_some());
     assert_eq!(ferdie.client.info().best_number, consensus_block_number + 2);
     assert_eq!(alice.client.info().best_number, domain_block_number + 1);
 }
@@ -3940,10 +3888,9 @@ async fn test_bad_receipt_chain() {
     produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_hash = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
@@ -4131,13 +4078,13 @@ async fn test_skip_duplicated_tx_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
 
     // Produce a few more bundles, all of them will be empty since the only tx in the tx pool is already pick
     // up by the previous bundle
     for _ in 0..3 {
         let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-        assert!(bundle.unwrap().extrinsics.is_empty());
+        assert!(bundle.extrinsics.is_empty());
     }
 
     // Produce a domain that include all the bundles
@@ -4152,7 +4099,7 @@ async fn test_skip_duplicated_tx_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
     ferdie
         .produce_block_with_slot_at(slot, ferdie.client.info().best_hash, Some(vec![]))
         .await
@@ -4161,7 +4108,7 @@ async fn test_skip_duplicated_tx_in_previous_bundle() {
     // Even the tx is inclued in a previous bundle, after the consensus chain's tip changed, the operator
     // will resubmit the tx in the next bundle as retry
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
 
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
@@ -4208,7 +4155,7 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
 
     // Send a new tx with the same `nonce` and a tip then produce a bundle, this tx will replace
     // the previous tx in the tx pool and included in the bundle
@@ -4217,7 +4164,7 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 1);
+    assert_eq!(bundle.extrinsics.len(), 1);
 
     // Send a tx with `nonce + 1` and produce a bundle, it won't include this tx because the tx
     // with `nonce` is included in previous bundle and is not submitted to the consensus chain yet
@@ -4226,7 +4173,7 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.unwrap().extrinsics.is_empty());
+    assert!(bundle.extrinsics.is_empty());
 
     // Produce a domain that include all the bundles
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
@@ -4241,7 +4188,7 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
         .await
         .expect("Failed to send extrinsic");
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 2);
+    assert_eq!(bundle.extrinsics.len(), 2);
 
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
