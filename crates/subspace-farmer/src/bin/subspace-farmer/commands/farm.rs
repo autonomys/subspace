@@ -429,16 +429,16 @@ where
     ));
     let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
-    let piece_getter = Arc::new(FarmerPieceGetter::new(
+    let piece_getter = FarmerPieceGetter::new(
         piece_provider,
         farmer_cache.clone(),
         node_client.clone(),
         Arc::clone(&plotted_pieces),
-    ));
+    );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(
         {
-            let future = farmer_cache_worker.run(piece_getter.clone());
+            let future = farmer_cache_worker.run(piece_getter.downgrade());
 
             move || future
         },

@@ -83,7 +83,9 @@ impl<NC> FarmerCacheWorker<NC>
 where
     NC: NodeClient,
 {
-    /// Run the cache worker with provided piece getter
+    /// Run the cache worker with provided piece getter.
+    ///
+    /// NOTE: Piece getter must not depend on farmer cache in order to avoid reference cycles!
     pub async fn run<PG>(mut self, piece_getter: PG)
     where
         PG: PieceGetter,
