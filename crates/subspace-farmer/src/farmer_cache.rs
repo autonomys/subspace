@@ -762,7 +762,7 @@ pub struct FarmerCache {
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
-    worker_sender: mpsc::Sender<WorkerCommand>,
+    worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
 }
 
 impl FarmerCache {
@@ -782,7 +782,7 @@ impl FarmerCache {
             peer_id,
             caches: Arc::clone(&caches),
             handlers: Arc::clone(&handlers),
-            worker_sender,
+            worker_sender: Arc::new(worker_sender),
         };
         let worker = FarmerCacheWorker {
             peer_id,
@@ -797,11 +797,10 @@ impl FarmerCache {
 
     /// Get piece from cache
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
-        let caches = Arc::clone(&self.caches);
-
         let maybe_piece_fut = tokio::task::spawn_blocking({
             let key = key.clone();
-            let worker_sender = self.worker_sender.clone();
+            let caches = Arc::clone(&self.caches);
+            let worker_sender = Arc::clone(&self.worker_sender);
 
             move || {
                 for (disk_farm_index, cache) in caches.read().iter().enumerate() {
