@@ -249,8 +249,7 @@ where
         .saturating_sub(chain_constants.confirmation_depth_k().into());
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
-    // Node starts as offline, we'll wait for it to go online shrtly after
-    let mut initial_pause_sync = Some(pause_sync.swap(true, Ordering::AcqRel));
+    let mut initial_pause_sync = Some(pause_sync.load(Ordering::Acquire));
     while let Some(reason) = notifications.next().await {
         let prev_pause_sync = pause_sync.swap(true, Ordering::AcqRel);
 

@@ -105,6 +105,9 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
+    /// Slot info notification stream ended
+    #[error("Slot info notification stream ended")]
+    SlotNotificationStreamEnded,
     /// Low-level auditing error
     #[error("Low-level auditing error: {0}")]
     LowLevelAuditing(#[from] AuditingError),
@@ -150,6 +153,7 @@ impl FarmingError {
             FarmingError::Io(_) => "Io",
             FarmingError::FailedToCreateThreadPool(_) => "FailedToCreateThreadPool",
             FarmingError::Decoded(_) => "Decoded",
+            FarmingError::SlotNotificationStreamEnded => "SlotNotificationStreamEnded",
         }
     }
 
@@ -163,6 +167,7 @@ impl FarmingError {
             FarmingError::Io(_) => true,
             FarmingError::FailedToCreateThreadPool(_) => true,
             FarmingError::Decoded(error) => error.is_fatal,
+            FarmingError::SlotNotificationStreamEnded => true,
         }
     }
 }
@@ -193,7 +198,7 @@ where
         }
     }
 
-    Ok(())
+    Err(FarmingError::SlotNotificationStreamEnded)
 }
 
 /// Plot audit options
