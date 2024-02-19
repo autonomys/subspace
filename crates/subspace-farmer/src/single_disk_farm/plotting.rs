@@ -12,12 +12,12 @@ use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{io, slice};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
@@ -397,7 +397,8 @@ where
                             pieces_in_sector,
                             sector_output: &mut sector,
                             sector_metadata_output: &mut sector_metadata,
-                            table_generator: &mut table_generator,
+                            // TODO: Multiple table generators
+                            table_generators: slice::from_mut(&mut table_generator),
                             abort_early: &abort_early,
                         },
                     )?;

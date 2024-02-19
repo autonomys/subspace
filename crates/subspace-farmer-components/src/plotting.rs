@@ -4,18 +4,19 @@ use crate::sector::{
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
-use async_lock::Mutex;
+use async_lock::Mutex as AsyncMutex;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use rayon::prelude::*;
-use std::mem;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use std::{mem, slice};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
@@ -58,6 +59,9 @@ pub enum PlottingError {
     /// Invalid erasure coding instance
     #[error("Invalid erasure coding instance")]
     InvalidErasureCodingInstance,
+    /// No table generators
+    #[error("No table generators")]
+    NoTableGenerators,
     /// Bad sector output size
     #[error("Bad sector output size: provided {provided}, expected {expected}")]
     BadSectorOutputSize {
@@ -207,7 +211,7 @@ where
             pieces_in_sector,
             sector_output,
             sector_metadata_output,
-            table_generator,
+            table_generators: slice::from_mut(table_generator),
             abort_early,
         },
     )
@@ -274,12 +278,12 @@ where
         })
         .collect::<Vec<_>>();
 
-    let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
+    let raw_sector = AsyncMutex::new(RawSector::new(pieces_in_sector));
 
     {
         // This list will be mutated, replacing pieces we have already processed with `None`
         let incremental_piece_indices =
-            Mutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
+            AsyncMutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
 
         retry(default_backoff(), || async {
             let mut raw_sector = raw_sector.lock().await;
@@ -346,7 +350,7 @@ where
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
     /// Proof of space table generator
-    pub table_generator: &'a mut PosTable::Generator,
+    pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
 }
@@ -370,12 +374,16 @@ where
         pieces_in_sector,
         sector_output,
         sector_metadata_output,
-        table_generator,
+        table_generators,
         abort_early,
     } = encoding_options;
 
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
         return Err(PlottingError::InvalidErasureCodingInstance);
+    }
+
+    if table_generators.is_empty() {
+        return Err(PlottingError::NoTableGenerators);
     }
 
     let sector_size = sector_size(pieces_in_sector);
@@ -397,27 +405,51 @@ where
     }
 
     let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
-    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
-
-    for ((piece_offset, record), encoded_chunks_used) in (PieceOffset::ZERO..)
-        .zip(raw_sector.records.iter_mut())
-        .zip(sector_contents_map.iter_record_bitfields_mut())
     {
-        let pos_seed =
-            sector_id.derive_evaluation_seed(piece_offset, farmer_protocol_info.history_size);
-
-        record_encoding::<PosTable>(
-            &pos_seed,
-            record,
-            encoded_chunks_used,
-            table_generator,
-            erasure_coding,
-            &mut chunks_scratch,
+        let iter = Mutex::new(
+            (PieceOffset::ZERO..)
+                .zip(raw_sector.records.iter_mut())
+                .zip(sector_contents_map.iter_record_bitfields_mut()),
         );
 
-        if abort_early.load(Ordering::Relaxed) {
-            return Err(PlottingError::AbortEarly);
-        }
+        rayon::scope(|scope| {
+            for table_generator in table_generators {
+                scope.spawn(|_scope| {
+                    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
+
+                    loop {
+                        // This instead of `while` above because otherwise mutex will be held for
+                        // the duration of the loop and wil limit concurrency to 1 table generator
+                        let Some(((piece_offset, record), encoded_chunks_used)) =
+                            iter.lock().next()
+                        else {
+                            return;
+                        };
+                        let pos_seed = sector_id.derive_evaluation_seed(
+                            piece_offset,
+                            farmer_protocol_info.history_size,
+                        );
+
+                        record_encoding::<PosTable>(
+                            &pos_seed,
+                            record,
+                            encoded_chunks_used,
+                            table_generator,
+                            erasure_coding,
+                            &mut chunks_scratch,
+                        );
+
+                        if abort_early.load(Ordering::Relaxed) {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    if abort_early.load(Ordering::Acquire) {
+        return Err(PlottingError::AbortEarly);
     }
 
     sector_output.resize(sector_size, 0);
