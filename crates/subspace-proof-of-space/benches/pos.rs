@@ -40,9 +40,31 @@ fn pos_bench<PosTable>(
     #[cfg(feature = "parallel")]
     {
         let mut generator_instance = PosTable::generator();
-        group.bench_function("table/parallel", |b| {
+        group.bench_function("table/parallel/1x", |b| {
             b.iter(|| {
                 generator_instance.generate_parallel(black_box(&seed));
+            });
+        });
+
+        let mut generator_instances = [
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+            PosTable::generator(),
+        ];
+        group.bench_function("table/parallel/8x", |b| {
+            b.iter(|| {
+                rayon::scope(|scope| {
+                    for g in &mut generator_instances {
+                        scope.spawn(|_scope| {
+                            g.generate_parallel(black_box(&seed));
+                        });
+                    }
+                });
             });
         });
     }
