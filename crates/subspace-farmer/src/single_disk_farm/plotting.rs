@@ -12,12 +12,12 @@ use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use std::collections::HashMap;
 use std::fs::File;
+use std::io;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::{io, slice};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
@@ -159,6 +159,7 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub(crate) downloading_semaphore: Arc<Semaphore>,
+    pub(crate) record_encoding_concurrency: NonZeroUsize,
     pub(super) plotting_thread_pool_manager: PlottingThreadPoolManager,
     pub(super) stop_receiver: broadcast::Receiver<()>,
 }
@@ -192,6 +193,7 @@ where
         modifying_sector_index,
         mut sectors_to_plot_receiver,
         downloading_semaphore,
+        record_encoding_concurrency,
         plotting_thread_pool_manager,
         mut stop_receiver,
     } = plotting_options;
@@ -212,7 +214,9 @@ where
         true,
     );
 
-    let mut table_generator = PosTable::generator();
+    let mut table_generators = (0..record_encoding_concurrency.get())
+        .map(|_| PosTable::generator())
+        .collect::<Vec<_>>();
 
     let mut maybe_next_downloaded_sector_fut = None::<
         AsyncJoinOnDrop<Result<(OwnedSemaphorePermit, DownloadedSector), plotting::PlottingError>>,
@@ -376,7 +380,7 @@ where
         let sector_metadata;
         let plotted_sector;
 
-        (sector, sector_metadata, table_generator, plotted_sector) = {
+        (sector, sector_metadata, table_generators, plotted_sector) = {
             let plotting_fn = || {
                 tokio::task::block_in_place(|| {
                     let mut sector = Vec::new();
@@ -397,8 +401,7 @@ where
                             pieces_in_sector,
                             sector_output: &mut sector,
                             sector_metadata_output: &mut sector_metadata,
-                            // TODO: Multiple table generators
-                            table_generators: slice::from_mut(&mut table_generator),
+                            table_generators: &mut table_generators,
                             abort_early: &abort_early,
                         },
                     )?;
@@ -408,7 +411,7 @@ where
                         SectorUpdate::Plotting(SectorPlottingDetails::Encoded(start.elapsed())),
                     ));
 
-                    Ok((sector, sector_metadata, table_generator, plotted_sector))
+                    Ok((sector, sector_metadata, table_generators, plotted_sector))
                 })
             };
 

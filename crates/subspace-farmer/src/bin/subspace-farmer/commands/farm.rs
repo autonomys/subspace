@@ -112,7 +112,9 @@ pub(crate) struct FarmingArgs {
     prometheus_listen_on: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
-    /// sector ahead of time
+    /// sector ahead of time.
+    ///
+    /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
@@ -120,8 +122,15 @@ pub(crate) struct FarmingArgs {
     /// restricted by
     /// `--sector-downloading-concurrency` and setting this option higher than
     /// `--sector-downloading-concurrency` will have no effect.
+    ///
+    /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_encoding_concurrency: Option<NonZeroUsize>,
+    /// Defines how many record farmer will encode in a single sector concurrently, defaults to one
+    /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
+    /// usage and typically more efficient CPU utilization.
+    #[arg(long)]
+    record_encoding_concurrency: Option<NonZeroUsize>,
     /// Allows to enable farming during initial plotting. Not used by default on machines with 8 or
     /// less logical cores because plotting is so intense on CPU and memory that farming will likely
     /// not work properly, yet it will significantly impact plotting speed, delaying the time when
@@ -318,6 +327,7 @@ where
         prometheus_listen_on,
         sector_downloading_concurrency,
         sector_encoding_concurrency,
+        record_encoding_concurrency,
         farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
@@ -525,6 +535,15 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
+    let record_encoding_concurrency = record_encoding_concurrency.unwrap_or_else(|| {
+        let cpu_cores = plotting_thread_pool_core_indices
+            .first()
+            .expect("Guaranteed to have some CPU cores; qed");
+
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).min(8))
+            .expect("Guaranteed to have some CPU cores; qed")
+    });
+
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
         plotting_thread_pool_core_indices
             .into_iter()
@@ -555,6 +574,7 @@ where
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
                 downloading_semaphore: Arc::clone(&downloading_semaphore),
+                record_encoding_concurrency,
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
                 plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
