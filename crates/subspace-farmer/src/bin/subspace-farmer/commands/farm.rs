@@ -184,6 +184,9 @@ pub(crate) struct FarmingArgs {
     /// each with a pair of CPU cores.
     #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
+    /// Disable farm locking, for example if file system doesn't support it
+    #[arg(long)]
+    disable_farm_locking: bool,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -334,6 +337,7 @@ where
         plotting_cpu_cores,
         replotting_thread_pool_size,
         replotting_cpu_cores,
+        disable_farm_locking,
     } = farming_args;
 
     // Override flags with `--dev`
@@ -579,6 +583,7 @@ where
                 farming_thread_pool_size,
                 plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
                 plotting_delay: Some(plotting_delay_receiver),
+                disable_farm_locking,
             },
             disk_farm_index,
         );

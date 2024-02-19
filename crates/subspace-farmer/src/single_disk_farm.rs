@@ -289,6 +289,8 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
+    /// Disable farm locking, for example if file system doesn't support it
+    pub disable_farm_locking: bool,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -569,7 +571,7 @@ pub struct SingleDiskFarm {
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
     stop_sender: Option<broadcast::Sender<()>>,
-    _single_disk_farm_info_lock: SingleDiskFarmInfoLock,
+    _single_disk_farm_info_lock: Option<SingleDiskFarmInfoLock>,
 }
 
 impl Drop for SingleDiskFarm {
@@ -616,6 +618,7 @@ impl SingleDiskFarm {
             plotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
+            disable_farm_locking,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -694,8 +697,14 @@ impl SingleDiskFarm {
             }
         };
 
-        let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
-            .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
+        let single_disk_farm_info_lock = if disable_farm_locking {
+            None
+        } else {
+            Some(
+                SingleDiskFarmInfo::try_lock(&directory)
+                    .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
+            )
+        };
 
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
@@ -1418,7 +1427,10 @@ impl SingleDiskFarm {
 
     /// Check the farm for corruption and repair errors (caused by disk errors or something else),
     /// returns an error when irrecoverable errors occur.
-    pub fn scrub(directory: &Path) -> Result<(), SingleDiskFarmScrubError> {
+    pub fn scrub(
+        directory: &Path,
+        disable_farm_locking: bool,
+    ) -> Result<(), SingleDiskFarmScrubError> {
         let span = Span::current();
 
         let info = {
@@ -1436,8 +1448,14 @@ impl SingleDiskFarm {
             }
         };
 
-        let _single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(directory)
-            .map_err(SingleDiskFarmScrubError::LikelyAlreadyInUse)?;
+        let _single_disk_farm_info_lock = if disable_farm_locking {
+            None
+        } else {
+            Some(
+                SingleDiskFarmInfo::try_lock(directory)
+                    .map_err(SingleDiskFarmScrubError::LikelyAlreadyInUse)?,
+            )
+        };
 
         let identity = {
             let file = directory.join(Identity::FILE_NAME);

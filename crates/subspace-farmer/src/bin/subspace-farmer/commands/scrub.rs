@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use tracing::{error, info, info_span};
 
-pub(crate) fn scrub(disk_farms: &[PathBuf]) {
+pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool) {
     disk_farms
         .into_par_iter()
         .enumerate()
@@ -15,7 +15,7 @@ pub(crate) fn scrub(disk_farms: &[PathBuf]) {
                 "Start scrubbing farm"
             );
 
-            match SingleDiskFarm::scrub(directory) {
+            match SingleDiskFarm::scrub(directory, disable_farm_locking) {
                 Ok(()) => {
                     info!(
                         path = %directory.display(),
