@@ -65,10 +65,10 @@ struct CacheWorkerState {
     last_segment_index: SegmentIndex,
 }
 
-/// Cache worker used to drive the cache
+/// Farmer cache worker used to drive the farmer cache backend
 #[derive(Debug)]
-#[must_use = "Cache will not work unless its worker is running"]
-pub struct CacheWorker<NC>
+#[must_use = "Farmer cache will not work unless its worker is running"]
+pub struct FarmerCacheWorker<NC>
 where
     NC: fmt::Debug,
 {
@@ -79,11 +79,13 @@ where
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
 }
 
-impl<NC> CacheWorker<NC>
+impl<NC> FarmerCacheWorker<NC>
 where
     NC: NodeClient,
 {
-    /// Run the cache worker with provided piece getter
+    /// Run the cache worker with provided piece getter.
+    ///
+    /// NOTE: Piece getter must not depend on farmer cache in order to avoid reference cycles!
     pub async fn run<PG>(mut self, piece_getter: PG)
     where
         PG: PieceGetter,
@@ -754,23 +756,23 @@ where
     }
 }
 
-/// Piece cache that aggregates caches of multiple disks
+/// Farmer cache that aggregates different kinds of caches of multiple disks
 #[derive(Debug, Clone)]
-pub struct PieceCache {
+pub struct FarmerCache {
     peer_id: PeerId,
     /// Individual disk caches where pieces are stored
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
-    worker_sender: mpsc::Sender<WorkerCommand>,
+    worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
 }
 
-impl PieceCache {
+impl FarmerCache {
     /// Create new piece cache instance and corresponding worker.
     ///
     /// NOTE: Returned future is async, but does blocking operations and should be running in
     /// dedicated thread.
-    pub fn new<NC>(node_client: NC, peer_id: PeerId) -> (Self, CacheWorker<NC>)
+    pub fn new<NC>(node_client: NC, peer_id: PeerId) -> (Self, FarmerCacheWorker<NC>)
     where
         NC: NodeClient,
     {
@@ -782,9 +784,9 @@ impl PieceCache {
             peer_id,
             caches: Arc::clone(&caches),
             handlers: Arc::clone(&handlers),
-            worker_sender,
+            worker_sender: Arc::new(worker_sender),
         };
-        let worker = CacheWorker {
+        let worker = FarmerCacheWorker {
             peer_id,
             node_client,
             caches,
@@ -797,11 +799,10 @@ impl PieceCache {
 
     /// Get piece from cache
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
-        let caches = Arc::clone(&self.caches);
-
         let maybe_piece_fut = tokio::task::spawn_blocking({
             let key = key.clone();
-            let worker_sender = self.worker_sender.clone();
+            let caches = Arc::clone(&self.caches);
+            let worker_sender = Arc::clone(&self.worker_sender);
 
             move || {
                 for (disk_farm_index, cache) in caches.read().iter().enumerate() {
@@ -872,7 +873,7 @@ impl PieceCache {
     }
 }
 
-impl LocalRecordProvider for PieceCache {
+impl LocalRecordProvider for FarmerCache {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
         // It is okay to take read lock here, writes locks are very infrequent and very short
         for cache in self.caches.read().iter() {
