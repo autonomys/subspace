@@ -465,6 +465,7 @@ pub fn create_signed_vote(
             downloading_semaphore: None,
             encoding_semaphore: None,
             table_generator: &mut table_generator,
+            abort_early: &Default::default(),
         }))
         .unwrap();
 

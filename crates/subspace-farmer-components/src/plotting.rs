@@ -13,6 +13,7 @@ use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
 use std::mem;
 use std::simd::Simd;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -24,7 +25,6 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::{AcquireError, Semaphore};
-use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
@@ -101,6 +101,9 @@ pub enum PlottingError {
         #[from]
         error: AcquireError,
     },
+    /// Abort early
+    #[error("Abort early")]
+    AbortEarly,
 }
 
 /// Options for plotting a sector.
@@ -142,6 +145,8 @@ where
     pub encoding_semaphore: Option<&'a Semaphore>,
     /// Proof of space table generator
     pub table_generator: &'a mut PosTable::Generator,
+    /// Whether encoding should be aborted early
+    pub abort_early: &'a AtomicBool,
 }
 
 /// Plot a single sector.
@@ -171,6 +176,7 @@ where
         downloading_semaphore,
         encoding_semaphore,
         table_generator,
+        abort_early,
     } = options;
 
     let _downloading_permit = match downloading_semaphore {
@@ -202,9 +208,9 @@ where
             sector_output,
             sector_metadata_output,
             table_generator,
+            abort_early,
         },
     )
-    .await
 }
 
 /// Opaque sector downloaded and ready for encoding
@@ -341,9 +347,11 @@ where
     pub sector_metadata_output: &'a mut Vec<u8>,
     /// Proof of space table generator
     pub table_generator: &'a mut PosTable::Generator,
+    /// Whether encoding should be aborted early
+    pub abort_early: &'a AtomicBool,
 }
 
-pub async fn encode_sector<PosTable>(
+pub fn encode_sector<PosTable>(
     downloaded_sector: DownloadedSector,
     encoding_options: EncodeSectorOptions<'_, PosTable>,
 ) -> Result<PlottedSector, PlottingError>
@@ -363,6 +371,7 @@ where
         sector_output,
         sector_metadata_output,
         table_generator,
+        abort_early,
     } = encoding_options;
 
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
@@ -406,8 +415,9 @@ where
             &mut chunks_scratch,
         );
 
-        // Give a chance to interrupt plotting if necessary in between pieces
-        yield_now().await
+        if abort_early.load(Ordering::Relaxed) {
+            return Err(PlottingError::AbortEarly);
+        }
     }
 
     sector_output.resize(sector_size, 0);

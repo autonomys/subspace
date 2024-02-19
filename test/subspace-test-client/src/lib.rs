@@ -246,6 +246,7 @@ where
         downloading_semaphore: None,
         encoding_semaphore: None,
         table_generator: &mut table_generator,
+        abort_early: &Default::default(),
     })
     .await
     .expect("Plotting one sector in memory must not fail");

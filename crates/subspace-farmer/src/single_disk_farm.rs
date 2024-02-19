@@ -935,7 +935,7 @@ impl SingleDiskFarm {
                     sectors_to_plot_receiver,
                     downloading_semaphore,
                     plotting_thread_pool_manager,
-                    stop_receiver: &mut stop_receiver.resubscribe(),
+                    stop_receiver: stop_receiver.resubscribe(),
                 };
 
                 let plotting_fut = async {
