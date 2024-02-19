@@ -38,7 +38,7 @@ use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -277,6 +277,8 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub downloading_semaphore: Arc<Semaphore>,
+    /// Defines how many record farmer will encode in a single sector concurrently
+    pub record_encoding_concurrency: NonZeroUsize,
     /// Whether to farm during initial plotting
     pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
@@ -609,6 +611,7 @@ impl SingleDiskFarm {
             erasure_coding,
             cache_percentage,
             downloading_semaphore,
+            record_encoding_concurrency,
             farming_thread_pool_size,
             plotting_thread_pool_manager,
             plotting_delay,
@@ -934,8 +937,9 @@ impl SingleDiskFarm {
                     modifying_sector_index,
                     sectors_to_plot_receiver,
                     downloading_semaphore,
+                    record_encoding_concurrency,
                     plotting_thread_pool_manager,
-                    stop_receiver: &mut stop_receiver.resubscribe(),
+                    stop_receiver: stop_receiver.resubscribe(),
                 };
 
                 let plotting_fut = async {

@@ -80,6 +80,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 downloading_semaphore: black_box(None),
                 encoding_semaphore: black_box(None),
                 table_generator: black_box(&mut table_generator),
+                abort_early: &Default::default(),
             }))
             .unwrap();
         })
