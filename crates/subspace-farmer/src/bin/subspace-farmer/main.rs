@@ -42,6 +42,9 @@ enum Command {
         /// Example:
         ///   /path/to/directory
         disk_farms: Vec<PathBuf>,
+        /// Disable farm locking, for example if file system doesn't support it
+        #[arg(long)]
+        disable_farm_locking: bool,
     },
     /// Wipes the farm
     Wipe {
@@ -95,11 +98,14 @@ async fn main() -> anyhow::Result<()> {
                 commands::info(disk_farms);
             }
         }
-        Command::Scrub { disk_farms } => {
+        Command::Scrub {
+            disk_farms,
+            disable_farm_locking,
+        } => {
             if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
-                commands::scrub(&disk_farms);
+                commands::scrub(&disk_farms, disable_farm_locking);
             }
         }
         Command::Wipe { disk_farms } => {
