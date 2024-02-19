@@ -249,9 +249,8 @@ where
         .saturating_sub(chain_constants.confirmation_depth_k().into());
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
-    let mut initial_pause_sync = Some(pause_sync.load(Ordering::Acquire));
     while let Some(reason) = notifications.next().await {
-        let prev_pause_sync = pause_sync.swap(true, Ordering::AcqRel);
+        pause_sync.store(true, Ordering::Release);
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
@@ -295,10 +294,7 @@ where
             }
         }
 
-        pause_sync.store(
-            initial_pause_sync.take().unwrap_or(prev_pause_sync),
-            Ordering::Release,
-        );
+        pause_sync.store(false, Ordering::Release);
 
         while notifications.try_next().is_ok() {
             // Just drain extra messages if there are any
