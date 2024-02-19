@@ -298,14 +298,20 @@ impl FarmerMetrics {
                 // Never called, doesn't make sense
             }
             SectorState::Plotted => {
-                let not_plotted_sectors = self.sectors_total.get_or_create(&vec![
-                    ("farm_id".to_string(), single_disk_farm_id.to_string()),
-                    ("state".to_string(), SectorState::NotPlotted.to_string()),
-                ]);
-                if not_plotted_sectors.get() > 0 {
-                    // Initial plotting
-                    not_plotted_sectors.dec();
-                } else {
+                // Separate blocks in because of mutex guard returned by `get_or_create` resulting
+                // in deadlock otherwise
+                {
+                    let not_plotted_sectors = self.sectors_total.get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::NotPlotted.to_string()),
+                    ]);
+                    if not_plotted_sectors.get() > 0 {
+                        // Initial plotting
+                        not_plotted_sectors.dec();
+                        return;
+                    }
+                }
+                {
                     let expired_sectors = self.sectors_total.get_or_create(&vec![
                         ("farm_id".to_string(), single_disk_farm_id.to_string()),
                         ("state".to_string(), SectorState::Expired.to_string()),
@@ -313,16 +319,16 @@ impl FarmerMetrics {
                     if expired_sectors.get() > 0 {
                         // Replaced expired sector
                         expired_sectors.dec();
-                    } else {
-                        // Replaced about to expire sector
-                        self.sectors_total
-                            .get_or_create(&vec![
-                                ("farm_id".to_string(), single_disk_farm_id.to_string()),
-                                ("state".to_string(), SectorState::AboutToExpire.to_string()),
-                            ])
-                            .dec();
+                        return;
                     }
                 }
+                // Replaced about to expire sector
+                self.sectors_total
+                    .get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::AboutToExpire.to_string()),
+                    ])
+                    .dec();
             }
             SectorState::AboutToExpire | SectorState::Expired => {
                 self.sectors_total
