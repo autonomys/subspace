@@ -138,3 +138,8 @@ sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polka
 sp-io = { version = "23.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 substrate-prometheus-endpoint = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+
+# TODO: Importing https://github.com/supranational/blst/pull/203 to take advantage of optimizations introduced there,
+#  switch to upstream once merged or once similar performance improvements land upstream
+[patch."https://github.com/supranational/blst.git"]
+blst = { git = "https://github.com/subspace/blst", rev = "ab042e18cb3b62e131423380513964e4b2c7b445" }
