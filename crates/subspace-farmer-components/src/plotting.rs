@@ -12,11 +12,11 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use std::mem;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{mem, slice};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
@@ -147,8 +147,8 @@ where
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
-    /// Proof of space table generator
-    pub table_generator: &'a mut PosTable::Generator,
+    /// Proof of space table generators
+    pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
 }
@@ -179,7 +179,7 @@ where
         sector_metadata_output,
         downloading_semaphore,
         encoding_semaphore,
-        table_generator,
+        table_generators,
         abort_early,
     } = options;
 
@@ -211,7 +211,7 @@ where
             pieces_in_sector,
             sector_output,
             sector_metadata_output,
-            table_generators: slice::from_mut(table_generator),
+            table_generators,
             abort_early,
         },
     )
@@ -349,7 +349,7 @@ where
     /// Where plotted sector metadata should be written, vector must either be empty (in which case
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
-    /// Proof of space table generator
+    /// Proof of space table generators
     pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,

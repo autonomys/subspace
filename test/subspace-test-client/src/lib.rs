@@ -31,6 +31,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
+use std::slice;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -245,7 +246,7 @@ where
         sector_metadata_output: &mut sector_metadata,
         downloading_semaphore: None,
         encoding_semaphore: None,
-        table_generator: &mut table_generator,
+        table_generators: slice::from_mut(&mut table_generator),
         abort_early: &Default::default(),
     })
     .await
