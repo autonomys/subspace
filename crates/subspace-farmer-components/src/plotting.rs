@@ -419,7 +419,7 @@ where
 
                     loop {
                         // This instead of `while` above because otherwise mutex will be held for
-                        // the duration of the loop and wil limit concurrency to 1 table generator
+                        // the duration of the loop and will limit concurrency to 1 table generator
                         let Some(((piece_offset, record), encoded_chunks_used)) =
                             iter.lock().next()
                         else {
@@ -561,6 +561,7 @@ fn record_encoding<PosTable>(
         .extend(&source_record_chunks)
         .expect("Instance was verified to be able to work with this many values earlier; qed");
 
+    chunks_scratch.clear();
     // For every erasure coded chunk check if there is quality present, if so then encode
     // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
     (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
