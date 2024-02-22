@@ -748,7 +748,7 @@ impl SingleDiskFarm {
             let cache_space = allocated_space
                 - fixed_space_usage
                 - (target_sector_count * single_sector_overhead);
-            cache_space as usize / DiskPieceCache::element_size()
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         };
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
             Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
@@ -1887,14 +1887,14 @@ impl SingleDiskFarm {
             };
 
             let element_size = DiskPieceCache::element_size();
-            let number_of_cached_elements = cache_size / element_size as u64;
-            let dummy_element = vec![0; element_size];
+            let number_of_cached_elements = cache_size / u64::from(element_size);
+            let dummy_element = vec![0; element_size as usize];
             (0..number_of_cached_elements)
                 .into_par_iter()
-                .map_with(vec![0; element_size], |element, cache_offset| {
+                .map_with(vec![0; element_size as usize], |element, cache_offset| {
                     let _span_guard = span.enter();
 
-                    let offset = cache_offset * element_size as u64;
+                    let offset = cache_offset * u64::from(element_size);
                     if let Err(error) = cache_file.read_exact_at(element, offset) {
                         warn!(
                             path = %file.display(),
@@ -1908,7 +1908,7 @@ impl SingleDiskFarm {
                         if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
-                                size: element_size as u64,
+                                size: u64::from(element_size),
                                 offset,
                                 error,
                             });
@@ -1918,7 +1918,7 @@ impl SingleDiskFarm {
                     }
 
                     let (index_and_piece_bytes, expected_checksum) =
-                        element.split_at(element_size - mem::size_of::<Blake3Hash>());
+                        element.split_at(element_size as usize - mem::size_of::<Blake3Hash>());
                     let actual_checksum = blake3_hash(index_and_piece_bytes);
                     if actual_checksum != expected_checksum && element != &dummy_element {
                         warn!(
@@ -1931,7 +1931,7 @@ impl SingleDiskFarm {
                         if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
-                                size: element_size as u64,
+                                size: u64::from(element_size),
                                 offset,
                                 error,
                             });

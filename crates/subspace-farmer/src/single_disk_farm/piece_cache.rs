@@ -25,9 +25,9 @@ pub enum DiskPieceCacheError {
     #[error("Offset outsize of range: provided {provided}, max {max}")]
     OffsetOutsideOfRange {
         /// Provided offset
-        provided: usize,
+        provided: u32,
         /// Max offset
-        max: usize,
+        max: u32,
     },
     /// Cache size has zero capacity, this is not supported
     #[error("Cache size has zero capacity, this is not supported")]
@@ -40,12 +40,12 @@ pub enum DiskPieceCacheError {
 /// Offset wrapper for pieces in [`DiskPieceCache`]
 #[derive(Debug, Display, Copy, Clone)]
 #[repr(transparent)]
-pub struct Offset(usize);
+pub struct Offset(u32);
 
 #[derive(Debug)]
 struct Inner {
     file: File,
-    num_elements: usize,
+    num_elements: u32,
 }
 
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
@@ -60,7 +60,7 @@ impl DiskPieceCache {
 
     pub(in super::super) fn open(
         directory: &Path,
-        capacity: usize,
+        capacity: u32,
     ) -> Result<Self, DiskPieceCacheError> {
         if capacity == 0 {
             return Err(DiskPieceCacheError::ZeroCapacity);
@@ -75,24 +75,24 @@ impl DiskPieceCache {
 
         file.advise_random_access()?;
 
-        let expected_size = Self::element_size() * capacity;
+        let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
         // writes to fail later)
-        file.preallocate(expected_size as u64)
+        file.preallocate(expected_size)
             .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
         // Truncating file (if necessary)
-        file.set_len(expected_size as u64)?;
+        file.set_len(expected_size)?;
 
         Ok(Self {
             inner: Arc::new(Inner {
                 file,
-                num_elements: expected_size / Self::element_size(),
+                num_elements: capacity,
             }),
         })
     }
 
-    pub(super) const fn element_size() -> usize {
-        PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()
+    pub(super) const fn element_size() -> u32 {
+        (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }
 
     /// Contents of this disk cache
@@ -103,7 +103,7 @@ impl DiskPieceCache {
         &self,
     ) -> impl ExactSizeIterator<Item = (Offset, Option<PieceIndex>)> + '_ {
         let file = &self.inner.file;
-        let mut element = vec![0; Self::element_size()];
+        let mut element = vec![0; Self::element_size() as usize];
         let mut early_exit = false;
 
         (0..self.inner.num_elements).map(move |offset| {
@@ -146,7 +146,7 @@ impl DiskPieceCache {
             });
         }
 
-        let element_offset = (offset * Self::element_size()) as u64;
+        let element_offset = u64::from(offset) * u64::from(Self::element_size());
 
         let piece_index_bytes = piece_index.to_bytes();
         self.inner
@@ -182,7 +182,11 @@ impl DiskPieceCache {
             });
         }
 
-        Self::read_piece_internal(&self.inner.file, offset, &mut vec![0; Self::element_size()])
+        Self::read_piece_internal(
+            &self.inner.file,
+            offset,
+            &mut vec![0; Self::element_size() as usize],
+        )
     }
 
     /// Read piece from cache at specified offset.
@@ -201,7 +205,7 @@ impl DiskPieceCache {
             });
         }
 
-        let mut element = vec![0; Self::element_size()];
+        let mut element = vec![0; Self::element_size() as usize];
         if Self::read_piece_internal(&self.inner.file, offset, &mut element)?.is_some() {
             let mut piece = Piece::default();
             piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
@@ -213,10 +217,10 @@ impl DiskPieceCache {
 
     fn read_piece_internal(
         file: &File,
-        offset: usize,
+        offset: u32,
         element: &mut [u8],
     ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
-        file.read_exact_at(element, (offset * Self::element_size()) as u64)?;
+        file.read_exact_at(element, u64::from(offset) * u64::from(Self::element_size()))?;
 
         let (piece_index_bytes, remaining_bytes) = element.split_at(PieceIndex::SIZE);
         let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
