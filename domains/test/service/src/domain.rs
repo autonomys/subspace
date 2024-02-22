@@ -23,7 +23,7 @@ use sc_domains::RuntimeExecutor;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
-use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_service::{BasePath, PruningMode, Role, RpcHandlers, TFullBackend, TaskManager};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
@@ -32,10 +32,10 @@ use sp_block_builder::BlockBuilder;
 use sp_core::{Decode, Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainId;
-use sp_messenger::messages::ChainId;
+use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{Dispatchable, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -87,7 +87,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>, <CBlock as BlockT>::Hash>,
     AccountId: Encode + Decode + FromKeyring,
 {
     /// The domain id
@@ -138,7 +138,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, NumberFor<Block>>
+        + RelayerApi<Block, NumberFor<Block>, <CBlock as BlockT>::Hash>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,
     AccountId: DeserializeOwned
@@ -229,6 +229,7 @@ where
             provider: DefaultProvider,
             skip_empty_bundle_production,
             maybe_operator_id,
+            consensus_state_pruning: PruningMode::ArchiveCanonical,
         };
 
         let domain_node =
@@ -384,6 +385,14 @@ where
             .runtime_api()
             .free_balance(self.client.info().best_hash, account_id)
             .expect("Fail to get account free balance")
+    }
+
+    /// Returns the open XDM channel for given chain
+    pub fn get_open_channel_for_chain(&self, chain_id: ChainId) -> Option<ChannelId> {
+        self.client
+            .runtime_api()
+            .get_open_channel_for_chain(self.client.info().best_hash, chain_id)
+            .expect("Fail to get open channel for Chain")
     }
 }
 

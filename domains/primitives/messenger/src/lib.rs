@@ -20,6 +20,7 @@
 pub mod endpoint;
 pub mod messages;
 
+use crate::messages::MessageKey;
 use codec::{Decode, Encode};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainId};
@@ -59,10 +60,10 @@ pub trait StorageKeys {
     fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>>;
 
     /// Returns the outbox storage key for given chain.
-    fn outbox_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>>;
+    fn outbox_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>>;
 
     /// Returns the inbox responses storage key for given chain.
-    fn inbox_responses_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>>;
+    fn inbox_responses_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>>;
 }
 
 impl StorageKeys for () {
@@ -70,39 +71,37 @@ impl StorageKeys for () {
         None
     }
 
-    fn outbox_storage_key(_chain_id: ChainId, _message_id: MessageId) -> Option<Vec<u8>> {
+    fn outbox_storage_key(_chain_id: ChainId, _message_key: MessageKey) -> Option<Vec<u8>> {
         None
     }
 
-    fn inbox_responses_storage_key(_chain_id: ChainId, _message_id: MessageId) -> Option<Vec<u8>> {
+    fn inbox_responses_storage_key(
+        _chain_id: ChainId,
+        _message_key: MessageKey,
+    ) -> Option<Vec<u8>> {
         None
     }
 }
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    pub trait RelayerApi< BlockNumber>
+    pub trait RelayerApi<BlockNumber, CHash>
     where
-        BlockNumber: Encode + Decode
+        BlockNumber: Encode + Decode,
+        CHash: Encode + Decode,
     {
-        /// Returns the the chain_id of the Runtime.
-        fn chain_id() -> ChainId;
-
-        /// Returns the confirmation depth to relay message.
-        fn relay_confirmation_depth() -> BlockNumber;
-
         /// Returns all the outbox and inbox responses to deliver.
         /// Storage key is used to generate the storage proof for the message.
         fn block_messages() -> BlockMessagesWithStorageKey;
 
         /// Constructs an outbox message to the dst_chain as an unsigned extrinsic.
         fn outbox_message_unsigned(
-            msg: CrossDomainMessage<Block::Hash, Block::Hash>,
+            msg: CrossDomainMessage<CHash, sp_core::H256>,
         ) -> Option<Block::Extrinsic>;
 
         /// Constructs an inbox response message to the dst_chain as an unsigned extrinsic.
         fn inbox_response_message_unsigned(
-            msg: CrossDomainMessage<Block::Hash, Block::Hash>,
+            msg: CrossDomainMessage<CHash, sp_core::H256>,
         ) -> Option<Block::Extrinsic>;
 
         /// Returns true if the outbox message is ready to be relayed to dst_chain.
@@ -125,9 +124,9 @@ sp_api::decl_runtime_apis! {
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8>;
 
         /// Returns storage key for outbox for a given message_id.
-        fn outbox_storage_key(message_id: MessageId) -> Vec<u8>;
+        fn outbox_storage_key(message_key: MessageKey) -> Vec<u8>;
 
         /// Returns storage key for inbox response for a given message_id.
-        fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8>;
+        fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8>;
     }
 }

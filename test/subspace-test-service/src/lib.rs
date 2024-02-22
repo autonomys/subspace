@@ -27,7 +27,7 @@ use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderBuilder;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::{BlockBackend, ExecutorProvider};
+use sc_client_api::{Backend as BackendT, BlockBackend, ExecutorProvider, Finalizer};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -38,11 +38,12 @@ use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
-    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
+    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, OffchainWorkerConfig, WasmExecutionMethod,
     WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
+    BasePath, BlocksPruning, Configuration, NetworkStarter, PruningMode, Role, SpawnTasksParams,
+    TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
@@ -56,15 +57,18 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{FarmerPublicKey, PotExtension};
+use sp_core::offchain::storage::OffchainDb;
+use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle};
+use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_messenger::MessengerApi;
+use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{
@@ -86,6 +90,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::transaction_pool::FullPool;
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
+use subspace_test_primitives::OnchainStateApi;
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 
 type FraudProofFor<Block, DomainBlock> =
@@ -166,7 +171,10 @@ pub fn node_config(
         prometheus_config: None,
         telemetry_endpoints: None,
         default_heap_pages: None,
-        offchain_worker: Default::default(),
+        offchain_worker: OffchainWorkerConfig {
+            enabled: false,
+            indexing_enabled: true,
+        },
         force_authoring,
         disable_grandpa: false,
         dev_key_seed: Some(key_seed),
@@ -183,21 +191,26 @@ pub fn node_config(
 
 type StorageChanges = sp_api::StorageChanges<Block>;
 
-struct MockExtensionsFactory<Client, DomainBlock, Executor> {
+struct MockExtensionsFactory<Client, DomainBlock, Executor, CBackend> {
     consensus_client: Arc<Client>,
+    consensus_backend: Arc<CBackend>,
     executor: Arc<Executor>,
     mock_pot_verifier: Arc<MockPotVerfier>,
     _phantom: PhantomData<DomainBlock>,
 }
 
-impl<Client, DomainBlock, Executor> MockExtensionsFactory<Client, DomainBlock, Executor> {
+impl<Client, DomainBlock, Executor, CBackend>
+    MockExtensionsFactory<Client, DomainBlock, Executor, CBackend>
+{
     fn new(
         consensus_client: Arc<Client>,
         executor: Arc<Executor>,
         mock_pot_verifier: Arc<MockPotVerfier>,
+        consensus_backend: Arc<CBackend>,
     ) -> Self {
         Self {
             consensus_client,
+            consensus_backend,
             executor,
             mock_pot_verifier,
             _phantom: Default::default(),
@@ -218,8 +231,8 @@ impl MockPotVerfier {
     }
 }
 
-impl<Block, Client, DomainBlock, Executor> ExtensionsFactory<Block>
-    for MockExtensionsFactory<Client, DomainBlock, Executor>
+impl<Block, Client, DomainBlock, Executor, CBackend> ExtensionsFactory<Block>
+    for MockExtensionsFactory<Client, DomainBlock, Executor, CBackend>
 where
     Block: BlockT,
     Block::Hash: From<H256>,
@@ -231,6 +244,7 @@ where
         + MessengerApi<Block, NumberFor<Block>>
         + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
+    CBackend: BackendT<Block> + 'static,
 {
     fn extensions_for(
         &self,
@@ -251,6 +265,17 @@ where
         exts.register(SubspaceMmrExtension::new(Arc::new(
             SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.consensus_client.clone()),
         )));
+        exts.register(MessengerExtension::new(Arc::new(
+            MessengerHostFunctionsImpl::<Block, _, DomainBlock, _>::new(
+                self.consensus_client.clone(),
+                self.executor.clone(),
+            ),
+        )));
+
+        if let Some(offchain_storage) = self.consensus_backend.offchain_storage() {
+            let offchain_db = OffchainDb::new(offchain_storage);
+            exts.register(OffchainDbExt::new(offchain_db));
+        }
         exts.register(PotExtension::new({
             let client = Arc::clone(&self.consensus_client);
             let mock_pot_verifier = Arc::clone(&self.mock_pot_verifier);
@@ -324,6 +349,9 @@ pub struct MockConsensusNode {
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
     log_prefix: &'static str,
+    /// Ferdie key
+    pub key: Sr25519Keyring,
+    finalize_block_depth: Option<NumberFor<Block>>,
 }
 
 impl MockConsensusNode {
@@ -332,6 +360,16 @@ impl MockConsensusNode {
         tokio_handle: tokio::runtime::Handle,
         key: Sr25519Keyring,
         base_path: BasePath,
+    ) -> MockConsensusNode {
+        Self::run_with_finalization_depth(tokio_handle, key, base_path, None)
+    }
+
+    /// Run a mock consensus node with finalization depth
+    pub fn run_with_finalization_depth(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        base_path: BasePath,
+        finalize_block_depth: Option<NumberFor<Block>>,
     ) -> MockConsensusNode {
         let log_prefix = key.into();
 
@@ -363,14 +401,19 @@ impl MockConsensusNode {
                 _,
                 DomainBlock,
                 sc_domains::RuntimeExecutor,
+                _,
             >::new(
                 client.clone(),
                 Arc::new(domain_executor),
                 Arc::clone(&mock_pot_verifier),
+                backend.clone(),
             ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
-
+        let state_pruning = config
+            .state_pruning
+            .clone()
+            .unwrap_or(PruningMode::ArchiveCanonical);
         let sync_target_block_number = Arc::new(AtomicU32::new(0));
         let transaction_pool = subspace_service::transaction_pool::new_full(
             config.transaction_pool.clone(),
@@ -427,6 +470,54 @@ impl MockConsensusNode {
             key.to_account_id(),
         );
 
+        let mut gossip_builder = GossipWorkerBuilder::new();
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "consensus-chain-relayer",
+                None,
+                Box::pin(
+                    domain_client_message_relayer::worker::relay_consensus_chain_messages(
+                        client.clone(),
+                        state_pruning.clone(),
+                        sync_service.clone(),
+                        gossip_builder.gossip_msg_sink(),
+                    ),
+                ),
+            );
+
+        let (consensus_msg_sink, consensus_msg_receiver) =
+            tracing_unbounded("consensus_message_channel", 100);
+
+        // Start cross domain message listener for Consensus chain to receive messages from domains in the network
+        let consensus_listener = cross_domain_message_gossip::start_cross_chain_message_listener(
+            ChainId::Consensus,
+            client.clone(),
+            transaction_pool.clone(),
+            network_service.clone(),
+            consensus_msg_receiver,
+        );
+
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "consensus-message-listener",
+                None,
+                Box::pin(consensus_listener),
+            );
+
+        gossip_builder.push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "mmr-gadget",
+            None,
+            mmr_gadget::MmrGadget::start(
+                client.clone(),
+                backend.clone(),
+                sp_mmr_primitives::INDEXING_PREFIX.to_vec(),
+            ),
+        );
+
         MockConsensusNode {
             task_manager,
             client,
@@ -444,9 +535,11 @@ impl MockConsensusNode {
             new_slot_notification_subscribers: Vec::new(),
             acknowledgement_sender_subscribers: Vec::new(),
             block_import,
-            xdm_gossip_worker_builder: Some(GossipWorkerBuilder::new()),
+            xdm_gossip_worker_builder: Some(gossip_builder),
             mock_solution,
             log_prefix,
+            key,
+            finalize_block_depth,
         }
     }
 
@@ -715,6 +808,14 @@ impl MockConsensusNode {
             }
         })
     }
+
+    /// Get the free balance of the given account
+    pub fn free_balance(&self, account_id: AccountId) -> subspace_runtime_primitives::Balance {
+        self.client
+            .runtime_api()
+            .free_balance(self.client.info().best_hash, account_id)
+            .expect("Fail to get account free balance")
+    }
 }
 
 impl MockConsensusNode {
@@ -796,6 +897,7 @@ impl MockConsensusNode {
         let (header, body) = block.deconstruct();
 
         let header_hash = header.hash();
+        let header_number = header.number;
 
         let block_import_params = {
             let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
@@ -810,6 +912,20 @@ impl MockConsensusNode {
         };
 
         let import_result = self.block_import.import_block(block_import_params).await?;
+
+        if let Some(finalized_block_hash) = self
+            .finalize_block_depth
+            .and_then(|depth| header_number.checked_sub(depth))
+            .and_then(|block_to_finalize| {
+                self.client
+                    .hash(block_to_finalize)
+                    .expect("Block hash not found for number: {block_to_finalize:?}")
+            })
+        {
+            self.client
+                .finalize_block(finalized_block_hash, None, true)
+                .unwrap();
+        }
 
         match import_result {
             ImportResult::Imported(_) | ImportResult::AlreadyInChain => Ok(header_hash),

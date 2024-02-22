@@ -2525,10 +2525,10 @@ dependencies = [
  "sc-client-api",
  "sc-state-db",
  "sc-utils",
- "scale-info",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
+ "sp-core",
  "sp-domains",
  "sp-messenger",
  "sp-mmr-primitives",
@@ -2551,7 +2551,10 @@ dependencies = [
  "futures-timer",
  "pallet-balances",
  "pallet-domains",
+ "pallet-messenger",
+ "pallet-sudo",
  "pallet-timestamp",
+ "pallet-transporter",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-cli",
@@ -12107,6 +12110,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-test-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-messenger",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
@@ -12154,6 +12167,7 @@ dependencies = [
  "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-primitives",
  "substrate-wasm-builder",
 ]
 
@@ -12163,9 +12177,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cross-domain-message-gossip",
+ "domain-client-message-relayer",
  "domain-runtime-primitives",
  "futures",
  "jsonrpsee",
+ "mmr-gadget",
  "pallet-domains",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -12195,6 +12211,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-messenger",
+ "sp-messenger-host-functions",
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-subspace-mmr",
@@ -12203,6 +12220,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
+ "subspace-test-primitives",
  "subspace-test-runtime",
  "tokio",
  "tracing",

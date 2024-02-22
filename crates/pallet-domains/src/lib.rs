@@ -1988,6 +1988,13 @@ impl<T: Config> Pallet<T> {
             .unwrap_or_default()
     }
 
+    pub fn latest_confirmed_domain_block(
+        domain_id: DomainId,
+    ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
+        LatestConfirmedDomainBlock::<T>::get(domain_id)
+            .map(|block| (block.block_number, block.block_hash))
+    }
+
     /// Returns the domain block limit of the given domain.
     pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
         DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {

@@ -25,7 +25,7 @@ use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::NetworkPeers;
 use sc_service::config::KeystoreConfig;
-use sc_service::Configuration;
+use sc_service::{Configuration, PruningMode};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::crypto::SecretString;
@@ -384,6 +384,7 @@ pub(super) struct DomainStartOptions<CNetwork> {
     pub(super) domain_message_receiver:
         TracingUnboundedReceiver<cross_domain_message_gossip::ChainTxPoolMsg>,
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
+    pub(super) consensus_state_pruning: PruningMode,
 }
 
 pub(super) async fn run_evm_domain<CNetwork>(
@@ -426,6 +427,7 @@ where
         consensus_network_sync_oracle,
         domain_message_receiver,
         gossip_message_sink,
+        consensus_state_pruning,
     } = domain_start_options;
 
     let block_importing_notification_stream = block_importing_notification_stream.subscribe().then(
@@ -484,6 +486,7 @@ where
                 provider: eth_provider,
                 skip_empty_bundle_production: true,
                 maybe_operator_id: operator_id,
+                consensus_state_pruning,
             };
 
             let mut domain_node = domain_service::new_full::<

@@ -55,12 +55,13 @@ where
     DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>,
+    Executor: CodeExecutor + RuntimeVersionOf,
 {
-    fn get_domain_runtime_code(
+    fn get_domain_runtime(
         &self,
         consensus_block_hash: Block::Hash,
         domain_id: DomainId,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<StatelessRuntime<DomainBlock, Executor>> {
         let runtime_api = self.consensus_client.runtime_api();
         // Use the parent hash to get the actual used domain runtime code
         // TODO: update once we can get the actual used domain runtime code by `consensus_block_hash`
@@ -69,10 +70,22 @@ where
             .header(consensus_block_hash)
             .ok()
             .flatten()?;
-        runtime_api
+        let domain_runtime = runtime_api
             .domain_runtime_code(*consensus_block_header.parent_hash(), domain_id)
             .ok()
+            .flatten()?;
+
+        // we need the initial state here so that SelfChainId is initialised on domain
+        let domain_state = runtime_api
+            .domain_instance_data(*consensus_block_header.parent_hash(), domain_id)
+            .ok()
             .flatten()
+            .map(|(data, _)| data.raw_genesis.into_storage())?;
+        let mut domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), domain_runtime.into());
+
+        domain_stateless_runtime.set_storage(domain_state);
+        Some(domain_stateless_runtime)
     }
 }
 
@@ -94,41 +107,33 @@ where
                 .confirmed_domain_block_storage_key(best_hash, domain_id)
                 .map(Some),
             StorageKeyRequest::OutboxStorageKey {
-                message_id,
+                message_key,
                 chain_id: ChainId::Consensus,
             } => runtime_api
-                .outbox_storage_key(best_hash, message_id)
+                .outbox_storage_key(best_hash, message_key)
                 .map(Some),
             StorageKeyRequest::OutboxStorageKey {
-                message_id,
+                message_key,
                 chain_id: ChainId::Domain(domain_id),
             } => {
-                let runtime_code = self.get_domain_runtime_code(best_hash, domain_id)?;
-                let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-                    self.executor.clone(),
-                    runtime_code.into(),
-                );
+                let domain_stateless_runtime = self.get_domain_runtime(best_hash, domain_id)?;
                 domain_stateless_runtime
-                    .outbox_storage_key(message_id)
+                    .outbox_storage_key(message_key)
                     .map(Some)
             }
             StorageKeyRequest::InboxResponseStorageKey {
-                message_id,
+                message_key,
                 chain_id: ChainId::Consensus,
             } => runtime_api
-                .inbox_response_storage_key(best_hash, message_id)
+                .inbox_response_storage_key(best_hash, message_key)
                 .map(Some),
             StorageKeyRequest::InboxResponseStorageKey {
-                message_id,
+                message_key,
                 chain_id: ChainId::Domain(domain_id),
             } => {
-                let runtime_code = self.get_domain_runtime_code(best_hash, domain_id)?;
-                let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-                    self.executor.clone(),
-                    runtime_code.into(),
-                );
+                let domain_stateless_runtime = self.get_domain_runtime(best_hash, domain_id)?;
                 domain_stateless_runtime
-                    .inbox_response_storage_key(message_id)
+                    .inbox_response_storage_key(message_key)
                     .map(Some)
             }
         }

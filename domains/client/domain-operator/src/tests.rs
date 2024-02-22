@@ -5,7 +5,7 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::Hash;
+use domain_runtime_primitives::{AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
@@ -36,8 +36,11 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
+use sp_messenger::messages::{FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
+};
 use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
@@ -3114,6 +3117,90 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
     assert_eq!(alice.client.info().best_number, pre_alice_best_number + 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_cross_domains_messages_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run_with_finalization_depth(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+        // finalization depth
+        Some(10),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    let fee_model = FeeModel { relay_fee: 1 };
+    alice
+        .construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+            call: Box::new(evm_domain_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::initiate_channel {
+                    dst_chain_id: ChainId::Consensus,
+                    params: InitiateChannelParams {
+                        max_outgoing_messages: 100,
+                        fee_model,
+                    },
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance from
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    let transfer_amount = 10;
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Consensus,
+                account_id: AccountIdConverter::convert(Ferdie.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        post_alice_free_balance < pre_alice_free_balance - transfer_amount
+            && post_ferdie_free_balance == pre_ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
 }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.

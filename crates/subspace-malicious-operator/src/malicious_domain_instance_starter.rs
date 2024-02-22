@@ -13,6 +13,7 @@ use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_network::NetworkPeers;
+use sc_service::PruningMode;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::traits::SpawnEssentialNamed;
@@ -40,6 +41,7 @@ pub struct DomainInstanceStarter<CNetwork> {
     pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
     pub consensus_network: Arc<CNetwork>,
+    pub consensus_state_pruning: PruningMode,
 }
 
 impl<CNetwork> DomainInstanceStarter<CNetwork>
@@ -74,6 +76,7 @@ where
             domain_message_receiver,
             gossip_message_sink,
             consensus_network,
+            consensus_state_pruning,
         } = self;
 
         let domain_id = domain_cli.domain_id.into();
@@ -150,6 +153,7 @@ where
                     skip_empty_bundle_production: true,
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
+                    consensus_state_pruning,
                 };
 
                 let mut domain_node = domain_service::new_full::<

@@ -6,7 +6,7 @@ use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
 use sp_domains::core_api::DomainCoreApi;
-use sp_messenger::messages::MessageId;
+use sp_messenger::messages::MessageKey;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
@@ -148,20 +148,20 @@ where
             })
     }
 
-    pub fn outbox_storage_key(&self, message_id: MessageId) -> Result<Vec<u8>, ApiError> {
+    pub fn outbox_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
         let storage_key = <Self as MessengerApi<Block, _>>::outbox_storage_key(
             self,
             Default::default(),
-            message_id,
+            message_key,
         )?;
         Ok(storage_key)
     }
 
-    pub fn inbox_response_storage_key(&self, message_id: MessageId) -> Result<Vec<u8>, ApiError> {
+    pub fn inbox_response_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
         let storage_key = <Self as MessengerApi<Block, _>>::inbox_response_storage_key(
             self,
             Default::default(),
-            message_id,
+            message_key,
         )?;
         Ok(storage_key)
     }

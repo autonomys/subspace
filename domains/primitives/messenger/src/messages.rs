@@ -18,6 +18,9 @@ pub type Nonce = U256;
 /// Unique Id of a message between two chains.
 pub type MessageId = (ChannelId, Nonce);
 
+/// Unique message key for Outbox and Inbox responses
+pub type MessageKey = (ChainId, ChannelId, Nonce);
+
 /// Fee model to send a request and receive a response from another chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
@@ -249,10 +252,10 @@ pub struct BlockMessagesWithStorageKey {
     pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
-impl<BlockHash, StateRoot> CrossDomainMessage<BlockHash, StateRoot> {
+impl<BlockHash, MmrHash> CrossDomainMessage<BlockHash, MmrHash> {
     pub fn from_relayer_msg_with_proof(
         r_msg: BlockMessageWithStorageKey,
-        proof: Proof<BlockHash, StateRoot>,
+        proof: Proof<BlockHash, MmrHash>,
     ) -> Self {
         CrossDomainMessage {
             src_chain_id: r_msg.src_chain_id,

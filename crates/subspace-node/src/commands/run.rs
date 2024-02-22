@@ -110,11 +110,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
     info!("💾 Node path: {}", base_path.display());
 
+    let consensus_state_pruning = subspace_configuration
+        .state_pruning
+        .clone()
+        .unwrap_or_default();
     let mut task_manager = {
-        let consensus_state_pruning_mode = subspace_configuration
-            .state_pruning
-            .clone()
-            .unwrap_or_default();
         let consensus_chain_node = {
             let span = info_span!("Consensus");
             let _enter = span.enter();
@@ -178,7 +178,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         Box::pin(
                             domain_client_message_relayer::worker::relay_consensus_chain_messages(
                                 consensus_chain_node.client.clone(),
-                                consensus_state_pruning_mode,
+                                consensus_state_pruning.clone(),
                                 consensus_chain_node.sync_service.clone(),
                                 xdm_gossip_worker_builder.gossip_msg_sink(),
                             ),
@@ -242,6 +242,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 consensus_network_sync_oracle: consensus_chain_node.sync_service,
                 domain_message_receiver,
                 gossip_message_sink,
+                consensus_state_pruning,
             };
 
             consensus_chain_node
