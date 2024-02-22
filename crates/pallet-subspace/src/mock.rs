@@ -38,11 +38,11 @@ use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
-use std::iter;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
 use std::sync::{Once, OnceLock};
+use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -464,7 +464,7 @@ pub fn create_signed_vote(
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
             downloading_semaphore: None,
             encoding_semaphore: None,
-            table_generator: &mut table_generator,
+            table_generators: slice::from_mut(&mut table_generator),
             abort_early: &Default::default(),
         }))
         .unwrap();

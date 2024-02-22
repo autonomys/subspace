@@ -12,11 +12,11 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use std::mem;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{mem, slice};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
@@ -147,8 +147,8 @@ where
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
-    /// Proof of space table generator
-    pub table_generator: &'a mut PosTable::Generator,
+    /// Proof of space table generators
+    pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
 }
@@ -179,7 +179,7 @@ where
         sector_metadata_output,
         downloading_semaphore,
         encoding_semaphore,
-        table_generator,
+        table_generators,
         abort_early,
     } = options;
 
@@ -211,7 +211,7 @@ where
             pieces_in_sector,
             sector_output,
             sector_metadata_output,
-            table_generators: slice::from_mut(table_generator),
+            table_generators,
             abort_early,
         },
     )
@@ -349,7 +349,7 @@ where
     /// Where plotted sector metadata should be written, vector must either be empty (in which case
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
-    /// Proof of space table generator
+    /// Proof of space table generators
     pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
@@ -419,7 +419,7 @@ where
 
                     loop {
                         // This instead of `while` above because otherwise mutex will be held for
-                        // the duration of the loop and wil limit concurrency to 1 table generator
+                        // the duration of the loop and will limit concurrency to 1 table generator
                         let Some(((piece_offset, record), encoded_chunks_used)) =
                             iter.lock().next()
                         else {
@@ -561,6 +561,7 @@ fn record_encoding<PosTable>(
         .extend(&source_record_chunks)
         .expect("Instance was verified to be able to work with this many values earlier; qed");
 
+    chunks_scratch.clear();
     // For every erasure coded chunk check if there is quality present, if so then encode
     // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
     (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))

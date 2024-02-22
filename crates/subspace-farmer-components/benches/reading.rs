@@ -6,7 +6,7 @@ use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::{env, fs};
+use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -128,7 +128,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
             downloading_semaphore: black_box(None),
             encoding_semaphore: black_box(None),
-            table_generator: &mut table_generator,
+            table_generators: slice::from_mut(&mut table_generator),
             abort_early: &Default::default(),
         }))
         .unwrap();
