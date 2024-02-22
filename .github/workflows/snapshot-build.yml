@@ -86,7 +86,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: trivy-scan-dispatch
-          client-payload: '{"sha": "${{ github.sha }}", "image": "ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}"}'
+          client-payload: '{"image": "ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:sha-${{ github.sha }}"}'
 
   executables:
     strategy:

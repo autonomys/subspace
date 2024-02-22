@@ -12,18 +12,12 @@ on:
 jobs:
   wait-for-image:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        image:
-          - farmer
-          - node
-          - bootstrap-node
     outputs:
       image-available: ${{ steps.check-image.outputs.available }}
     steps:
       - name: Check Docker image availability with retry
         run: |
-          image="${{ github.event.client_payload.image }}:sha-${{ github.event.client_payload.sha }}"
+          image="${{ github.event.client_payload.image }}"
           timeout=900 # Timeout in seconds (15 minutes)
           interval=300 # Interval between retries in seconds (5 minutes)
           retry_limit=5 # Number of retries
@@ -57,7 +51,7 @@ jobs:
       - name: Run Trivy vulnerability scanner on image
         uses: aquasecurity/trivy-action@d43c1f16c00cfd3978dde6c07f4bbcf9eb6993ca # @v0.16.1
         with:
-          image-ref: ${{ github.event.client_payload.image }}:sha-${{ github.event.client_payload.sha }}
+          image-ref: ${{ github.event.client_payload.image }}
           format: "sarif"
           output: "trivy-results.sarif"
           exit-code: "1"
