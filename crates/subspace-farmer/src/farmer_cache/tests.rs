@@ -192,10 +192,13 @@ async fn basic() {
             tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
 
         let initialized_fut = farmer_cache
-            .replace_backing_caches(vec![
-                DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
-                DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
-            ])
+            .replace_backing_caches(
+                vec![
+                    DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
+                    DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
+                ],
+                vec![],
+            )
             .await;
 
         // Wait for piece cache to be initialized
@@ -375,10 +378,13 @@ async fn basic() {
 
         // Reopen with the same backing caches
         let initialized_fut = farmer_cache
-            .replace_backing_caches(vec![
-                DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
-                DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
-            ])
+            .replace_backing_caches(
+                vec![
+                    DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
+                    DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
+                ],
+                vec![],
+            )
             .await;
         drop(farmer_cache);
 

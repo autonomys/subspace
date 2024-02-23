@@ -3,6 +3,7 @@ mod tests;
 
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
+use crate::single_disk_farm::plot_cache::{DiskPlotCache, MaybePieceStoredResult};
 use crate::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::oneshot;
@@ -11,6 +12,7 @@ use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU16;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, mem};
@@ -762,6 +764,10 @@ pub struct FarmerCache {
     peer_id: PeerId,
     /// Individual dedicated piece caches
     piece_caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
+    /// Additional piece caches
+    plot_caches: Arc<RwLock<Vec<DiskPlotCache>>>,
+    /// Next plot cache to use for storing pieces
+    next_plot_cache: Arc<AtomicUsize>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
     worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
@@ -783,6 +789,8 @@ impl FarmerCache {
         let instance = Self {
             peer_id,
             piece_caches: Arc::clone(&caches),
+            plot_caches: Arc::default(),
+            next_plot_cache: Arc::new(AtomicUsize::new(0)),
             handlers: Arc::clone(&handlers),
             worker_sender: Arc::new(worker_sender),
         };
@@ -802,33 +810,46 @@ impl FarmerCache {
         let maybe_piece_fut = tokio::task::spawn_blocking({
             let key = key.clone();
             let piece_caches = Arc::clone(&self.piece_caches);
+            let plot_caches = Arc::clone(&self.plot_caches);
             let worker_sender = Arc::clone(&self.worker_sender);
 
             move || {
-                for (disk_farm_index, cache) in piece_caches.read().iter().enumerate() {
-                    let Some(&offset) = cache.stored_pieces.get(&key) else {
-                        continue;
-                    };
-                    match cache.backend.read_piece(offset) {
-                        Ok(maybe_piece) => {
-                            return maybe_piece;
-                        }
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %disk_farm_index,
-                                ?key,
-                                %offset,
-                                "Error while reading piece from cache, might be a disk corruption"
-                            );
-
-                            if let Err(error) =
-                                worker_sender.blocking_send(WorkerCommand::ForgetKey { key })
-                            {
-                                trace!(%error, "Failed to send ForgetKey command to worker");
+                {
+                    let piece_caches = piece_caches.read();
+                    for (disk_farm_index, cache) in piece_caches.iter().enumerate() {
+                        let Some(&offset) = cache.stored_pieces.get(&key) else {
+                            continue;
+                        };
+                        match cache.backend.read_piece(offset) {
+                            Ok(maybe_piece) => {
+                                return maybe_piece;
                             }
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    %disk_farm_index,
+                                    ?key,
+                                    %offset,
+                                    "Error while reading piece from cache, might be a disk corruption"
+                                );
 
-                            return None;
+                                if let Err(error) =
+                                    worker_sender.blocking_send(WorkerCommand::ForgetKey { key })
+                                {
+                                    trace!(%error, "Failed to send ForgetKey command to worker");
+                                }
+
+                                return None;
+                            }
+                        }
+                    }
+                }
+
+                {
+                    let plot_caches = plot_caches.read();
+                    for cache in plot_caches.iter() {
+                        if let Some(piece) = cache.read_piece(&key) {
+                            return Some(piece);
                         }
                     }
                 }
@@ -846,11 +867,77 @@ impl FarmerCache {
         }
     }
 
+    /// Try to store a piece in additional downloaded pieces, if there is space for them
+    pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+        let key = RecordKey::from(piece_index.to_multihash());
+
+        let mut should_store = false;
+        for cache in self.plot_caches.read().iter() {
+            match cache.is_piece_maybe_stored(&key) {
+                MaybePieceStoredResult::No => {
+                    // Try another one if there is any
+                }
+                MaybePieceStoredResult::Vacant => {
+                    should_store = true;
+                    break;
+                }
+                MaybePieceStoredResult::Yes => {
+                    // Already stored, nothing else left to do
+                    return;
+                }
+            }
+        }
+
+        if !should_store {
+            return;
+        }
+
+        let should_store_fut = tokio::task::spawn_blocking({
+            let plot_caches = Arc::clone(&self.plot_caches);
+            let next_plot_cache = Arc::clone(&self.next_plot_cache);
+            let piece = piece.clone();
+
+            move || {
+                let plot_caches = plot_caches.read();
+                let plot_caches_len = plot_caches.len();
+
+                // Store pieces in plots using round-robin distribution
+                for _ in 0..plot_caches_len {
+                    let plot_cache_index =
+                        next_plot_cache.fetch_add(1, Ordering::Relaxed) % plot_caches_len;
+
+                    match plot_caches[plot_cache_index].try_store_piece(piece_index, &piece) {
+                        Ok(true) => {
+                            return;
+                        }
+                        Ok(false) => {
+                            continue;
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %piece_index,
+                                %plot_cache_index,
+                                "Failed to store additional piece in cache"
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
+        });
+
+        if let Err(error) = AsyncJoinOnDrop::new(should_store_fut, true).await {
+            error!(%error, %piece_index, "Failed to store additional piece in cache");
+        }
+    }
+
     /// Initialize replacement of backing caches, returns acknowledgement receiver that can be used
     /// to identify when cache initialization has finished
     pub async fn replace_backing_caches(
         &self,
         new_piece_caches: Vec<DiskPieceCache>,
+        new_plot_caches: Vec<DiskPlotCache>,
     ) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         if let Err(error) = self
@@ -863,6 +950,8 @@ impl FarmerCache {
         {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
+
+        *self.plot_caches.write() = new_plot_caches;
 
         receiver
     }
@@ -879,7 +968,24 @@ impl LocalRecordProvider for FarmerCache {
         for piece_cache in self.piece_caches.read().iter() {
             if piece_cache.stored_pieces.contains_key(key) {
                 // Note: We store our own provider records locally without local addresses
-                // to avoid redundant storage and outdated addresses. Instead these are
+                // to avoid redundant storage and outdated addresses. Instead, these are
+                // acquired on demand when returning a `ProviderRecord` for the local node.
+                return Some(ProviderRecord {
+                    key: key.clone(),
+                    provider: self.peer_id,
+                    expires: None,
+                    addresses: Vec::new(),
+                });
+            };
+        }
+        // It is okay to take read lock here, writes locks almost never happen
+        for plot_cache in self.plot_caches.read().iter() {
+            if matches!(
+                plot_cache.is_piece_maybe_stored(key),
+                MaybePieceStoredResult::Yes
+            ) {
+                // Note: We store our own provider records locally without local addresses
+                // to avoid redundant storage and outdated addresses. Instead, these are
                 // acquired on demand when returning a `ProviderRecord` for the local node.
                 return Some(ProviderRecord {
                     key: key.clone(),

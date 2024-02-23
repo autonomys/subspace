@@ -1,5 +1,4 @@
-use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
-use crate::single_disk_farm::DiskPieceCacheError;
+use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError, Offset};
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
 use subspace_core_primitives::{Piece, PieceIndex};

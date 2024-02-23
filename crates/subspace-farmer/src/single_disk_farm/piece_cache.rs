@@ -103,6 +103,7 @@ impl DiskPieceCache {
         let mut element = vec![0; Self::element_size() as usize];
         let mut early_exit = false;
 
+        // TODO: Parallelize or read in larger batches
         (0..self.inner.num_elements).map(move |offset| {
             if early_exit {
                 return (Offset(offset), None);

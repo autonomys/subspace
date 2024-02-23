@@ -1,6 +1,7 @@
 pub mod farming;
 pub mod piece_cache;
 pub mod piece_reader;
+pub mod plot_cache;
 mod plotting;
 
 use crate::identity::{Identity, IdentityError};
@@ -13,6 +14,7 @@ use crate::single_disk_farm::farming::{
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
@@ -566,6 +568,7 @@ pub struct SingleDiskFarm {
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
+    plot_cache: DiskPlotCache,
     piece_reader: PieceReader,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
@@ -883,6 +886,12 @@ impl SingleDiskFarm {
         plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
+        let plot_cache = DiskPlotCache::new(
+            &plot_file,
+            &sectors_metadata,
+            target_sector_count,
+            sector_size,
+        );
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -1191,6 +1200,7 @@ impl SingleDiskFarm {
             tasks,
             handlers,
             piece_cache,
+            plot_cache,
             piece_reader,
             start_sender: Some(start_sender),
             stop_sender: Some(stop_sender),
@@ -1335,6 +1345,11 @@ impl SingleDiskFarm {
     /// Get piece cache instance
     pub fn piece_cache(&self) -> DiskPieceCache {
         self.piece_cache.clone()
+    }
+
+    /// Get plot cache instance
+    pub fn plot_cache(&self) -> DiskPlotCache {
+        self.plot_cache.clone()
     }
 
     /// Get piece reader to read plotted pieces later
