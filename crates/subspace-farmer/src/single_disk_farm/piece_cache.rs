@@ -56,12 +56,9 @@ pub struct DiskPieceCache {
 }
 
 impl DiskPieceCache {
-    pub(super) const FILE_NAME: &'static str = "piece_cache.bin";
+    pub(crate) const FILE_NAME: &'static str = "piece_cache.bin";
 
-    pub(in super::super) fn open(
-        directory: &Path,
-        capacity: u32,
-    ) -> Result<Self, DiskPieceCacheError> {
+    pub(crate) fn open(directory: &Path, capacity: u32) -> Result<Self, DiskPieceCacheError> {
         if capacity == 0 {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
@@ -91,7 +88,7 @@ impl DiskPieceCache {
         })
     }
 
-    pub(super) const fn element_size() -> u32 {
+    pub(crate) const fn element_size() -> u32 {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }
 

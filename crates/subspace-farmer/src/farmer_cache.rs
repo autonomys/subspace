@@ -51,7 +51,7 @@ struct DiskPieceCacheState {
 #[derive(Debug)]
 enum WorkerCommand {
     ReplaceBackingCaches {
-        new_caches: Vec<DiskPieceCache>,
+        new_piece_caches: Vec<DiskPieceCache>,
         acknowledgement: oneshot::Sender<()>,
     },
     ForgetKey {
@@ -102,11 +102,11 @@ where
             .expect("Always set during worker instantiation");
 
         if let Some(WorkerCommand::ReplaceBackingCaches {
-            new_caches,
+            new_piece_caches,
             acknowledgement,
         }) = worker_receiver.recv().await
         {
-            self.initialize(&piece_getter, &mut worker_state, new_caches)
+            self.initialize(&piece_getter, &mut worker_state, new_piece_caches)
                 .await;
             // Doesn't matter if receiver is still waiting for acknowledgement
             let _ = acknowledgement.send(());
@@ -163,10 +163,10 @@ where
     {
         match command {
             WorkerCommand::ReplaceBackingCaches {
-                new_caches,
+                new_piece_caches,
                 acknowledgement,
             } => {
-                self.initialize(piece_getter, worker_state, new_caches)
+                self.initialize(piece_getter, worker_state, new_piece_caches)
                     .await;
                 // Doesn't matter if receiver is still waiting for acknowledgement
                 let _ = acknowledgement.send(());
@@ -215,23 +215,23 @@ where
         &self,
         piece_getter: &PG,
         worker_state: &mut CacheWorkerState,
-        new_caches: Vec<DiskPieceCache>,
+        new_piece_caches: Vec<DiskPieceCache>,
     ) where
         PG: PieceGetter,
     {
         info!("Initializing piece cache");
         // Pull old cache state since it will be replaced with a new one and reuse its allocations
         let cache_state = mem::take(&mut *self.caches.write());
-        let mut stored_pieces = Vec::with_capacity(new_caches.len());
-        let mut free_offsets = Vec::with_capacity(new_caches.len());
+        let mut stored_pieces = Vec::with_capacity(new_piece_caches.len());
+        let mut free_offsets = Vec::with_capacity(new_piece_caches.len());
         for mut state in cache_state {
             state.stored_pieces.clear();
             stored_pieces.push(state.stored_pieces);
             state.free_offsets.clear();
             free_offsets.push(state.free_offsets);
         }
-        stored_pieces.resize(new_caches.len(), HashMap::default());
-        free_offsets.resize(new_caches.len(), VecDeque::default());
+        stored_pieces.resize(new_piece_caches.len(), HashMap::default());
+        free_offsets.resize(new_piece_caches.len(), VecDeque::default());
 
         debug!("Collecting pieces that were in the cache before");
 
@@ -239,7 +239,7 @@ where
         let maybe_caches_futures = stored_pieces
             .into_iter()
             .zip(free_offsets)
-            .zip(new_caches)
+            .zip(new_piece_caches)
             .enumerate()
             .map(
                 |(index, ((mut stored_pieces, mut free_offsets), new_cache))| {
@@ -760,8 +760,8 @@ where
 #[derive(Debug, Clone)]
 pub struct FarmerCache {
     peer_id: PeerId,
-    /// Individual disk caches where pieces are stored
-    caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
+    /// Individual dedicated piece caches
+    piece_caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
     worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
@@ -782,7 +782,7 @@ impl FarmerCache {
 
         let instance = Self {
             peer_id,
-            caches: Arc::clone(&caches),
+            piece_caches: Arc::clone(&caches),
             handlers: Arc::clone(&handlers),
             worker_sender: Arc::new(worker_sender),
         };
@@ -801,11 +801,11 @@ impl FarmerCache {
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
         let maybe_piece_fut = tokio::task::spawn_blocking({
             let key = key.clone();
-            let caches = Arc::clone(&self.caches);
+            let piece_caches = Arc::clone(&self.piece_caches);
             let worker_sender = Arc::clone(&self.worker_sender);
 
             move || {
-                for (disk_farm_index, cache) in caches.read().iter().enumerate() {
+                for (disk_farm_index, cache) in piece_caches.read().iter().enumerate() {
                     let Some(&offset) = cache.stored_pieces.get(&key) else {
                         continue;
                     };
@@ -850,13 +850,13 @@ impl FarmerCache {
     /// to identify when cache initialization has finished
     pub async fn replace_backing_caches(
         &self,
-        new_caches: Vec<DiskPieceCache>,
+        new_piece_caches: Vec<DiskPieceCache>,
     ) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         if let Err(error) = self
             .worker_sender
             .send(WorkerCommand::ReplaceBackingCaches {
-                new_caches,
+                new_piece_caches,
                 acknowledgement: sender,
             })
             .await
@@ -876,8 +876,8 @@ impl FarmerCache {
 impl LocalRecordProvider for FarmerCache {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
         // It is okay to take read lock here, writes locks are very infrequent and very short
-        for cache in self.caches.read().iter() {
-            if cache.stored_pieces.contains_key(key) {
+        for piece_cache in self.piece_caches.read().iter() {
+            if piece_cache.stored_pieces.contains_key(key) {
                 // Note: We store our own provider records locally without local addresses
                 // to avoid redundant storage and outdated addresses. Instead these are
                 // acquired on demand when returning a `ProviderRecord` for the local node.
