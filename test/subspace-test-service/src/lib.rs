@@ -253,13 +253,14 @@ where
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor, _>::new(
                 self.consensus_client.clone(),
                 self.executor.clone(),
-                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
-                    self.consensus_client.clone(),
-                    self.executor.clone(),
-                )),
+                |client, executor| {
+                    let extension_factory =
+                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(client, executor);
+                    Box::new(extension_factory) as Box<dyn ExtensionsFactory<DomainBlock>>
+                },
             ),
         )));
         exts.register(SubspaceMmrExtension::new(Arc::new(

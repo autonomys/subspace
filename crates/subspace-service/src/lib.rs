@@ -371,13 +371,14 @@ where
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _, _>::new(
                 self.client.clone(),
                 self.domains_executor.clone(),
-                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
-                    self.client.clone(),
-                    self.domains_executor.clone(),
-                )),
+                |client, executor| {
+                    let extension_factory =
+                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(client, executor);
+                    Box::new(extension_factory) as Box<dyn ExtensionsFactory<DomainBlock>>
+                },
             ),
         )));
 

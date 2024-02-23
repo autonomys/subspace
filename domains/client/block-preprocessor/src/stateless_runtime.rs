@@ -1,6 +1,7 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError};
+use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -30,6 +31,7 @@ pub struct StatelessRuntime<Block, Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,
     storage: Storage,
+    extension_factory: Box<dyn ExtensionsFactory<Block>>,
     _marker: PhantomData<Block>,
 }
 
@@ -98,6 +100,7 @@ where
             executor,
             runtime_code,
             storage: Storage::default(),
+            extension_factory: Box::new(()),
             _marker: Default::default(),
         }
     }
@@ -107,6 +110,13 @@ where
     /// Inject the state necessary for calling stateful runtime APIs.
     pub fn set_storage(&mut self, storage: Storage) {
         self.storage = storage;
+    }
+
+    /// Set the extensions.
+    ///
+    /// Inject the necessary extensions for Domain.
+    pub fn set_extension_factory(&mut self, extension_factory: Box<dyn ExtensionsFactory<Block>>) {
+        self.extension_factory = extension_factory;
     }
 
     fn runtime_code(&self) -> RuntimeCode<'_> {
@@ -124,6 +134,11 @@ where
         input: Vec<u8>,
     ) -> Result<Vec<u8>, ApiError> {
         let mut ext = BasicExternalities::new(self.storage.clone());
+        let ext_extensions = ext.extensions();
+        ext_extensions.merge(
+            self.extension_factory
+                .extensions_for(Default::default(), Default::default()),
+        );
         let runtime_code = self.runtime_code();
         let runtime_version = self
             .executor
@@ -208,6 +223,14 @@ where
         extrinsic: &<Block as BlockT>::Extrinsic,
     ) -> Result<bool, ApiError> {
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
+    }
+
+    pub fn is_valid_xdm(&self, extrinsic: Vec<u8>) -> Result<Option<bool>, ApiError> {
+        <Self as MessengerApi<Block, NumberFor<Block>>>::is_xdm_valid(
+            self,
+            Default::default(),
+            extrinsic,
+        )
     }
 
     pub fn decode_extrinsic(
