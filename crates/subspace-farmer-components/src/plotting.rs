@@ -1,30 +1,31 @@
 use crate::sector::{
-    sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
-    SectorMetadata, SectorMetadataChecksummed,
+    sector_record_chunks_size, sector_size, EncodedChunksUsed, RawSector, RecordMetadata,
+    SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
-use async_lock::Mutex;
+use async_lock::Mutex as AsyncMutex;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::mem;
 use std::simd::Simd;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
-    Blake3Hash, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId, SectorIndex,
+    Blake3Hash, PieceIndex, PieceOffset, PosSeed, PublicKey, Record, SBucket, SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::{AcquireError, Semaphore};
-use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
@@ -58,6 +59,9 @@ pub enum PlottingError {
     /// Invalid erasure coding instance
     #[error("Invalid erasure coding instance")]
     InvalidErasureCodingInstance,
+    /// No table generators
+    #[error("No table generators")]
+    NoTableGenerators,
     /// Bad sector output size
     #[error("Bad sector output size: provided {provided}, expected {expected}")]
     BadSectorOutputSize {
@@ -101,6 +105,9 @@ pub enum PlottingError {
         #[from]
         error: AcquireError,
     },
+    /// Abort early
+    #[error("Abort early")]
+    AbortEarly,
 }
 
 /// Options for plotting a sector.
@@ -140,8 +147,10 @@ where
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
-    /// Proof of space table generator
-    pub table_generator: &'a mut PosTable::Generator,
+    /// Proof of space table generators
+    pub table_generators: &'a mut [PosTable::Generator],
+    /// Whether encoding should be aborted early
+    pub abort_early: &'a AtomicBool,
 }
 
 /// Plot a single sector.
@@ -170,7 +179,8 @@ where
         sector_metadata_output,
         downloading_semaphore,
         encoding_semaphore,
-        table_generator,
+        table_generators,
+        abort_early,
     } = options;
 
     let _downloading_permit = match downloading_semaphore {
@@ -201,10 +211,10 @@ where
             pieces_in_sector,
             sector_output,
             sector_metadata_output,
-            table_generator,
+            table_generators,
+            abort_early,
         },
     )
-    .await
 }
 
 /// Opaque sector downloaded and ready for encoding
@@ -268,12 +278,12 @@ where
         })
         .collect::<Vec<_>>();
 
-    let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
+    let raw_sector = AsyncMutex::new(RawSector::new(pieces_in_sector));
 
     {
         // This list will be mutated, replacing pieces we have already processed with `None`
         let incremental_piece_indices =
-            Mutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
+            AsyncMutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
 
         retry(default_backoff(), || async {
             let mut raw_sector = raw_sector.lock().await;
@@ -339,11 +349,13 @@ where
     /// Where plotted sector metadata should be written, vector must either be empty (in which case
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
-    /// Proof of space table generator
-    pub table_generator: &'a mut PosTable::Generator,
+    /// Proof of space table generators
+    pub table_generators: &'a mut [PosTable::Generator],
+    /// Whether encoding should be aborted early
+    pub abort_early: &'a AtomicBool,
 }
 
-pub async fn encode_sector<PosTable>(
+pub fn encode_sector<PosTable>(
     downloaded_sector: DownloadedSector,
     encoding_options: EncodeSectorOptions<'_, PosTable>,
 ) -> Result<PlottedSector, PlottingError>
@@ -362,11 +374,16 @@ where
         pieces_in_sector,
         sector_output,
         sector_metadata_output,
-        table_generator,
+        table_generators,
+        abort_early,
     } = encoding_options;
 
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
         return Err(PlottingError::InvalidErasureCodingInstance);
+    }
+
+    if table_generators.is_empty() {
+        return Err(PlottingError::NoTableGenerators);
     }
 
     let sector_size = sector_size(pieces_in_sector);
@@ -388,94 +405,51 @@ where
     }
 
     let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
-    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
-
-    for ((piece_offset, record), mut encoded_chunks_used) in (PieceOffset::ZERO..)
-        .zip(raw_sector.records.iter_mut())
-        .zip(sector_contents_map.iter_record_bitfields_mut())
     {
-        // Derive PoSpace table (use parallel mode because multiple tables concurrently will use
-        // too much RAM)
-        let pos_table = table_generator.generate_parallel(
-            &sector_id.derive_evaluation_seed(piece_offset, farmer_protocol_info.history_size),
+        let iter = Mutex::new(
+            (PieceOffset::ZERO..)
+                .zip(raw_sector.records.iter_mut())
+                .zip(sector_contents_map.iter_record_bitfields_mut()),
         );
 
-        let source_record_chunks = record
-            .iter()
-            .map(|scalar_bytes| {
-                Scalar::try_from(scalar_bytes).expect(
-                    "Piece getter must returns valid pieces of history that contain proper \
-                    scalar bytes; qed",
-                )
-            })
-            .collect::<Vec<_>>();
-        // Erasure code source record chunks
-        let parity_record_chunks = erasure_coding
-            .extend(&source_record_chunks)
-            .expect("Instance was verified to be able to work with this many values earlier; qed");
+        rayon::scope(|scope| {
+            for table_generator in table_generators {
+                scope.spawn(|_scope| {
+                    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
 
-        // For every erasure coded chunk check if there is quality present, if so then encode
-        // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
-        (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
-            .into_par_iter()
-            .map(SBucket::from)
-            .zip(
-                source_record_chunks
-                    .par_iter()
-                    .interleave(&parity_record_chunks),
-            )
-            .map(|(s_bucket, record_chunk)| {
-                let proof = pos_table.find_proof(s_bucket.into())?;
+                    loop {
+                        // This instead of `while` above because otherwise mutex will be held for
+                        // the duration of the loop and will limit concurrency to 1 table generator
+                        let Some(((piece_offset, record), encoded_chunks_used)) =
+                            iter.lock().next()
+                        else {
+                            return;
+                        };
+                        let pos_seed = sector_id.derive_evaluation_seed(
+                            piece_offset,
+                            farmer_protocol_info.history_size,
+                        );
 
-                Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(proof.hash()))
-            })
-            .collect_into_vec(&mut chunks_scratch);
-        let num_successfully_encoded_chunks = chunks_scratch
-            .drain(..)
-            .zip(encoded_chunks_used.iter_mut())
-            .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
-                let encoded_chunk = maybe_encoded_chunk?;
+                        record_encoding::<PosTable>(
+                            &pos_seed,
+                            record,
+                            encoded_chunks_used,
+                            table_generator,
+                            erasure_coding,
+                            &mut chunks_scratch,
+                        );
 
-                *encoded_chunk_used = true;
+                        if abort_early.load(Ordering::Relaxed) {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+    }
 
-                Some(encoded_chunk)
-            })
-            // Make sure above filter function (and corresponding `encoded_chunk_used` update)
-            // happen at most as many times as there is number of chunks in the record,
-            // otherwise `n+1` iterations could happen and update extra `encoded_chunk_used`
-            // unnecessarily causing issues down the line
-            .take(record.len())
-            .zip(record.iter_mut())
-            // Write encoded chunk back so we can reuse original allocation
-            .map(|(input_chunk, output_chunk)| {
-                *output_chunk = input_chunk.to_array();
-            })
-            .count();
-
-        // In some cases there is not enough PoSpace qualities available, in which case we add
-        // remaining number of unencoded erasure coded record chunks to the end
-        source_record_chunks
-            .iter()
-            .zip(&parity_record_chunks)
-            .flat_map(|(a, b)| [a, b])
-            .zip(encoded_chunks_used.iter())
-            // Skip chunks that were used previously
-            .filter_map(|(record_chunk, encoded_chunk_used)| {
-                if *encoded_chunk_used {
-                    None
-                } else {
-                    Some(record_chunk)
-                }
-            })
-            // First `num_successfully_encoded_chunks` chunks are encoded
-            .zip(record.iter_mut().skip(num_successfully_encoded_chunks))
-            // Write necessary number of unencoded chunks at the end
-            .for_each(|(input_chunk, output_chunk)| {
-                *output_chunk = input_chunk.to_bytes();
-            });
-
-        // Give a chance to interrupt plotting if necessary in between pieces
-        yield_now().await
+    if abort_early.load(Ordering::Acquire) {
+        return Err(PlottingError::AbortEarly);
     }
 
     sector_output.resize(sector_size, 0);
@@ -558,6 +532,95 @@ where
         sector_metadata,
         piece_indexes: piece_indices,
     })
+}
+
+fn record_encoding<PosTable>(
+    pos_seed: &PosSeed,
+    record: &mut Record,
+    mut encoded_chunks_used: EncodedChunksUsed<'_>,
+    table_generator: &mut PosTable::Generator,
+    erasure_coding: &ErasureCoding,
+    chunks_scratch: &mut Vec<Option<Simd<u8, 32>>>,
+) where
+    PosTable: Table,
+{
+    // Derive PoSpace table
+    let pos_table = table_generator.generate_parallel(pos_seed);
+
+    let source_record_chunks = record
+        .iter()
+        .map(|scalar_bytes| {
+            Scalar::try_from(scalar_bytes).expect(
+                "Piece getter must returns valid pieces of history that contain proper \
+                    scalar bytes; qed",
+            )
+        })
+        .collect::<Vec<_>>();
+    // Erasure code source record chunks
+    let parity_record_chunks = erasure_coding
+        .extend(&source_record_chunks)
+        .expect("Instance was verified to be able to work with this many values earlier; qed");
+
+    chunks_scratch.clear();
+    // For every erasure coded chunk check if there is quality present, if so then encode
+    // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
+    (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
+        .into_par_iter()
+        .map(SBucket::from)
+        .zip(
+            source_record_chunks
+                .par_iter()
+                .interleave(&parity_record_chunks),
+        )
+        .map(|(s_bucket, record_chunk)| {
+            let proof = pos_table.find_proof(s_bucket.into())?;
+
+            Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(proof.hash()))
+        })
+        .collect_into_vec(chunks_scratch);
+    let num_successfully_encoded_chunks = chunks_scratch
+        .drain(..)
+        .zip(encoded_chunks_used.iter_mut())
+        .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
+            let encoded_chunk = maybe_encoded_chunk?;
+
+            *encoded_chunk_used = true;
+
+            Some(encoded_chunk)
+        })
+        // Make sure above filter function (and corresponding `encoded_chunk_used` update)
+        // happen at most as many times as there is number of chunks in the record,
+        // otherwise `n+1` iterations could happen and update extra `encoded_chunk_used`
+        // unnecessarily causing issues down the line
+        .take(record.len())
+        .zip(record.iter_mut())
+        // Write encoded chunk back so we can reuse original allocation
+        .map(|(input_chunk, output_chunk)| {
+            *output_chunk = input_chunk.to_array();
+        })
+        .count();
+
+    // In some cases there is not enough PoSpace qualities available, in which case we add
+    // remaining number of unencoded erasure coded record chunks to the end
+    source_record_chunks
+        .iter()
+        .zip(&parity_record_chunks)
+        .flat_map(|(a, b)| [a, b])
+        .zip(encoded_chunks_used.iter())
+        // Skip chunks that were used previously
+        .filter_map(|(record_chunk, encoded_chunk_used)| {
+            if *encoded_chunk_used {
+                None
+            } else {
+                Some(record_chunk)
+            }
+        })
+        // First `num_successfully_encoded_chunks` chunks are encoded
+        .zip(record.iter_mut().skip(num_successfully_encoded_chunks))
+        // Write necessary number of unencoded chunks at the end
+        .for_each(|(input_chunk, output_chunk)| {
+            *output_chunk = input_chunk.to_bytes();
+        });
 }
 
 async fn download_sector_internal<PG: PieceGetter>(

@@ -128,7 +128,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
             downloading_semaphore: black_box(None),
             encoding_semaphore: black_box(None),
-            table_generator: &mut table_generator,
+            table_generators: slice::from_mut(&mut table_generator),
+            abort_early: &Default::default(),
         }))
         .unwrap();
 

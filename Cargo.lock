@@ -1320,11 +1320,11 @@ dependencies = [
 [[package]]
 name = "blst"
 version = "0.3.11"
-source = "git+https://github.com/supranational/blst.git#0d46eefa45fc1e57aceb42bba0e84eab3a7a9725"
+source = "git+https://github.com/subspace/blst?rev=ab042e18cb3b62e131423380513964e4b2c7b445#ab042e18cb3b62e131423380513964e4b2c7b445"
 dependencies = [
  "cc",
  "glob",
- "threadpool",
+ "rayon",
  "zeroize",
 ]
 
@@ -2648,10 +2648,12 @@ dependencies = [
 name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "fp-account",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-api",
  "sp-core",
  "sp-runtime",
@@ -7145,6 +7147,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-block-fees",
+ "sp-domains",
  "sp-runtime",
  "sp-std",
 ]
@@ -7172,6 +7175,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "hex-literal",
  "log",
  "pallet-balances",
  "pallet-block-fees",
@@ -7590,6 +7594,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-domains",
  "sp-io",
  "sp-messenger",
  "sp-runtime",
@@ -12054,6 +12059,7 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "evm-domain-test-runtime",
  "fp-evm",
  "futures",

@@ -17,15 +17,16 @@ pub use domain_runtime_primitives::{
     EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, MultiAccountId, TryConvertBack,
-    SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, SLOT_DURATION,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
+    OnUnbalanced,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -42,16 +43,16 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::DomainId;
+use sp_domains::{DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, Keccak256, One, PostDispatchInfoOf, SignedExtension,
-    UniqueSaturatedInto, ValidateUnsigned, Verify, Zero,
+    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    IdentityLookup, Keccak256, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -299,6 +300,15 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
+/// `DustRemovalHandler` used to collect all the SSC dust left when the account is reaped.
+pub struct DustRemovalHandler;
+
+impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
+    fn on_nonzero_unbalanced(dusted_amount: Credit<AccountId, Balances>) {
+        BlockFees::note_burned_balance(dusted_amount.peek());
+    }
+}
+
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -306,7 +316,7 @@ impl pallet_balances::Config for Runtime {
     type Balance = Balance;
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
-    type DustRemoval = ();
+    type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
@@ -331,6 +341,7 @@ impl pallet_block_fees::Config for Runtime {
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
 pub struct FinalDomainTransactionByteFee;
+
 impl Get<Balance> for FinalDomainTransactionByteFee {
     fn get() -> Balance {
         BlockFees::final_domain_transaction_byte_fee()
@@ -347,6 +358,7 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 pub struct ExtrinsicStorageFees;
+
 impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
     fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
         let dispatch_info = xt.get_dispatch_info();
@@ -400,6 +412,7 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
 type MmrHash = <Keccak256 as sp_runtime::traits::Hash>::Output;
 
 pub struct MmrProofVerifier;
+
 impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
     fn verify_proof_and_extract_consensus_state_root(
         opaque_leaf: EncodableOpaqueLeaf,
@@ -414,6 +427,7 @@ impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
 }
 
 pub struct StorageKeys;
+
 impl sp_messenger::StorageKeys for StorageKeys {
     fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Option<Vec<u8>> {
         get_storage_key(StorageKeyRequest::ConfirmedDomainBlockStorageKey(domain_id))
@@ -468,30 +482,13 @@ parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
 
-pub struct AccountId20Converter;
-
-impl Convert<AccountId, MultiAccountId> for AccountId20Converter {
-    fn convert(account_id: AccountId) -> MultiAccountId {
-        MultiAccountId::AccountId20(account_id.into())
-    }
-}
-
-impl TryConvertBack<AccountId, MultiAccountId> for AccountId20Converter {
-    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
-        match multi_account_id {
-            MultiAccountId::AccountId20(acc) => Some(AccountId::from(acc)),
-            _ => None,
-        }
-    }
-}
-
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
-    type AccountIdConverter = AccountId20Converter;
+    type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
@@ -912,8 +909,7 @@ impl_runtime_apis! {
         }
     }
 
-    #[api_version(2)]
-    impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
+    impl sp_domains::core_api::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
@@ -1016,7 +1012,7 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_fees() -> domain_runtime_primitives::BlockFees<Balance> {
+        fn block_fees() -> sp_domains::BlockFees<Balance> {
             BlockFees::collected_block_fees()
         }
 
@@ -1032,6 +1028,14 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
+        }
+
+        fn transfers() -> Transfers<Balance> {
+            Transporter::chain_transfers()
+        }
+
+        fn transfers_storage_key() -> Vec<u8> {
+            Transporter::transfers_storage_key()
         }
     }
 

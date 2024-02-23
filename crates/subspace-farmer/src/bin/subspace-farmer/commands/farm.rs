@@ -2,13 +2,13 @@ mod dsn;
 mod metrics;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::commands::farm::metrics::FarmerMetrics;
+use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
-use futures::stream::FuturesUnordered;
+use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
@@ -22,14 +22,15 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
-    SectorPlottingDetails, SectorUpdate, SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
+    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
+    SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
-use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
+use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
@@ -111,7 +112,9 @@ pub(crate) struct FarmingArgs {
     prometheus_listen_on: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
-    /// sector ahead of time
+    /// sector ahead of time.
+    ///
+    /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
@@ -119,8 +122,15 @@ pub(crate) struct FarmingArgs {
     /// restricted by
     /// `--sector-downloading-concurrency` and setting this option higher than
     /// `--sector-downloading-concurrency` will have no effect.
+    ///
+    /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_encoding_concurrency: Option<NonZeroUsize>,
+    /// Defines how many record farmer will encode in a single sector concurrently, defaults to one
+    /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
+    /// usage and typically more efficient CPU utilization.
+    #[arg(long)]
+    record_encoding_concurrency: Option<NonZeroUsize>,
     /// Allows to enable farming during initial plotting. Not used by default on machines with 8 or
     /// less logical cores because plotting is so intense on CPU and memory that farming will likely
     /// not work properly, yet it will significantly impact plotting speed, delaying the time when
@@ -174,6 +184,9 @@ pub(crate) struct FarmingArgs {
     /// each with a pair of CPU cores.
     #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
+    /// Disable farm locking, for example if file system doesn't support it
+    #[arg(long)]
+    disable_farm_locking: bool,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -317,12 +330,14 @@ where
         prometheus_listen_on,
         sector_downloading_concurrency,
         sector_encoding_concurrency,
+        record_encoding_concurrency,
         farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
         plotting_cpu_cores,
         replotting_thread_pool_size,
         replotting_cpu_cores,
+        disable_farm_locking,
     } = farming_args;
 
     // Override flags with `--dev`
@@ -359,7 +374,7 @@ where
         None
     };
 
-    let readers_and_pieces = Arc::new(Mutex::new(None));
+    let plotted_pieces = Arc::new(Mutex::new(None));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -379,7 +394,7 @@ where
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
-    let (piece_cache, piece_cache_worker) = PieceCache::new(node_client.clone(), peer_id);
+    let (farmer_cache, farmer_cache_worker) = FarmerCache::new(node_client.clone(), peer_id);
 
     // Metrics
     let mut prometheus_metrics_registry = Registry::default();
@@ -396,9 +411,9 @@ where
             first_farm_directory,
             keypair,
             dsn,
-            Arc::downgrade(&readers_and_pieces),
+            Arc::downgrade(&plotted_pieces),
             node_client.clone(),
-            piece_cache.clone(),
+            farmer_cache.clone(),
             should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
         )?
     };
@@ -428,20 +443,20 @@ where
     ));
     let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
-    let piece_getter = Arc::new(FarmerPieceGetter::new(
+    let piece_getter = FarmerPieceGetter::new(
         piece_provider,
-        piece_cache.clone(),
+        farmer_cache.clone(),
         node_client.clone(),
-        Arc::clone(&readers_and_pieces),
-    ));
+        Arc::clone(&plotted_pieces),
+    );
 
-    let piece_cache_worker_fut = run_future_in_dedicated_thread(
+    let farmer_cache_worker_fut = run_future_in_dedicated_thread(
         {
-            let future = piece_cache_worker.run(piece_getter.clone());
+            let future = farmer_cache_worker.run(piece_getter.downgrade());
 
             move || future
         },
-        "cache-worker".to_string(),
+        "farmer-cache-worker".to_string(),
     )?;
 
     let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
@@ -524,6 +539,15 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
+    let record_encoding_concurrency = record_encoding_concurrency.unwrap_or_else(|| {
+        let cpu_cores = plotting_thread_pool_core_indices
+            .first()
+            .expect("Guaranteed to have some CPU cores; qed");
+
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).min(8))
+            .expect("Guaranteed to have some CPU cores; qed")
+    });
+
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
         plotting_thread_pool_core_indices
             .into_iter()
@@ -554,10 +578,12 @@ where
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
                 downloading_semaphore: Arc::clone(&downloading_semaphore),
+                record_encoding_concurrency,
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
                 plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
                 plotting_delay: Some(plotting_delay_receiver),
+                disable_farm_locking,
             },
             disk_farm_index,
         );
@@ -600,7 +626,7 @@ where
         single_disk_farms.push(single_disk_farm);
     }
 
-    let cache_acknowledgement_receiver = piece_cache
+    let cache_acknowledgement_receiver = farmer_cache
         .replace_backing_caches(
             single_disk_farms
                 .iter()
@@ -608,7 +634,7 @@ where
                 .collect(),
         )
         .await;
-    drop(piece_cache);
+    drop(farmer_cache);
 
     // Wait for cache initialization before starting plotting
     tokio::spawn(async move {
@@ -630,7 +656,7 @@ where
 
     // Collect already plotted pieces
     {
-        let mut future_readers_and_pieces = ReadersAndPieces::new(piece_readers);
+        let mut future_plotted_pieces = PlottedPieces::new(piece_readers);
 
         for (disk_farm_index, single_disk_farm) in single_disk_farms.iter().enumerate() {
             let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
@@ -645,7 +671,7 @@ where
                 .for_each(
                     |(sector_index, plotted_sector_result)| match plotted_sector_result {
                         Ok(plotted_sector) => {
-                            future_readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
+                            future_plotted_pieces.add_sector(disk_farm_index, &plotted_sector);
                         }
                         Err(error) => {
                             error!(
@@ -659,19 +685,32 @@ where
                 );
         }
 
-        readers_and_pieces.lock().replace(future_readers_and_pieces);
+        plotted_pieces.lock().replace(future_plotted_pieces);
     }
 
     info!("Finished collecting already plotted pieces successfully");
 
+    let total_and_plotted_sectors = single_disk_farms
+        .iter()
+        .map(|single_disk_farm| async {
+            let total_sector_count = single_disk_farm.total_sectors_count();
+            let plotted_sectors_count = single_disk_farm.plotted_sectors_count().await;
+
+            (total_sector_count, plotted_sectors_count)
+        })
+        .collect::<FuturesOrdered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
     let mut single_disk_farms_stream = single_disk_farms
         .into_iter()
         .enumerate()
-        .map(|(disk_farm_index, single_disk_farm)| {
+        .zip(total_and_plotted_sectors)
+        .map(|((disk_farm_index, single_disk_farm), sector_counts)| {
             let disk_farm_index = disk_farm_index.try_into().expect(
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
-            let readers_and_pieces = Arc::clone(&readers_and_pieces);
+            let plotted_pieces = Arc::clone(&plotted_pieces);
             let span = info_span!("", %disk_farm_index);
 
             // Collect newly plotted pieces
@@ -681,18 +720,29 @@ where
                     let _span_guard = span.enter();
 
                     {
-                        let mut readers_and_pieces = readers_and_pieces.lock();
-                        let readers_and_pieces = readers_and_pieces
+                        let mut plotted_pieces = plotted_pieces.lock();
+                        let plotted_pieces = plotted_pieces
                             .as_mut()
                             .expect("Initial value was populated above; qed");
 
                         if let Some(old_plotted_sector) = &maybe_old_plotted_sector {
-                            readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                            plotted_pieces.delete_sector(disk_farm_index, old_plotted_sector);
                         }
-                        readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
+                        plotted_pieces.add_sector(disk_farm_index, plotted_sector);
                     }
                 };
 
+            let (total_sector_count, plotted_sectors_count) = sector_counts;
+            farmer_metrics.update_sectors_total(
+                single_disk_farm.id(),
+                total_sector_count - plotted_sectors_count,
+                SectorState::NotPlotted,
+            );
+            farmer_metrics.update_sectors_total(
+                single_disk_farm.id(),
+                plotted_sectors_count,
+                SectorState::Plotted,
+            );
             single_disk_farm
                 .on_sector_update(Arc::new({
                     let single_disk_farm_id = *single_disk_farm.id();
@@ -732,8 +782,24 @@ where
                             on_plotted_sector_callback(plotted_sector, old_plotted_sector);
                             farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
                             farmer_metrics.sector_plotted.inc();
+                            farmer_metrics
+                                .update_sector_state(&single_disk_farm_id, SectorState::Plotted);
                         }
-                        _ => {}
+                        SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
+                            farmer_metrics.update_sector_state(
+                                &single_disk_farm_id,
+                                SectorState::AboutToExpire,
+                            );
+                        }
+                        SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
+                            farmer_metrics
+                                .update_sector_state(&single_disk_farm_id, SectorState::Expired);
+                        }
+                        SectorUpdate::Expiration(SectorExpirationDetails::Determined {
+                            ..
+                        }) => {
+                            // Not interested in here
+                        }
                     }
                 }))
                 .detach();
@@ -770,7 +836,7 @@ where
 
     // Drop original instance such that the only remaining instances are in `SingleDiskFarm`
     // event handlers
-    drop(readers_and_pieces);
+    drop(plotted_pieces);
 
     let farm_fut = run_future_in_dedicated_thread(
         move || async move {
@@ -792,11 +858,11 @@ where
     // This defines order in which things are dropped
     let networking_fut = networking_fut;
     let farm_fut = farm_fut;
-    let piece_cache_worker_fut = piece_cache_worker_fut;
+    let farmer_cache_worker_fut = farmer_cache_worker_fut;
 
     let networking_fut = pin!(networking_fut);
     let farm_fut = pin!(farm_fut);
-    let piece_cache_worker_fut = pin!(piece_cache_worker_fut);
+    let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
     futures::select!(
         // Signal future
@@ -813,8 +879,8 @@ where
         },
 
         // Piece cache worker future
-        _ = piece_cache_worker_fut.fuse() => {
-            info!("Piece cache worker exited.")
+        _ = farmer_cache_worker_fut.fuse() => {
+            info!("Farmer cache worker exited.")
         },
     );
 

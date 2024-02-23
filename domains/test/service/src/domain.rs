@@ -8,7 +8,7 @@ use crate::{
 use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, DomainCoreApi};
+use domain_runtime_primitives::Balance;
 use domain_service::providers::DefaultProvider;
 use domain_service::{FullClient, RuntimeExecutor};
 use domain_test_primitives::OnchainStateApi;
@@ -29,6 +29,7 @@ use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_core::{Decode, Encode, H256};
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};

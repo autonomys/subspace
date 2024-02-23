@@ -3,11 +3,11 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
-use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
     OperatorSignature, SealedBundleHeader,

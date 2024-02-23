@@ -2,11 +2,12 @@
 
 use crate::domain_chain_spec::testnet_evm_genesis;
 use codec::Encode;
+use domain_runtime_primitives::AccountId20Converter;
 use sc_chain_spec::{ChainType, GenericChainSpec};
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType};
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -48,8 +49,15 @@ pub fn subspace_local_testnet_config() -> TestChainSpec {
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
+                // Alice also get more funds that are used during the domain instantiation
                 vec![
-                    (get_account_id_from_seed("Alice"), 1_000 * SSC),
+                    (
+                        get_account_id_from_seed("Alice"),
+                        (5_000
+                            + crate::domain_chain_spec::endowed_accounts().len() as Balance
+                                * 2_000_000)
+                            * SSC,
+                    ),
                     (get_account_id_from_seed("Bob"), 1_000 * SSC),
                     (get_account_id_from_seed("Charlie"), 1_000 * SSC),
                     (get_account_id_from_seed("Dave"), 1_000 * SSC),
@@ -138,6 +146,16 @@ fn create_genesis_config(
                 signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
                 minimum_nominator_stake: 100 * SSC,
                 nomination_tax: Percent::from_percent(5),
+                initial_balances: crate::domain_chain_spec::endowed_accounts()
+                    .iter()
+                    .cloned()
+                    .map(|k| {
+                        (
+                            AccountId20Converter::convert(k),
+                            2_000_000 * subspace_runtime_primitives::SSC,
+                        )
+                    })
+                    .collect(),
             }),
         },
     }

@@ -48,7 +48,8 @@ struct Inner {
     num_elements: usize,
 }
 
-/// Piece cache stored on one disk
+/// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
+/// faster
 #[derive(Debug, Clone)]
 pub struct DiskPieceCache {
     inner: Arc<Inner>,
@@ -57,17 +58,7 @@ pub struct DiskPieceCache {
 impl DiskPieceCache {
     pub(super) const FILE_NAME: &'static str = "piece_cache.bin";
 
-    #[cfg(not(test))]
-    pub(super) fn open(directory: &Path, capacity: usize) -> Result<Self, DiskPieceCacheError> {
-        Self::open_internal(directory, capacity)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn open(directory: &Path, capacity: usize) -> Result<Self, DiskPieceCacheError> {
-        Self::open_internal(directory, capacity)
-    }
-
-    pub(super) fn open_internal(
+    pub(in super::super) fn open(
         directory: &Path,
         capacity: usize,
     ) -> Result<Self, DiskPieceCacheError> {

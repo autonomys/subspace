@@ -225,6 +225,7 @@ mod benchmarks {
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         };
 
         #[extrinsic_call]
@@ -434,6 +435,7 @@ mod benchmarks {
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         };
 
         assert_ok!(Domains::<T>::instantiate_domain(

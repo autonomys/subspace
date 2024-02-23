@@ -296,6 +296,11 @@ pub enum VerificationError<DomainHash> {
     RuntimeCode(String),
     #[cfg_attr(feature = "thiserror", error("Failed to get domain runtime code"))]
     FailedToGetDomainRuntimeCode,
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to get domain transfers storage key")
+    )]
+    FailedToGetDomainTransfersStorageKey,
     #[cfg(feature = "std")]
     #[cfg_attr(
         feature = "thiserror",
@@ -447,6 +452,7 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
     InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
+    InvalidTransfers(InvalidTransfersProof<HeaderHashFor<DomainHeader>>),
     // Dummy fraud proof only used in test and benchmark
     //
     // NOTE: the `Dummy` must be the last variant, because the `#[cfg(..)]` will apply to
@@ -474,6 +480,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::InvalidBundles(proof) => proof.domain_id,
             Self::ValidBundle(proof) => proof.domain_id,
             Self::InvalidDomainBlockHash(proof) => proof.domain_id,
+            Self::InvalidTransfers(proof) => proof.domain_id,
         }
     }
 
@@ -492,6 +499,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::ValidBundle(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidBundles(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidDomainBlockHash(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidTransfers(proof) => Some(proof.bad_receipt_hash),
         }
     }
 
@@ -615,6 +623,17 @@ pub struct ImproperTransactionSortitionProof<ReceiptHash> {
 /// Represents an invalid block fees proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidBlockFeesProof<ReceiptHash> {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
+    /// Storage witness needed for verifying this proof.
+    pub storage_proof: StorageProof,
+}
+
+/// Represents an invalid transfers proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidTransfersProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted

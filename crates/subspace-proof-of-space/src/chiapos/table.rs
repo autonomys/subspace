@@ -791,7 +791,7 @@ where
         let mut positions = Vec::with_capacity(t_n.len());
         let mut metadatas = Vec::with_capacity(t_n.len());
 
-        for (y, [left_position, right_position], metadata) in t_n {
+        for (y, [left_position, right_position], metadata) in t_n.drain(..) {
             ys.push(y);
             positions.push([left_position, right_position]);
             // Last table doesn't have metadata
@@ -799,6 +799,11 @@ where
                 metadatas.push(metadata);
             }
         }
+
+        // Drop from a background thread, which typically helps with overall concurrency
+        rayon::spawn(move || {
+            drop(t_n);
+        });
 
         Self::Other {
             ys,

@@ -28,7 +28,7 @@ use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
-    BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
+    AccountIdConverter, BlockNumber as DomainNumber, Hash as DomainHash,
 };
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
@@ -63,8 +63,8 @@ use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMe
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstBool, Convert,
-    DispatchInfoOf, Keccak256, NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstBool, DispatchInfoOf,
+    Keccak256, NumberFor, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -594,23 +594,6 @@ parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
 
-pub struct AccountIdConverter;
-
-impl Convert<AccountId, MultiAccountId> for AccountIdConverter {
-    fn convert(account_id: AccountId) -> MultiAccountId {
-        MultiAccountId::AccountId32(account_id.into())
-    }
-}
-
-impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
-    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
-        match multi_account_id {
-            MultiAccountId::AccountId32(acc) => Some(AccountId::from(acc)),
-            _ => None,
-        }
-    }
-}
-
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -648,6 +631,8 @@ parameter_types! {
     pub const MaxNominators: u32 = 100;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
+    pub const MaxInitialDomainAccounts: u32 = 20;
+    pub const MinInitialDomainAccountBalance: Balance = SSC;
 }
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
@@ -695,6 +680,9 @@ impl pallet_domains::Config for Runtime {
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
+    type DomainsTransfersTracker = Transporter;
+    type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
+    type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
 }
 
 parameter_types! {

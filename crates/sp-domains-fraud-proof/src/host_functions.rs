@@ -1,5 +1,6 @@
 use crate::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+    StorageKeyRequest,
 };
 use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
@@ -308,6 +309,23 @@ where
         ))
     }
 
+    fn storage_key(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        req: StorageKeyRequest,
+    ) -> Option<Vec<u8>> {
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        Some(
+            match req {
+                StorageKeyRequest::Transfers => domain_stateless_runtime.transfers_storage_key(),
+            }
+            .expect("Domain Runtime Api should not fail. There is no recovery from this; qed."),
+        )
+    }
+
     fn get_domain_election_params(
         &self,
         consensus_block_hash: H256,
@@ -488,6 +506,11 @@ where
                         transactions_check_result,
                     )
                 }),
+            FraudProofVerificationInfoRequest::StorageKey { domain_id, req } => {
+                Some(FraudProofVerificationInfoResponse::StorageKey(
+                    self.storage_key(consensus_block_hash, domain_id, req),
+                ))
+            }
         }
     }
 

@@ -17,11 +17,11 @@ pub mod stateless_runtime;
 use crate::inherents::is_runtime_upgraded;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
     DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,

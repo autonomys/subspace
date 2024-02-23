@@ -880,6 +880,11 @@ where
             ))
         });
 
+        if !config.base.network.force_synced {
+            // Start with DSN sync in this case
+            pause_sync.store(true, Ordering::Release);
+        }
+
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
             segment_headers_store.clone(),
             Arc::clone(&network_service),

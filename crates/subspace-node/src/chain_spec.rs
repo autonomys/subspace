@@ -20,6 +20,7 @@ use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
 use crate::domain::evm_chain_spec::{self, SpecId};
+use domain_runtime_primitives::MultiAccountId;
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
@@ -107,6 +108,7 @@ struct GenesisDomainParams {
     domain_name: String,
     operator_allow_list: OperatorAllowList<AccountId>,
     operator_signing_key: OperatorPublicKey,
+    initial_balances: Vec<(MultiAccountId, Balance)>,
 }
 
 pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
@@ -189,6 +191,9 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
                         "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
                     )),
+                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
+                        SpecId::Gemini,
+                    ),
                 },
             )
         },
@@ -298,6 +303,9 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
                         "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
                     )),
+                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
+                        SpecId::DevNet,
+                    ),
                 },
             )
         },
@@ -365,6 +373,9 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     domain_name: "evm-domain".to_owned(),
                     operator_allow_list: OperatorAllowList::Anyone,
                     operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
+                        SpecId::Dev,
+                    ),
                 },
             )
         },
@@ -471,6 +482,7 @@ fn subspace_genesis_config(
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
+                initial_balances: genesis_domain_params.initial_balances,
             }),
         },
     }

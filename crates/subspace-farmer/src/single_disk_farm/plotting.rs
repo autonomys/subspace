@@ -15,8 +15,7 @@ use std::fs::File;
 use std::io;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::ops::Range;
-use std::pin::pin;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -34,7 +33,6 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::{plotting, PieceGetter, PieceGetterRetryPolicy};
 use subspace_proof_of_space::Table;
 use thiserror::Error;
-use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, info, trace, warn, Instrument};
@@ -131,9 +129,6 @@ pub enum PlottingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Farm is shutting down
-    #[error("Farm is shutting down")]
-    FarmIsShuttingDown,
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
     LowLevel(#[from] plotting::PlottingError),
@@ -164,8 +159,9 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub(crate) downloading_semaphore: Arc<Semaphore>,
+    pub(crate) record_encoding_concurrency: NonZeroUsize,
     pub(super) plotting_thread_pool_manager: PlottingThreadPoolManager,
-    pub(super) stop_receiver: &'a mut broadcast::Receiver<()>,
+    pub(super) stop_receiver: broadcast::Receiver<()>,
 }
 
 /// Starts plotting process.
@@ -197,11 +193,30 @@ where
         modifying_sector_index,
         mut sectors_to_plot_receiver,
         downloading_semaphore,
+        record_encoding_concurrency,
         plotting_thread_pool_manager,
-        stop_receiver,
+        mut stop_receiver,
     } = plotting_options;
 
-    let mut table_generator = PosTable::generator();
+    let abort_early = Arc::new(AtomicBool::new(false));
+
+    let _abort_early_task = AsyncJoinOnDrop::new(
+        tokio::spawn({
+            let abort_early = Arc::clone(&abort_early);
+
+            async move {
+                // Error doesn't matter here
+                let _ = stop_receiver.recv().await;
+
+                abort_early.store(true, Ordering::Release);
+            }
+        }),
+        true,
+    );
+
+    let mut table_generators = (0..record_encoding_concurrency.get())
+        .map(|_| PosTable::generator())
+        .collect::<Vec<_>>();
 
     let mut maybe_next_downloaded_sector_fut = None::<
         AsyncJoinOnDrop<Result<(OwnedSemaphorePermit, DownloadedSector), plotting::PlottingError>>,
@@ -365,7 +380,7 @@ where
         let sector_metadata;
         let plotted_sector;
 
-        (sector, sector_metadata, table_generator, plotted_sector) = {
+        (sector, sector_metadata, table_generators, plotted_sector) = {
             let plotting_fn = || {
                 tokio::task::block_in_place(|| {
                     let mut sector = Vec::new();
@@ -378,37 +393,25 @@ where
 
                     let start = Instant::now();
 
-                    let plotted_sector = {
-                        let plot_sector_fut = pin!(encode_sector::<PosTable>(
-                            downloaded_sector,
-                            EncodeSectorOptions {
-                                sector_index,
-                                erasure_coding,
-                                pieces_in_sector,
-                                sector_output: &mut sector,
-                                sector_metadata_output: &mut sector_metadata,
-                                table_generator: &mut table_generator,
-                            },
-                        ));
-
-                        Handle::current().block_on(async {
-                            select! {
-                                plotting_result = plot_sector_fut.fuse() => {
-                                    plotting_result.map_err(PlottingError::from)
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    Err(PlottingError::FarmIsShuttingDown)
-                                }
-                            }
-                        })?
-                    };
+                    let plotted_sector = encode_sector::<PosTable>(
+                        downloaded_sector,
+                        EncodeSectorOptions {
+                            sector_index,
+                            erasure_coding,
+                            pieces_in_sector,
+                            sector_output: &mut sector,
+                            sector_metadata_output: &mut sector_metadata,
+                            table_generators: &mut table_generators,
+                            abort_early: &abort_early,
+                        },
+                    )?;
 
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Encoded(start.elapsed())),
                     ));
 
-                    Ok((sector, sector_metadata, table_generator, plotted_sector))
+                    Ok((sector, sector_metadata, table_generators, plotted_sector))
                 })
             };
 
@@ -424,7 +427,10 @@ where
 
             let plotting_result = thread_pool.install(plotting_fn);
 
-            if matches!(plotting_result, Err(PlottingError::FarmIsShuttingDown)) {
+            if matches!(
+                plotting_result,
+                Err(PlottingError::LowLevel(plotting::PlottingError::AbortEarly))
+            ) {
                 return Ok(());
             }
 

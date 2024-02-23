@@ -1,11 +1,33 @@
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use std::sync::atomic::AtomicU64;
+use std::fmt;
+use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
+use subspace_core_primitives::SectorIndex;
 use subspace_farmer::single_disk_farm::farming::ProvingResult;
 use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
+
+#[derive(Debug, Copy, Clone)]
+pub(super) enum SectorState {
+    NotPlotted,
+    Plotted,
+    AboutToExpire,
+    Expired,
+}
+
+impl fmt::Display for SectorState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NotPlotted => "NotPlotted",
+            Self::Plotted => "Plotted",
+            Self::AboutToExpire => "AboutToExpire",
+            Self::Expired => "Expired",
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct FarmerMetrics {
@@ -16,6 +38,7 @@ pub(super) struct FarmerMetrics {
     sector_encoding_time: Family<Vec<(String, String)>, Histogram>,
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
     sector_plotting_time: Family<Vec<(String, String)>, Histogram>,
+    sectors_total: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
     pub(super) sector_downloading: Counter<u64, AtomicU64>,
     pub(super) sector_downloaded: Counter<u64, AtomicU64>,
     pub(super) sector_encoding: Counter<u64, AtomicU64>,
@@ -31,7 +54,7 @@ impl FarmerMetrics {
         let sub_registry = registry.sub_registry_with_prefix("subspace_farmer");
 
         let auditing_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -42,7 +65,7 @@ impl FarmerMetrics {
         );
 
         let proving_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -61,7 +84,7 @@ impl FarmerMetrics {
         );
 
         let sector_downloading_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -72,7 +95,7 @@ impl FarmerMetrics {
         );
 
         let sector_encoding_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -83,7 +106,7 @@ impl FarmerMetrics {
         );
 
         let sector_writing_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -94,7 +117,7 @@ impl FarmerMetrics {
         );
 
         let sector_plotting_time = Family::<_, _>::new_with_constructor(|| {
-            Histogram::new(exponential_buckets(0.0001, 2.0, 15))
+            Histogram::new(exponential_buckets(0.1, 2.0, 15))
         });
 
         sub_registry.register_with_unit(
@@ -102,6 +125,15 @@ impl FarmerMetrics {
             "Sector plotting time",
             Unit::Seconds,
             sector_plotting_time.clone(),
+        );
+
+        let sectors_total = Family::<_, _>::new_with_constructor(Gauge::<_, _>::default);
+
+        sub_registry.register_with_unit(
+            "sectors_total",
+            "Total number of sectors with corresponding state",
+            Unit::Other("sectors".to_string()),
+            sectors_total.clone(),
         );
 
         let sector_downloading = Counter::<_, _>::default();
@@ -117,7 +149,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_downloaded_counter",
-            "Number of sectors being downloaded",
+            "Number of downloaded sectors",
             Unit::Other("sectors".to_string()),
             sector_downloaded.clone(),
         );
@@ -126,7 +158,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_encoding_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being encoded",
             Unit::Other("sectors".to_string()),
             sector_encoding.clone(),
         );
@@ -135,7 +167,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_encoded_counter",
-            "Number of sectors being downloaded",
+            "Number of encoded sectors",
             Unit::Other("sectors".to_string()),
             sector_encoded.clone(),
         );
@@ -144,7 +176,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_writing_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being written",
             Unit::Other("sectors".to_string()),
             sector_writing.clone(),
         );
@@ -153,7 +185,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_written_counter",
-            "Number of sectors being downloaded",
+            "Number of written sectors",
             Unit::Other("sectors".to_string()),
             sector_written.clone(),
         );
@@ -162,7 +194,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_plotting_counter",
-            "Number of sectors being downloaded",
+            "Number of sectors being plotted",
             Unit::Other("sectors".to_string()),
             sector_plotting.clone(),
         );
@@ -171,7 +203,7 @@ impl FarmerMetrics {
 
         sub_registry.register_with_unit(
             "sector_plotted_counter",
-            "Number of sectors being downloaded",
+            "Number of plotted sectors",
             Unit::Other("sectors".to_string()),
             sector_plotted.clone(),
         );
@@ -184,6 +216,7 @@ impl FarmerMetrics {
             sector_encoding_time,
             sector_writing_time,
             sector_plotting_time,
+            sectors_total,
             sector_downloading,
             sector_downloaded,
             sector_encoding,
@@ -233,6 +266,79 @@ impl FarmerMetrics {
                 ("error".to_string(), error.str_variant().to_string()),
             ])
             .inc();
+    }
+
+    pub(super) fn update_sectors_total(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        sectors: SectorIndex,
+        state: SectorState,
+    ) {
+        self.sectors_total
+            .get_or_create(&vec![
+                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("state".to_string(), state.to_string()),
+            ])
+            .set(i64::from(sectors));
+    }
+
+    pub(super) fn update_sector_state(
+        &self,
+        single_disk_farm_id: &SingleDiskFarmId,
+        state: SectorState,
+    ) {
+        self.sectors_total
+            .get_or_create(&vec![
+                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("state".to_string(), state.to_string()),
+            ])
+            .inc();
+        match state {
+            SectorState::NotPlotted => {
+                // Never called, doesn't make sense
+            }
+            SectorState::Plotted => {
+                // Separate blocks in because of mutex guard returned by `get_or_create` resulting
+                // in deadlock otherwise
+                {
+                    let not_plotted_sectors = self.sectors_total.get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::NotPlotted.to_string()),
+                    ]);
+                    if not_plotted_sectors.get() > 0 {
+                        // Initial plotting
+                        not_plotted_sectors.dec();
+                        return;
+                    }
+                }
+                {
+                    let expired_sectors = self.sectors_total.get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::Expired.to_string()),
+                    ]);
+                    if expired_sectors.get() > 0 {
+                        // Replaced expired sector
+                        expired_sectors.dec();
+                        return;
+                    }
+                }
+                // Replaced about to expire sector
+                self.sectors_total
+                    .get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::AboutToExpire.to_string()),
+                    ])
+                    .dec();
+            }
+            SectorState::AboutToExpire | SectorState::Expired => {
+                self.sectors_total
+                    .get_or_create(&vec![
+                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("state".to_string(), SectorState::Plotted.to_string()),
+                    ])
+                    .dec();
+            }
+        }
     }
 
     pub(super) fn observe_sector_downloading_time(

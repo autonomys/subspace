@@ -117,7 +117,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Change enable domains state.
         #[pallet::call_index(0)]
-        #[pallet::weight(<T as Config>::WeightInfo::set_enable_domains())]
+        #[pallet::weight(< T as Config >::WeightInfo::set_enable_domains())]
         pub fn set_enable_domains(origin: OriginFor<T>, enable_domains: bool) -> DispatchResult {
             ensure_root(origin)?;
 
@@ -128,21 +128,21 @@ mod pallet {
 
         /// Enable or disable dynamic cost of storage.
         #[pallet::call_index(1)]
-        #[pallet::weight(<T as Config>::WeightInfo::set_enable_dynamic_cost_of_storage())]
+        #[pallet::weight(< T as Config >::WeightInfo::set_enable_dynamic_cost_of_storage())]
         pub fn set_enable_dynamic_cost_of_storage(
             origin: OriginFor<T>,
             enable_dynamic_cost_of_storage: bool,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            EnableBalanceTransfers::<T>::put(enable_dynamic_cost_of_storage);
+            EnableDynamicCostOfStorage::<T>::put(enable_dynamic_cost_of_storage);
 
             Ok(())
         }
 
         /// Enable or disable balance transfers for all users.
         #[pallet::call_index(2)]
-        #[pallet::weight(<T as Config>::WeightInfo::set_enable_balance_transfers())]
+        #[pallet::weight(< T as Config >::WeightInfo::set_enable_balance_transfers())]
         pub fn set_enable_balance_transfers(
             origin: OriginFor<T>,
             enable_balance_transfers: bool,
@@ -156,7 +156,7 @@ mod pallet {
 
         /// Enable or disable calls from non-root users.
         #[pallet::call_index(3)]
-        #[pallet::weight(<T as Config>::WeightInfo::set_enable_non_root_calls())]
+        #[pallet::weight(< T as Config >::WeightInfo::set_enable_non_root_calls())]
         pub fn set_enable_non_root_calls(
             origin: OriginFor<T>,
             enable_non_root_calls: bool,

@@ -26,7 +26,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
     InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
@@ -184,6 +184,8 @@ parameter_types! {
     pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
+    pub const MaxInitialDomainAccounts: u32 = 5;
+    pub const MinInitialDomainAccountBalance: Balance = SSC;
 }
 
 pub struct MockRandomness;
@@ -225,6 +227,55 @@ impl BlockSlot for DummyBlockSlot {
     }
 }
 
+pub struct MockDomainsTransfersTracker;
+
+impl sp_domains::DomainsTransfersTracker<Balance> for MockDomainsTransfersTracker {
+    type Error = ();
+
+    fn initialize_domain_balance(
+        _domain_id: DomainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn note_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn confirm_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn claim_rejected_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reject_transfer(
+        _from_chain_id: ChainId,
+        _to_chain_id: ChainId,
+        _amount: Balance,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn reduce_domain_balance(_domain_id: DomainId, _amount: Balance) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
@@ -255,6 +306,9 @@ impl pallet_domains::Config for Test {
     type PalletId = DomainsPalletId;
     type StorageFee = DummyStorageFee;
     type BlockSlot = DummyBlockSlot;
+    type DomainsTransfersTracker = MockDomainsTransfersTracker;
+    type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
+    type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -374,6 +428,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                 FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(
                     self.maybe_illegal_extrinsic_index,
                 )
+            }
+            FraudProofVerificationInfoRequest::StorageKey { .. } => {
+                FraudProofVerificationInfoResponse::StorageKey(None)
             }
         };
 
@@ -554,6 +611,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         },
     )
     .unwrap();
@@ -728,6 +786,7 @@ fn test_bundle_fromat_verification() {
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
+            initial_balances: Default::default(),
         };
         let domain_obj = DomainObject {
             owner_account_id: Default::default(),
@@ -861,7 +920,7 @@ fn test_invalid_block_fees_fraud_proof() {
             domain_id,
             bad_receipt_hash,
             // set different reward in the storage and generate proof for that value
-            domain_runtime_primitives::BlockFees::new(
+            sp_domains::BlockFees::new(
                 domain_block
                     .execution_receipt
                     .block_fees
@@ -872,6 +931,7 @@ fn test_invalid_block_fees_fraud_proof() {
                     .block_fees
                     .consensus_storage_fee
                     + 1,
+                domain_block.execution_receipt.block_fees.burned_balance + 1,
             ),
         );
         domain_block.execution_receipt.final_state_root = root;
@@ -886,7 +946,7 @@ type FraudProofFor<T> =
 fn generate_invalid_block_fees_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHashFor<T>,
-    block_fees: domain_runtime_primitives::BlockFees<BalanceOf<T>>,
+    block_fees: sp_domains::BlockFees<BalanceOf<T>>,
 ) -> (FraudProofFor<T>, T::Hash) {
     let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
     let mut root = T::Hash::default();

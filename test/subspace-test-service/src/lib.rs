@@ -91,6 +91,8 @@ use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DU
 type FraudProofFor<Block, DomainBlock> =
     FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header>;
 
+const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
+
 /// Create a Subspace `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide boot
@@ -525,13 +527,15 @@ impl MockConsensusNode {
         &mut self,
     ) -> (
         NewSlot,
-        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>>,
+        OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
     ) {
-        let slot = self.produce_slot();
-
-        let bundle = self.notify_new_slot_and_wait_for_bundle(slot).await;
-
-        (slot, bundle)
+        for _ in 0..MAX_PRODUCE_BUNDLE_TRY {
+            let slot = self.produce_slot();
+            if let Some(bundle) = self.notify_new_slot_and_wait_for_bundle(slot).await {
+                return (slot, bundle);
+            }
+        }
+        panic!("Failed to produce bundle after {MAX_PRODUCE_BUNDLE_TRY:?} tries, something must be wrong");
     }
 
     /// Subscribe the new slot notification
@@ -874,7 +878,7 @@ impl MockConsensusNode {
         &mut self,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(), Box<dyn Error>> {
-        let (slot, _) = self.produce_slot_and_wait_for_bundle_submission().await;
+        let slot = self.produce_slot();
         self.produce_block_with_slot_at(slot, self.client.info().best_hash, Some(extrinsics))
             .await?;
         Ok(())
@@ -883,6 +887,16 @@ impl MockConsensusNode {
     /// Produce `n` number of blocks.
     #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
+        for _ in 0..n {
+            let slot = self.produce_slot();
+            self.produce_block_with_slot(slot).await?;
+        }
+        Ok(())
+    }
+
+    /// Produce `n` number of blocks and wait for bundle submitted to the block.
+    #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
+    pub async fn produce_blocks_with_bundles(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
             let (slot, _) = self.produce_slot_and_wait_for_bundle_submission().await;
             self.produce_block_with_slot(slot).await?;
@@ -1043,7 +1057,7 @@ macro_rules! produce_blocks {
                     $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )*
                     futures::future::join_all(futs)
                 };
-                $primary_node.produce_blocks($count).await?;
+                $primary_node.produce_blocks_with_bundles($count).await?;
                 domain_fut.await;
                 Ok::<(), Box<dyn std::error::Error>>(())
             }

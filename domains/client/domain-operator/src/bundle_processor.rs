@@ -3,7 +3,6 @@ use crate::domain_block_processor::{
 };
 use crate::ExecutionReceiptFor;
 use domain_block_preprocessor::DomainBlockPreprocessor;
-use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::ProvideRuntimeApi;
@@ -12,6 +11,7 @@ use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
+use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;

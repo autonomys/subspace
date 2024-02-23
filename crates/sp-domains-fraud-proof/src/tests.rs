@@ -2,7 +2,7 @@ use crate::test_ethereum_tx::{
     EIP1559UnsignedTransaction, EIP2930UnsignedTransaction, LegacyUnsignedTransaction,
 };
 use codec::Encode;
-use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DomainCoreApi};
+use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError};
 use domain_test_service::evm_domain_test_runtime::{
     Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as RuntimeUncheckedExtrinsic,
 };
@@ -23,6 +23,7 @@ use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_core::crypto::AccountId32;
 use sp_core::ecdsa::Pair;
 use sp_core::{keccak_256, Pair as _, H160, H256, U256};
+use sp_domains::core_api::DomainCoreApi;
 use sp_runtime::traits::{Extrinsic, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::OpaqueExtrinsic;
@@ -170,8 +171,7 @@ async fn benchmark_bundle_with_evm_tx(
     const TX_TYPES: u32 = 4;
     let mut thread_rng = rand::thread_rng();
     let between = Uniform::from(0..TX_TYPES);
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
+    let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -379,7 +379,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
                 best_hash,
                 vec![
                     transfer_to_charlie_with_big_tip_1.clone().into(),
-                    transfer_to_charlie_with_big_tip_2.clone().into()
+                    transfer_to_charlie_with_big_tip_2.clone().into(),
                 ],
                 best_number,
                 best_hash,
@@ -389,7 +389,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
             extrinsic_index: 1,
             transaction_validity_error: TransactionValidityError::Invalid(
                 InvalidTransaction::Payment
-            )
+            ),
         })
     );
 
@@ -411,7 +411,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
             extrinsic_index: 0,
             transaction_validity_error: TransactionValidityError::Invalid(
                 InvalidTransaction::Future
-            )
+            ),
         })
     );
 
@@ -460,7 +460,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
                 best_hash,
                 vec![transfer_with_big_tip_1.clone().into()],
                 best_number,
-                best_hash
+                best_hash,
             )
             .unwrap()
             .is_ok());
@@ -491,7 +491,7 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
                     best_hash,
                     vec![transfer_with_big_tip_3.clone().into()],
                     best_number,
-                    best_hash
+                    best_hash,
                 )
                 .unwrap(),
             if commit_mode {
@@ -754,7 +754,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce a bundle that contains the just sent extrinsic
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(bundle.unwrap().extrinsics.len(), 3);
+    assert_eq!(bundle.extrinsics.len(), 3);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -762,7 +762,7 @@ async fn test_evm_domain_block_fee() {
 
     // Produce one more bundle, this bundle should contains the ER of the previous bundle
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let receipt = bundle.unwrap().into_receipt();
+    let receipt = bundle.into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
     // All the transaction fee is collected as operator reward

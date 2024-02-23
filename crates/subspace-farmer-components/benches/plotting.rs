@@ -35,7 +35,16 @@ fn criterion_benchmark(c: &mut Criterion) {
             .expect("Not zero; qed"),
     )
     .unwrap();
-    let mut table_generator = PosTable::generator();
+    let mut table_generators = [
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+        PosTable::generator(),
+    ];
     let archived_history_segment = archiver
         .add_block(
             AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
@@ -79,7 +88,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                 sector_metadata_output: black_box(&mut sector_metadata_bytes),
                 downloading_semaphore: black_box(None),
                 encoding_semaphore: black_box(None),
-                table_generator: black_box(&mut table_generator),
+                table_generators: black_box(&mut table_generators),
+                abort_early: &Default::default(),
             }))
             .unwrap();
         })
