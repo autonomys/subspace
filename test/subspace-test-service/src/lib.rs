@@ -34,6 +34,7 @@ use sc_consensus::block_import::{
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
+use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
@@ -63,6 +64,8 @@ use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
+use sp_messenger::MessengerApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
@@ -223,7 +226,10 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>
+        + BundleProducerElectionApi<Block, Balance>
+        + MessengerApi<Block, NumberFor<Block>>
+        + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
@@ -236,6 +242,10 @@ where
             FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
                 self.consensus_client.clone(),
                 self.executor.clone(),
+                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                    self.consensus_client.clone(),
+                    self.executor.clone(),
+                )),
             ),
         )));
         exts.register(SubspaceMmrExtension::new(Arc::new(
@@ -344,13 +354,18 @@ impl MockConsensusNode {
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
+        let domain_executor = sc_service::new_wasm_executor(&config);
         let client = Arc::new(client);
         let mock_pot_verifier = Arc::new(MockPotVerfier::default());
         client
             .execution_extensions()
-            .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
+            .set_extensions_factory(MockExtensionsFactory::<
+                _,
+                DomainBlock,
+                sc_domains::RuntimeExecutor,
+            >::new(
                 client.clone(),
-                Arc::new(executor.clone()),
+                Arc::new(domain_executor),
                 Arc::clone(&mock_pot_verifier),
             ));
 

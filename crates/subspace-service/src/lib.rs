@@ -67,6 +67,7 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
+use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::{NetworkService, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::PotSourceWorker;
@@ -91,6 +92,8 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
+use sp_messenger::MessengerApi;
+use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
 use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -198,6 +201,7 @@ pub type HostFunctions = (
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
     sp_subspace_mmr::HostFunctions,
+    sp_messenger_host_functions::HostFunctions,
 );
 
 /// Host functions required for Subspace
@@ -208,6 +212,7 @@ pub type HostFunctions = (
     sp_consensus_subspace::consensus::HostFunctions,
     sp_domains_fraud_proof::HostFunctions,
     sp_subspace_mmr::HostFunctions,
+    sp_messenger_host_functions::HostFunctions,
 );
 
 /// Runtime executor for Subspace
@@ -224,6 +229,7 @@ struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     client: Arc<Client>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
+    domains_executor: Arc<sc_domains::RuntimeExecutor>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
@@ -243,7 +249,9 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainBlock::Header>
-        + BundleProducerElectionApi<Block, Balance>,
+        + BundleProducerElectionApi<Block, Balance>
+        + MmrApi<Block, H256, NumberFor<Block>>
+        + MessengerApi<Block, NumberFor<Block>>,
 {
     fn extensions_for(
         &self,
@@ -360,14 +368,25 @@ where
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, RuntimeExecutor>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _>::new(
                 self.client.clone(),
-                self.executor.clone(),
+                self.domains_executor.clone(),
+                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                    self.client.clone(),
+                    self.domains_executor.clone(),
+                )),
             ),
         )));
 
         exts.register(SubspaceMmrExtension::new(Arc::new(
             SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.client.clone()),
+        )));
+
+        exts.register(MessengerExtension::new(Arc::new(
+            MessengerHostFunctionsImpl::<Block, _, DomainBlock, _>::new(
+                self.client.clone(),
+                self.executor.clone(),
+            ),
         )));
 
         exts
@@ -421,7 +440,9 @@ where
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + BundleProducerElectionApi<Block, Balance>
-        + ObjectsApi<Block>,
+        + ObjectsApi<Block>
+        + MmrApi<Block, H256, NumberFor<Block>>
+        + MessengerApi<Block, NumberFor<Block>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -435,6 +456,7 @@ where
         .transpose()?;
 
     let executor = sc_service::new_wasm_executor(config);
+    let domains_executor = sc_service::new_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
@@ -462,6 +484,7 @@ where
             client: Arc::clone(&client),
             pot_verifier: pot_verifier.clone(),
             executor: executor.clone(),
+            domains_executor: Arc::new(domains_executor),
             _pos_table: PhantomData,
         });
 
@@ -582,7 +605,9 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + SubspaceApi<Block, FarmerPublicKey>
+        + MmrApi<Block, H256, NumberFor<Block>>
+        + MessengerApi<Block, NumberFor<Block>>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -641,7 +666,8 @@ where
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>
-        + MmrApi<Block, Hash, BlockNumber>,
+        + MmrApi<Block, Hash, BlockNumber>
+        + MessengerApi<Block, NumberFor<Block>>,
 {
     let PartialComponents {
         client,

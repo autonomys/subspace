@@ -20,9 +20,11 @@
 #[cfg(feature = "std")]
 pub mod host_functions;
 mod runtime_interface;
-pub use runtime_interface::subspace_mmr_runtime_interface;
+#[cfg(feature = "std")]
+pub use runtime_interface::domain_mmr_runtime_interface::HostFunctions as DomainHostFunctions;
 #[cfg(feature = "std")]
 pub use runtime_interface::subspace_mmr_runtime_interface::HostFunctions;
+pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_interface};
 
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
@@ -34,6 +36,14 @@ use sp_runtime::DigestItem;
 pub enum MmrLeaf<BlockNumber, Hash> {
     /// V0 version of leaf data
     V0(LeafDataV0<BlockNumber, Hash>),
+}
+
+impl<BlockNumber, Hash: Clone> MmrLeaf<BlockNumber, Hash> {
+    pub fn state_root(&self) -> Hash {
+        match self {
+            MmrLeaf::V0(leaf) => leaf.state_root.clone(),
+        }
+    }
 }
 
 /// MMR v0 leaf data

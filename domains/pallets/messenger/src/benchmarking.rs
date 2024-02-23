@@ -8,9 +8,11 @@ use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
-    CrossDomainMessage, InitiateChannelParams, Message, MessageWeightTag, Payload, Proof,
-    RequestResponse, VersionedPayload,
+    ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams, Message,
+    MessageWeightTag, Payload, Proof, RequestResponse, VersionedPayload,
 };
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_trie::StorageProof;
 
 #[benchmarks]
 mod benchmarks {
@@ -113,15 +115,14 @@ mod benchmarks {
         };
         Inbox::<T>::put(msg);
 
-        let xdm: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>> =
-            CrossDomainMessage {
-                src_chain_id: dst_chain_id,
-                dst_chain_id: T::SelfChainId::get(),
-                channel_id,
-                nonce: channel.next_inbox_nonce,
-                proof: Proof::dummy(),
-                weight_tag: MessageWeightTag::EndpointRequest(endpoint),
-            };
+        let xdm = CrossDomainMessage::<T::Hash, T::MmrHash> {
+            src_chain_id: dst_chain_id,
+            dst_chain_id: T::SelfChainId::get(),
+            channel_id,
+            nonce: channel.next_inbox_nonce,
+            proof: dummy_proof(),
+            weight_tag: MessageWeightTag::EndpointRequest(endpoint),
+        };
 
         #[extrinsic_call]
         _(RawOrigin::None, xdm);
@@ -181,15 +182,14 @@ mod benchmarks {
         };
         OutboxResponses::<T>::put(resp_msg);
 
-        let xdm: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>> =
-            CrossDomainMessage {
-                src_chain_id: dst_chain_id,
-                dst_chain_id: T::SelfChainId::get(),
-                channel_id,
-                nonce: resp_nonce,
-                proof: Proof::dummy(),
-                weight_tag: MessageWeightTag::EndpointResponse(endpoint),
-            };
+        let xdm = CrossDomainMessage::<T::Hash, T::MmrHash> {
+            src_chain_id: dst_chain_id,
+            dst_chain_id: T::SelfChainId::get(),
+            channel_id,
+            nonce: resp_nonce,
+            proof: dummy_proof(),
+            weight_tag: MessageWeightTag::EndpointResponse(endpoint),
+        };
 
         #[extrinsic_call]
         _(RawOrigin::None, xdm);
@@ -233,4 +233,22 @@ mod benchmarks {
         crate::mock::chain_a::new_test_ext(),
         crate::mock::chain_a::Runtime,
     );
+}
+
+pub fn dummy_proof<CBlockHash, MmrHash>() -> Proof<CBlockHash, MmrHash>
+where
+    CBlockHash: Default,
+{
+    Proof::Consensus {
+        consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+            consensus_block_hash: Default::default(),
+            opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
+            proof: MmrProof {
+                leaf_indices: vec![],
+                leaf_count: 0,
+                items: vec![],
+            },
+        },
+        message_proof: StorageProof::empty(),
+    }
 }

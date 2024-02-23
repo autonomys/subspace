@@ -28,10 +28,10 @@ use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_service::HostFunctions as DomainHostFunctions;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, SubstrateCli};
+use sc_domains::HostFunctions as DomainsHostFunctions;
 use sc_service::{Configuration, PartialComponents};
 use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
@@ -349,7 +349,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, DomainHostFunctions>(domain_config)
+                            cmd.run::<DomainBlock, DomainsHostFunctions>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }
@@ -372,7 +372,7 @@ fn main() -> Result<(), Error> {
                         })?;
 
                     let executor =
-                        sc_service::new_wasm_executor::<DomainHostFunctions>(&domain_config);
+                        sc_service::new_wasm_executor::<DomainsHostFunctions>(&domain_config);
 
                     let (client, _, _, _) = sc_service::new_full_parts::<
                         DomainBlock,

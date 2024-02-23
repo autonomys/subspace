@@ -9,13 +9,12 @@
 //! 5. Push back the potential new domain runtime extrisnic.
 
 #![warn(rust_2018_idioms)]
+#![feature(let_chains)]
 
 pub mod inherents;
 pub mod stateless_runtime;
-pub mod xdm_verifier;
 
 use crate::inherents::is_runtime_upgraded;
-use crate::xdm_verifier::is_valid_xdm;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use sc_client_api::BlockBackend;
@@ -320,12 +319,7 @@ where
             // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
             // and the other extrinsic of the bundle will be continue processed, now the whole
             // bundle is considered as invalid and excluded from further processing.
-            if !is_valid_xdm::<CClient, CBlock, Block, _>(
-                &self.consensus_client,
-                at,
-                &self.client,
-                &extrinsic,
-            )? {
+            if let Some(false) = runtime_api.is_xdm_valid(at, extrinsic.encode())? {
                 // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
                     index as u32,

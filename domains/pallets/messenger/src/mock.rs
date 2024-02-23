@@ -90,10 +90,12 @@ macro_rules! impl_runtime {
             type SelfChainId = SelfChainId;
             type Currency = Balances;
             type ConfirmationDepth = RelayerConfirmationDepth;
-            type DomainInfo = ();
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
             type OnXDMRewards = ();
+            type MmrHash = H256;
+            type MmrProofVerifier = ();
+            type StorageKeys = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

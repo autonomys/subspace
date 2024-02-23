@@ -448,6 +448,7 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
 
     fn execution_proof_check(
         &self,
+        _domain_id: (u32, H256),
         _pre_state_root: H256,
         _encoded_proof: Vec<u8>,
         _execution_method: &str,
