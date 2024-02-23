@@ -34,6 +34,7 @@ use sc_consensus::block_import::{
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
+use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
@@ -82,7 +83,6 @@ use std::time;
 use subspace_core_primitives::{PotOutput, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
-use subspace_service::domains::ExtensionsFactory as DomainsExtensionFactory;
 use subspace_service::transaction_pool::FullPool;
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
@@ -362,7 +362,7 @@ impl MockConsensusNode {
             .set_extensions_factory(MockExtensionsFactory::<
                 _,
                 DomainBlock,
-                subspace_service::domains::RuntimeExecutor,
+                sc_domains::RuntimeExecutor,
             >::new(
                 client.clone(),
                 Arc::new(domain_executor),

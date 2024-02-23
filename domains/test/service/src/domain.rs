@@ -10,7 +10,7 @@ use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, Opera
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::Balance;
 use domain_service::providers::DefaultProvider;
-use domain_service::{FullClient, RuntimeExecutor};
+use domain_service::FullClient;
 use domain_test_primitives::OnchainStateApi;
 use evm_domain_test_runtime;
 use evm_domain_test_runtime::AccountId as AccountId20;
@@ -19,6 +19,7 @@ use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
+use sc_domains::RuntimeExecutor;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;

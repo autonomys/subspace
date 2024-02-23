@@ -36,6 +36,7 @@ sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polk
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
 sc-consensus-subspace-rpc = { version = "0.1.0", path = "../sc-consensus-subspace-rpc" }
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sc-domains = { version = "0.1.0", path = "../sc-domains" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-informant = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
@@ -89,4 +90,7 @@ frame-system-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.co
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 
 [features]
-runtime-benchmarks = ["dep:frame-benchmarking"]
+runtime-benchmarks = [
+    "dep:frame-benchmarking",
+    "sc-domains/runtime-benchmarks",
+]

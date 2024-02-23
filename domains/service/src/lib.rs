@@ -11,6 +11,7 @@ use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider};
 use sc_consensus::ImportQueue;
+use sc_domains::RuntimeExecutor;
 use sc_network::config::Roles;
 use sc_network::peer_store::PeerStore;
 use sc_network::NetworkService;
@@ -31,7 +32,6 @@ use sp_blockchain::HeaderMetadata;
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Zero};
 use std::sync::Arc;
-pub use subspace_service::domains::RuntimeExecutor;
 
 /// Domain full client.
 pub type FullClient<Block, RuntimeApi> = TFullClient<Block, RuntimeApi, RuntimeExecutor>;

@@ -2683,6 +2683,7 @@ dependencies = [
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
+ "sc-domains",
  "sc-executor",
  "sc-informant",
  "sc-network",
@@ -2717,7 +2718,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -2753,6 +2753,7 @@ dependencies = [
  "pallet-transaction-payment-rpc",
  "rand",
  "sc-client-api",
+ "sc-domains",
  "sc-network",
  "sc-network-sync",
  "sc-service",
@@ -9292,6 +9293,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-domains"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "sc-client-api",
+ "sc-executor",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-externalities",
+ "sp-io",
+ "sp-messenger-host-functions",
+ "sp-runtime",
+ "sp-subspace-mmr",
+]
+
+[[package]]
 name = "sc-executor"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -11833,6 +11852,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus-slots",
  "sc-consensus-subspace",
+ "sc-domains",
  "sc-informant",
  "sc-keystore",
  "sc-network",
@@ -12005,6 +12025,7 @@ dependencies = [
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
+ "sc-domains",
  "sc-executor",
  "sc-informant",
  "sc-network",
@@ -12152,6 +12173,7 @@ dependencies = [
  "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
+ "sc-domains",
  "sc-executor",
  "sc-network",
  "sc-network-sync",

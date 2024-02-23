@@ -25,7 +25,6 @@
 )]
 
 pub mod config;
-pub mod domains;
 pub mod dsn;
 mod metrics;
 pub mod rpc;
@@ -40,7 +39,6 @@ use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
-use domains::ExtensionsFactory as DomainsExtensionFactory;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
 use futures::FutureExt;
@@ -69,6 +67,7 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
+use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::{NetworkService, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::PotSourceWorker;
@@ -230,7 +229,7 @@ struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     client: Arc<Client>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
-    domains_executor: Arc<domains::RuntimeExecutor>,
+    domains_executor: Arc<sc_domains::RuntimeExecutor>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 

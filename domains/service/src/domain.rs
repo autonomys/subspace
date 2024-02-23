@@ -14,6 +14,7 @@ use sc_client_api::{
     BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider, ProofProvider,
 };
 use sc_consensus::SharedBlockImport;
+use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::NetworkPeers;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -47,7 +48,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::Nonce;
-use subspace_service::domains::{ExtensionsFactory, RuntimeExecutor};
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
