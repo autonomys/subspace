@@ -1,7 +1,7 @@
 use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, Handler, HandlerFn, PeerAddress};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
-use fs2::FileExt;
+use fs4::FileExt;
 use futures::future::{pending, Fuse};
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
@@ -737,7 +737,7 @@ pub(super) fn remove_known_peer_addresses_internal(
                     if let Some(time) = first_failed_time {
                         // if we failed first time more than an hour ago (for Kademlia)
                         if *time + expired_address_duration_kademlia < now {
-                            let address_removed = PeerAddressRemovedEvent{
+                            let address_removed = PeerAddressRemovedEvent {
                                 peer_id,
                                 address: addr.clone(),
                             };

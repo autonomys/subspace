@@ -25,7 +25,7 @@ criterion = { version = "0.5.1", default-features = false, features = ["rayon", 
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.3.0"
-fs4 = "0.7.0"
+fs4 = "0.8.0"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 hwlocality = { version = "1.0.0-alpha.1", features = ["vendored"], optional = true }

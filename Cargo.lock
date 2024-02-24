@@ -3943,6 +3943,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d15c33be2d8e5bc0e6229c8c20905d69d6074c92c64c9b3485560b6d6dc1b68"
+dependencies = [
+ "rustix 0.38.30",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9844,7 +9854,7 @@ version = "0.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
 dependencies = [
  "clap",
- "fs4",
+ "fs4 0.7.0",
  "log",
  "sp-core",
  "thiserror",
@@ -11642,7 +11652,7 @@ dependencies = [
  "derive_more",
  "event-listener-primitives",
  "fdlimit",
- "fs4",
+ "fs4 0.8.0",
  "futures",
  "hex",
  "hwlocality",
@@ -11689,7 +11699,7 @@ dependencies = [
  "backoff",
  "bitvec",
  "criterion",
- "fs2",
+ "fs4 0.8.0",
  "futures",
  "hex",
  "libc",
@@ -11796,7 +11806,7 @@ dependencies = [
  "derive_more",
  "either",
  "event-listener-primitives",
- "fs2",
+ "fs4 0.8.0",
  "futures",
  "futures-timer",
  "hex",
