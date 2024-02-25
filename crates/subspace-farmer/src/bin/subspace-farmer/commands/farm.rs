@@ -544,8 +544,7 @@ where
             .first()
             .expect("Guaranteed to have some CPU cores; qed");
 
-        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).min(8))
-            .expect("Guaranteed to have some CPU cores; qed")
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).max(1).min(8)).expect("Not zero; qed")
     });
 
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
