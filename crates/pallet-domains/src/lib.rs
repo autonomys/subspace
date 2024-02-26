@@ -582,6 +582,17 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
+    /// has submitted bad ER and is pending to slash.
+    ///
+    /// The storage item of a given `(domain_id, operator_id)` will be pruned after either:
+    /// - All the ERs submitted by the operator for this domain are confirmed and pruned
+    /// - All the bad ERs submitted by the operator for this domain are pruned and the operator is slashed
+    #[pallet::storage]
+    #[pallet::getter(fn latest_submitted_er)]
+    pub(super) type LatestSubmittedER<T: Config> =
+        StorageMap<_, Identity, (DomainId, OperatorId), DomainBlockNumberFor<T>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.

@@ -4,7 +4,7 @@ use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf,
     HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainBlock,
-    Pallet, ReceiptHashFor,
+    LatestSubmittedER, Pallet, ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -41,6 +41,7 @@ pub enum Error {
     BalanceOverflow,
     DomainTransfersTracking,
     InvalidDomainTransfers,
+    LatestSubmittedERFallback,
     OverwritingER,
 }
 
@@ -397,6 +398,16 @@ pub(crate) fn process_execution_receipt<T: Config>(
             });
         }
     }
+
+    // Update the `LatestSubmittedER` for the operator
+    let key = (domain_id, submitter);
+    match receipt_block_number.cmp(&Pallet::<T>::latest_submitted_er(key)) {
+        Ordering::Equal => {}
+        Ordering::Greater => LatestSubmittedER::<T>::insert(key, receipt_block_number),
+        // The `LatestSubmittedER` should never fallback there must be something wrong
+        Ordering::Less => return Err(Error::LatestSubmittedERFallback),
+    }
+
     Ok(None)
 }
 
@@ -515,6 +526,23 @@ pub(crate) fn prune_receipt<T: Config>(
     };
     let block_tree_node =
         BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
+
+    // If the pruned ER is the operator's `latest_submitted_er` for this domain, it means either:
+    //
+    // - All the ER the operator submitted for this domain are confirmed and pruned, so the operator
+    //   can't be targetted by fraud proof later unless it submit other new ERs.
+    //
+    // - All the bad ER the operator submitted for this domain are pruned and the operator is already
+    //   slashed, so wwe don't need `LatestSubmittedER` to determine if the operator is pending slash.
+    //
+    // In both cases, it is safe to remove the `LatestSubmittedER` for the operator in this domain
+    for operator_id in block_tree_node.operator_ids.iter() {
+        let key = (domain_id, operator_id);
+        let latest_submitted_er = Pallet::<T>::latest_submitted_er(key);
+        if block_tree_node.execution_receipt.domain_block_number == latest_submitted_er {
+            LatestSubmittedER::<T>::remove(key);
+        }
+    }
 
     Ok(Some(block_tree_node))
 }
