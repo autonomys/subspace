@@ -656,6 +656,8 @@ mod pallet {
         UnexpectedFraudProof,
         /// Bad/Invalid bundle equivocation fraud proof.
         BadBundleEquivocationFraudProof,
+        /// The bad receipt already reported by a previous fraud proof
+        BadReceiptAlreadyReported,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1705,6 +1707,14 @@ impl<T: Config> Pallet<T> {
                 FraudProofError::ChallengingGenesisReceipt
             );
 
+            ensure!(
+                !Self::is_bad_er_pending_to_prune(
+                    fraud_proof.domain_id(),
+                    bad_receipt.domain_block_number
+                ),
+                FraudProofError::BadReceiptAlreadyReported,
+            );
+
             match fraud_proof {
                 FraudProof::InvalidBlockFees(InvalidBlockFeesProof { storage_proof, .. }) => {
                     verify_invalid_block_fees_fraud_proof::<
@@ -1970,8 +1980,11 @@ impl<T: Config> Pallet<T> {
     ) -> Option<DomainBlockNumberFor<T>> {
         let oldest_nonconfirmed_er_number =
             Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
+        let is_er_exist = BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some();
+        let is_pending_to_prune =
+            Self::is_bad_er_pending_to_prune(domain_id, oldest_nonconfirmed_er_number);
 
-        if BlockTree::<T>::get(domain_id, oldest_nonconfirmed_er_number).is_some() {
+        if is_er_exist && !is_pending_to_prune {
             Some(oldest_nonconfirmed_er_number)
         } else {
             // The `oldest_nonconfirmed_er_number` ER may not exist if
@@ -2044,6 +2057,22 @@ impl<T: Config> Pallet<T> {
 
     pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
         LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
+    }
+
+    pub fn is_bad_er_pending_to_prune(
+        domain_id: DomainId,
+        receipt_number: DomainBlockNumberFor<T>,
+    ) -> bool {
+        // The genesis receipt is always valid
+        if receipt_number.is_zero() {
+            return false;
+        }
+
+        let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+
+        // If `receipt_number` is greater than the current `head_receipt_number` meaning it is a
+        // bad ER and the `head_receipt_number` is previously reverted by a fraud proof
+        head_receipt_number < receipt_number
     }
 
     pub fn is_operator_pending_to_slash(domain_id: DomainId, operator_id: OperatorId) -> bool {
