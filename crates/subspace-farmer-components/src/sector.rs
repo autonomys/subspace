@@ -1,6 +1,7 @@
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
 use subspace_core_primitives::checksum::Blake3Checksummed;
@@ -59,24 +60,24 @@ pub struct SectorMetadata {
 impl SectorMetadata {
     /// Returns offsets of each s-bucket relatively to the beginning of the sector (in chunks)
     pub fn s_bucket_offsets(&self) -> Box<[u32; Record::NUM_S_BUCKETS]> {
-        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-        // SAFETY: Data structure filled with zeroes is a valid invariant
-        let mut s_bucket_offsets =
-            unsafe { Box::<[u32; Record::NUM_S_BUCKETS]>::new_zeroed().assume_init() };
-
-        self.s_bucket_sizes
+        let s_bucket_offsets = self
+            .s_bucket_sizes
             .iter()
-            .zip(s_bucket_offsets.iter_mut())
-            .for_each({
+            .map({
                 let mut base_offset = 0;
 
-                move |(s_bucket_size, s_bucket_offset)| {
-                    *s_bucket_offset = base_offset;
+                move |s_bucket_size| {
+                    let offset = base_offset;
                     base_offset += u32::from(*s_bucket_size);
+                    offset
                 }
-            });
+            })
+            .collect::<Box<_>>();
 
-        s_bucket_offsets
+        assert_eq!(s_bucket_offsets.len(), Record::NUM_S_BUCKETS);
+        let mut s_bucket_offsets = ManuallyDrop::new(s_bucket_offsets);
+        // SAFETY: Original memory is not dropped, number of elements checked above
+        unsafe { Box::from_raw(s_bucket_offsets.as_mut_ptr() as *mut [u32; Record::NUM_S_BUCKETS]) }
     }
 }
 
@@ -164,6 +165,7 @@ impl RawSector {
 
 // Bit array containing space for bits equal to the number of s-buckets in a record
 type SingleRecordBitArray = BitArray<[u8; Record::NUM_S_BUCKETS / u8::BITS as usize]>;
+
 const SINGLE_RECORD_BIT_ARRAY_SIZE: usize = mem::size_of::<SingleRecordBitArray>();
 
 // TODO: I really tried to avoid `count_ones()`, but wasn't able to with safe Rust due to lifetimes
@@ -400,23 +402,21 @@ impl SectorContentsMap {
 
     /// Returns sizes of each s-bucket
     pub fn s_bucket_sizes(&self) -> Box<[u16; Record::NUM_S_BUCKETS]> {
-        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-        // SAFETY: Data structure filled with zeroes is a valid invariant
-        let mut s_bucket_sizes =
-            unsafe { Box::<[u16; Record::NUM_S_BUCKETS]>::new_zeroed().assume_init() };
         // Rayon doesn't support iteration over custom types yet
-        (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
+        let s_bucket_sizes = (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
             .into_par_iter()
             .map(SBucket::from)
-            .zip(s_bucket_sizes.par_iter_mut())
-            .for_each(|(s_bucket, s_bucket_size)| {
-                *s_bucket_size = self
-                    .iter_s_bucket_records(s_bucket)
+            .map(|s_bucket| {
+                self.iter_s_bucket_records(s_bucket)
                     .expect("S-bucket guaranteed to be in range; qed")
-                    .count() as u16;
-            });
+                    .count() as u16
+            })
+            .collect::<Box<_>>();
 
-        s_bucket_sizes
+        assert_eq!(s_bucket_sizes.len(), Record::NUM_S_BUCKETS);
+        let mut s_bucket_sizes = ManuallyDrop::new(s_bucket_sizes);
+        // SAFETY: Original memory is not dropped, number of elements checked above
+        unsafe { Box::from_raw(s_bucket_sizes.as_mut_ptr() as *mut [u16; Record::NUM_S_BUCKETS]) }
     }
 
     /// Creates an iterator of `(s_bucket, encoded_chunk_used, chunk_location)`, where `s_bucket` is
