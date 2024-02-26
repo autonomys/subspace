@@ -1104,6 +1104,13 @@ impl_runtime_apis! {
         fn consensus_chain_byte_fee() -> Balance {
             DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
+
+        fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: DomainHash) -> bool {
+            Domains::execution_receipt(receipt_hash).map(
+                |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
+            )
+            .unwrap_or(false)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

@@ -1248,6 +1248,9 @@ sp_api::decl_runtime_apis! {
         /// Reture the consensus chain byte fee that will used to charge the domain transaction for consensus
         /// chain storage fee
         fn consensus_chain_byte_fee() -> Balance;
+
+        /// Return if the receipt is exist and pending to prune
+        fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
