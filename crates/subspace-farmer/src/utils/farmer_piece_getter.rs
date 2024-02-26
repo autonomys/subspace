@@ -91,7 +91,10 @@ where
         trace!(%piece_index, "Getting piece from DSN L2 cache");
         let maybe_piece = inner
             .piece_provider
-            .get_piece_from_dsn_cache(piece_index, Self::convert_retry_policy(retry_policy))
+            .get_piece_from_dsn_cache_with_retries(
+                piece_index,
+                Self::convert_retry_policy(retry_policy),
+            )
             .await?;
 
         if let Some(piece) = maybe_piece {

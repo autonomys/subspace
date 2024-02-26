@@ -71,7 +71,7 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.get_piece_from_dsn_cache(
+        self.get_piece_from_dsn_cache_with_retries(
             piece_index,
             RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
         )

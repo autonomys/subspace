@@ -82,8 +82,8 @@ where
         }
     }
 
-    // Get from piece cache (L2)
-    async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
+    /// Returns piece by its index from farmer's piece cache (L2)
+    pub async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = piece_index.to_multihash();
 
         let mut request_batch = self.node.get_requests_batch_handle().await;
@@ -129,7 +129,7 @@ where
 
     /// Returns piece by its index from farmer's piece cache (L2).
     /// Uses retry policy for error handling.
-    pub async fn get_piece_from_dsn_cache(
+    pub async fn get_piece_from_dsn_cache_with_retries(
         &self,
         piece_index: PieceIndex,
         retry_policy: RetryPolicy,

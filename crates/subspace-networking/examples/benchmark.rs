@@ -117,6 +117,7 @@ struct PieceRequestStats {
     not_found: u32,
     error: u32,
 }
+
 impl PieceRequestStats {
     fn add_found(&mut self) {
         self.found += 1;
@@ -157,7 +158,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         let piece_index = PieceIndex::from(i as u64);
         let start = Instant::now();
         let piece = piece_provider
-            .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
+            .get_piece_from_dsn_cache_with_retries(piece_index, RetryPolicy::Limited(retries))
             .await;
         let end = Instant::now();
         let duration = end.duration_since(start);
@@ -220,7 +221,10 @@ async fn parallel_benchmark(
                     .expect("Semaphore cannot be closed.");
                 let semaphore_acquired = Instant::now();
                 let maybe_piece = piece_provider
-                    .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
+                    .get_piece_from_dsn_cache_with_retries(
+                        piece_index,
+                        RetryPolicy::Limited(retries),
+                    )
                     .await;
 
                 let end = Instant::now();
