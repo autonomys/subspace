@@ -81,6 +81,7 @@ std = [
     "fp-account/std",
     "fp-rpc/std",
     "fp-self-contained/std",
+    "frame-benchmarking?/std",
     "frame-support/std",
     "frame-system/std",
     "frame-system-rpc-runtime-api/std",
