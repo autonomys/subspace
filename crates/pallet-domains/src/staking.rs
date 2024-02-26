@@ -1170,16 +1170,11 @@ pub(crate) fn do_reward_operators<T: Config>(
 
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub(crate) fn do_slash_operators<T: Config, Iter>(operator_ids: Iter) -> Result<(), Error>
-where
-    Iter: Iterator<
-        Item = (
-            OperatorId,
-            SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
-        ),
-    >,
-{
-    for (operator_id, reason) in operator_ids {
+pub(crate) fn do_slash_operators<T: Config>(
+    operator_ids: impl AsRef<[OperatorId]>,
+    slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
+) -> Result<(), Error> {
+    for operator_id in operator_ids.as_ref() {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
             let operator = match maybe_operator.as_mut() {
                 // If the operator is already slashed and removed due to fraud proof, when the operator
@@ -1191,7 +1186,7 @@ where
             let mut pending_slashes =
                 PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
 
-            if pending_slashes.contains(&operator_id) {
+            if pending_slashes.contains(operator_id) {
                 return Ok(());
             }
 
@@ -1203,24 +1198,24 @@ where
                         .ok_or(Error::DomainNotInitialized)?;
 
                     // slash and remove operator from next epoch set
-                    operator.status = OperatorStatus::Slashed;
-                    stake_summary.next_operators.remove(&operator_id);
+                    operator.update_status(OperatorStatus::Slashed);
+                    stake_summary.next_operators.remove(operator_id);
 
                     // remove any current operator switches
                     PendingOperatorSwitches::<T>::mutate(
                         operator.current_domain_id,
                         |maybe_switching_operators| {
                             if let Some(switching_operators) = maybe_switching_operators.as_mut() {
-                                switching_operators.remove(&operator_id);
+                                switching_operators.remove(operator_id);
                             }
                         },
                     );
 
-                    pending_slashes.insert(operator_id);
+                    pending_slashes.insert(*operator_id);
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Pallet::<T>::deposit_event(Event::OperatorSlashed {
-                        operator_id,
-                        reason,
+                        operator_id: *operator_id,
+                        reason: slash_reason.clone(),
                     });
                     Ok(())
                 },
@@ -2636,10 +2631,7 @@ pub(crate) mod tests {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
             }
 
-            do_slash_operators::<Test, _>(
-                vec![(operator_id, SlashedReason::InvalidBundle(1))].into_iter(),
-            )
-            .unwrap();
+            do_slash_operators::<Test>(vec![operator_id], SlashedReason::InvalidBundle(1)).unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
@@ -2741,15 +2733,12 @@ pub(crate) mod tests {
                 );
             }
 
-            do_slash_operators::<Test, _>(
-                vec![
-                    (operator_id_1, SlashedReason::InvalidBundle(1)),
-                    (operator_id_2, SlashedReason::InvalidBundle(2)),
-                    (operator_id_3, SlashedReason::InvalidBundle(3)),
-                ]
-                .into_iter(),
-            )
-            .unwrap();
+            do_slash_operators::<Test>(vec![operator_id_1], SlashedReason::InvalidBundle(1))
+                .unwrap();
+            do_slash_operators::<Test>(vec![operator_id_2], SlashedReason::InvalidBundle(2))
+                .unwrap();
+            do_slash_operators::<Test>(vec![operator_id_3], SlashedReason::InvalidBundle(3))
+                .unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id_1));

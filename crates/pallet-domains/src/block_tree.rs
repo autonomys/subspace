@@ -1,9 +1,10 @@
 //! Domain block tree
 
 use crate::{
-    BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
-    DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
-    InboxedBundleAuthor, LatestConfirmedDomainBlock, Pallet, ReceiptHashFor,
+    BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
+    DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf,
+    HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainBlock,
+    Pallet, ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -40,6 +41,7 @@ pub enum Error {
     BalanceOverflow,
     DomainTransfersTracking,
     InvalidDomainTransfers,
+    OverwritingER,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -292,31 +294,28 @@ pub(crate) fn process_execution_receipt<T: Config>(
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
+    let receipt_block_number = execution_receipt.domain_block_number;
     match receipt_type {
         AcceptedReceiptType::NewHead => {
-            let domain_block_number = execution_receipt.domain_block_number;
-
-            add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
+            add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt)?;
 
             // Update the head receipt number
-            HeadReceiptNumber::<T>::insert(domain_id, domain_block_number);
+            HeadReceiptNumber::<T>::insert(domain_id, receipt_block_number);
             HeadReceiptExtended::<T>::insert(domain_id, true);
 
             // Prune expired domain block
             if let Some(to_prune) =
-                domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
+                receipt_block_number.checked_sub(&T::BlockTreePruningDepth::get())
             {
-                let receipt_hash = match BlockTree::<T>::take(domain_id, to_prune) {
-                    Some(h) => h,
+                let BlockTreeNode {
+                    execution_receipt,
+                    operator_ids,
+                } = match prune_receipt::<T>(domain_id, to_prune)? {
+                    Some(n) => n,
                     // The receipt at `to_prune` may already been pruned if there is fraud proof being
                     // processed previously and the `HeadReceiptNumber` is reverted.
                     None => return Ok(None),
                 };
-
-                let BlockTreeNode {
-                    execution_receipt,
-                    operator_ids,
-                } = BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
 
                 // Collect the paid bundle storage fees and the invalid bundle author
                 let mut paid_bundle_storage_fees = BTreeMap::new();
@@ -458,10 +457,15 @@ fn add_new_receipt_to_block_tree<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
     execution_receipt: ExecutionReceiptOf<T>,
-) {
+) -> Result<(), Error> {
     // Construct and add a new domain block to the block tree
     let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = execution_receipt.domain_block_number;
+
+    ensure!(
+        !BlockTree::<T>::contains_key(domain_id, domain_block_number),
+        Error::OverwritingER,
+    );
 
     BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
     let block_tree_node = BlockTreeNode {
@@ -469,6 +473,8 @@ fn add_new_receipt_to_block_tree<T: Config>(
         operator_ids: sp_std::vec![submitter],
     };
     BlockTreeNodes::<T>::insert(er_hash, block_tree_node);
+
+    Ok(())
 }
 
 /// Import the genesis receipt to the block tree
@@ -497,6 +503,20 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     // NOTE: no need to update the head receipt number as `HeadReceiptNumber` is using `ValueQuery`
     BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
     BlockTreeNodes::<T>::insert(er_hash, block_tree_node);
+}
+
+pub(crate) fn prune_receipt<T: Config>(
+    domain_id: DomainId,
+    receipt_number: DomainBlockNumberFor<T>,
+) -> Result<Option<BlockTreeNodeFor<T>>, Error> {
+    let receipt_hash = match BlockTree::<T>::take(domain_id, receipt_number) {
+        Some(er_hash) => er_hash,
+        None => return Ok(None),
+    };
+    let block_tree_node =
+        BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
+
+    Ok(Some(block_tree_node))
 }
 
 #[cfg(test)]

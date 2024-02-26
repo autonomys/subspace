@@ -116,6 +116,14 @@ pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Numb
 pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
+pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
+    BlockNumberFor<T>,
+    <T as frame_system::Config>::Hash,
+    DomainBlockNumberFor<T>,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
 /// The current storage version.
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
@@ -124,8 +132,8 @@ mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
-        ReceiptType,
+        execution_receipt_type, process_execution_receipt, prune_receipt, AcceptedReceiptType,
+        Error as BlockTreeError, ReceiptType,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
@@ -150,8 +158,9 @@ mod pallet {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, BlockSlot, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier,
-        NominatorId, OpaqueBundleOf, ReceiptHashFor, STORAGE_VERSION,
+        BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, DomainHashingFor,
+        ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor,
+        STORAGE_VERSION,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -177,7 +186,6 @@ mod pallet {
     };
     use sp_runtime::Saturating;
     use sp_std::boxed::Box;
-    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
@@ -496,19 +504,8 @@ mod pallet {
 
     /// Mapping of block tree node hash to the node, each node represent a domain block
     #[pallet::storage]
-    pub(super) type BlockTreeNodes<T: Config> = StorageMap<
-        _,
-        Identity,
-        ReceiptHashFor<T>,
-        BlockTreeNode<
-            BlockNumberFor<T>,
-            T::Hash,
-            DomainBlockNumberFor<T>,
-            T::DomainHash,
-            BalanceOf<T>,
-        >,
-        OptionQuery,
-    >;
+    pub(super) type BlockTreeNodes<T: Config> =
+        StorageMap<_, Identity, ReceiptHashFor<T>, BlockTreeNodeFor<T>, OptionQuery>;
 
     /// The head receipt number of each domain
     #[pallet::storage]
@@ -861,6 +858,7 @@ mod pallet {
             let operator_id = opaque_bundle.operator_id();
             let bundle_size = opaque_bundle.size();
             let receipt = opaque_bundle.into_receipt();
+            let receipt_block_number = receipt.domain_block_number;
 
             #[cfg(not(feature = "runtime-benchmarks"))]
             let mut epoch_transitted = false;
@@ -873,6 +871,24 @@ mod pallet {
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
+                    // Before adding the new head receipt to the block tree, try to prune any previous
+                    // bad ER at the same domain block and slash the submitter.
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
+                        if let Some(block_tree_node) =
+                            prune_receipt::<T>(domain_id, receipt_block_number)
+                                .map_err(Error::<T>::from)?
+                        {
+                            let bad_receipt_hash = block_tree_node
+                                .execution_receipt
+                                .hash::<DomainHashingFor<T>>();
+                            do_slash_operators::<T>(
+                                block_tree_node.operator_ids.into_iter(),
+                                SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                            )
+                            .map_err(Error::<T>::from)?;
+                        }
+                    }
+
                     #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
@@ -905,17 +921,9 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_slash_operators::<T, _>(
-                            confirmed_block_info.invalid_bundle_authors.into_iter().map(
-                                |operator_id| {
-                                    (
-                                        operator_id,
-                                        SlashedReason::InvalidBundle(
-                                            confirmed_block_info.domain_block_number,
-                                        ),
-                                    )
-                                },
-                            ),
+                        do_slash_operators::<T>(
+                            confirmed_block_info.invalid_bundle_authors.into_iter(),
+                            SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
                         )
                         .map_err(Error::<T>::from)?;
 
@@ -992,7 +1000,6 @@ mod pallet {
             let domain_id = fraud_proof.domain_id();
 
             if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
-                let mut operators_to_slash = BTreeMap::new();
                 let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
                 let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
@@ -1006,27 +1013,17 @@ mod pallet {
                     Error::<T>::from(FraudProofError::BadReceiptNotFound),
                 );
 
-                // Starting from the head receipt, prune all ER between [bad_receipt_number..head_receipt_number]
-                let mut to_prune = head_receipt_number;
-
-                while to_prune >= bad_receipt_number {
-                    let receipt_hash = BlockTree::<T>::take(domain_id, to_prune)
-                        .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
-
-                    let BlockTreeNode { operator_ids, .. } =
-                        BlockTreeNodes::<T>::take(receipt_hash)
-                            .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
-
-                    // NOTE: the operator id will be deduplicated since we are using `BTreeMap`
-                    // and slashed reason will hold earliest bad execution receipt hash which this
-                    // operator submitted.
-                    operator_ids.into_iter().for_each(|id| {
-                        operators_to_slash
-                            .insert(id, SlashedReason::BadExecutionReceipt(receipt_hash));
-                    });
-
-                    to_prune -= One::one();
-                }
+                // Prune the bad ER and slash the submitter, the descendants of the bad ER (i.e. all ERs in
+                // `[bad_receipt_number + 1..head_receipt_number]` ) and the corresponding submitter will be
+                // pruned/slashed lazily as the domain progressed.
+                let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
+                    .map_err(Error::<T>::from)?
+                    .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
+                do_slash_operators::<T>(
+                    block_tree_node.operator_ids.into_iter(),
+                    SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                )
+                .map_err(Error::<T>::from)?;
 
                 // Update the head receipt number to `bad_receipt_number - 1`
                 let new_head_receipt_number = bad_receipt_number.saturating_sub(One::one());
@@ -1036,10 +1033,6 @@ mod pallet {
                     domain_id,
                     new_head_receipt_number: Some(new_head_receipt_number),
                 });
-
-                // Slash bad operators
-                do_slash_operators::<T, _>(operators_to_slash.into_iter())
-                    .map_err(Error::<T>::from)?;
             } else if let Some((targeted_bad_operator, slot)) =
                 fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
             {
@@ -1048,12 +1041,9 @@ mod pallet {
                     new_head_receipt_number: None,
                 });
 
-                do_slash_operators::<T, _>(
-                    vec![(
-                        targeted_bad_operator,
-                        SlashedReason::BundleEquivocation(slot),
-                    )]
-                    .into_iter(),
+                do_slash_operators::<T>(
+                    vec![targeted_bad_operator].into_iter(),
+                    SlashedReason::BundleEquivocation(slot),
                 )
                 .map_err(Error::<T>::from)?;
             }
