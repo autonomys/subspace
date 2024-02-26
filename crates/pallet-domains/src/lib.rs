@@ -1619,7 +1619,8 @@ impl<T: Config> Pallet<T> {
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
         ensure!(
-            operator.status != OperatorStatus::Slashed,
+            *operator.status::<T>(operator_id) != OperatorStatus::Slashed
+                && *operator.status::<T>(operator_id) != OperatorStatus::PendingSlash,
             BundleError::BadOperator
         );
 
@@ -2043,6 +2044,22 @@ impl<T: Config> Pallet<T> {
 
     pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
         LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
+    }
+
+    pub fn is_operator_pending_to_slash(domain_id: DomainId, operator_id: OperatorId) -> bool {
+        let latest_submitted_er = LatestSubmittedER::<T>::get((domain_id, operator_id));
+
+        // The genesis receipt is always valid
+        if latest_submitted_er.is_zero() {
+            return false;
+        }
+
+        let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+
+        // If the operator have submitted an ER greater than the current `head_receipt_number`
+        // meaning the ER is a bad ER and the `head_receipt_number` is previously reverted by
+        // a fraud proof
+        head_receipt_number < latest_submitted_er
     }
 }
 

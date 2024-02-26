@@ -5,7 +5,7 @@ use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
     ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
-    OperatorStatus, Operators, ReceiptHashFor,
+    Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -39,7 +39,7 @@ use sp_domains_fraud_proof::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One, Zero,
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One,
 };
 use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic, Saturating};
 use sp_state_machine::backend::AsTrieBackend;
@@ -618,23 +618,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
 
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
     for operator_id in operator_ids {
-        Operators::<Test>::insert(
-            operator_id,
-            Operator {
-                signing_key: pair.public(),
-                current_domain_id: domain_id,
-                next_domain_id: domain_id,
-                minimum_nominator_stake: SSC,
-                nomination_tax: Default::default(),
-                current_total_stake: Zero::zero(),
-                current_epoch_rewards: Zero::zero(),
-                current_total_shares: Zero::zero(),
-                status: OperatorStatus::Registered,
-                deposits_in_epoch: Zero::zero(),
-                withdrawals_in_epoch: Zero::zero(),
-                total_storage_fee_deposit: Zero::zero(),
-            },
-        );
+        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
     }
 
     domain_id

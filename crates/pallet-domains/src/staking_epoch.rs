@@ -22,6 +22,7 @@ use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Saturating;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
@@ -168,7 +169,7 @@ fn switch_operator<T: Config>(
             .ok_or(TransitionError::UnknownOperator)?;
 
         // operator is not registered, just no-op
-        if operator.status != OperatorStatus::Registered {
+        if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
             return Ok(());
         }
 
@@ -200,7 +201,15 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
 
         let mut total_domain_stake = BalanceOf::<T>::zero();
         let mut current_operators = BTreeMap::new();
+        let mut next_operators = BTreeSet::new();
         for next_operator_id in &stake_summary.next_operators {
+            // If an operator is pending to slash then similar to the slashed operator it should not be added
+            // into the `next_operators/current_operators` and we should not `do_finalize_operator_epoch_staking`
+            // for it.
+            if Pallet::<T>::is_operator_pending_to_slash(domain_id, *next_operator_id) {
+                continue;
+            }
+
             let operator_stake = do_finalize_operator_epoch_staking::<T>(
                 domain_id,
                 *next_operator_id,
@@ -211,6 +220,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 .checked_add(&operator_stake)
                 .ok_or(TransitionError::BalanceOverflow)?;
             current_operators.insert(*next_operator_id, operator_stake);
+            next_operators.insert(*next_operator_id);
         }
 
         let election_verification_params = ElectionVerificationParams {
@@ -224,6 +234,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
         stake_summary.current_operators = current_operators;
+        stake_summary.next_operators = next_operators;
 
         Ok(previous_epoch)
     })
@@ -240,7 +251,7 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
             .as_mut()
             .ok_or(TransitionError::UnknownOperator)?;
 
-        if operator.status != OperatorStatus::Registered {
+        if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
             return Err(TransitionError::OperatorNotRegistered);
         }
 

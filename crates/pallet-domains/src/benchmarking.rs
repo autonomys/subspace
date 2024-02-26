@@ -343,7 +343,7 @@ mod benchmarks {
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
         assert_eq!(
-            operator.status,
+            *operator.status::<T>(operator_id),
             OperatorStatus::Deregistered((domain_id, 0, DomainBlockNumberFor::<T>::zero()).into())
         );
     }
