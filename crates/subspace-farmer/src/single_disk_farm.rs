@@ -1,6 +1,7 @@
 pub mod farming;
 pub mod piece_cache;
 pub mod piece_reader;
+pub mod plot_cache;
 mod plotting;
 
 use crate::identity::{Identity, IdentityError};
@@ -13,6 +14,7 @@ use crate::single_disk_farm::farming::{
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
@@ -566,6 +568,7 @@ pub struct SingleDiskFarm {
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
+    plot_cache: DiskPlotCache,
     piece_reader: PieceReader,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
@@ -748,7 +751,7 @@ impl SingleDiskFarm {
             let cache_space = allocated_space
                 - fixed_space_usage
                 - (target_sector_count * single_sector_overhead);
-            cache_space as usize / DiskPieceCache::element_size()
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         };
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
             Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
@@ -883,6 +886,12 @@ impl SingleDiskFarm {
         plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
+        let plot_cache = DiskPlotCache::new(
+            &plot_file,
+            &sectors_metadata,
+            target_sector_count,
+            sector_size,
+        );
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -1191,6 +1200,7 @@ impl SingleDiskFarm {
             tasks,
             handlers,
             piece_cache,
+            plot_cache,
             piece_reader,
             start_sender: Some(start_sender),
             stop_sender: Some(stop_sender),
@@ -1335,6 +1345,11 @@ impl SingleDiskFarm {
     /// Get piece cache instance
     pub fn piece_cache(&self) -> DiskPieceCache {
         self.piece_cache.clone()
+    }
+
+    /// Get plot cache instance
+    pub fn plot_cache(&self) -> DiskPlotCache {
+        self.plot_cache.clone()
     }
 
     /// Get piece reader to read plotted pieces later
@@ -1887,14 +1902,14 @@ impl SingleDiskFarm {
             };
 
             let element_size = DiskPieceCache::element_size();
-            let number_of_cached_elements = cache_size / element_size as u64;
-            let dummy_element = vec![0; element_size];
+            let number_of_cached_elements = cache_size / u64::from(element_size);
+            let dummy_element = vec![0; element_size as usize];
             (0..number_of_cached_elements)
                 .into_par_iter()
-                .map_with(vec![0; element_size], |element, cache_offset| {
+                .map_with(vec![0; element_size as usize], |element, cache_offset| {
                     let _span_guard = span.enter();
 
-                    let offset = cache_offset * element_size as u64;
+                    let offset = cache_offset * u64::from(element_size);
                     if let Err(error) = cache_file.read_exact_at(element, offset) {
                         warn!(
                             path = %file.display(),
@@ -1908,7 +1923,7 @@ impl SingleDiskFarm {
                         if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
-                                size: element_size as u64,
+                                size: u64::from(element_size),
                                 offset,
                                 error,
                             });
@@ -1918,7 +1933,7 @@ impl SingleDiskFarm {
                     }
 
                     let (index_and_piece_bytes, expected_checksum) =
-                        element.split_at(element_size - mem::size_of::<Blake3Hash>());
+                        element.split_at(element_size as usize - mem::size_of::<Blake3Hash>());
                     let actual_checksum = blake3_hash(index_and_piece_bytes);
                     if actual_checksum != expected_checksum && element != &dummy_element {
                         warn!(
@@ -1931,7 +1946,7 @@ impl SingleDiskFarm {
                         if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
                             return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
                                 file: file.clone(),
-                                size: element_size as u64,
+                                size: u64::from(element_size),
                                 offset,
                                 error,
                             });

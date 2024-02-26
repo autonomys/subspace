@@ -94,9 +94,13 @@ where
             .get_piece_from_dsn_cache(piece_index, Self::convert_retry_policy(retry_policy))
             .await?;
 
-        if maybe_piece.is_some() {
+        if let Some(piece) = maybe_piece {
             trace!(%piece_index, "Got piece from DSN L2 cache successfully");
-            return Ok(maybe_piece);
+            inner
+                .farmer_cache
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Ok(Some(piece));
         }
 
         // Try node's RPC before reaching to L1 (archival storage on DSN)
@@ -104,6 +108,10 @@ where
         match inner.node_client.piece(piece_index).await {
             Ok(Some(piece)) => {
                 trace!(%piece_index, "Got piece from node successfully");
+                inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
                 return Ok(Some(piece));
             }
             Ok(None) => {
@@ -128,6 +136,10 @@ where
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {
                 trace!(%piece_index, "Got piece from local plot successfully");
+                inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
                 return Ok(Some(piece));
             }
         }
@@ -140,10 +152,13 @@ where
             .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
             .await;
 
-        if archival_storage_search_result.is_some() {
+        if let Some(piece) = archival_storage_search_result {
             trace!(%piece_index, "DSN L1 lookup succeeded");
-
-            return Ok(archival_storage_search_result);
+            inner
+                .farmer_cache
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Ok(Some(piece));
         }
 
         debug!(
