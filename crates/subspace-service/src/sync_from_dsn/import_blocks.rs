@@ -29,14 +29,13 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use sp_runtime::Saturating;
 use std::error::Error;
 use std::fmt;
-use std::num::NonZeroU16;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, PieceIndex, RecordedHistorySegment, SegmentIndex,
 };
-use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tokio::sync::Semaphore;
 use tracing::warn;
 
@@ -71,16 +70,9 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.get_piece_from_dsn_cache_with_retries(
-            piece_index,
-            RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-        )
-        .await
+        Ok(self.get_piece_from_cache(piece_index).await)
     }
 }
-
-/// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(7).expect("Not zero; qed");
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
 /// essentially used to ensure we use a bounded amount of RAM during sync process.
