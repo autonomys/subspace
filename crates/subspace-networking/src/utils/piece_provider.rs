@@ -3,22 +3,12 @@
 use crate::utils::multihash::ToMultihash;
 use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
 use async_trait::async_trait;
-use backoff::future::retry;
-use backoff::ExponentialBackoff;
 use futures::StreamExt;
 use libp2p::PeerId;
 use std::collections::HashSet;
-use std::error::Error;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex};
 use tracing::{debug, trace, warn};
-
-/// Defines initial duration between get_piece calls.
-const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
-/// Defines max duration between get_piece calls.
-const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
 /// Validates piece against using its commitment.
 #[async_trait]
@@ -34,22 +24,6 @@ pub trait PieceValidator: Sync + Send {
 
 /// Stub implementation for piece validation.
 pub struct NoPieceValidator;
-
-/// Defines retry policy on error during piece acquiring.
-#[derive(PartialEq, Eq, Clone, Debug, Copy)]
-pub enum RetryPolicy {
-    /// Retry N times (including zero)
-    Limited(u16),
-    /// No restrictions on retries
-    Unlimited,
-}
-
-impl Default for RetryPolicy {
-    #[inline]
-    fn default() -> Self {
-        Self::Limited(0)
-    }
-}
 
 #[async_trait]
 impl PieceValidator for NoPieceValidator {
@@ -125,62 +99,6 @@ where
         }
 
         None
-    }
-
-    /// Returns piece by its index from farmer's piece cache (L2).
-    /// Uses retry policy for error handling.
-    pub async fn get_piece_from_dsn_cache_with_retries(
-        &self,
-        piece_index: PieceIndex,
-        retry_policy: RetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        trace!(%piece_index, "Piece request.");
-
-        let backoff = ExponentialBackoff {
-            initial_interval: GET_PIECE_INITIAL_INTERVAL,
-            max_interval: GET_PIECE_MAX_INTERVAL,
-            // Try until we get a valid piece
-            max_elapsed_time: None,
-            multiplier: 1.75,
-            ..ExponentialBackoff::default()
-        };
-
-        let retries = AtomicU64::default();
-
-        retry(backoff, || async {
-            let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
-
-            if let Some(piece) = self.get_piece_from_cache(piece_index).await {
-                trace!(%piece_index, current_attempt, "Got piece");
-                return Ok(Some(piece));
-            }
-
-            match retry_policy {
-                RetryPolicy::Limited(max_retries) => {
-                    if current_attempt >= max_retries.into() {
-                        if max_retries > 0 {
-                            debug!(
-                                %piece_index,
-                                current_attempt,
-                                max_retries,
-                                "Couldn't get a piece from DSN L2. No retries left."
-                            );
-                        }
-                        return Ok(None);
-                    }
-
-                    max_retries as u64
-                }
-                RetryPolicy::Unlimited => u64::MAX,
-            };
-
-            trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2. Retrying...");
-
-            Err(backoff::Error::transient(
-                "Couldn't get piece from DSN".into(),
-            ))
-        })
-        .await
     }
 
     /// Get piece from a particular peer.
