@@ -74,7 +74,9 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>

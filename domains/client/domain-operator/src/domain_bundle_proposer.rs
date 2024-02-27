@@ -9,7 +9,8 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
+    BundleHeader, BundleProducerElectionApi, DomainId, DomainsApi, ExecutionReceipt,
+    HeaderHashingFor, ProofOfElection,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::Percent;
@@ -99,7 +100,9 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + SubspaceApi<CBlock, FarmerPublicKey>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + SubspaceApi<CBlock, FarmerPublicKey>
+        + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool:
         sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
