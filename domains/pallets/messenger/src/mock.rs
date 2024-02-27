@@ -169,7 +169,7 @@ macro_rules! impl_runtime {
         }
 
         pub const USER_ACCOUNT: AccountId = 1;
-        pub const USER_INITIAL_BALANCE: Balance = 1000;
+        pub const USER_INITIAL_BALANCE: Balance = 500000000;
 
         pub fn new_test_ext() -> TestExternalities {
             let mut t = frame_system::GenesisConfig::<Runtime>::default()
