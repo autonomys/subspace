@@ -9,10 +9,12 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, BundleProducerElectionApi, DomainId, DomainsApi, ExecutionReceipt,
-    HeaderHashingFor, ProofOfElection,
+    BundleHeader, BundleProducerElectionApi, DomainBlockLimit, DomainId, DomainsApi,
+    ExecutionReceipt, HeaderHashingFor, ProofOfElection,
 };
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
+use sp_runtime::traits::{
+    Block as BlockT, Hash as HashT, Header as HeaderT, IntegerSquareRoot, NumberFor, One, Zero,
+};
 use sp_runtime::Percent;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
@@ -58,6 +60,26 @@ impl<Block: BlockT, CBlock: BlockT> PreviousBundledTx<Block, CBlock> {
     fn add_bundled(&mut self, tx_hash: <Block as BlockT>::Hash) {
         self.tx_hashes.insert(tx_hash);
     }
+}
+
+pub fn calculate_max_bundle_weight_and_size(
+    domain_block_limit: DomainBlockLimit,
+    consensus_slot_probability: (u64, u64),
+    bundle_slot_probability: (u64, u64),
+) -> (Weight, u32) {
+    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
+    // This represents: bundle_slot_probability/SLOT_PROBABILITY
+    let expected_bundles_per_block = (bundle_slot_probability.0 * consensus_slot_probability.1)
+        / (bundle_slot_probability.1 * consensus_slot_probability.0);
+
+    // This represents: Ceil[2*Sqrt[bundle_slot_probability/SLOT_PROBABILITY]])
+    let std_of_expected_bundles_per_block = (2 * expected_bundles_per_block.integer_sqrt()) + 1;
+
+    // max_bundle_weight = TargetDomainBlockWeight/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
+    let max_bundle_weight = domain_block_limit.max_block_weight
+        / (expected_bundles_per_block + std_of_expected_bundles_per_block);
+
+    (max_bundle_weight, domain_block_limit.max_block_size)
 }
 
 pub struct DomainBundleProposer<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> {
@@ -128,6 +150,38 @@ where
         })
     }
 
+    fn max_bundle_weight_and_size(&self) -> sp_blockchain::Result<(Weight, u32)> {
+        let domain_block_limit = self
+            .consensus_client
+            .runtime_api()
+            .domain_block_limit(self.consensus_client.info().best_hash, self.domain_id)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    format!("Domain block limit for {:?} not found", self.domain_id).into(),
+                )
+            })?;
+        let consensus_slot_probability = self.consensus_slot_probability;
+        let bundle_slot_probability = self
+            .consensus_client
+            .runtime_api()
+            .bundle_producer_election_params(
+                self.consensus_client.info().best_hash,
+                self.domain_id,
+            )?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    format!("Domain configuration for {:?} not found", self.domain_id).into(),
+                )
+            })?
+            .bundle_slot_probability;
+
+        Ok(calculate_max_bundle_weight_and_size(
+            domain_block_limit,
+            consensus_slot_probability,
+            bundle_slot_probability,
+        ))
+    }
+
     pub(crate) async fn propose_bundle_at(
         &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
@@ -158,15 +212,7 @@ where
             .maybe_clear(self.consensus_client.info().best_hash);
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
-        let domain_block_limit = self
-            .consensus_client
-            .runtime_api()
-            .domain_block_limit(self.consensus_client.info().best_hash, self.domain_id)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Application(
-                    format!("Domain block limit for {:?} not found", self.domain_id).into(),
-                )
-            })?;
+        let (max_bundle_weight, max_bundle_size) = self.max_bundle_weight_and_size()?;
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
@@ -211,11 +257,11 @@ where
                     })?;
                 let next_estimated_bundle_weight =
                     estimated_bundle_weight.saturating_add(tx_weight);
-                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                if next_estimated_bundle_weight.any_gt(max_bundle_weight) {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
                         && Percent::from_rational(
                             estimated_bundle_weight.ref_time(),
-                            domain_block_limit.max_block_weight.ref_time(),
+                            max_bundle_weight.ref_time(),
                         ) < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
@@ -225,9 +271,9 @@ where
                 }
 
                 let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
-                if next_bundle_size > domain_block_limit.max_block_size {
+                if next_bundle_size > max_bundle_size {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
-                        && Percent::from_rational(bundle_size, domain_block_limit.max_block_size)
+                        && Percent::from_rational(bundle_size, max_bundle_size)
                             < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
