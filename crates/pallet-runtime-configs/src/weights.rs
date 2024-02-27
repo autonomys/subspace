@@ -24,7 +24,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_runtime_configs.
@@ -90,7 +90,7 @@ impl WeightInfo for () {
 		//  Estimated: `0`
 		// Minimum execution time: 5_640_000 picoseconds.
 		Weight::from_parts(5_782_000, 0)
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 	/// Storage: `RuntimeConfigs::EnableDynamicCostOfStorage` (r:0 w:1)
 	/// Proof: `RuntimeConfigs::EnableDynamicCostOfStorage` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
@@ -100,7 +100,7 @@ impl WeightInfo for () {
 		//  Estimated: `0`
 		// Minimum execution time: 5_726_000 picoseconds.
 		Weight::from_parts(5_890_000, 0)
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 	/// Storage: `RuntimeConfigs::EnableBalanceTransfers` (r:0 w:1)
 	/// Proof: `RuntimeConfigs::EnableBalanceTransfers` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
@@ -110,7 +110,7 @@ impl WeightInfo for () {
 		//  Estimated: `0`
 		// Minimum execution time: 5_726_000 picoseconds.
 		Weight::from_parts(5_890_000, 0)
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 	/// Storage: `RuntimeConfigs::EnableNonRootCalls` (r:0 w:1)
 	/// Proof: `RuntimeConfigs::EnableNonRootCalls` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
@@ -120,6 +120,6 @@ impl WeightInfo for () {
 		//  Estimated: `0`
 		// Minimum execution time: 5_726_000 picoseconds.
 		Weight::from_parts(5_890_000, 0)
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 }

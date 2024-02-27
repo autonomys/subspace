@@ -13,7 +13,7 @@ use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks, VariantCount};
-use frame_support::weights::constants::RocksDbWeight;
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
@@ -80,7 +80,7 @@ impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
-    type DbWeight = RocksDbWeight;
+    type DbWeight = ParityDbWeight;
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
     type RuntimeTask = RuntimeTask;

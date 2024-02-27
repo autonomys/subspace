@@ -7477,7 +7477,6 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "sp-weights",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",

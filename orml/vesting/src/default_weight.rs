@@ -4,7 +4,7 @@
 #![allow(unused_imports)]
 #![allow(clippy::unnecessary_cast)]
 
-use frame_support::weights::{constants::RocksDbWeight as DbWeight, Weight};
+use frame_support::weights::{constants::ParityDbWeight as DbWeight, Weight};
 
 impl crate::WeightInfo for () {
 	fn vested_transfer() -> Weight {

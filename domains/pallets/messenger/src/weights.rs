@@ -26,7 +26,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_messenger.
@@ -178,8 +178,8 @@ impl WeightInfo for () {
         //  Estimated: `15508`
         // Minimum execution time: 34_000_000 picoseconds.
         Weight::from_parts(34_000_000, 15508)
-            .saturating_add(RocksDbWeight::get().reads(6_u64))
-            .saturating_add(RocksDbWeight::get().writes(6_u64))
+            .saturating_add(ParityDbWeight::get().reads(6_u64))
+            .saturating_add(ParityDbWeight::get().writes(6_u64))
     }
     /// Storage: Messenger Channels (r:1 w:1)
     /// Proof Skipped: Messenger Channels (max_values: None, max_size: None, mode: Measured)
@@ -199,8 +199,8 @@ impl WeightInfo for () {
         //  Estimated: `16809`
         // Minimum execution time: 33_000_000 picoseconds.
         Weight::from_parts(34_000_000, 16809)
-            .saturating_add(RocksDbWeight::get().reads(6_u64))
-            .saturating_add(RocksDbWeight::get().writes(5_u64))
+            .saturating_add(ParityDbWeight::get().reads(6_u64))
+            .saturating_add(ParityDbWeight::get().writes(5_u64))
     }
     /// Storage: Messenger Channels (r:1 w:1)
     /// Proof Skipped: Messenger Channels (max_values: None, max_size: None, mode: Measured)
@@ -210,8 +210,8 @@ impl WeightInfo for () {
         //  Estimated: `3779`
         // Minimum execution time: 9_000_000 picoseconds.
         Weight::from_parts(9_000_000, 3779)
-            .saturating_add(RocksDbWeight::get().reads(1_u64))
-            .saturating_add(RocksDbWeight::get().writes(1_u64))
+            .saturating_add(ParityDbWeight::get().reads(1_u64))
+            .saturating_add(ParityDbWeight::get().writes(1_u64))
     }
     /// Storage: Messenger Channels (r:1 w:1)
     /// Proof Skipped: Messenger Channels (max_values: None, max_size: None, mode: Measured)
@@ -221,8 +221,8 @@ impl WeightInfo for () {
         //  Estimated: `3779`
         // Minimum execution time: 9_000_000 picoseconds.
         Weight::from_parts(10_000_000, 3779)
-            .saturating_add(RocksDbWeight::get().reads(1_u64))
-            .saturating_add(RocksDbWeight::get().writes(1_u64))
+            .saturating_add(ParityDbWeight::get().reads(1_u64))
+            .saturating_add(ParityDbWeight::get().writes(1_u64))
     }
     /// Storage: Messenger Inbox (r:1 w:1)
     /// Proof Skipped: Messenger Inbox (max_values: Some(1), max_size: None, mode: Measured)
@@ -244,8 +244,8 @@ impl WeightInfo for () {
         //  Estimated: `19279`
         // Minimum execution time: 31_000_000 picoseconds.
         Weight::from_parts(31_000_000, 19279)
-            .saturating_add(RocksDbWeight::get().reads(7_u64))
-            .saturating_add(RocksDbWeight::get().writes(6_u64))
+            .saturating_add(ParityDbWeight::get().reads(7_u64))
+            .saturating_add(ParityDbWeight::get().writes(6_u64))
     }
     /// Storage: Messenger OutboxResponses (r:1 w:1)
     /// Proof Skipped: Messenger OutboxResponses (max_values: Some(1), max_size: None, mode: Measured)
@@ -265,7 +265,7 @@ impl WeightInfo for () {
         //  Estimated: `17930`
         // Minimum execution time: 28_000_000 picoseconds.
         Weight::from_parts(29_000_000, 17930)
-            .saturating_add(RocksDbWeight::get().reads(6_u64))
-            .saturating_add(RocksDbWeight::get().writes(4_u64))
+            .saturating_add(ParityDbWeight::get().reads(6_u64))
+            .saturating_add(ParityDbWeight::get().writes(4_u64))
     }
 }

@@ -36,8 +36,7 @@ use sp_core::H256;
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
-use sp_runtime::{BuildStorage, Perbill};
-use sp_weights::Weight;
+use sp_runtime::BuildStorage;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
@@ -93,29 +92,23 @@ frame_support::construct_runtime!(
     }
 );
 
-parameter_types! {
-    pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(16);
-    pub BlockWeights: frame_system::limits::BlockWeights =
-        frame_system::limits::BlockWeights::simple_max(Weight::from_parts(1024, 0));
-}
-
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
     type RuntimeOrigin = RuntimeOrigin;
-    type Nonce = u64;
     type RuntimeCall = RuntimeCall;
     type RuntimeTask = RuntimeTask;
+    type Nonce = u64;
     type Hash = H256;
-    type Version = ();
     type Hashing = sp_runtime::traits::BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Block = Block;
     type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
+    type Version = ();
     type PalletInfo = PalletInfo;
     type AccountData = pallet_balances::AccountData<u128>;
     type OnNewAccount = ();
