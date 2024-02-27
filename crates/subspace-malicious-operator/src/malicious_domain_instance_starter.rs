@@ -173,7 +173,8 @@ where
                     consensus_keystore,
                     consensus_offchain_tx_pool_factory,
                     domain_node.transaction_pool.clone(),
-                );
+                )
+                .map_err(Box::new)?;
 
                 domain_node
                     .task_manager

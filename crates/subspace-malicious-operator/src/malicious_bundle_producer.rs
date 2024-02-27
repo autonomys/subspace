@@ -16,7 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::FarmerPublicKey;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::Get;
 use sp_domains::core_api::DomainCoreApi;
@@ -105,7 +105,8 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: DomainsApi<CBlock, <DomainBlock as BlockT>::Header>
         + BundleProducerElectionApi<CBlock, Balance>
-        + AccountNonceApi<CBlock, AccountId, Nonce>,
+        + AccountNonceApi<CBlock, AccountId, Nonce>
+        + SubspaceApi<CBlock, FarmerPublicKey>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<
             Block = DomainBlock,
             Hash = <DomainBlock as BlockT>::Hash,
@@ -118,7 +119,7 @@ where
         consensus_keystore: KeystorePtr,
         consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
         domain_transaction_pool: Arc<TransactionPool>,
-    ) -> Self {
+    ) -> Result<Self, sp_blockchain::Error> {
         let operator_keystore = KeystoreContainer::new(&KeystoreConfig::InMemory)
             .expect("create in-memory keystore container must succeed")
             .keystore();
@@ -128,7 +129,7 @@ where
             domain_client.clone(),
             consensus_client.clone(),
             domain_transaction_pool,
-        );
+        )?;
 
         let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
         let bundle_producer = DomainBundleProducer::new(
@@ -150,7 +151,7 @@ where
             .sudo_account_id(consensus_client.info().best_hash)
             .expect("Failed to get sudo account");
 
-        Self {
+        Ok(Self {
             domain_id,
             consensus_client,
             consensus_keystore,
@@ -160,7 +161,7 @@ where
             malicious_operator_status: MaliciousOperatorStatus::NoStatus,
             sudo_acccount,
             consensus_offchain_tx_pool_factory,
-        }
+        })
     }
 
     async fn handle_new_slot(

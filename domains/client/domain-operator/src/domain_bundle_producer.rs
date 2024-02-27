@@ -7,6 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
@@ -73,7 +74,9 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + BundleProducerElectionApi<CBlock, Balance>
+        + SubspaceApi<CBlock, FarmerPublicKey>,
     TransactionPool:
         sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {

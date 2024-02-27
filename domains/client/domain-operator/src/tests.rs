@@ -2954,7 +2954,8 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
             alice.client.clone(),
             ferdie.client.clone(),
             alice.operator.transaction_pool.clone(),
-        );
+        )
+        .unwrap();
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
         DomainBundleProducer::new(
@@ -3871,7 +3872,8 @@ async fn test_bad_receipt_chain() {
             alice.client.clone(),
             ferdie.client.clone(),
             alice.operator.transaction_pool.clone(),
-        );
+        )
+        .unwrap();
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
         DomainBundleProducer::new(

@@ -30,6 +30,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
@@ -275,7 +276,8 @@ where
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
-        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>
+        + SubspaceApi<CBlock, FarmerPublicKey>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static,

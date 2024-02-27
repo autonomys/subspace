@@ -6,6 +6,7 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
@@ -64,6 +65,7 @@ pub struct DomainBundleProposer<Block: BlockT, Client, CBlock: BlockT, CClient, 
     consensus_client: Arc<CClient>,
     transaction_pool: Arc<TransactionPool>,
     previous_bundled_tx: PreviousBundledTx<Block, CBlock>,
+    consensus_slot_probability: (u64, u64),
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
@@ -77,6 +79,7 @@ impl<Block: BlockT, Client, CBlock: BlockT, CClient, TransactionPool> Clone
             consensus_client: self.consensus_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             previous_bundled_tx: PreviousBundledTx::new(),
+            consensus_slot_probability: self.consensus_slot_probability,
             _phantom_data: self._phantom_data,
         }
     }
@@ -96,7 +99,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + SubspaceApi<CBlock, FarmerPublicKey>,
     TransactionPool:
         sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
 {
@@ -105,15 +108,21 @@ where
         client: Arc<Client>,
         consensus_client: Arc<CClient>,
         transaction_pool: Arc<TransactionPool>,
-    ) -> Self {
-        Self {
+    ) -> sp_blockchain::Result<Self> {
+        let chain_constants = consensus_client
+            .runtime_api()
+            .chain_constants(consensus_client.info().best_hash)
+            .map_err(|api_error| sp_blockchain::Error::Application(api_error.into()))?;
+
+        Ok(Self {
             domain_id,
             client,
             consensus_client,
             transaction_pool,
             previous_bundled_tx: PreviousBundledTx::new(),
+            consensus_slot_probability: chain_constants.slot_probability(),
             _phantom_data: PhantomData,
-        }
+        })
     }
 
     pub(crate) async fn propose_bundle_at(

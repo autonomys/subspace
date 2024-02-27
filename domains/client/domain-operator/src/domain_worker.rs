@@ -27,6 +27,7 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -92,7 +93,8 @@ pub(super) async fn start_worker<
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>
-        + FraudProofApi<CBlock, Block::Header>,
+        + FraudProofApi<CBlock, Block::Header>
+        + SubspaceApi<CBlock, FarmerPublicKey>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,

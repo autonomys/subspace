@@ -12,6 +12,7 @@ use sc_client_api::{
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -92,7 +93,8 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>
-        + FraudProofApi<CBlock, Block::Header>,
+        + FraudProofApi<CBlock, Block::Header>
+        + SubspaceApi<CBlock, FarmerPublicKey>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
         + 'static,
@@ -114,7 +116,7 @@ where
             NSNS,
             ASS,
         >,
-    ) -> Result<Self, sp_consensus::Error>
+    ) -> Result<Self, sp_blockchain::Error>
     where
         IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
@@ -126,7 +128,7 @@ where
             params.client.clone(),
             params.consensus_client.clone(),
             params.transaction_pool.clone(),
-        );
+        )?;
 
         let bundle_producer = DomainBundleProducer::new(
             params.domain_id,
