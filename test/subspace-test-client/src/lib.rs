@@ -41,7 +41,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
@@ -237,7 +237,6 @@ where
         public_key: &public_key,
         sector_index,
         piece_getter: &archived_segment.pieces,
-        piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
         farmer_protocol_info,
         kzg: &kzg,
         erasure_coding,

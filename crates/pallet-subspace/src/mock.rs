@@ -55,7 +55,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_verification::is_within_solution_range;
@@ -455,7 +455,6 @@ pub fn create_signed_vote(
             public_key: &public_key,
             sector_index,
             piece_getter: archived_history_segment,
-            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
             farmer_protocol_info,
             kzg,
             erasure_coding,

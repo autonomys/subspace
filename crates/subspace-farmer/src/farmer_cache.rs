@@ -11,13 +11,12 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
-use std::num::NonZeroU16;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, mem};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
-use subspace_farmer_components::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::PieceGetter;
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -31,8 +30,6 @@ const CONCURRENT_PIECES_TO_DOWNLOAD: usize = 1_000;
 /// Make caches available as they are building without waiting for the initialization to finish,
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
-/// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
 const INITIAL_SYNC_FARM_INFO_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
@@ -394,12 +391,7 @@ where
         let download_piece = |piece_index| async move {
             trace!(%piece_index, "Downloading piece");
 
-            let result = piece_getter
-                .get_piece(
-                    piece_index,
-                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                )
-                .await;
+            let result = piece_getter.get_piece(piece_index).await;
 
             match result {
                 Ok(Some(piece)) => {
@@ -635,12 +627,7 @@ where
 
             trace!(%piece_index, "Piece needs to be cached #2");
 
-            let result = piece_getter
-                .get_piece(
-                    piece_index,
-                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                )
-                .await;
+            let result = piece_getter.get_piece(piece_index).await;
 
             let piece = match result {
                 Ok(Some(piece)) => piece,

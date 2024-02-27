@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use std::error::Error;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
-use subspace_farmer_components::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::PieceGetter;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
@@ -19,6 +19,7 @@ struct Inner<PV, NC> {
     farmer_cache: FarmerCache,
     node_client: NC,
     plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
+    fast_retry_policy: RetryPolicy,
 }
 
 pub struct FarmerPieceGetter<PV, NC> {
@@ -39,6 +40,7 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
         farmer_cache: FarmerCache,
         node_client: NC,
         plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
+        fast_retry_policy: RetryPolicy,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -46,6 +48,7 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
                 farmer_cache,
                 node_client,
                 plotted_pieces,
+                fast_retry_policy,
             }),
         }
     }
@@ -55,13 +58,6 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
     pub fn downgrade(&self) -> WeakFarmerPieceGetter<PV, NC> {
         WeakFarmerPieceGetter {
             inner: Arc::downgrade(&self.inner),
-        }
-    }
-
-    fn convert_retry_policy(retry_policy: PieceGetterRetryPolicy) -> RetryPolicy {
-        match retry_policy {
-            PieceGetterRetryPolicy::Limited(retries) => RetryPolicy::Limited(retries),
-            PieceGetterRetryPolicy::Unlimited => RetryPolicy::Unlimited,
         }
     }
 }
@@ -75,7 +71,6 @@ where
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
-        retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let key = RecordKey::from(piece_index.to_multihash());
 
@@ -91,10 +86,7 @@ where
         trace!(%piece_index, "Getting piece from DSN L2 cache");
         let maybe_piece = inner
             .piece_provider
-            .get_piece_from_dsn_cache_with_retries(
-                piece_index,
-                Self::convert_retry_policy(retry_policy),
-            )
+            .get_piece_from_dsn_cache_with_retries(piece_index, inner.fast_retry_policy)
             .await?;
 
         if let Some(piece) = maybe_piece {
@@ -195,14 +187,13 @@ where
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
-        retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let Some(piece_getter) = self.upgrade() else {
             debug!("Farmer piece getter upgrade didn't succeed");
             return Ok(None);
         };
 
-        piece_getter.get_piece(piece_index, retry_policy).await
+        piece_getter.get_piece(piece_index).await
     }
 }
 

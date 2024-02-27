@@ -32,7 +32,7 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
@@ -180,7 +180,6 @@ fn valid_header(
             &public_key,
             sector_index,
             &archived_segment.pieces,
-            PieceGetterRetryPolicy::default(),
             &farmer_parameters.farmer_protocol_info,
             kzg_instance(),
             erasure_coding_instance(),

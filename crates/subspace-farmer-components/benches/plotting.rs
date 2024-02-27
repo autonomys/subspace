@@ -10,7 +10,7 @@ use subspace_core_primitives::{HistorySize, PublicKey, Record, RecordedHistorySe
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
 use subspace_farmer_components::sector::sector_size;
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -79,7 +79,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 public_key: black_box(&public_key),
                 sector_index: black_box(sector_index),
                 piece_getter: black_box(&archived_history_segment),
-                piece_getter_retry_policy: black_box(PieceGetterRetryPolicy::default()),
                 farmer_protocol_info: black_box(farmer_protocol_info),
                 kzg: black_box(&kzg),
                 erasure_coding: black_box(&erasure_coding),
