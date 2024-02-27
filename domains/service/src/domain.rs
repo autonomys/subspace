@@ -231,6 +231,7 @@ where
     pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
+    pub skip_out_of_order_slot: bool,
 }
 
 /// Builds service for a domain full node.
@@ -328,6 +329,7 @@ where
         domain_message_receiver,
         provider,
         skip_empty_bundle_production,
+        skip_out_of_order_slot,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -446,6 +448,7 @@ where
             domain_confirmation_depth,
             block_import,
             skip_empty_bundle_production,
+            skip_out_of_order_slot,
         },
     )
     .await?;

@@ -148,6 +148,7 @@ where
                     domain_message_receiver,
                     provider: eth_provider,
                     skip_empty_bundle_production: true,
+                    skip_out_of_order_slot: false,
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                 };
