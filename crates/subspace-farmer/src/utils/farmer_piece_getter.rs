@@ -34,7 +34,11 @@ impl<PV, NC> Clone for FarmerPieceGetter<PV, NC> {
     }
 }
 
-impl<PV, NC> FarmerPieceGetter<PV, NC> {
+impl<PV, NC> FarmerPieceGetter<PV, NC>
+where
+    PV: PieceValidator + Send + 'static,
+    NC: NodeClient,
+{
     pub fn new(
         piece_provider: PieceProvider<PV>,
         farmer_cache: FarmerCache,
@@ -51,6 +55,102 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
                 fast_retry_policy,
             }),
         }
+    }
+
+    /// Fast way to get piece using various caches
+    pub async fn get_piece_fast(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let key = RecordKey::from(piece_index.to_multihash());
+
+        let inner = &self.inner;
+
+        trace!(%piece_index, "Getting piece from farmer cache");
+        if let Some(piece) = inner.farmer_cache.get_piece(key).await {
+            trace!(%piece_index, "Got piece from farmer cache successfully");
+            return Some(piece);
+        }
+
+        // L2 piece acquisition
+        trace!(%piece_index, "Getting piece from DSN L2 cache");
+        let maybe_piece = inner
+            .piece_provider
+            .get_piece_from_dsn_cache_with_retries(piece_index, inner.fast_retry_policy)
+            .await;
+
+        if let Ok(Some(piece)) = maybe_piece {
+            trace!(%piece_index, "Got piece from DSN L2 cache successfully");
+            inner
+                .farmer_cache
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Some(piece);
+        }
+
+        // Try node's RPC before reaching to L1 (archival storage on DSN)
+        trace!(%piece_index, "Getting piece from node");
+        match inner.node_client.piece(piece_index).await {
+            Ok(Some(piece)) => {
+                trace!(%piece_index, "Got piece from node successfully");
+                inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
+                return Some(piece);
+            }
+            Ok(None) => {
+                // Nothing to do
+            }
+            Err(error) => {
+                error!(
+                    %error,
+                    %piece_index,
+                    "Failed to retrieve first segment piece from node"
+                );
+            }
+        }
+
+        None
+    }
+
+    /// Slow way to get piece using archival storage
+    pub async fn get_piece_slow(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let inner = &self.inner;
+
+        trace!(%piece_index, "Getting piece from local plot");
+        let maybe_read_piece_fut = inner
+            .plotted_pieces
+            .lock()
+            .as_ref()
+            .and_then(|plotted_pieces| plotted_pieces.read_piece(&piece_index));
+
+        if let Some(read_piece_fut) = maybe_read_piece_fut {
+            if let Some(piece) = read_piece_fut.await {
+                trace!(%piece_index, "Got piece from local plot successfully");
+                inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
+                return Some(piece);
+            }
+        }
+
+        // L1 piece acquisition
+        trace!(%piece_index, "Getting piece from DSN L1.");
+
+        let archival_storage_search_result = inner
+            .piece_provider
+            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
+            .await;
+
+        if let Some(piece) = archival_storage_search_result {
+            trace!(%piece_index, "DSN L1 lookup succeeded");
+            inner
+                .farmer_cache
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Some(piece);
+        }
+
+        None
     }
 
     /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
@@ -72,87 +172,11 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        let key = RecordKey::from(piece_index.to_multihash());
-
-        let inner = &self.inner;
-
-        trace!(%piece_index, "Getting piece from farmer cache");
-        if let Some(piece) = inner.farmer_cache.get_piece(key).await {
-            trace!(%piece_index, "Got piece from farmer cache successfully");
+        if let Some(piece) = self.get_piece_fast(piece_index).await {
             return Ok(Some(piece));
         }
 
-        // L2 piece acquisition
-        trace!(%piece_index, "Getting piece from DSN L2 cache");
-        let maybe_piece = inner
-            .piece_provider
-            .get_piece_from_dsn_cache_with_retries(piece_index, inner.fast_retry_policy)
-            .await?;
-
-        if let Some(piece) = maybe_piece {
-            trace!(%piece_index, "Got piece from DSN L2 cache successfully");
-            inner
-                .farmer_cache
-                .maybe_store_additional_piece(piece_index, &piece)
-                .await;
-            return Ok(Some(piece));
-        }
-
-        // Try node's RPC before reaching to L1 (archival storage on DSN)
-        trace!(%piece_index, "Getting piece from node");
-        match inner.node_client.piece(piece_index).await {
-            Ok(Some(piece)) => {
-                trace!(%piece_index, "Got piece from node successfully");
-                inner
-                    .farmer_cache
-                    .maybe_store_additional_piece(piece_index, &piece)
-                    .await;
-                return Ok(Some(piece));
-            }
-            Ok(None) => {
-                // Nothing to do
-            }
-            Err(error) => {
-                error!(
-                    %error,
-                    %piece_index,
-                    "Failed to retrieve first segment piece from node"
-                );
-            }
-        }
-
-        trace!(%piece_index, "Getting piece from local plot");
-        let maybe_read_piece_fut = inner
-            .plotted_pieces
-            .lock()
-            .as_ref()
-            .and_then(|plotted_pieces| plotted_pieces.read_piece(&piece_index));
-
-        if let Some(read_piece_fut) = maybe_read_piece_fut {
-            if let Some(piece) = read_piece_fut.await {
-                trace!(%piece_index, "Got piece from local plot successfully");
-                inner
-                    .farmer_cache
-                    .maybe_store_additional_piece(piece_index, &piece)
-                    .await;
-                return Ok(Some(piece));
-            }
-        }
-
-        // L1 piece acquisition
-        trace!(%piece_index, "Getting piece from DSN L1.");
-
-        let archival_storage_search_result = inner
-            .piece_provider
-            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
-            .await;
-
-        if let Some(piece) = archival_storage_search_result {
-            trace!(%piece_index, "DSN L1 lookup succeeded");
-            inner
-                .farmer_cache
-                .maybe_store_additional_piece(piece_index, &piece)
-                .await;
+        if let Some(piece) = self.get_piece_slow(piece_index).await {
             return Ok(Some(piece));
         }
 
