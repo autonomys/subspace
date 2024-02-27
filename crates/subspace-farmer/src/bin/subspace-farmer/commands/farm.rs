@@ -5,6 +5,7 @@ use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
+use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
@@ -19,6 +20,7 @@ use std::path::PathBuf;
 use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -28,7 +30,7 @@ use subspace_farmer::single_disk_farm::{
     SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
     SingleDiskFarmError, SingleDiskFarmOptions,
 };
-use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
+use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
@@ -43,14 +45,18 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
 
 /// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: u16 = 7;
+const PIECE_GETTER_MAX_RETRIES: u16 = 7;
+/// Defines initial duration between get_piece calls.
+const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+/// Defines max duration between get_piece calls.
+const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
 fn should_farm_during_initial_plotting() -> bool {
     let total_cpu_cores = all_cpu_cores()
@@ -451,7 +457,17 @@ where
         farmer_cache.clone(),
         node_client.clone(),
         Arc::clone(&plotted_pieces),
-        RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER),
+        DsnCacheRetryPolicy {
+            max_retries: PIECE_GETTER_MAX_RETRIES,
+            backoff: ExponentialBackoff {
+                initial_interval: GET_PIECE_INITIAL_INTERVAL,
+                max_interval: GET_PIECE_MAX_INTERVAL,
+                // Try until we get a valid piece
+                max_elapsed_time: None,
+                multiplier: 1.75,
+                ..ExponentialBackoff::default()
+            },
+        },
     );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(

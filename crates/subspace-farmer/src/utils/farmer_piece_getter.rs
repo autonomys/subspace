@@ -2,24 +2,36 @@ use crate::farmer_cache::FarmerCache;
 use crate::utils::plotted_pieces::PlottedPieces;
 use crate::NodeClient;
 use async_trait::async_trait;
+use backoff::backoff::Backoff;
+use backoff::future::retry;
+use backoff::ExponentialBackoff;
 use parking_lot::Mutex;
 use std::error::Error;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
 
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
+
+/// Retry policy for getting pieces from DSN cache
+pub struct DsnCacheRetryPolicy {
+    /// Max number of retries when trying to get piece from DSN cache
+    pub max_retries: u16,
+    /// Exponential backoff between retries
+    pub backoff: ExponentialBackoff,
+}
 
 struct Inner<PV, NC> {
     piece_provider: PieceProvider<PV>,
     farmer_cache: FarmerCache,
     node_client: NC,
     plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
-    fast_retry_policy: RetryPolicy,
+    dsn_cache_retry_policy: DsnCacheRetryPolicy,
 }
 
 pub struct FarmerPieceGetter<PV, NC> {
@@ -44,7 +56,7 @@ where
         farmer_cache: FarmerCache,
         node_client: NC,
         plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
-        fast_retry_policy: RetryPolicy,
+        dsn_cache_retry_policy: DsnCacheRetryPolicy,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -52,7 +64,7 @@ where
                 farmer_cache,
                 node_client,
                 plotted_pieces,
-                fast_retry_policy,
+                dsn_cache_retry_policy,
             }),
         }
     }
@@ -71,18 +83,45 @@ where
 
         // L2 piece acquisition
         trace!(%piece_index, "Getting piece from DSN L2 cache");
-        let maybe_piece = inner
-            .piece_provider
-            .get_piece_from_dsn_cache_with_retries(piece_index, inner.fast_retry_policy)
-            .await;
+        {
+            let retries = AtomicU32::new(0);
+            let max_retries = u32::from(inner.dsn_cache_retry_policy.max_retries);
+            let mut backoff = inner.dsn_cache_retry_policy.backoff.clone();
+            backoff.reset();
 
-        if let Ok(Some(piece)) = maybe_piece {
-            trace!(%piece_index, "Got piece from DSN L2 cache successfully");
-            inner
-                .farmer_cache
-                .maybe_store_additional_piece(piece_index, &piece)
-                .await;
-            return Some(piece);
+            let maybe_piece_fut = retry(backoff, || async {
+                let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
+
+                if let Some(piece) = inner.piece_provider.get_piece_from_cache(piece_index).await {
+                    trace!(%piece_index, current_attempt, "Got piece");
+                    return Ok(Some(piece));
+                }
+
+                if current_attempt >= max_retries {
+                    if max_retries > 0 {
+                        debug!(
+                            %piece_index,
+                            current_attempt,
+                            max_retries,
+                            "Couldn't get a piece from DSN L2. No retries left"
+                        );
+                    }
+                    return Ok(None);
+                }
+
+                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
+
+                Err(backoff::Error::transient("Couldn't get piece from DSN"))
+            });
+
+            if let Ok(Some(piece)) = maybe_piece_fut.await {
+                trace!(%piece_index, "Got piece from DSN L2 cache successfully");
+                inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
+                return Some(piece);
+            }
         }
 
         // Try node's RPC before reaching to L1 (archival storage on DSN)
