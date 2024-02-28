@@ -57,6 +57,7 @@ substrate-bip39 = "0.4.5"
 supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"
+thread-priority = "0.16.0"
 tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
