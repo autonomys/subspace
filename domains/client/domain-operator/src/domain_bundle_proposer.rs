@@ -146,13 +146,22 @@ where
             .maybe_clear(self.consensus_client.info().best_hash);
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
-        let domain_block_limit = self
+        let domain_bundle_limit = self
             .consensus_client
             .runtime_api()
-            .domain_block_limit(self.consensus_client.info().best_hash, self.domain_id)?
+            .domain_bundle_limit(self.consensus_client.info().best_hash, self.domain_id)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Application(
-                    format!("Domain block limit for {:?} not found", self.domain_id).into(),
+                    format!("Domain bundle limit for {:?} not found", self.domain_id).into(),
+                )
+            })?
+            .map_err(|arithmetic_error| {
+                sp_blockchain::Error::Application(
+                    format!(
+                        "Unable to calculate Domain bundle limit for {:?} due to error: {:?}",
+                        self.domain_id, arithmetic_error
+                    )
+                    .into(),
                 )
             })?;
         let mut extrinsics = Vec::new();
@@ -199,11 +208,11 @@ where
                     })?;
                 let next_estimated_bundle_weight =
                     estimated_bundle_weight.saturating_add(tx_weight);
-                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                if next_estimated_bundle_weight.any_gt(domain_bundle_limit.max_bundle_weight) {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
                         && Percent::from_rational(
                             estimated_bundle_weight.ref_time(),
-                            domain_block_limit.max_block_weight.ref_time(),
+                            domain_bundle_limit.max_bundle_weight.ref_time(),
                         ) < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
@@ -213,9 +222,9 @@ where
                 }
 
                 let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
-                if next_bundle_size > domain_block_limit.max_block_size {
+                if next_bundle_size > domain_bundle_limit.max_bundle_size {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
-                        && Percent::from_rational(bundle_size, domain_block_limit.max_block_size)
+                        && Percent::from_rational(bundle_size, domain_bundle_limit.max_bundle_size)
                             < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;

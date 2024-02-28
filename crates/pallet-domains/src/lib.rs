@@ -1644,11 +1644,26 @@ impl<T: Config> Pallet<T> {
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
 
-        // TODO: check bundle weight with `domain_config.max_block_weight`
+        let domain_bundle_limit = calculate_max_bundle_weight_and_size(
+            DomainBlockLimit {
+                max_block_size: domain_config.max_block_size,
+                max_block_weight: domain_config.max_block_weight,
+            },
+            T::ConsensusSlotProbability::get(),
+            domain_config.bundle_slot_probability,
+        )
+        .ok_or(BundleError::UnableToCalculateBundleLimit)?;
 
         ensure!(
-            opaque_bundle.size() <= domain_config.max_block_size,
+            opaque_bundle.size() <= domain_bundle_limit.max_bundle_size,
             BundleError::BundleTooLarge
+        );
+
+        ensure!(
+            opaque_bundle
+                .estimated_weight()
+                .any_lte(domain_bundle_limit.max_bundle_weight),
+            BundleError::BundleTooHeavy
         );
 
         Self::check_extrinsics_root(opaque_bundle)?;
