@@ -83,45 +83,13 @@ where
 
         // L2 piece acquisition
         trace!(%piece_index, "Getting piece from DSN L2 cache");
-        {
-            let retries = AtomicU32::new(0);
-            let max_retries = u32::from(inner.dsn_cache_retry_policy.max_retries);
-            let mut backoff = inner.dsn_cache_retry_policy.backoff.clone();
-            backoff.reset();
-
-            let maybe_piece_fut = retry(backoff, || async {
-                let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
-
-                if let Some(piece) = inner.piece_provider.get_piece_from_cache(piece_index).await {
-                    trace!(%piece_index, current_attempt, "Got piece");
-                    return Ok(Some(piece));
-                }
-
-                if current_attempt >= max_retries {
-                    if max_retries > 0 {
-                        debug!(
-                            %piece_index,
-                            current_attempt,
-                            max_retries,
-                            "Couldn't get a piece from DSN L2. No retries left"
-                        );
-                    }
-                    return Ok(None);
-                }
-
-                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
-
-                Err(backoff::Error::transient("Couldn't get piece from DSN"))
-            });
-
-            if let Ok(Some(piece)) = maybe_piece_fut.await {
-                trace!(%piece_index, "Got piece from DSN L2 cache successfully");
-                inner
-                    .farmer_cache
-                    .maybe_store_additional_piece(piece_index, &piece)
-                    .await;
-                return Some(piece);
-            }
+        if let Some(piece) = inner.piece_provider.get_piece_from_cache(piece_index).await {
+            trace!(%piece_index, "Got piece from DSN L2 cache");
+            inner
+                .farmer_cache
+                .maybe_store_additional_piece(piece_index, &piece)
+                .await;
+            return Some(piece);
         }
 
         // Try node's RPC before reaching to L1 (archival storage on DSN)
@@ -211,9 +179,41 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        if let Some(piece) = self.get_piece_fast(piece_index).await {
-            return Ok(Some(piece));
-        }
+        {
+            let retries = AtomicU32::new(0);
+            let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
+            let mut backoff = self.inner.dsn_cache_retry_policy.backoff.clone();
+            backoff.reset();
+
+            let maybe_piece_fut = retry(backoff, || async {
+                let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
+
+                if let Some(piece) = self.get_piece_fast(piece_index).await {
+                    trace!(%piece_index, current_attempt, "Got piece from DSN L2 cache");
+                    return Ok(Some(piece));
+                }
+                if current_attempt >= max_retries {
+                    if max_retries > 0 {
+                        debug!(
+                            %piece_index,
+                            current_attempt,
+                            max_retries,
+                            "Couldn't get a piece from DSN L2. No retries left"
+                        );
+                    }
+                    return Ok(None);
+                }
+
+                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
+
+                Err(backoff::Error::transient("Couldn't get piece from DSN"))
+            });
+
+            if let Ok(Some(piece)) = maybe_piece_fut.await {
+                trace!(%piece_index, "Got piece from DSN L2 cache successfully");
+                return Ok(Some(piece));
+            }
+        };
 
         if let Some(piece) = self.get_piece_slow(piece_index).await {
             return Ok(Some(piece));
