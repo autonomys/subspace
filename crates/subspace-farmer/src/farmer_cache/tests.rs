@@ -15,7 +15,7 @@ use std::time::Duration;
 use subspace_core_primitives::{
     HistorySize, LastArchivedBlock, Piece, PieceIndex, SegmentHeader, SegmentIndex,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -141,7 +141,6 @@ impl PieceGetter for MockPieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
-        _retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(Some(
             self.pieces

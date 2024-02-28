@@ -5,6 +5,7 @@ use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
+use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
@@ -19,6 +20,7 @@ use std::path::PathBuf;
 use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -28,7 +30,7 @@ use subspace_farmer::single_disk_farm::{
     SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
     SingleDiskFarmError, SingleDiskFarmOptions,
 };
-use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
+use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
@@ -48,6 +50,13 @@ use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
+
+/// Get piece retry attempts number.
+const PIECE_GETTER_MAX_RETRIES: u16 = 7;
+/// Defines initial duration between get_piece calls.
+const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+/// Defines max duration between get_piece calls.
+const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
 fn should_farm_during_initial_plotting() -> bool {
     let total_cpu_cores = all_cpu_cores()
@@ -162,7 +171,7 @@ pub(crate) struct FarmingArgs {
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
     /// each with a pair of CPU cores.
-    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "plotting_thread_pool_size"])]
+    #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "plotting_thread_pool_size"])]
     plotting_cpu_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
     /// to not affect farming as much, defaults to half of the number of logical CPUs available on
@@ -182,7 +191,7 @@ pub(crate) struct FarmingArgs {
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
     /// each with a pair of CPU cores.
-    #[arg(long, conflicts_with_all = &["sector_encoding_concurrency", "replotting_thread_pool_size"])]
+    #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
@@ -208,16 +217,16 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-            .with(Protocol::Udp(30533))
-            .with(Protocol::QuicV1),
-        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-            .with(Protocol::Udp(30533))
-            .with(Protocol::QuicV1),
-        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533)),
-        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533))
+    Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+    .with(Protocol::Udp(30533))
+    .with(Protocol::QuicV1),
+    Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+    .with(Protocol::Udp(30533))
+    .with(Protocol::QuicV1),
+    Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+    .with(Protocol::Tcp(30533)),
+    Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+    .with(Protocol::Tcp(30533))
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
@@ -448,6 +457,17 @@ where
         farmer_cache.clone(),
         node_client.clone(),
         Arc::clone(&plotted_pieces),
+        DsnCacheRetryPolicy {
+            max_retries: PIECE_GETTER_MAX_RETRIES,
+            backoff: ExponentialBackoff {
+                initial_interval: GET_PIECE_INITIAL_INTERVAL,
+                max_interval: GET_PIECE_MAX_INTERVAL,
+                // Try until we get a valid piece
+                max_elapsed_time: None,
+                multiplier: 1.75,
+                ..ExponentialBackoff::default()
+            },
+        },
     );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(

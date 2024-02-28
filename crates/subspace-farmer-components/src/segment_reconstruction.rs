@@ -1,4 +1,4 @@
-use crate::{PieceGetter, PieceGetterRetryPolicy};
+use crate::PieceGetter;
 use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -57,9 +57,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
                 return None;
             }
 
-            let piece = piece_getter
-                .get_piece(piece_index, PieceGetterRetryPolicy::Limited(0))
-                .await;
+            let piece = piece_getter.get_piece(piece_index).await;
 
             match piece {
                 Ok(piece) => {
