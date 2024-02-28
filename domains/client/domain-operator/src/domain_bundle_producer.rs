@@ -41,6 +41,10 @@ where
     keystore: KeystorePtr,
     bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
+    // TODO: both `skip_empty_bundle_production` and `skip_out_of_order_slot` are only used in the
+    // tests, we should introduce a trait for `DomainBundleProducer` and use a wrapper of `DomainBundleProducer`
+    // in the test, both `skip_empty_bundle_production` and `skip_out_of_order_slot` should move into the wrapper
+    // to keep the production code clean.
     skip_empty_bundle_production: bool,
     skip_out_of_order_slot: bool,
     last_processed_slot: Option<Slot>,
