@@ -9665,6 +9665,7 @@ dependencies = [
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",
+ "thread-priority",
  "tracing",
 ]
 
@@ -11717,7 +11718,6 @@ dependencies = [
  "subspace-proof-of-space",
  "subspace-verification",
  "thiserror",
- "thread-priority",
  "tokio",
  "tracing",
  "winapi",
