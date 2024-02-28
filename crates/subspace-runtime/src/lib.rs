@@ -72,7 +72,9 @@ use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Keccak256, NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
+use sp_runtime::{
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ArithmeticError, Perbill,
+};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -634,6 +636,7 @@ impl pallet_domains::Config for Runtime {
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
     type BlockTreePruningDepth = BlockTreePruningDepth;
+    type ConsensusSlotProbability = SlotProbability;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
@@ -1068,6 +1071,10 @@ impl_runtime_apis! {
 
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             Domains::domain_block_limit(domain_id)
+        }
+
+        fn domain_bundle_limit(domain_id: DomainId) -> Option<Result<sp_domains::DomainBundleLimit, ArithmeticError>> {
+            Domains::domain_bundle_limit(domain_id)
         }
 
         fn non_empty_er_exists(domain_id: DomainId) -> bool {

@@ -52,7 +52,7 @@ use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
 };
-use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
+use sp_runtime::{ArithmeticError, Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
@@ -443,6 +443,10 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
             .iter()
             .map(|tx| tx.encoded_size() as u32)
             .sum::<u32>()
+    }
+
+    pub fn estimated_weight(&self) -> Weight {
+        self.sealed_header.header.estimated_bundle_weight
     }
 }
 
@@ -959,6 +963,14 @@ pub struct DomainBlockLimit {
     pub max_block_weight: Weight,
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub struct DomainBundleLimit {
+    /// The max bundle size for the domain.
+    pub max_bundle_size: u32,
+    /// The max bundle weight for the domain.
+    pub max_bundle_weight: Weight,
+}
+
 /// Checks if the signer Id hash is within the tx range
 pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_range: &U256) -> bool {
     let distance_from_vrf_hash = bidirectional_distance(bundle_vrf_hash, signer_id_hash);
@@ -1223,6 +1235,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the domain block limit of the given domain.
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
+
+        /// Returns the domain bundle limit of the given domain.
+        fn domain_bundle_limit(domain_id: DomainId) -> Option<Result<DomainBundleLimit, ArithmeticError>>;
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
         fn non_empty_er_exists(domain_id: DomainId) -> bool;

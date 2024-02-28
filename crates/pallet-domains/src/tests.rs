@@ -114,6 +114,7 @@ parameter_types! {
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
     pub const BlockTreePruningDepth: u32 = 16;
+    pub const SlotProbability: (u64, u64) = (1, 6);
 }
 
 pub struct ConfirmationDepthK;
@@ -309,6 +310,7 @@ impl pallet_domains::Config for Test {
     type DomainsTransfersTracker = MockDomainsTransfersTracker;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type ConsensusSlotProbability = SlotProbability;
 }
 
 pub struct ExtrinsicStorageFees;

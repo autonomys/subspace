@@ -50,8 +50,9 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
+    OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
@@ -62,8 +63,8 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{Hash, Header, One, Zero};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
+use sp_runtime::traits::{Hash, Header, IntegerSquareRoot, One, Zero};
+use sp_runtime::{ArithmeticError, RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
@@ -245,6 +246,10 @@ mod pallet {
         /// The block tree pruning depth.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
+
+        /// Consensus chain slot probability.
+        #[pallet::constant]
+        type ConsensusSlotProbability: Get<(u64, u64)>;
 
         /// The maximum block size limit for all domain.
         #[pallet::constant]
@@ -615,6 +620,10 @@ mod pallet {
         SlotInTheFuture,
         /// The bundle is built on a slot in the past
         SlotInThePast,
+        /// Unable to calculate bundle limit
+        UnableToCalculateBundleLimit,
+        /// Bundle weight exceeds the max bundle weight limit
+        BundleTooHeavy,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1996,6 +2005,28 @@ impl<T: Config> Pallet<T> {
         })
     }
 
+    /// Returns the domain bundle limit of the given domain
+    pub fn domain_bundle_limit(
+        domain_id: DomainId,
+    ) -> Option<Result<DomainBundleLimit, ArithmeticError>> {
+        let domain_config = DomainRegistry::<T>::get(domain_id)?.domain_config;
+
+        let consensus_slot_probability = T::ConsensusSlotProbability::get();
+        let bundle_slot_probability = domain_config.bundle_slot_probability;
+        let domain_block_limit = DomainBlockLimit {
+            max_block_size: domain_config.max_block_size,
+            max_block_weight: domain_config.max_block_weight,
+        };
+        Some(
+            calculate_max_bundle_weight_and_size(
+                domain_block_limit,
+                consensus_slot_probability,
+                bundle_slot_probability,
+            )
+            .ok_or(ArithmeticError::Overflow),
+        )
+    }
+
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
     /// Note that Genesis ER is also considered special and hence non empty
     pub fn non_empty_er_exists(domain_id: DomainId) -> bool {
@@ -2110,4 +2141,41 @@ pub fn calculate_tx_range(
         return cur_tx_range;
     };
     new_tx_range.clamp(lower_bound, upper_bound)
+}
+
+pub fn calculate_max_bundle_weight_and_size(
+    domain_block_limit: DomainBlockLimit,
+    consensus_slot_probability: (u64, u64),
+    bundle_slot_probability: (u64, u64),
+) -> Option<DomainBundleLimit> {
+    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
+    // This represents: bundle_slot_probability/SLOT_PROBABILITY
+    let expected_bundles_per_block = bundle_slot_probability
+        .0
+        .checked_mul(consensus_slot_probability.1)?
+        .checked_div(
+            bundle_slot_probability
+                .1
+                .checked_mul(consensus_slot_probability.0)?,
+        )?;
+
+    // This represents: Ceil[2*Sqrt[bundle_slot_probability/SLOT_PROBABILITY]])
+    let std_of_expected_bundles_per_block = expected_bundles_per_block
+        .integer_sqrt()
+        .checked_mul(2)?
+        .checked_add(1)?;
+
+    // max_bundle_weight = TargetDomainBlockWeight/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
+    let max_bundle_weight = domain_block_limit
+        .max_block_weight
+        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
+
+    // max_bundle_size = TargetDomainBlockSize/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
+    let max_bundle_size = (domain_block_limit.max_block_size as u64)
+        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
+
+    Some(DomainBundleLimit {
+        max_bundle_size: max_bundle_size as u32,
+        max_bundle_weight,
+    })
 }
