@@ -37,6 +37,30 @@ pub trait FraudProofRuntimeInterface {
     }
 
     /// Check the execution proof
+    // TODO: remove before the new network
+    #[version(1)]
+    fn execution_proof_check(
+        &mut self,
+        pre_state_root: H256,
+        encoded_proof: Vec<u8>,
+        execution_method: &str,
+        call_data: &[u8],
+        domain_runtime_code: Vec<u8>,
+    ) -> Option<Vec<u8>> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .execution_proof_check(
+                (Default::default(), Default::default()),
+                pre_state_root,
+                encoded_proof,
+                execution_method,
+                call_data,
+                domain_runtime_code,
+            )
+    }
+
+    /// Check the execution proof with also included domain block id.
+    #[version(2)]
     fn execution_proof_check(
         &mut self,
         domain_block_id: (BlockNumber, H256),
