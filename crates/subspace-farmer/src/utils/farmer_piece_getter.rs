@@ -322,7 +322,7 @@ where
             });
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
-                trace!(%piece_index, "Got piece from DSN L2 cache successfully");
+                trace!(%piece_index, "Got piece from cache successfully");
                 // Store successfully downloaded piece for others to observe
                 if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
                     in_progress_piece.replace(piece.clone());
