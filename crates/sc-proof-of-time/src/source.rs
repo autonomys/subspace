@@ -28,6 +28,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
+use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tracing::{debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
@@ -148,6 +149,14 @@ where
                                 core",
                             );
                         }
+                    }
+
+                    if let Err(error) = set_current_thread_priority(ThreadPriority::Max) {
+                        warn!(
+                            %error,
+                            "Failed to set thread priority, timekeeper performance may be \
+                            negatively impacted by other software running on this machine",
+                        );
                     }
 
                     if let Err(error) =
