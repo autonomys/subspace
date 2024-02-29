@@ -1,11 +1,13 @@
 use crate::farmer_cache::FarmerCache;
 use crate::utils::plotted_pieces::PlottedPieces;
 use crate::NodeClient;
+use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
@@ -32,6 +34,7 @@ struct Inner<PV, NC> {
     node_client: NC,
     plotted_pieces: Arc<Mutex<Option<PlottedPieces>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
+    in_progress_pieces: Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
 }
 
 pub struct FarmerPieceGetter<PV, NC> {
@@ -65,12 +68,47 @@ where
                 node_client,
                 plotted_pieces,
                 dsn_cache_retry_policy,
+                in_progress_pieces: Mutex::default(),
             }),
         }
     }
 
     /// Fast way to get piece using various caches
     pub async fn get_piece_fast(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let in_progress_piece_mutex = Arc::new(AsyncMutex::new(None));
+        // Take lock before anything else, set to `None` when another piece getting is already in
+        // progress
+        let mut local_in_progress_piece_guard = Some(in_progress_piece_mutex.lock().await);
+        let in_progress_piece_mutex = self
+            .inner
+            .in_progress_pieces
+            .lock()
+            .entry(piece_index)
+            .or_insert_with(|| {
+                local_in_progress_piece_guard.take();
+                Arc::clone(&in_progress_piece_mutex)
+            })
+            .clone();
+
+        // If piece is already in progress, just wait for it
+        if local_in_progress_piece_guard.is_none() {
+            trace!(%piece_index, "Piece is already in progress, waiting for result #1");
+            // Doesn't matter if it was successful or not here
+            return in_progress_piece_mutex.lock().await.clone();
+        }
+
+        // Otherwise try to get the piece without releasing lock to make sure successfully
+        // downloaded piece gets stored
+        let maybe_piece = self.get_piece_fast_internal(piece_index).await;
+        // Store the result for others to observe
+        if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
+            *in_progress_piece = maybe_piece.clone();
+            self.inner.in_progress_pieces.lock().remove(&piece_index);
+        }
+        maybe_piece
+    }
+
+    async fn get_piece_fast_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = RecordKey::from(piece_index.to_multihash());
 
         let inner = &self.inner;
@@ -120,6 +158,46 @@ where
 
     /// Slow way to get piece using archival storage
     pub async fn get_piece_slow(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let in_progress_piece_mutex = Arc::new(AsyncMutex::new(None));
+        // Take lock before anything else, set to `None` when another piece getting is already in
+        // progress
+        let mut local_in_progress_piece_guard = Some(in_progress_piece_mutex.lock().await);
+        let in_progress_piece_mutex = self
+            .inner
+            .in_progress_pieces
+            .lock()
+            .entry(piece_index)
+            .or_insert_with(|| {
+                local_in_progress_piece_guard.take();
+                Arc::clone(&in_progress_piece_mutex)
+            })
+            .clone();
+
+        // If piece is already in progress, wait for it to see if it was successful
+        if local_in_progress_piece_guard.is_none() {
+            trace!(%piece_index, "Piece is already in progress, waiting for result #2");
+            if let Some(piece) = in_progress_piece_mutex.lock().await.clone() {
+                trace!(
+                    %piece_index,
+                    "Piece was already in progress and downloaded successfully #1"
+                );
+                return Some(piece);
+            }
+        }
+
+        // Otherwise try to get the piece without releasing lock to make sure successfully
+        // downloaded piece gets stored
+        let maybe_piece = self.get_piece_slow_internal(piece_index).await;
+        // Store the result for others to observe
+        if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
+            *in_progress_piece = maybe_piece.clone();
+            self.inner.in_progress_pieces.lock().remove(&piece_index);
+        }
+        maybe_piece
+    }
+
+    /// Slow way to get piece using archival storage
+    async fn get_piece_slow_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
         let inner = &self.inner;
 
         trace!(%piece_index, "Getting piece from local plot");
@@ -179,6 +257,33 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        let in_progress_piece_mutex = Arc::new(AsyncMutex::new(None));
+        // Take lock before anything else, set to `None` when another piece getting is already in
+        // progress
+        let mut local_in_progress_piece_guard = Some(in_progress_piece_mutex.lock().await);
+        let in_progress_piece_mutex = self
+            .inner
+            .in_progress_pieces
+            .lock()
+            .entry(piece_index)
+            .or_insert_with(|| {
+                local_in_progress_piece_guard.take();
+                Arc::clone(&in_progress_piece_mutex)
+            })
+            .clone();
+
+        // If piece is already in progress, wait for it to see if it was successful
+        if local_in_progress_piece_guard.is_none() {
+            trace!(%piece_index, "Piece is already in progress, waiting for result #3");
+            if let Some(piece) = in_progress_piece_mutex.lock().await.clone() {
+                trace!(
+                    %piece_index,
+                    "Piece was already in progress and downloaded successfully #2"
+                );
+                return Ok(Some(piece));
+            }
+        }
+
         {
             let retries = AtomicU32::new(0);
             let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
@@ -188,7 +293,7 @@ where
             let maybe_piece_fut = retry(backoff, || async {
                 let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
-                if let Some(piece) = self.get_piece_fast(piece_index).await {
+                if let Some(piece) = self.get_piece_fast_internal(piece_index).await {
                     trace!(%piece_index, current_attempt, "Got piece from DSN L2 cache");
                     return Ok(Some(piece));
                 }
@@ -211,11 +316,21 @@ where
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
                 trace!(%piece_index, "Got piece from DSN L2 cache successfully");
+                // Store successfully downloaded piece for others to observe
+                if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
+                    in_progress_piece.replace(piece.clone());
+                    self.inner.in_progress_pieces.lock().remove(&piece_index);
+                }
                 return Ok(Some(piece));
             }
         };
 
-        if let Some(piece) = self.get_piece_slow(piece_index).await {
+        if let Some(piece) = self.get_piece_slow_internal(piece_index).await {
+            // Store successfully downloaded piece for others to observe
+            if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
+                in_progress_piece.replace(piece.clone());
+                self.inner.in_progress_pieces.lock().remove(&piece_index);
+            }
             return Ok(Some(piece));
         }
 

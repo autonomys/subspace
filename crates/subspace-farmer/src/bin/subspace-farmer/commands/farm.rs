@@ -8,7 +8,6 @@ use anyhow::anyhow;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
-use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
@@ -627,13 +626,9 @@ where
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
 
-    let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
-
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
-        let (plotting_delay_sender, plotting_delay_receiver) = oneshot::channel();
-        plotting_delay_senders.push(plotting_delay_sender);
 
         let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
             SingleDiskFarmOptions {
@@ -652,7 +647,6 @@ where
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
                 plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
-                plotting_delay: Some(plotting_delay_receiver),
                 disable_farm_locking,
             },
             disk_farm_index,
@@ -696,29 +690,22 @@ where
         single_disk_farms.push(single_disk_farm);
     }
 
-    let cache_acknowledgement_receiver = farmer_cache
-        .replace_backing_caches(
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.piece_cache())
-                .collect(),
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.plot_cache())
-                .collect(),
-        )
-        .await;
+    // Acknowledgement is not necessary
+    drop(
+        farmer_cache
+            .replace_backing_caches(
+                single_disk_farms
+                    .iter()
+                    .map(|single_disk_farm| single_disk_farm.piece_cache())
+                    .collect(),
+                single_disk_farms
+                    .iter()
+                    .map(|single_disk_farm| single_disk_farm.plot_cache())
+                    .collect(),
+            )
+            .await,
+    );
     drop(farmer_cache);
-
-    // Wait for cache initialization before starting plotting
-    tokio::spawn(async move {
-        if cache_acknowledgement_receiver.await.is_ok() {
-            for plotting_delay_sender in plotting_delay_senders {
-                // Doesn't matter if receiver is gone
-                let _ = plotting_delay_sender.send(());
-            }
-        }
-    });
 
     // Store piece readers so we can reference them later
     let piece_readers = single_disk_farms
