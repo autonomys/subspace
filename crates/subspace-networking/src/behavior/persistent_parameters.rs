@@ -341,6 +341,7 @@ impl KnownPeersManager {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         let known_addresses_size = Self::known_addresses_size(cache_size);

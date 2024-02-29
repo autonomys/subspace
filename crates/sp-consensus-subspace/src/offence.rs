@@ -25,9 +25,13 @@
 //!
 //! [sp_staking::offence]: https://docs.substrate.io/rustdocs/latest/sp_staking/offence/index.html
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_std::vec::Vec;
 
 /// The kind of an offence, is a byte string representing some kind identifier
 /// e.g. `b"sub:equivocation"`

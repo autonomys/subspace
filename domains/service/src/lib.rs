@@ -140,8 +140,6 @@ where
     let (engine, sync_service, block_announce_config) = SyncingEngine::new(
         Roles::from(&config.role),
         client.clone(),
-        // TODO: False-positive in clippy: https://github.com/rust-lang/rust-clippy/issues/12148
-        #[allow(clippy::useless_asref)]
         config
             .prometheus_config
             .as_ref()
@@ -201,8 +199,6 @@ where
         genesis_hash,
         protocol_id,
         fork_id: config.chain_spec.fork_id().map(ToOwned::to_owned),
-        // TODO: False-positive in clippy: https://github.com/rust-lang/rust-clippy/issues/12148
-        #[allow(clippy::useless_asref)]
         metrics_registry: config
             .prometheus_config
             .as_ref()
@@ -225,8 +221,6 @@ where
             transaction_pool,
             client.clone(),
         )),
-        // TODO: False-positive in clippy: https://github.com/rust-lang/rust-clippy/issues/12148
-        #[allow(clippy::useless_asref)]
         config
             .prometheus_config
             .as_ref()

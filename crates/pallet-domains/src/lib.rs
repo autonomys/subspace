@@ -36,6 +36,11 @@ extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
 use crate::staking::OperatorStatus;
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+use alloc::collections::btree_map::BTreeMap;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::pallet_prelude::StorageVersion;
@@ -64,9 +69,6 @@ use sp_domains_fraud_proof::verification::{
 };
 use sp_runtime::traits::{Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
-use sp_std::boxed::Box;
-use sp_std::collections::btree_map::BTreeMap;
-use sp_std::vec::Vec;
 pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, SlotNumber, U256};
 use subspace_runtime_primitives::Balance;
@@ -153,7 +155,10 @@ mod pallet {
         BalanceOf, BlockSlot, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier,
         NominatorId, OpaqueBundleOf, ReceiptHashFor, STORAGE_VERSION,
     };
+    #[cfg(not(feature = "std"))]
     use alloc::string::String;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use codec::FullCodec;
     use domain_runtime_primitives::EVMChainId;
     use frame_support::pallet_prelude::*;
@@ -181,7 +186,6 @@ mod pallet {
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
-    use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
     use subspace_runtime_primitives::StorageFee;
 
@@ -609,7 +613,7 @@ mod pallet {
         InvalidExtrinsicRoot,
         /// This bundle duplicated with an already submitted bundle
         DuplicatedBundle,
-        /// Invalid proof of time in the proof of election  
+        /// Invalid proof of time in the proof of election
         InvalidProofOfTime,
         /// The bundle is built on a slot in the future
         SlotInTheFuture,

@@ -1,6 +1,8 @@
 use crate::crypto::kzg::Commitment;
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::iter::Step;

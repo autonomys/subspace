@@ -28,7 +28,7 @@ use libp2p::kad::{
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{DialError, SwarmEvent};
-use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
+use libp2p::{Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;

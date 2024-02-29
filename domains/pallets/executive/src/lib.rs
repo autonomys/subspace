@@ -25,13 +25,14 @@
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
-
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
-
 pub mod weights;
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 use codec::{Codec, Encode};
 use frame_support::dispatch::{
@@ -82,13 +83,14 @@ type BlockHashOf<T> = <BlockOf<T> as BlockT>::Hash;
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, ExtrinsicStorageFees};
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use frame_system::SetCode;
     use sp_executive::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

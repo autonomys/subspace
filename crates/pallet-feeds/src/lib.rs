@@ -19,10 +19,15 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use core::mem;
 pub use pallet::*;
-use sp_std::vec;
-use sp_std::vec::Vec;
 use subspace_core_primitives::{crypto, Blake3Hash};
 
 pub mod feed_processor;
@@ -38,7 +43,6 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, Hash, One, StaticLookup};
     use sp_runtime::ArithmeticError;
-    use sp_std::prelude::*;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -119,7 +123,7 @@ mod pallet {
 
     /// `pallet-feeds` events
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// New object was added.
         ObjectSubmitted {

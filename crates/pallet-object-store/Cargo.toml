@@ -19,7 +19,6 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 log = { version = "0.4.20", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
@@ -30,13 +29,12 @@ sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-s
 [features]
 default = ["std"]
 std = [
-  "codec/std",
-  "frame-support/std",
-  "frame-system/std",
-  "hex/std",
-  "log/std",
-  "scale-info/std",
-  "sp-std/std",
-  "subspace-core-primitives/std",
+    "codec/std",
+    "frame-support/std",
+    "frame-system/std",
+    "hex/std",
+    "log/std",
+    "scale-info/std",
+    "subspace-core-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]

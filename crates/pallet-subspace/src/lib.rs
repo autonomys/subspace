@@ -18,6 +18,7 @@
 #![feature(array_chunks, assert_matches, const_option, let_chains, portable_simd)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 pub mod equivocation;
@@ -32,6 +33,7 @@ mod benchmarking;
 
 pub mod weights;
 
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
@@ -340,7 +342,7 @@ pub mod pallet {
 
     /// Events type.
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Segment header was stored in blockchain history.
         SegmentHeaderStored { segment_header: SegmentHeader },
@@ -519,7 +521,7 @@ pub mod pallet {
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
         /// will be defined as the equivocation reporter.
         #[pallet::call_index(0)]
-        #[pallet::weight((<T as Config>::WeightInfo::report_equivocation(), DispatchClass::Operational))]
+        #[pallet::weight((< T as Config >::WeightInfo::report_equivocation(), DispatchClass::Operational))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]
@@ -535,7 +537,7 @@ pub mod pallet {
         /// Submit new segment header to the blockchain. This is an inherent extrinsic and part of
         /// the Subspace consensus logic.
         #[pallet::call_index(1)]
-        #[pallet::weight((<T as Config>::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory, Pays::No))]
+        #[pallet::weight((< T as Config >::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory, Pays::No))]
         pub fn store_segment_headers(
             origin: OriginFor<T>,
             segment_headers: Vec<SegmentHeader>,
@@ -547,7 +549,7 @@ pub mod pallet {
         /// Enable solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
         #[pallet::call_index(2)]
-        #[pallet::weight(<T as Config>::WeightInfo::enable_solution_range_adjustment())]
+        #[pallet::weight(< T as Config >::WeightInfo::enable_solution_range_adjustment())]
         pub fn enable_solution_range_adjustment(
             origin: OriginFor<T>,
             solution_range_override: Option<u64>,
@@ -569,7 +571,7 @@ pub mod pallet {
 
         /// Farmer vote, currently only used for extra rewards to farmers.
         #[pallet::call_index(3)]
-        #[pallet::weight((<T as Config>::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
+        #[pallet::weight((< T as Config >::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]
@@ -584,7 +586,7 @@ pub mod pallet {
 
         /// Enable rewards for blocks and votes at specified block height.
         #[pallet::call_index(4)]
-        #[pallet::weight(<T as Config>::WeightInfo::enable_rewards())]
+        #[pallet::weight(< T as Config >::WeightInfo::enable_rewards())]
         pub fn enable_rewards_at(
             origin: OriginFor<T>,
             enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
@@ -596,7 +598,7 @@ pub mod pallet {
 
         /// Enable storage access for all users.
         #[pallet::call_index(5)]
-        #[pallet::weight(<T as Config>::WeightInfo::enable_authoring_by_anyone())]
+        #[pallet::weight(< T as Config >::WeightInfo::enable_authoring_by_anyone())]
         pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
 

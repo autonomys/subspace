@@ -1,7 +1,12 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
     StorageKeyRequest,
 };
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
@@ -22,7 +27,6 @@ use sp_externalities::Extensions;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::{create_proof_check_backend, Error, OverlayedChanges, StateMachine};
-use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use std::borrow::Cow;
 use std::marker::PhantomData;

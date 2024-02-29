@@ -13,7 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 // GRANDPA verification is mostly taken from Parity's bridges https://github.com/paritytech/parity-bridges-common/tree/master/primitives/header-chain
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use finality_grandpa::voter_set::VoterSet;
 use scale_info::TypeInfo;
@@ -26,7 +31,6 @@ use sp_runtime::traits::Header as HeaderT;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::prelude::*;
-use sp_std::vec::Vec;
 
 /// A GRANDPA Justification is a proof that a given header was finalized
 /// at a certain height and with a certain set of authorities.

@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use frame_support::PalletError;
 use hash_db::Hasher;
 #[cfg(feature = "std")]
@@ -11,7 +16,6 @@ use sp_state_machine::prove_read;
 use sp_state_machine::TrieBackendBuilder;
 use sp_std::fmt::Debug;
 use sp_std::marker::PhantomData;
-use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 #[cfg(feature = "std")]
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};

@@ -1,5 +1,10 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 #[cfg(feature = "std")]
 use crate::host_functions::SubspaceMmrExtension;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
@@ -7,7 +12,6 @@ use sp_core::H256;
 use sp_externalities::ExternalitiesExt;
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime_interface::runtime_interface;
-use sp_std::vec::Vec;
 
 /// MMR related runtime interface
 #[runtime_interface]

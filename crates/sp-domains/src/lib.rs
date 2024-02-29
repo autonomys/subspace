@@ -27,10 +27,14 @@ pub mod storage;
 mod tests;
 pub mod valued_trie;
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::storage::{RawGenesis, StorageKey};
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
@@ -58,7 +62,6 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
-use sp_std::vec::Vec;
 use sp_trie::TrieLayout;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;

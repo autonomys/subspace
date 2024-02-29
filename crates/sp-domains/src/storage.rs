@@ -1,4 +1,9 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::{evm_chain_id_storage_key, self_domain_id_storage_key, DomainId};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use domain_runtime_primitives::EVMChainId;
 use hash_db::Hasher;
 use parity_scale_codec::{Codec, Decode, Encode};
@@ -9,7 +14,6 @@ use sp_core::storage::{Storage, StorageChild};
 use sp_runtime::StateVersion;
 use sp_state_machine::{Backend, TrieBackend, TrieBackendBuilder};
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::vec::Vec;
 use sp_trie::{empty_trie_root, LayoutV0, MemoryDB};
 
 /// Create a new empty instance of in-memory backend.

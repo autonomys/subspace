@@ -1,5 +1,8 @@
 //! Staking for domains
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
@@ -23,7 +26,6 @@ use sp_runtime::{Perbill, Percent, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
-use sp_std::iter::Iterator;
 use sp_std::vec::IntoIter;
 
 /// A nominators deposit.
@@ -1264,6 +1266,7 @@ pub(crate) mod tests {
 
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
+
     const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
 
     pub(crate) fn register_operator(

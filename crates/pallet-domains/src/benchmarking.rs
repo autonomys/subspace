@@ -1,11 +1,14 @@
 //! Benchmarking for `pallet-domains`.
 
+extern crate alloc;
+
 use super::*;
-use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
 use crate::{DomainBlockNumberFor, Pallet as Domains};
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
@@ -17,7 +20,7 @@ use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, RuntimeType,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, Zero};
 
 const SEED: u32 = 0;
 

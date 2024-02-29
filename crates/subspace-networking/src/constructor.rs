@@ -36,7 +36,6 @@ use prometheus_client::registry::Registry;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
-use std::string::ToString;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
@@ -144,7 +143,7 @@ where
     LocalRecordProvider: self::LocalRecordProvider,
 {
     type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
-    type ProvidedIter<'a> =  Empty<Cow<'a, ProviderRecord>> where Self: 'a;
+    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self: 'a;
 
     fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
         // Not supported
