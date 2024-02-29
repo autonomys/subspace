@@ -9,6 +9,7 @@ use backoff::ExponentialBackoff;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -39,6 +40,12 @@ struct Inner<PV, NC> {
 
 pub struct FarmerPieceGetter<PV, NC> {
     inner: Arc<Inner<PV, NC>>,
+}
+
+impl<PV, NC> fmt::Debug for FarmerPieceGetter<PV, NC> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("FarmerPieceGetter").finish_non_exhaustive()
+    }
 }
 
 impl<PV, NC> Clone for FarmerPieceGetter<PV, NC> {
