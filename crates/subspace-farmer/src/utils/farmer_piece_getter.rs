@@ -350,9 +350,15 @@ where
 }
 
 /// Weak farmer piece getter, can be upgraded to [`FarmerPieceGetter`]
-#[derive(Debug)]
 pub struct WeakFarmerPieceGetter<PV, NC> {
     inner: Weak<Inner<PV, NC>>,
+}
+
+impl<PV, NC> fmt::Debug for WeakFarmerPieceGetter<PV, NC> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("WeakFarmerPieceGetter")
+            .finish_non_exhaustive()
+    }
 }
 
 impl<PV, NC> Clone for WeakFarmerPieceGetter<PV, NC> {
