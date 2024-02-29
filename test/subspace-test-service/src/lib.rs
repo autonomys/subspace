@@ -529,8 +529,8 @@ impl MockConsensusNode {
         NewSlot,
         OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>,
     ) {
+        let slot = self.produce_slot();
         for _ in 0..MAX_PRODUCE_BUNDLE_TRY {
-            let slot = self.produce_slot();
             if let Some(bundle) = self.notify_new_slot_and_wait_for_bundle(slot).await {
                 return (slot, bundle);
             }
