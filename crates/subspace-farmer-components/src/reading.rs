@@ -118,7 +118,10 @@ where
     S: ReadAtSync,
     A: ReadAtAsync,
 {
-    let mut record_chunks = vec![None; Record::NUM_S_BUCKETS];
+    // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+    // SAFETY: Data structure filled with zeroes is a valid invariant
+    let mut record_chunks =
+        unsafe { Box::<[Option<Scalar>; Record::NUM_S_BUCKETS]>::new_zeroed().assume_init() };
 
     let read_chunks_inputs = record_chunks
         .par_iter_mut()
@@ -244,13 +247,6 @@ where
         }
     }
 
-    let mut record_chunks = ManuallyDrop::new(record_chunks);
-
-    // SAFETY: Original memory is not dropped, layout is exactly what we need here
-    let record_chunks = unsafe {
-        Box::from_raw(record_chunks.as_mut_ptr() as *mut [Option<Scalar>; Record::NUM_S_BUCKETS])
-    };
-
     Ok(record_chunks)
 }
 
@@ -261,6 +257,8 @@ pub fn recover_extended_record_chunks(
     erasure_coding: &ErasureCoding,
 ) -> Result<Box<[Scalar; Record::NUM_S_BUCKETS]>, ReadingError> {
     // Restore source record scalars
+    // TODO: Recover into `Box<[Scalar; Record::NUM_S_BUCKETS]>` or else conversion into `Box` below
+    //  might leak memory
     let record_chunks = erasure_coding
         .recover(sector_record_chunks)
         .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
@@ -276,12 +274,12 @@ pub fn recover_extended_record_chunks(
         });
     }
 
+    // Allocation in vector can be larger than contents, we need to make sure allocation is the same
+    // as the contents, this should also contain fast path if allocation matches contents
+    let record_chunks = record_chunks.into_iter().collect::<Box<_>>();
     let mut record_chunks = ManuallyDrop::new(record_chunks);
-
     // SAFETY: Original memory is not dropped, size of the data checked above
-    let record_chunks = unsafe {
-        Box::from_raw(record_chunks.as_mut_ptr() as *mut [Scalar; Record::NUM_S_BUCKETS])
-    };
+    let record_chunks = unsafe { Box::from_raw(record_chunks.as_mut_ptr() as *mut _) };
 
     Ok(record_chunks)
 }

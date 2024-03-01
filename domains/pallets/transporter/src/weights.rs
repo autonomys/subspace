@@ -27,7 +27,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_transporter.
@@ -119,8 +119,8 @@ impl WeightInfo for () {
 		//  Estimated: `25398`
 		// Minimum execution time: 59_000_000 picoseconds.
 		Weight::from_parts(60_000_000, 25398)
-			.saturating_add(RocksDbWeight::get().reads(8_u64))
-			.saturating_add(RocksDbWeight::get().writes(7_u64))
+			.saturating_add(ParityDbWeight::get().reads(8_u64))
+			.saturating_add(ParityDbWeight::get().writes(7_u64))
 	}
 	/// Storage: System Account (r:1 w:0)
 	/// Proof: System Account (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
@@ -130,7 +130,7 @@ impl WeightInfo for () {
 		//  Estimated: `3593`
 		// Minimum execution time: 9_000_000 picoseconds.
 		Weight::from_parts(10_000_000, 3593)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
 	}
 	/// Storage: Transporter OutgoingTransfers (r:1 w:1)
 	/// Proof Skipped: Transporter OutgoingTransfers (max_values: None, max_size: None, mode: Measured)
@@ -142,7 +142,7 @@ impl WeightInfo for () {
 		//  Estimated: `7302`
 		// Minimum execution time: 15_000_000 picoseconds.
 		Weight::from_parts(16_000_000, 7302)
-			.saturating_add(RocksDbWeight::get().reads(2_u64))
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().reads(2_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 }

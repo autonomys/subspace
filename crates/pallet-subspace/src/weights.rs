@@ -26,7 +26,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_subspace.
@@ -151,8 +151,8 @@ impl WeightInfo for () {
 		//  Estimated: `10563`
 		// Minimum execution time: 22_000_000 picoseconds.
 		Weight::from_parts(23_000_000, 10563)
-			.saturating_add(RocksDbWeight::get().reads(3_u64))
-			.saturating_add(RocksDbWeight::get().writes(4_u64))
+			.saturating_add(ParityDbWeight::get().reads(3_u64))
+			.saturating_add(ParityDbWeight::get().writes(4_u64))
 	}
 	/// Storage: Subspace SegmentCommitment (r:20 w:20)
 	/// Proof Skipped: Subspace SegmentCommitment (max_values: None, max_size: None, mode: Measured)
@@ -169,10 +169,10 @@ impl WeightInfo for () {
 		Weight::from_parts(20_123_871, 4060)
 			// Standard Error: 1_226_571
 			.saturating_add(Weight::from_parts(446_050_711, 0).saturating_mul(x.into()))
-			.saturating_add(RocksDbWeight::get().reads(2_u64))
-			.saturating_add(RocksDbWeight::get().reads((1_u64).saturating_mul(x.into())))
-			.saturating_add(RocksDbWeight::get().writes(2_u64))
-			.saturating_add(RocksDbWeight::get().writes((1_u64).saturating_mul(x.into())))
+			.saturating_add(ParityDbWeight::get().reads(2_u64))
+			.saturating_add(ParityDbWeight::get().reads((1_u64).saturating_mul(x.into())))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
+			.saturating_add(ParityDbWeight::get().writes((1_u64).saturating_mul(x.into())))
 			.saturating_add(Weight::from_parts(0, 2475).saturating_mul(x.into()))
 	}
 	/// Storage: Subspace ShouldAdjustSolutionRange (r:1 w:1)
@@ -189,8 +189,8 @@ impl WeightInfo for () {
 		//  Estimated: `4647`
 		// Minimum execution time: 12_000_000 picoseconds.
 		Weight::from_parts(12_000_000, 4647)
-			.saturating_add(RocksDbWeight::get().reads(3_u64))
-			.saturating_add(RocksDbWeight::get().writes(4_u64))
+			.saturating_add(ParityDbWeight::get().reads(3_u64))
+			.saturating_add(ParityDbWeight::get().writes(4_u64))
 	}
 	/// Storage: Subspace BlockList (r:1 w:0)
 	/// Proof Skipped: Subspace BlockList (max_values: None, max_size: None, mode: Measured)
@@ -200,7 +200,7 @@ impl WeightInfo for () {
 		//  Estimated: `3513`
 		// Minimum execution time: 1_288_000_000 picoseconds.
 		Weight::from_parts(1_297_000_000, 3513)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
 	}
 	/// Storage: Subspace EnableRewards (r:1 w:1)
 	/// Proof Skipped: Subspace EnableRewards (max_values: Some(1), max_size: None, mode: Measured)
@@ -210,8 +210,8 @@ impl WeightInfo for () {
 		//  Estimated: `1533`
 		// Minimum execution time: 6_000_000 picoseconds.
 		Weight::from_parts(6_000_000, 1533)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
-			.saturating_add(RocksDbWeight::get().writes(1_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 	/// Storage: Subspace RootPlotPublicKey (r:1 w:0)
 	/// Proof Skipped: Subspace RootPlotPublicKey (max_values: Some(1), max_size: None, mode: Measured)
@@ -225,7 +225,7 @@ impl WeightInfo for () {
 		//  Estimated: `3114`
 		// Minimum execution time: 7_000_000 picoseconds.
 		Weight::from_parts(7_000_000, 3114)
-			.saturating_add(RocksDbWeight::get().reads(2_u64))
-			.saturating_add(RocksDbWeight::get().writes(2_u64))
+			.saturating_add(ParityDbWeight::get().reads(2_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
 }

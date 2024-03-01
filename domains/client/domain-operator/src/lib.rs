@@ -176,6 +176,7 @@ pub struct OperatorParams<
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: SharedBlockImport<Block>,
     pub skip_empty_bundle_production: bool,
+    pub skip_out_of_order_slot: bool,
 }
 
 pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(

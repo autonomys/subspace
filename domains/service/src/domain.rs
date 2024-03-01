@@ -233,6 +233,7 @@ where
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
     pub consensus_state_pruning: PruningMode,
+    pub skip_out_of_order_slot: bool,
 }
 
 /// Builds service for a domain full node.
@@ -332,6 +333,7 @@ where
         provider,
         skip_empty_bundle_production,
         consensus_state_pruning,
+        skip_out_of_order_slot,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -450,6 +452,7 @@ where
             domain_confirmation_depth,
             block_import,
             skip_empty_bundle_production,
+            skip_out_of_order_slot,
         },
     )
     .await?;

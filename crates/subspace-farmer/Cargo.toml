@@ -16,6 +16,7 @@ anyhow = "1.0.79"
 async-lock = "3.3.0"
 async-trait = "0.1.77"
 atomic = "0.5.3"
+backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"
 blake3 = { version = "1.5.0", default-features = false }
@@ -25,7 +26,7 @@ criterion = { version = "0.5.1", default-features = false, features = ["rayon", 
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.3.0"
-fs4 = "0.7.0"
+fs4 = "0.8.0"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 hwlocality = { version = "1.0.0-alpha.1", features = ["vendored"], optional = true }
@@ -56,6 +57,7 @@ substrate-bip39 = "0.4.5"
 supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"
+thread-priority = "0.16.0"
 tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

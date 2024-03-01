@@ -3948,6 +3948,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d15c33be2d8e5bc0e6229c8c20905d69d6074c92c64c9b3485560b6d6dc1b68"
+dependencies = [
+ "rustix 0.38.30",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7472,7 +7482,6 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "sp-weights",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
@@ -9661,6 +9670,7 @@ dependencies = [
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",
+ "thread-priority",
  "tracing",
 ]
 
@@ -9849,7 +9859,7 @@ version = "0.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
 dependencies = [
  "clap",
- "fs4",
+ "fs4 0.7.0",
  "log",
  "sp-core",
  "thiserror",
@@ -11638,6 +11648,7 @@ dependencies = [
  "async-lock 3.3.0",
  "async-trait",
  "atomic",
+ "backoff",
  "base58",
  "blake2 0.10.6",
  "blake3",
@@ -11647,7 +11658,7 @@ dependencies = [
  "derive_more",
  "event-listener-primitives",
  "fdlimit",
- "fs4",
+ "fs4 0.8.0",
  "futures",
  "hex",
  "hwlocality",
@@ -11678,6 +11689,7 @@ dependencies = [
  "supports-color",
  "tempfile",
  "thiserror",
+ "thread-priority",
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.18",
@@ -11694,7 +11706,7 @@ dependencies = [
  "backoff",
  "bitvec",
  "criterion",
- "fs2",
+ "fs4 0.8.0",
  "futures",
  "hex",
  "libc",
@@ -11801,7 +11813,7 @@ dependencies = [
  "derive_more",
  "either",
  "event-listener-primitives",
- "fs2",
+ "fs4 0.8.0",
  "futures",
  "futures-timer",
  "hex",
@@ -12555,6 +12567,20 @@ name = "thousands"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
+
+[[package]]
+name = "thread-priority"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a617e9eeeb20448b01a8e2427fb80dfbc9c49d79a1de3b11f25731edbf547e3c"
+dependencies = [
+ "bitflags 2.4.2",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "winapi",
+]
 
 [[package]]
 name = "thread_local"

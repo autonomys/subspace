@@ -1,3 +1,5 @@
+use backoff::future::retry;
+use backoff::ExponentialBackoff;
 use clap::Parser;
 use futures::channel::oneshot;
 use futures::future::pending;
@@ -7,16 +9,75 @@ use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use parking_lot::Mutex;
+use std::error::Error;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::PieceIndex;
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
+use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;
-use tracing::{error, info, warn, Level};
+use tracing::{debug, error, info, trace, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+
+/// Defines initial duration between get_piece calls.
+const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+/// Defines max duration between get_piece calls.
+const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
+
+/// Returns piece by its index from farmer's piece cache (L2).
+/// Uses retry policy for error handling.
+async fn get_piece_from_dsn_cache_with_retries<PV>(
+    piece_provider: &PieceProvider<PV>,
+    piece_index: PieceIndex,
+    max_retries: u32,
+) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>
+where
+    PV: PieceValidator,
+{
+    trace!(%piece_index, "Piece request.");
+
+    let backoff = ExponentialBackoff {
+        initial_interval: GET_PIECE_INITIAL_INTERVAL,
+        max_interval: GET_PIECE_MAX_INTERVAL,
+        // Try until we get a valid piece
+        max_elapsed_time: None,
+        multiplier: 1.75,
+        ..ExponentialBackoff::default()
+    };
+
+    let retries = AtomicU32::default();
+
+    retry(backoff, || async {
+        let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
+
+        if let Some(piece) = piece_provider.get_piece_from_cache(piece_index).await {
+            trace!(%piece_index, current_attempt, "Got piece");
+            return Ok(Some(piece));
+        }
+
+        if current_attempt >= max_retries {
+            if max_retries > 0 {
+                debug!(
+                    %piece_index,
+                    current_attempt,
+                    max_retries,
+                    "Couldn't get a piece from DSN L2. No retries left."
+                );
+            }
+            return Ok(None);
+        }
+
+        trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2. Retrying...");
+
+        Err(backoff::Error::transient(
+            "Couldn't get piece from DSN".into(),
+        ))
+    })
+    .await
+}
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -117,6 +178,7 @@ struct PieceRequestStats {
     not_found: u32,
     error: u32,
 }
+
 impl PieceRequestStats {
     fn add_found(&mut self) {
         self.found += 1;
@@ -156,9 +218,9 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
     for i in start_with..(start_with + max_pieces) {
         let piece_index = PieceIndex::from(i as u64);
         let start = Instant::now();
-        let piece = piece_provider
-            .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
-            .await;
+        let piece =
+            get_piece_from_dsn_cache_with_retries(&piece_provider, piece_index, u32::from(retries))
+                .await;
         let end = Instant::now();
         let duration = end.duration_since(start);
         total_duration += duration;
@@ -219,9 +281,12 @@ async fn parallel_benchmark(
                     .await
                     .expect("Semaphore cannot be closed.");
                 let semaphore_acquired = Instant::now();
-                let maybe_piece = piece_provider
-                    .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
-                    .await;
+                let maybe_piece = get_piece_from_dsn_cache_with_retries(
+                    piece_provider,
+                    piece_index,
+                    u32::from(retries),
+                )
+                .await;
 
                 let end = Instant::now();
                 let pure_duration = end.duration_since(semaphore_acquired);

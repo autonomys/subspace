@@ -1,0 +1,265 @@
+#[cfg(test)]
+mod tests;
+
+use async_lock::RwLock as AsyncRwLock;
+use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::fs::File;
+use std::sync::{Arc, Weak};
+use std::{io, mem};
+use subspace_core_primitives::crypto::blake3_hash_list;
+use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex, SectorIndex};
+use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::sector::SectorMetadataChecksummed;
+use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::utils::multihash::ToMultihash;
+use thiserror::Error;
+use tracing::{debug, info, warn};
+
+/// Disk plot cache open error
+#[derive(Debug, Error)]
+pub enum DiskPlotCacheError {
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Checksum mismatch
+    #[error("Checksum mismatch")]
+    ChecksumMismatch,
+}
+
+#[derive(Debug)]
+pub(crate) enum MaybePieceStoredResult {
+    /// Definitely not stored
+    No,
+    /// Maybe has vacant slot to store
+    Vacant,
+    /// Maybe still stored
+    Yes,
+}
+
+#[derive(Debug)]
+struct CachedPieces {
+    /// Map of piece index into offset
+    map: HashMap<RecordKey, u32>,
+    next_offset: Option<u32>,
+}
+
+/// Additional piece cache that exploit part of the plot that does not contain sectors yet
+#[derive(Debug, Clone)]
+pub struct DiskPlotCache {
+    file: Weak<File>,
+    sectors_metadata: Weak<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
+    cached_pieces: Arc<RwLock<CachedPieces>>,
+    sector_size: u64,
+}
+
+impl DiskPlotCache {
+    pub(crate) fn new(
+        file: &Arc<File>,
+        sectors_metadata: &Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
+        target_sector_count: SectorIndex,
+        sector_size: usize,
+    ) -> Self {
+        info!("Checking plot cache contents");
+        let sector_size = sector_size as u64;
+        let cached_pieces = {
+            let sectors_metadata = sectors_metadata.read_blocking();
+            let mut element = vec![0; Self::element_size() as usize];
+            // Clippy complains about `RecordKey`, but it is not changing here, so it is fine
+            #[allow(clippy::mutable_key_type)]
+            let mut map = HashMap::new();
+
+            let file_size = sector_size * u64::from(target_sector_count);
+            let plotted_size = sector_size * sectors_metadata.len() as u64;
+
+            // Step over all free potential offsets for pieces that could have been cached
+            let from_offset = (plotted_size / Self::element_size() as u64) as u32;
+            let to_offset = (file_size / Self::element_size() as u64) as u32;
+            let mut next_offset = None;
+            // TODO: Parallelize or read in larger batches
+            for offset in (from_offset..to_offset).rev() {
+                match Self::read_piece_internal(file, offset, &mut element) {
+                    Ok(maybe_piece_index) => match maybe_piece_index {
+                        Some(piece_index) => {
+                            map.insert(RecordKey::from(piece_index.to_multihash()), offset);
+                        }
+                        None => {
+                            next_offset.replace(offset);
+                            break;
+                        }
+                    },
+                    Err(DiskPlotCacheError::ChecksumMismatch) => {
+                        next_offset.replace(offset);
+                        break;
+                    }
+                    Err(error) => {
+                        warn!(%error, %offset, "Failed to read plot cache element");
+                        break;
+                    }
+                }
+            }
+
+            CachedPieces { map, next_offset }
+        };
+
+        debug!("Finished checking plot cache contents");
+
+        Self {
+            file: Arc::downgrade(file),
+            sectors_metadata: Arc::downgrade(sectors_metadata),
+            cached_pieces: Arc::new(RwLock::new(cached_pieces)),
+            sector_size,
+        }
+    }
+
+    pub(crate) const fn element_size() -> u32 {
+        (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
+    }
+
+    /// Check if piece is potentially stored in this cache (not guaranteed to be because it might be
+    /// overridden with sector any time)
+    pub(crate) fn is_piece_maybe_stored(&self, key: &RecordKey) -> MaybePieceStoredResult {
+        let offset = {
+            let cached_pieces = self.cached_pieces.read();
+
+            let Some(offset) = cached_pieces.map.get(key).copied() else {
+                return if cached_pieces.next_offset.is_some() {
+                    MaybePieceStoredResult::Vacant
+                } else {
+                    MaybePieceStoredResult::No
+                };
+            };
+
+            offset
+        };
+
+        let Some(sectors_metadata) = self.sectors_metadata.upgrade() else {
+            return MaybePieceStoredResult::No;
+        };
+
+        let element_offset = u64::from(offset) * u64::from(Self::element_size());
+        let plotted_bytes = self.sector_size * sectors_metadata.read_blocking().len() as u64;
+
+        // Make sure offset is after anything that is already plotted
+        if element_offset < plotted_bytes {
+            // Remove entry since it was overridden with a sector already
+            self.cached_pieces.write().map.remove(key);
+            MaybePieceStoredResult::No
+        } else {
+            MaybePieceStoredResult::Yes
+        }
+    }
+
+    /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
+    pub(crate) fn try_store_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> Result<bool, DiskPlotCacheError> {
+        let offset = {
+            let mut cached_pieces = self.cached_pieces.write();
+            let Some(next_offset) = cached_pieces.next_offset else {
+                return Ok(false);
+            };
+
+            let offset = next_offset;
+            cached_pieces.next_offset = offset.checked_sub(1);
+            offset
+        };
+
+        let Some(sectors_metadata) = self.sectors_metadata.upgrade() else {
+            return Ok(false);
+        };
+
+        let element_offset = u64::from(offset) * u64::from(Self::element_size());
+        let sectors_metadata = sectors_metadata.write_blocking();
+        let plotted_bytes = self.sector_size * sectors_metadata.len() as u64;
+
+        // Make sure offset is after anything that is already plotted
+        if element_offset < plotted_bytes {
+            // Just to be safe, avoid any overlap of write locks
+            drop(sectors_metadata);
+            // No space to store more pieces anymore
+            self.cached_pieces.write().next_offset.take();
+            return Ok(false);
+        }
+
+        let Some(file) = self.file.upgrade() else {
+            return Ok(false);
+        };
+
+        let piece_index_bytes = piece_index.to_bytes();
+        file.write_all_at(&piece_index_bytes, element_offset)?;
+        file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
+        file.write_all_at(
+            &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
+            element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
+        )?;
+        // Just to be safe, avoid any overlap of write locks
+        drop(sectors_metadata);
+        // Store newly written piece in the map
+        self.cached_pieces
+            .write()
+            .map
+            .insert(RecordKey::from(piece_index.to_multihash()), offset);
+
+        Ok(true)
+    }
+
+    /// Read piece from cache.
+    ///
+    /// Returns `None` if not cached.
+    pub(crate) fn read_piece(&self, key: &RecordKey) -> Option<Piece> {
+        let offset = self.cached_pieces.read().map.get(key).copied()?;
+
+        let file = self.file.upgrade()?;
+
+        let mut element = vec![0; Self::element_size() as usize];
+        match Self::read_piece_internal(&file, offset, &mut element) {
+            Ok(Some(_piece_index)) => {
+                let mut piece = Piece::default();
+                piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
+                Some(piece)
+            }
+            _ => {
+                // Remove entry just in case it was overridden with a sector already
+                self.cached_pieces.write().map.remove(key);
+                None
+            }
+        }
+    }
+
+    fn read_piece_internal(
+        file: &File,
+        offset: u32,
+        element: &mut [u8],
+    ) -> Result<Option<PieceIndex>, DiskPlotCacheError> {
+        file.read_exact_at(element, u64::from(offset) * u64::from(Self::element_size()))?;
+
+        let (piece_index_bytes, remaining_bytes) = element.split_at(PieceIndex::SIZE);
+        let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
+
+        // Verify checksum
+        let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece_bytes]);
+        if actual_checksum != expected_checksum {
+            if element.iter().all(|&byte| byte == 0) {
+                return Ok(None);
+            }
+
+            debug!(
+                actual_checksum = %hex::encode(actual_checksum),
+                expected_checksum = %hex::encode(expected_checksum),
+                "Hash doesn't match, corrupted or overridden piece in cache"
+            );
+
+            return Err(DiskPlotCacheError::ChecksumMismatch);
+        }
+
+        let piece_index = PieceIndex::from_bytes(
+            piece_index_bytes
+                .try_into()
+                .expect("Statically known to have correct size; qed"),
+        );
+        Ok(Some(piece_index))
+    }
+}

@@ -29,6 +29,7 @@ sp-std = { version = "8.0.0", default-features = false, git = "https://github.co
 default = ["std"]
 std = [
     "codec/std",
+    "frame-benchmarking?/std",
     "frame-support/std",
     "frame-system/std",
     "scale-info/std",

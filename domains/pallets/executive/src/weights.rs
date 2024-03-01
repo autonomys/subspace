@@ -27,7 +27,7 @@
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 
-use frame_support::{traits::Get, weights::{Weight, constants::RocksDbWeight}};
+use frame_support::{traits::Get, weights::{Weight, constants::ParityDbWeight}};
 use core::marker::PhantomData;
 
 /// Weight functions needed for domain_pallet_executive.
@@ -65,7 +65,7 @@ impl WeightInfo for () {
 		//  Estimated: `1485`
 		// Minimum execution time: 14_298_000_000 picoseconds.
 		Weight::from_parts(14_475_000_000, 1485)
-			.saturating_add(RocksDbWeight::get().reads(1_u64))
-			.saturating_add(RocksDbWeight::get().writes(2_u64))
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
 }

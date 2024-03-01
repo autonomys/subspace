@@ -18,7 +18,7 @@ use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, Plott
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetterRetryPolicy};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -119,7 +119,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             public_key,
             sector_index,
             piece_getter: &archived_history_segment,
-            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
             farmer_protocol_info,
             kzg: &kzg,
             erasure_coding: &erasure_coding,

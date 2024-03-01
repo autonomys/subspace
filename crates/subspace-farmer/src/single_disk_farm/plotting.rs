@@ -13,7 +13,7 @@ use parity_scale_codec::{Decode, Encode};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
-use std::num::{NonZeroU16, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -30,7 +30,7 @@ use subspace_farmer_components::plotting::{
     PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_farmer_components::{plotting, PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::{plotting, PieceGetter};
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
@@ -40,8 +40,6 @@ use tracing::{debug, info, trace, warn, Instrument};
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
-/// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(7).expect("Not zero; qed");
 
 /// Details about sector currently being plotted
 #[derive(Debug, Clone, Encode, Decode)]
@@ -307,9 +305,6 @@ where
                     public_key: &public_key,
                     sector_index,
                     piece_getter,
-                    piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
-                        PIECE_GETTER_RETRY_NUMBER.get(),
-                    ),
                     farmer_protocol_info: farmer_app_info.protocol_info,
                     kzg,
                     pieces_in_sector,
@@ -351,9 +346,6 @@ where
                             public_key: &public_key,
                             sector_index,
                             piece_getter: &piece_getter,
-                            piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
-                                PIECE_GETTER_RETRY_NUMBER.get(),
-                            ),
                             farmer_protocol_info: farmer_app_info.protocol_info,
                             kzg: &kzg,
                             pieces_in_sector,

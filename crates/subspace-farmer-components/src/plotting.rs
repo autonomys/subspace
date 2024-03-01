@@ -3,7 +3,7 @@ use crate::sector::{
     SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
 use crate::segment_reconstruction::recover_missing_piece;
-use crate::{FarmerProtocolInfo, PieceGetter, PieceGetterRetryPolicy};
+use crate::{FarmerProtocolInfo, PieceGetter};
 use async_lock::Mutex as AsyncMutex;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
@@ -125,8 +125,6 @@ where
     pub sector_index: SectorIndex,
     /// Getter for pieces of archival history
     pub piece_getter: &'a PG,
-    /// Retry policy for piece getter
-    pub piece_getter_retry_policy: PieceGetterRetryPolicy,
     /// Farmer protocol info
     pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
@@ -170,7 +168,6 @@ where
         public_key,
         sector_index,
         piece_getter,
-        piece_getter_retry_policy,
         farmer_protocol_info,
         kzg,
         erasure_coding,
@@ -192,7 +189,6 @@ where
         public_key,
         sector_index,
         piece_getter,
-        piece_getter_retry_policy,
         farmer_protocol_info,
         kzg,
         pieces_in_sector,
@@ -233,8 +229,6 @@ pub struct DownloadSectorOptions<'a, PG> {
     pub sector_index: SectorIndex,
     /// Getter for pieces of archival history
     pub piece_getter: &'a PG,
-    /// Retry policy for piece getter
-    pub piece_getter_retry_policy: PieceGetterRetryPolicy,
     /// Farmer protocol info
     pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
@@ -257,7 +251,6 @@ where
         public_key,
         sector_index,
         piece_getter,
-        piece_getter_retry_policy,
         farmer_protocol_info,
         kzg,
         pieces_in_sector,
@@ -292,7 +285,6 @@ where
             if let Err(error) = download_sector_internal(
                 &mut raw_sector,
                 piece_getter,
-                piece_getter_retry_policy,
                 kzg,
                 &mut incremental_piece_indices,
             )
@@ -626,7 +618,6 @@ fn record_encoding<PosTable>(
 async fn download_sector_internal<PG: PieceGetter>(
     raw_sector: &mut RawSector,
     piece_getter: &PG,
-    piece_getter_retry_policy: PieceGetterRetryPolicy,
     kzg: &Kzg,
     piece_indexes: &mut [Option<PieceIndex>],
 ) -> Result<(), PlottingError> {
@@ -643,9 +634,7 @@ async fn download_sector_internal<PG: PieceGetter>(
                 return Ok(());
             };
 
-            let mut piece_result = piece_getter
-                .get_piece(piece_index, piece_getter_retry_policy)
-                .await;
+            let mut piece_result = piece_getter.get_piece(piece_index).await;
 
             let succeeded = piece_result
                 .as_ref()

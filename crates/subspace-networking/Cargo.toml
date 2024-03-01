@@ -24,7 +24,7 @@ clap = { version = "4.4.18", features = ["color", "derive"] }
 derive_more = "0.99.17"
 either = "1.8.1"
 event-listener-primitives = "2.0.1"
-fs2 = "0.4.3"
+fs4 = "0.8.0"
 futures = "0.3.29"
 futures-timer = "3.0.2"
 hex = "0.4.3"
@@ -43,7 +43,7 @@ subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"]}
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
 void = "1.0.2"
 

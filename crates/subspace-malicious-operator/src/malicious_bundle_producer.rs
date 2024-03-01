@@ -140,6 +140,7 @@ where
             operator_keystore.clone(),
             // The malicious operator doesn't skip empty bundle
             false,
+            false,
         );
 
         let malicious_bundle_tamper =

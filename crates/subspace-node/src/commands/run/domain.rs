@@ -485,6 +485,7 @@ where
                 domain_message_receiver,
                 provider: eth_provider,
                 skip_empty_bundle_production: true,
+                skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 consensus_state_pruning,
             };

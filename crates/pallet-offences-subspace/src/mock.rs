@@ -22,7 +22,7 @@ use crate as pallet_offences_subspace;
 use crate::Config;
 use codec::Encode;
 use frame_support::traits::{ConstU32, ConstU64};
-use frame_support::weights::constants::RocksDbWeight;
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::Weight;
 use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
 use sp_consensus_subspace::FarmerPublicKey;
@@ -63,7 +63,7 @@ impl frame_system::Config for Runtime {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
-    type DbWeight = RocksDbWeight;
+    type DbWeight = ParityDbWeight;
     type RuntimeOrigin = RuntimeOrigin;
     type Nonce = u64;
     type RuntimeCall = RuntimeCall;
