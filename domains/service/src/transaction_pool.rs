@@ -1,14 +1,12 @@
-use futures::future::{Future, FutureExt, Ready};
-use parity_scale_codec::Encode;
+use futures::future::{Future, Ready};
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{BlockBackend, ExecutorProvider, UsageProvider};
 use sc_service::{Configuration, TaskManager};
-use sc_transaction_pool::error::{Error as TxPoolError, Result as TxPoolResult};
+use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool::{BasicPool, ChainApi, FullChainApi, RevalidationType};
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
-use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_runtime::transaction_validity::TransactionValidity;
@@ -77,7 +75,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>>,
+    Client::Api: TaggedTransactionQueue<Block>,
 {
     type Block = Block;
     type Error = sc_transaction_pool::error::Error;
@@ -90,22 +88,7 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let chain_api = self.inner.clone();
-        let client = self.client.clone();
-        async move {
-            if let Some(false) = client
-                .runtime_api()
-                .is_xdm_valid(at, uxt.encode())
-                .map_err(|err| TxPoolError::RuntimeApi(err.to_string()))?
-            {
-                return Err(TxPoolError::Pool(
-                    sc_transaction_pool_api::error::Error::ImmediatelyDropped,
-                ));
-            }
-
-            chain_api.validate_transaction(at, source, uxt).await
-        }
-        .boxed()
+        self.inner.validate_transaction(at, source, uxt)
     }
 
     fn block_id_to_number(
@@ -160,7 +143,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>>,
+    Client::Api: TaggedTransactionQueue<Block>,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(

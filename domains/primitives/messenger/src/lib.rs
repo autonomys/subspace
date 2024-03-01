@@ -113,6 +113,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
+    #[api_version(2)]
     pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
         /// Returns `Some(true)` if valid XDM or `Some(false)` if not
         /// Returns None if this is not an XDM
