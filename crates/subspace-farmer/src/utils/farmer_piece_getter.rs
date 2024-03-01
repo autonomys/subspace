@@ -91,10 +91,10 @@ where
             .in_progress_pieces
             .lock()
             .entry(piece_index)
-            .or_insert_with(|| {
+            .and_modify(|_mutex| {
                 local_in_progress_piece_guard.take();
-                Arc::clone(&in_progress_piece_mutex)
             })
+            .or_insert_with(|| Arc::clone(&in_progress_piece_mutex))
             .clone();
 
         // If piece is already in progress, just wait for it
@@ -174,10 +174,10 @@ where
             .in_progress_pieces
             .lock()
             .entry(piece_index)
-            .or_insert_with(|| {
+            .and_modify(|_mutex| {
                 local_in_progress_piece_guard.take();
-                Arc::clone(&in_progress_piece_mutex)
             })
+            .or_insert_with(|| Arc::clone(&in_progress_piece_mutex))
             .clone();
 
         // If piece is already in progress, wait for it to see if it was successful
@@ -273,10 +273,10 @@ where
             .in_progress_pieces
             .lock()
             .entry(piece_index)
-            .or_insert_with(|| {
+            .and_modify(|_mutex| {
                 local_in_progress_piece_guard.take();
-                Arc::clone(&in_progress_piece_mutex)
             })
+            .or_insert_with(|| Arc::clone(&in_progress_piece_mutex))
             .clone();
 
         // If piece is already in progress, wait for it to see if it was successful
