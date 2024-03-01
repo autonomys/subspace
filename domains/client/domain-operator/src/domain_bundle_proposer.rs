@@ -129,7 +129,7 @@ where
                 ))
             })?;
 
-        if api_version == 2 {
+        if api_version >= 2 {
             self.consensus_client
                 .runtime_api()
                 .domain_bundle_limit(best_hash, self.domain_id)?

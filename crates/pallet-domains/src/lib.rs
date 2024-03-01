@@ -1662,7 +1662,7 @@ impl<T: Config> Pallet<T> {
         ensure!(
             opaque_bundle
                 .estimated_weight()
-                .any_lte(domain_bundle_limit.max_bundle_weight),
+                .all_lte(domain_bundle_limit.max_bundle_weight),
             BundleError::BundleTooHeavy
         );
 
