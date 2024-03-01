@@ -52,7 +52,7 @@ use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
 };
-use sp_runtime::{ArithmeticError, Digest, DigestItem, OpaqueExtrinsic, Percent};
+use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
@@ -1238,7 +1238,7 @@ sp_api::decl_runtime_apis! {
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
 
         /// Returns the domain bundle limit of the given domain.
-        fn domain_bundle_limit(domain_id: DomainId) -> Option<Result<DomainBundleLimit, ArithmeticError>>;
+        fn domain_bundle_limit(domain_id: DomainId) -> Option<DomainBundleLimit>;
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
         fn non_empty_er_exists(domain_id: DomainId) -> bool;

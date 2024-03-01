@@ -1,11 +1,11 @@
 use crate::block_tree::BlockTreeNode;
-use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::domain_registry::{calculate_max_bundle_weight_and_size, DomainConfig, DomainObject};
 use crate::staking::Operator;
 use crate::{
-    self as pallet_domains, calculate_max_bundle_weight_and_size, BalanceOf, BlockSlot, BlockTree,
-    BlockTreeNodes, BundleError, Config, ConsensusBlockHash, DomainBlockNumberFor,
-    DomainHashingFor, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
-    FungibleHoldId, HeadReceiptNumber, NextDomainId, OperatorStatus, Operators, ReceiptHashFor,
+    self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
+    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
+    OperatorStatus, Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -26,9 +26,9 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, ChainId, DomainBlockLimit, DomainId, DomainsHoldIdentifier, ExecutionReceipt,
-    ExtrinsicDigest, InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId,
-    OperatorPair, ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidBlockFeesProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
@@ -1447,10 +1447,8 @@ fn test_bundle_limit_calculation() {
         let expected_bundle_max_size = row.3 .1;
 
         let domain_bundle_limit = calculate_max_bundle_weight_and_size(
-            DomainBlockLimit {
-                max_block_weight: Weight::from_all(block_max_weight),
-                max_block_size: block_max_size,
-            },
+            block_max_size,
+            Weight::from_all(block_max_weight),
             (consensus_slot_numerator, consensus_slot_denominator),
             (bundle_probability_numerator, bundle_probability_denominator),
         )

@@ -137,15 +137,6 @@ where
                     sp_blockchain::Error::Application(
                         format!("Domain bundle limit for {:?} not found", self.domain_id).into(),
                     )
-                })?
-                .map_err(|arithmetic_error| {
-                    sp_blockchain::Error::Application(
-                        format!(
-                            "Unable to calculate Domain bundle limit for {:?} due to error: {:?}",
-                            self.domain_id, arithmetic_error
-                        )
-                        .into(),
-                    )
                 })
         } else {
             // If bundle limit runtime api is not available, we need to revert to old behaviour and
