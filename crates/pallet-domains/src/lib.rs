@@ -151,9 +151,8 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_switch_operator_domain, do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit,
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
-        Withdrawal,
+        do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit, DomainEpoch,
+        Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
@@ -1182,26 +1181,6 @@ mod pallet {
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
-
-            Ok(())
-        }
-
-        #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::switch_domain())]
-        pub fn switch_domain(
-            origin: OriginFor<T>,
-            operator_id: OperatorId,
-            new_domain_id: DomainId,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
-            let old_domain_id = do_switch_operator_domain::<T>(who, operator_id, new_domain_id)
-                .map_err(Error::<T>::from)?;
-
-            Self::deposit_event(Event::OperatorSwitchedDomain {
-                old_domain_id,
-                new_domain_id,
-            });
 
             Ok(())
         }
