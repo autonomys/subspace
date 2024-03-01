@@ -41,7 +41,6 @@ pub enum Error {
     BalanceOverflow,
     DomainTransfersTracking,
     InvalidDomainTransfers,
-    LatestSubmittedERFallback,
     OverwritingER,
 }
 
@@ -401,11 +400,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
     // Update the `LatestSubmittedER` for the operator
     let key = (domain_id, submitter);
-    match receipt_block_number.cmp(&Pallet::<T>::latest_submitted_er(key)) {
-        Ordering::Equal => {}
-        Ordering::Greater => LatestSubmittedER::<T>::insert(key, receipt_block_number),
-        // The `LatestSubmittedER` should never fallback there must be something wrong
-        Ordering::Less => return Err(Error::LatestSubmittedERFallback),
+    if receipt_block_number > Pallet::<T>::latest_submitted_er(key) {
+        LatestSubmittedER::<T>::insert(key, receipt_block_number)
     }
 
     Ok(None)
