@@ -2965,6 +2965,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
             Arc::new(bundle_sender),
             alice.operator.keystore.clone(),
             false,
+            false,
         )
     };
 
@@ -3881,6 +3882,7 @@ async fn test_bad_receipt_chain() {
             domain_bundle_proposer,
             Arc::new(bundle_sender),
             alice.operator.keystore.clone(),
+            false,
             false,
         )
     };

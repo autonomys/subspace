@@ -17,6 +17,7 @@ use std::pin::{pin, Pin};
 use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::{io, thread};
+use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::runtime::Handle;
 use tokio::task;
 use tracing::debug;
@@ -371,6 +372,7 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
     thread_prefix: &'static str,
     thread_pool_index: usize,
     cpu_core_set: CpuCoreSet,
+    thread_priority: Option<ThreadPriority>,
 ) -> Result<ThreadPool, ThreadPoolBuildError> {
     ThreadPoolBuilder::new()
         .thread_name(move |thread_index| {
@@ -386,6 +388,11 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
 
                 move || {
                     cpu_core_set.pin_current_thread();
+                    if let Some(thread_priority) = thread_priority {
+                        if let Err(error) = set_current_thread_priority(thread_priority) {
+                            warn!(%error, "Failed to set thread priority");
+                        }
+                    }
                     drop(cpu_core_set);
 
                     let _guard = handle.enter();
@@ -405,6 +412,7 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
 /// support for user customizations is desired. They will then have to be composed into pairs for this function.
 pub fn create_plotting_thread_pool_manager<I>(
     mut cpu_core_sets: I,
+    thread_priority: Option<ThreadPriority>,
 ) -> Result<PlottingThreadPoolManager, ThreadPoolBuildError>
 where
     I: ExactSizeIterator<Item = (CpuCoreSet, CpuCoreSet)>,
@@ -422,11 +430,13 @@ where
                     "plotting",
                     thread_pool_index,
                     plotting_cpu_core_set,
+                    thread_priority,
                 )?,
                 replotting: create_plotting_thread_pool_manager_thread_pool_pair(
                     "replotting",
                     thread_pool_index,
                     replotting_cpu_core_set,
+                    thread_priority,
                 )?,
             })
         },

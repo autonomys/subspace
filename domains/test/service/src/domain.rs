@@ -228,6 +228,7 @@ where
             domain_message_receiver,
             provider: DefaultProvider,
             skip_empty_bundle_production,
+            skip_out_of_order_slot: true,
             maybe_operator_id,
         };
 

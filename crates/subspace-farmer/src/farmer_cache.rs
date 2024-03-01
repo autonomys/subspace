@@ -10,6 +10,7 @@ use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
+use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -386,7 +387,11 @@ where
             "Identified piece indices that should be cached",
         );
 
-        let mut piece_indices_to_store = piece_indices_to_store.into_values();
+        let mut piece_indices_to_store = piece_indices_to_store.into_values().collect::<Vec<_>>();
+        // Sort pieces such that they are in ascending order and have higher chance of download
+        // overlapping with other processes like node's sync from DSN
+        piece_indices_to_store.par_sort_unstable();
+        let mut piece_indices_to_store = piece_indices_to_store.into_iter();
 
         let download_piece = |piece_index| async move {
             trace!(%piece_index, "Downloading piece");

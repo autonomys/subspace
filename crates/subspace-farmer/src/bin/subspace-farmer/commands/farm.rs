@@ -8,12 +8,10 @@ use anyhow::anyhow;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
-use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
-use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
@@ -21,6 +19,7 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -47,6 +46,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
+use thread_priority::ThreadPriority;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
@@ -64,6 +64,50 @@ fn should_farm_during_initial_plotting() -> bool {
         .flat_map(|set| set.cpu_cores())
         .count();
     total_cpu_cores > 8
+}
+
+/// Plotting thread priority
+#[derive(Debug, Parser, Copy, Clone)]
+enum PlottingThreadPriority {
+    /// Minimum priority
+    Min,
+    /// Default priority
+    Default,
+    /// Max priority (not recommended)
+    Max,
+}
+
+impl FromStr for PlottingThreadPriority {
+    type Err = String;
+
+    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
+        match s {
+            "min" => Ok(Self::Min),
+            "default" => Ok(Self::Default),
+            "max" => Ok(Self::Max),
+            s => Err(format!("Thread priority {s} is not valid")),
+        }
+    }
+}
+
+impl fmt::Display for PlottingThreadPriority {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Min => "min",
+            Self::Default => "default",
+            Self::Max => "max",
+        })
+    }
+}
+
+impl From<PlottingThreadPriority> for Option<ThreadPriority> {
+    fn from(value: PlottingThreadPriority) -> Self {
+        match value {
+            PlottingThreadPriority::Min => Some(ThreadPriority::Min),
+            PlottingThreadPriority::Default => None,
+            PlottingThreadPriority::Max => Some(ThreadPriority::Max),
+        }
+    }
 }
 
 /// Arguments for farmer
@@ -193,6 +237,10 @@ pub(crate) struct FarmingArgs {
     /// each with a pair of CPU cores.
     #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
+    /// Plotting thread priority, by default de-prioritizes plotting threads in order to make sure
+    /// farming is successful and computer can be used comfortably for other things
+    #[arg(long, default_value_t = PlottingThreadPriority::Min)]
+    plotting_thread_priority: PlottingThreadPriority,
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
     disable_farm_locking: bool,
@@ -346,6 +394,7 @@ where
         plotting_cpu_cores,
         replotting_thread_pool_size,
         replotting_cpu_cores,
+        plotting_thread_priority,
         disable_farm_locking,
     } = farming_args;
 
@@ -571,18 +620,15 @@ where
         plotting_thread_pool_core_indices
             .into_iter()
             .zip(replotting_thread_pool_core_indices),
+        plotting_thread_priority.into(),
     )?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
 
-    let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
-
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
-        let (plotting_delay_sender, plotting_delay_receiver) = oneshot::channel();
-        plotting_delay_senders.push(plotting_delay_sender);
 
         let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
             SingleDiskFarmOptions {
@@ -601,7 +647,6 @@ where
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
                 plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
-                plotting_delay: Some(plotting_delay_receiver),
                 disable_farm_locking,
             },
             disk_farm_index,
@@ -645,29 +690,22 @@ where
         single_disk_farms.push(single_disk_farm);
     }
 
-    let cache_acknowledgement_receiver = farmer_cache
-        .replace_backing_caches(
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.piece_cache())
-                .collect(),
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.plot_cache())
-                .collect(),
-        )
-        .await;
+    // Acknowledgement is not necessary
+    drop(
+        farmer_cache
+            .replace_backing_caches(
+                single_disk_farms
+                    .iter()
+                    .map(|single_disk_farm| single_disk_farm.piece_cache())
+                    .collect(),
+                single_disk_farms
+                    .iter()
+                    .map(|single_disk_farm| single_disk_farm.plot_cache())
+                    .collect(),
+            )
+            .await,
+    );
     drop(farmer_cache);
-
-    // Wait for cache initialization before starting plotting
-    tokio::spawn(async move {
-        if cache_acknowledgement_receiver.await.is_ok() {
-            for plotting_delay_sender in plotting_delay_senders {
-                // Doesn't matter if receiver is gone
-                let _ = plotting_delay_sender.send(());
-            }
-        }
-    });
 
     // Store piece readers so we can reference them later
     let piece_readers = single_disk_farms

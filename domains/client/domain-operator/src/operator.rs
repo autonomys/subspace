@@ -136,6 +136,7 @@ where
             params.bundle_sender,
             params.keystore.clone(),
             params.skip_empty_bundle_production,
+            params.skip_out_of_order_slot,
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(

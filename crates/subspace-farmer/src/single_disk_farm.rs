@@ -288,9 +288,6 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub farming_thread_pool_size: usize,
     /// Thread pool manager used for plotting
     pub plotting_thread_pool_manager: PlottingThreadPoolManager,
-    /// Notification for plotter to start, can be used to delay plotting until some initialization
-    /// has happened externally
-    pub plotting_delay: Option<oneshot::Receiver<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
 }
@@ -619,7 +616,6 @@ impl SingleDiskFarm {
             record_encoding_concurrency,
             farming_thread_pool_size,
             plotting_thread_pool_manager,
-            plotting_delay,
             farm_during_initial_plotting,
             disable_farm_locking,
         } = options;
@@ -964,13 +960,6 @@ impl SingleDiskFarm {
                     if start_receiver.recv().await.is_err() {
                         // Dropped before starting
                         return Ok(());
-                    }
-
-                    if let Some(plotting_delay) = plotting_delay {
-                        if plotting_delay.await.is_err() {
-                            // Dropped before resolving
-                            return Ok(());
-                        }
                     }
 
                     plotting::<_, _, PosTable>(plotting_options).await
