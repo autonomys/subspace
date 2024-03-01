@@ -368,8 +368,8 @@ where
             return Ok(());
         }
 
-        // generate domain proof that points to the confirmed domain block using the parent of
-        // finalized consensus chain block
+        // Generate domain proof that points to the confirmed domain block.
+        // Confirmed domain block is taken from the parent of the finalized consensus block
         let consensus_chain_number_to_process =
             match finalized_consensus_block.0.checked_sub(&One::one()) {
                 None => return Ok(()),

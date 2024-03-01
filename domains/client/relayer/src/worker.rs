@@ -205,30 +205,30 @@ where
     }
 }
 
-async fn start_relaying_messages<Client, Block, MP, SO, CRM, ExtraData>(
+async fn start_relaying_messages<CClient, CBlock, MP, SO, CRM, ExtraData>(
     chain_id: ChainId,
-    client: Arc<Client>,
+    consensus_client: Arc<CClient>,
     message_processor: MP,
     sync_oracle: SO,
     can_relay_message_from_block: CRM,
 ) -> Result<(), Error>
 where
-    Block: BlockT,
-    Client: BlockchainEvents<Block>
-        + HeaderBackend<Block>
+    CBlock: BlockT,
+    CClient: BlockchainEvents<CBlock>
+        + HeaderBackend<CBlock>
         + AuxStore
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
-    MP: Fn(&Arc<Client>, (NumberFor<Block>, Block::Hash), ExtraData) -> Result<(), Error>,
+        + ProofProvider<CBlock>
+        + ProvideRuntimeApi<CBlock>,
+    MP: Fn(&Arc<CClient>, (NumberFor<CBlock>, CBlock::Hash), ExtraData) -> Result<(), Error>,
     SO: SyncOracle,
-    CRM: Fn(NumberFor<Block>) -> Result<Option<ExtraData>, ApiError>,
+    CRM: Fn(NumberFor<CBlock>) -> Result<Option<ExtraData>, ApiError>,
 {
     tracing::info!(
         target: LOG_TARGET,
         "Starting relayer for chain: {:?}",
         chain_id,
     );
-    let mut chain_block_finalization = client.finality_notification_stream();
+    let mut chain_block_finalization = consensus_client.finality_notification_stream();
 
     // from the start block, start processing all the messages assigned
     // wait for new block finalization of the chain,
@@ -243,8 +243,13 @@ where
         }
 
         let (number, hash) = (*block.header.number(), block.header.hash());
-        let blocks_to_process: Vec<(NumberFor<Block>, Block::Hash)> =
-            Relayer::fetch_unprocessed_consensus_blocks_until(&client, chain_id, number, hash)?;
+        let blocks_to_process: Vec<(NumberFor<CBlock>, CBlock::Hash)> =
+            Relayer::fetch_unprocessed_consensus_blocks_until(
+                &consensus_client,
+                chain_id,
+                number,
+                hash,
+            )?;
 
         for (number, hash) in blocks_to_process {
             tracing::debug!(
@@ -256,9 +261,14 @@ where
             // if not, the node is lagging behind and/or there is no way to generate a proof.
             // mark this block processed and continue to next one.
             if let Some(extra_data) = can_relay_message_from_block(number)? {
-                match message_processor(&client, (number, hash), extra_data) {
+                match message_processor(&consensus_client, (number, hash), extra_data) {
                     Ok(_) => {
-                        Relayer::store_relayed_consensus_block(&client, chain_id, number, hash)?;
+                        Relayer::store_relayed_consensus_block(
+                            &consensus_client,
+                            chain_id,
+                            number,
+                            hash,
+                        )?;
                         tracing::debug!(
                             target: LOG_TARGET,
                             "Messages from {chain_id:?} at block({number:?}, {hash:?}) are processed."
@@ -274,7 +284,7 @@ where
                     }
                 }
             } else {
-                Relayer::store_relayed_consensus_block(&client, chain_id, number, hash)?;
+                Relayer::store_relayed_consensus_block(&consensus_client, chain_id, number, hash)?;
                 tracing::debug!(
                     target: LOG_TARGET,
                     "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
