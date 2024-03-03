@@ -1,4 +1,5 @@
 pub mod rayon_files;
+pub mod unbuffered_io_file_windows;
 
 use crate::node_client;
 use crate::node_client::NodeClient;

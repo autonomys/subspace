@@ -9,6 +9,13 @@ pub trait OpenOptionsExt {
     /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_random_access(&mut self) -> &mut Self;
 
+    /// Advise Windows to not use buffering for this file and that file access will be random.
+    ///
+    /// NOTE: There are major alignment requirements described here:
+    /// https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements
+    #[cfg(windows)]
+    fn advise_random_unbuffered(&mut self) -> &mut Self;
+
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
     /// desirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_sequential_access(&mut self) -> &mut Self;
@@ -37,6 +44,16 @@ impl OpenOptionsExt for OpenOptions {
         self.custom_flags(
             winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS
                 | winapi::um::winbase::FILE_FLAG_WRITE_THROUGH,
+        )
+    }
+
+    #[cfg(windows)]
+    fn advise_random_unbuffered(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS
+                | winapi::um::winbase::FILE_FLAG_WRITE_THROUGH
+                | winapi::um::winbase::FILE_FLAG_NO_BUFFERING,
         )
     }
 
