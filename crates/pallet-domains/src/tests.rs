@@ -5,7 +5,7 @@ use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
     ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
-    OperatorStatus, Operators, ReceiptHashFor,
+    Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
@@ -39,7 +39,7 @@ use sp_domains_fraud_proof::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One, Zero,
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One,
 };
 use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic, Saturating};
 use sp_state_machine::backend::AsTrieBackend;
@@ -618,23 +618,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
 
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
     for operator_id in operator_ids {
-        Operators::<Test>::insert(
-            operator_id,
-            Operator {
-                signing_key: pair.public(),
-                current_domain_id: domain_id,
-                next_domain_id: domain_id,
-                minimum_nominator_stake: SSC,
-                nomination_tax: Default::default(),
-                current_total_stake: Zero::zero(),
-                current_epoch_rewards: Zero::zero(),
-                current_total_shares: Zero::zero(),
-                status: OperatorStatus::Registered,
-                deposits_in_epoch: Zero::zero(),
-                withdrawals_in_epoch: Zero::zero(),
-                total_storage_fee_deposit: Zero::zero(),
-            },
-        );
+        Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
     }
 
     domain_id
@@ -1263,7 +1247,8 @@ fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
 #[test]
 fn test_basic_fraud_proof_processing() {
     let creator = 0u128;
-    let operator_id = 1u64;
+    let malicious_operator = 1u64;
+    let honest_operator = 2u64;
     let head_domain_number = BlockTreePruningDepth::get() - 1;
     let test_cases = vec![
         1,
@@ -1275,8 +1260,9 @@ fn test_basic_fraud_proof_processing() {
     for bad_receipt_at in test_cases {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator, vec![operator_id]);
-            extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
+            let domain_id =
+                register_genesis_domain(creator, vec![malicious_operator, honest_operator]);
+            extend_block_tree_from_zero(domain_id, malicious_operator, head_domain_number + 2);
             assert_eq!(
                 HeadReceiptNumber::<Test>::get(domain_id),
                 head_domain_number
@@ -1298,8 +1284,24 @@ fn test_basic_fraud_proof_processing() {
             assert_eq!(head_receipt_number_after_fraud_proof, bad_receipt_at - 1);
 
             for block_number in bad_receipt_at..=head_domain_number {
-                // The targetted ER and all its descendants should be removed from the block tree
-                assert!(BlockTree::<Test>::get(domain_id, block_number).is_none());
+                if block_number == bad_receipt_at {
+                    // The targetted ER should be removed from the block tree
+                    assert!(BlockTree::<Test>::get(domain_id, block_number).is_none());
+                } else {
+                    // All the bad ER's descendants should be marked as pending to prune and the submitter
+                    // should be marked as pending to slash
+                    assert!(BlockTree::<Test>::get(domain_id, block_number).is_some());
+                    assert!(Domains::is_bad_er_pending_to_prune(domain_id, block_number));
+                    let submitter = get_block_tree_node_at::<Test>(domain_id, block_number)
+                        .unwrap()
+                        .operator_ids;
+                    for operator_id in submitter {
+                        assert!(Domains::is_operator_pending_to_slash(
+                            domain_id,
+                            operator_id
+                        ));
+                    }
+                }
 
                 // The other data that used to verify ER should not be removed, such that the honest
                 // operator can re-submit the valid ER
@@ -1316,7 +1318,7 @@ fn test_basic_fraud_proof_processing() {
             let resubmit_receipt = bad_receipt;
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                operator_id,
+                honest_operator,
                 H256::random(),
                 resubmit_receipt,
             );
@@ -1325,6 +1327,33 @@ fn test_basic_fraud_proof_processing() {
                 HeadReceiptNumber::<Test>::get(domain_id),
                 head_receipt_number_after_fraud_proof + 1
             );
+
+            // Submit one more ER, the bad ER at the same domain block should be pruned
+            let next_block_number = frame_system::Pallet::<Test>::current_block_number() + 1;
+            run_to_block::<Test>(next_block_number, H256::random());
+            if let Some(receipt_hash) = BlockTree::<Test>::get(domain_id, bad_receipt_at + 1) {
+                let mut receipt = BlockTreeNodes::<Test>::get(receipt_hash)
+                    .unwrap()
+                    .execution_receipt;
+                receipt.final_state_root = H256::random();
+                let bundle = create_dummy_bundle_with_receipts(
+                    domain_id,
+                    honest_operator,
+                    H256::random(),
+                    receipt.clone(),
+                );
+                assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle));
+
+                assert_eq!(
+                    HeadReceiptNumber::<Test>::get(domain_id),
+                    head_receipt_number_after_fraud_proof + 2
+                );
+                assert!(BlockTreeNodes::<Test>::get(receipt_hash).is_none());
+                assert!(!Domains::is_bad_er_pending_to_prune(
+                    domain_id,
+                    receipt.domain_block_number
+                ));
+            }
         });
     }
 }
