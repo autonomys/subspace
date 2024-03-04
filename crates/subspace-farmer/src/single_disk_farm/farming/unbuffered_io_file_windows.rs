@@ -25,13 +25,13 @@ impl ReadAtSync for UnbufferedIoFileWindows {
         // extra bytes at the beginning and the end that will be thrown away
         let bytes_to_read = buf.len();
         let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
-        buffer.resize(
-            (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE),
-            [0; DISK_SECTOR_SIZE],
-        );
+        let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
+        if buffer.len() < desired_buffer_size {
+            buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
+        }
 
         self.file.read_at(
-            buffer.flatten_mut(),
+            buffer[..desired_buffer_size].flatten_mut(),
             offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64,
         )?;
 
