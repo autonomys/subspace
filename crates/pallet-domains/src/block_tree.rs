@@ -1,11 +1,16 @@
 //! Domain block tree
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf,
     HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainBlock,
     LatestSubmittedER, Pallet, ReceiptHashFor,
 };
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
@@ -18,7 +23,6 @@ use sp_domains::{
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::vec::Vec;
 
 /// Block tree specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -555,7 +559,6 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use sp_core::H256;
     use sp_domains::{BundleDigest, InboxedBundle, InvalidBundleType};
-    use sp_runtime::traits::BlockNumberProvider;
 
     #[test]
     fn test_genesis_receipt() {

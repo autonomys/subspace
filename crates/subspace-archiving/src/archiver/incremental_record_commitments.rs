@@ -1,6 +1,8 @@
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::archiver::Segment;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Encode, Output};

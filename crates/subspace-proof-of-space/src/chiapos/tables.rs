@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
@@ -11,6 +12,7 @@ use crate::chiapos::table::{
 };
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::{Challenge, Quality, Seed};
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem;
 use sha2::{Digest, Sha256};

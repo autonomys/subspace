@@ -11,9 +11,6 @@ use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use tokio::time::sleep;
 
-#[derive(Debug, Clone)]
-struct ReservedPeersInstance;
-
 const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 
 #[tokio::test()]

@@ -12,7 +12,6 @@ use domain_runtime_primitives::Balance;
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use domain_test_primitives::OnchainStateApi;
-use evm_domain_test_runtime;
 use evm_domain_test_runtime::AccountId as AccountId20;
 use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};

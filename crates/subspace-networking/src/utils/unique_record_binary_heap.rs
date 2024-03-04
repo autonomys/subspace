@@ -45,8 +45,6 @@ where
     RecordKey: From<K>,
     K: Clone,
 {
-    // TODO: False-positive in clippy: https://github.com/rust-lang/rust-clippy/issues/12154
-    #[allow(clippy::unconditional_recursion)]
     fn eq(&self, other: &Self) -> bool {
         self.peer_distance().eq(&other.peer_distance())
     }

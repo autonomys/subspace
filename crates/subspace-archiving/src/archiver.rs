@@ -21,8 +21,11 @@ use crate::archiver::incremental_record_commitments::{
     update_record_commitments, IncrementalRecordCommitmentsState,
 };
 use alloc::collections::VecDeque;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
 use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::num::NonZeroUsize;
@@ -202,8 +205,8 @@ pub enum ArchiverInstantiationError {
     InvalidLastArchivedBlock(BlockNumber),
     /// Invalid block, its size is smaller than already archived number of bytes
     #[cfg_attr(
-        feature = "thiserror",
-        error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")
+    feature = "thiserror",
+    error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")
     )]
     InvalidBlockSmallSize {
         /// Full block size

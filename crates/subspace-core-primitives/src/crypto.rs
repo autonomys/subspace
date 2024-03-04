@@ -15,14 +15,18 @@
 
 //! Various cryptographic utilities used across Subspace Network.
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 pub mod kzg;
 
 use crate::Blake3Hash;
 use ::kzg::Fr;
+#[cfg(not(feature = "std"))]
 use alloc::format;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};

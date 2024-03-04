@@ -20,11 +20,15 @@
 pub mod endpoint;
 pub mod messages;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
-use sp_std::vec::Vec;
 
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {

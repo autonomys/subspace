@@ -20,18 +20,18 @@
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 #![feature(let_chains)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+mod fees;
+mod messages;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
-
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
-
 pub mod weights;
 
-mod fees;
-mod messages;
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::Inspect;
@@ -102,6 +102,10 @@ mod pallet {
         BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
     };
+    #[cfg(not(feature = "std"))]
+    use alloc::boxed::Box;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::WeightToFee;
@@ -116,8 +120,6 @@ mod pallet {
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
-    use sp_std::boxed::Box;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

@@ -29,19 +29,22 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-mod grandpa;
-
 pub mod chain;
+mod grandpa;
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_consensus_grandpa::SetId;
 use sp_std::fmt::Debug;
-use sp_std::vec::Vec;
 
 // Re-export in crate namespace for `construct_runtime!`
 pub use pallet::*;

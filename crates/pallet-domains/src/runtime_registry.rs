@@ -1,8 +1,14 @@
 //! Runtime registry for domains
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::{BalanceOf, Config, Event};
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId20, EVMChainId, MultiAccountId, TryConvertBack};
 use frame_support::PalletError;
@@ -15,7 +21,6 @@ use sp_domains::{DomainId, DomainsDigestItem, RuntimeId, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Get, Zero};
 use sp_runtime::DigestItem;
 use sp_std::vec;
-use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 
 /// Runtime specific errors

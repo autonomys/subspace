@@ -50,10 +50,10 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) autonat: AutonatWrapperConfig,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct GeneralConnectedPeersInstance;
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SpecialConnectedPeersInstance;
+// #[derive(Debug, Clone, Copy)]
+// pub(crate) struct GeneralConnectedPeersInstance;
+// #[derive(Debug, Clone, Copy)]
+// pub(crate) struct SpecialConnectedPeersInstance;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event")]

@@ -26,14 +26,17 @@ pub mod fraud_proof;
 mod host_functions;
 mod runtime_interface;
 #[cfg(test)]
-mod tests;
-
-#[cfg(test)]
 pub mod test_ethereum_tx;
-
+#[cfg(test)]
+mod tests;
 pub mod verification;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::fraud_proof::FraudProof;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{
@@ -50,7 +53,6 @@ use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
-use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;

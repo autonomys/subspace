@@ -8,8 +8,10 @@ extern crate alloc;
 use crate::crypto::Scalar;
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
+#[cfg(not(feature = "std"))]
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
