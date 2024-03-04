@@ -1416,8 +1416,10 @@ mod pallet {
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
                             | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
                             | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
+                            | BundleError::DuplicatedBundle
                             | BundleError::SlotInThePast
-                            | BundleError::SlotInTheFuture => {
+                            | BundleError::SlotInTheFuture
+                            | BundleError::InvalidProofOfTime => {
                                 log::debug!(
                                     target: "runtime::domains",
                                     "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
