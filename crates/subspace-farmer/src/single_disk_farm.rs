@@ -881,13 +881,21 @@ impl SingleDiskFarm {
 
         plot_file.advise_random_access()?;
 
-        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
-        // writes to fail later)
-        plot_file
-            .preallocate(plot_file_size)
-            .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
-        // Truncating file (if necessary)
-        plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+        if plot_file.allocated_size()? != plot_file_size {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            plot_file
+                .preallocate(plot_file_size)
+                .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
+            // Truncating file (if necessary)
+            plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+
+            // TODO: Hack due to Windows bugs:
+            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
+            if cfg!(windows) {
+                warn!("Farm was resized, farmer restart is needed for optimal performance!")
+            }
+        }
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
         let plot_cache = DiskPlotCache::new(

@@ -78,6 +78,9 @@ impl OpenOptionsExt for OpenOptions {
 /// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
 /// and doing cross-platform exact reads/writes
 pub trait FileExt {
+    /// Get allocated file size
+    fn allocated_size(&self) -> Result<u64>;
+
     /// Make sure file has specified number of bytes allocated for it
     fn preallocate(&self, len: u64) -> Result<()>;
 
@@ -97,7 +100,15 @@ pub trait FileExt {
 }
 
 impl FileExt for File {
+    fn allocated_size(&self) -> Result<u64> {
+        fs4::FileExt::allocated_size(self)
+    }
+
     fn preallocate(&self, len: u64) -> Result<()> {
+        // TODO: Hack due to bugs on Windows: https://github.com/al8n/fs4-rs/issues/13
+        if fs4::FileExt::allocated_size(self)? == len {
+            return Ok(());
+        }
         fs4::FileExt::allocate(self, len)
     }
 

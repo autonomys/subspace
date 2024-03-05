@@ -73,12 +73,14 @@ impl DiskPieceCache {
         file.advise_random_access()?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
-        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
-        // writes to fail later)
-        file.preallocate(expected_size)
-            .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
-        // Truncating file (if necessary)
-        file.set_len(expected_size)?;
+        if file.allocated_size()? != expected_size {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            file.preallocate(expected_size)
+                .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
+            // Truncating file (if necessary)
+            file.set_len(expected_size)?;
+        }
 
         Ok(Self {
             inner: Arc::new(Inner {

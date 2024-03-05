@@ -289,7 +289,7 @@ fn prove(
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions::<PosTable> {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -304,7 +304,7 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
-                table_generator: &table_generator,
+                table_generator: &Mutex::new(PosTable::generator()),
             };
 
             let mut audit_results = plot_audit.audit(options).unwrap();
@@ -316,12 +316,13 @@ fn prove(
                             return result;
                         }
 
+                        options.slot_info.global_challenge = rand::random();
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
                     |(_sector_index, mut provable_solutions)| {
-                        while (provable_solutions.next()).is_none() {
+                        while black_box(provable_solutions.next()).is_none() {
                             // Try to create one solution and exit
                         }
                     },
@@ -336,7 +337,7 @@ fn prove(
             )
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions::<PosTable> {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -362,12 +363,13 @@ fn prove(
                             return result;
                         }
 
+                        options.slot_info.global_challenge = rand::random();
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
                     |(_sector_index, mut provable_solutions)| {
-                        while (provable_solutions.next()).is_none() {
+                        while black_box(provable_solutions.next()).is_none() {
                             // Try to create one solution and exit
                         }
                     },
@@ -379,7 +381,7 @@ fn prove(
             let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions::<PosTable> {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -405,12 +407,13 @@ fn prove(
                             return result;
                         }
 
+                        options.slot_info.global_challenge = rand::random();
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
                     |(_sector_index, mut provable_solutions)| {
-                        while (provable_solutions.next()).is_none() {
+                        while black_box(provable_solutions.next()).is_none() {
                             // Try to create one solution and exit
                         }
                     },
