@@ -148,6 +148,7 @@ where
         )
         .collect::<Vec<_>>();
 
+    let sector_contents_map_size = SectorContentsMap::encoded_size(pieces_in_sector) as u64;
     match sector {
         ReadAt::Sync(sector) => {
             read_chunks_inputs.into_par_iter().flatten().try_for_each(
@@ -156,8 +157,7 @@ where
                     sector
                         .read_at(
                             &mut record_chunk,
-                            SectorContentsMap::encoded_size(pieces_in_sector) as u64
-                                + chunk_location * Scalar::FULL_BYTES as u64,
+                            sector_contents_map_size + chunk_location * Scalar::FULL_BYTES as u64,
                         )
                         .map_err(|error| ReadingError::FailedToReadChunk {
                             chunk_location,
@@ -198,8 +198,7 @@ where
                             &sector
                                 .read_at(
                                     vec![0; Scalar::FULL_BYTES],
-                                    SectorContentsMap::encoded_size(pieces_in_sector) as u64
-                                        + chunk_location * Scalar::FULL_BYTES as u64,
+                                    sector_contents_map_size + chunk_location * Scalar::FULL_BYTES as u64,
                                 )
                                 .await
                                 .map_err(|error| ReadingError::FailedToReadChunk {
