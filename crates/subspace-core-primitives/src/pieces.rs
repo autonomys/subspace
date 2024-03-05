@@ -9,9 +9,13 @@ use crate::segments::{ArchivedHistorySegment, SegmentIndex};
 use crate::RecordedHistorySegment;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
 use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::array::TryFromSliceError;
 use core::iter::Step;
@@ -732,6 +736,7 @@ impl From<Piece> for Vec<u8> {
         piece.0.to_vec()
     }
 }
+
 impl TryFrom<&[u8]> for Piece {
     type Error = TryFromSliceError;
 

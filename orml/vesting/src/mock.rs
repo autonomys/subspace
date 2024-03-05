@@ -5,7 +5,7 @@
 use super::*;
 use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{ConstU32, ConstU64, EnsureOrigin, Everything},
+	traits::{ConstU64, Everything},
 };
 use frame_system::RawOrigin;
 use sp_core::H256;

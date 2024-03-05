@@ -4,7 +4,6 @@
 use codec::{Decode, Encode};
 use domain_runtime_primitives::Balance;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
-use sp_std::result::Result;
 
 /// Block-fees inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"blockfee";

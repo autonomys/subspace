@@ -5,8 +5,10 @@ mod tests;
 
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 use alloc::sync::Arc;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};

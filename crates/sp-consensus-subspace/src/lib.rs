@@ -30,7 +30,10 @@ mod tests;
 
 use crate::digests::{CompatibleDigestItem, PreDigest};
 use alloc::borrow::Cow;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
@@ -42,7 +45,6 @@ use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::num::NonZeroU32;
-use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{

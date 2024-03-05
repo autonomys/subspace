@@ -1,5 +1,10 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::grandpa::GrandpaJustification;
 use crate::{Config, EncodedBlockHash, EncodedBlockNumber, Error};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::Decode;
 use frame_support::Parameter;
 use num_traits::AsPrimitive;
@@ -10,7 +15,6 @@ use sp_runtime::traits::{
 };
 use sp_std::hash::Hash;
 use sp_std::str::FromStr;
-use sp_std::vec::Vec;
 
 pub(crate) type OpaqueExtrinsic = Vec<u8>;
 pub type SignedBlock<Header> = generic::SignedBlock<generic::Block<Header, OpaqueExtrinsic>>;

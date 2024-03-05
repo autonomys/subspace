@@ -8,8 +8,11 @@ mod precompiles;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
+use alloc::format;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
@@ -804,6 +807,12 @@ fn check_transaction_and_do_pre_dispatch_inner(
     }
 }
 
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_system_benchmarking::Config for Runtime {}
+
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_benchmarking::baseline::Config for Runtime {}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -999,7 +1008,7 @@ impl_runtime_apis! {
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
             UncheckedExtrinsic::decode(&mut encoded.as_slice())
-                .map_err(|err| DecodeExtrinsicError(alloc::format!("{}", err)))
+                .map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
         fn extrinsic_era(
@@ -1294,9 +1303,6 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
-
-            impl frame_system_benchmarking::Config for Runtime {}
-            impl baseline::Config for Runtime {}
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

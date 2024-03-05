@@ -22,7 +22,6 @@ pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, 
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-io = { version = "23.0.0", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [features]
@@ -31,7 +30,6 @@ std = [
     "pallet-transaction-payment/std",
     "sp-core/std",
     "sp-runtime/std",
-    "sp-std/std",
     "subspace-core-primitives/std",
 ]
 testing = [

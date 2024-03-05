@@ -1,13 +1,15 @@
 //! Inherents for Executive pallet
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use sp_inherents::{Error, InherentData};
 use sp_inherents::{InherentIdentifier, IsFatalError};
-#[cfg(feature = "std")]
-use sp_std::result::Result;
-use sp_std::vec::Vec;
 
 /// Executive inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"executve";

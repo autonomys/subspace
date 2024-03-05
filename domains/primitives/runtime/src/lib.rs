@@ -17,9 +17,13 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 pub use fp_account::AccountId20;
 use frame_support::dispatch::{DispatchClass, PerDispatchClass};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
@@ -31,7 +35,6 @@ use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
-use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_runtime_primitives::SHANNON;
 
@@ -207,10 +210,11 @@ pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
 /// to even the core data structures.
 pub mod opaque {
     use crate::BlockNumber;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use sp_runtime::generic;
     use sp_runtime::traits::BlakeTwo256;
     pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
-    use sp_std::vec::Vec;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
