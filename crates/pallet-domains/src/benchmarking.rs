@@ -20,7 +20,7 @@ use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, RuntimeType,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, Zero};
+use sp_runtime::traits::{CheckedAdd, One, Zero};
 
 const SEED: u32 = 0;
 

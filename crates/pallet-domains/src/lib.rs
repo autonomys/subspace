@@ -67,10 +67,10 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{Hash, Header, One, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 pub use staking::OperatorConfig;
-use subspace_core_primitives::{BlockHash, SlotNumber, U256};
+use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
 use subspace_runtime_primitives::Balance;
 
 pub(crate) type BalanceOf<T> =
@@ -87,9 +87,13 @@ pub trait HoldIdentifier<T: Config> {
     fn storage_fund_withdrawal(operator_id: OperatorId) -> FungibleHoldId<T>;
 }
 
-pub trait BlockSlot {
-    fn current_slot() -> sp_consensus_slots::Slot;
-    fn future_slot() -> sp_consensus_slots::Slot;
+pub trait BlockSlot<T: frame_system::Config> {
+    // Return the future slot of the given `block_number`
+    fn future_slot(block_number: BlockNumberFor<T>) -> Option<sp_consensus_slots::Slot>;
+
+    // Return the latest block number whose slot is less than the given `to_check` slot,
+    // return zero if no such block found.
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> BlockNumberFor<T>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -331,7 +335,7 @@ mod pallet {
         type StorageFee: StorageFee<BalanceOf<Self>>;
 
         /// The block slot
-        type BlockSlot: BlockSlot;
+        type BlockSlot: BlockSlot<Self>;
 
         /// Transfers tracker.
         type DomainsTransfersTracker: DomainsTransfersTracker<BalanceOf<Self>>;
@@ -341,6 +345,10 @@ mod pallet {
 
         /// Minimum balance for each initial domain account
         type MinInitialDomainAccountBalance: Get<BalanceOf<Self>>;
+
+        /// How many block a bundle should still consider as valid after produced
+        #[pallet::constant]
+        type BundleLongevity: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -1595,6 +1603,57 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_slot_and_proof_of_time(
+        slot_number: u64,
+        proof_of_time: PotOutput,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
+        // NOTE: the `current_block_number` from `frame_system` is initialized during `validate_unsigned` thus
+        // it is the same value in both `validate_unsigned` and `pre_dispatch`
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        // Check if the slot is in future
+        //
+        // NOTE: during `validate_unsigned` this is implicitly checked within `is_proof_of_time_valid` since we
+        // are using quick verification which will return `false` if the `proof-of-time` is not seem by the node
+        // before.
+        if pre_dispatch {
+            if let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
+                ensure!(slot_number <= *future_slot, BundleError::SlotInTheFuture)
+            }
+        }
+
+        // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
+        let produced_after_block_number = T::BlockSlot::slot_produced_after(slot_number.into());
+        let produced_after_block_hash = if produced_after_block_number == current_block_number {
+            // The hash of the current block is only available in the next block thus use the parent hash here
+            frame_system::Pallet::<T>::parent_hash()
+        } else {
+            frame_system::Pallet::<T>::block_hash(produced_after_block_number)
+        };
+        if let Some(last_eligible_block) =
+            current_block_number.checked_sub(&T::BundleLongevity::get().into())
+        {
+            ensure!(
+                produced_after_block_number >= last_eligible_block,
+                BundleError::SlotInThePast
+            );
+        }
+
+        if !is_proof_of_time_valid(
+            BlockHash::try_from(produced_after_block_hash.as_ref())
+                .expect("Must be able to convert to block hash type"),
+            SlotNumber::from(slot_number),
+            WrappedPotOutput::from(proof_of_time),
+            // Quick verification when entering transaction pool, but not when constructing the block
+            !pre_dispatch,
+        ) {
+            return Err(BundleError::InvalidProofOfTime);
+        }
+
+        Ok(())
+    }
+
     fn validate_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
@@ -1634,36 +1693,14 @@ impl<T: Config> Pallet<T> {
         Self::check_extrinsics_root(opaque_bundle)?;
 
         let proof_of_election = &sealed_header.header.proof_of_election;
-        let slot_number = proof_of_election.slot_number;
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
-        // Check if the bundle is built with slot and valid proof-of-time that produced between the parent block
-        // and the current block
-        //
-        // NOTE: during `validate_unsigned` `current_slot` is query from the parent block and during `pre_dispatch`
-        // the `future_slot` is query from the current block.
-        if pre_dispatch {
-            ensure!(
-                slot_number <= *T::BlockSlot::future_slot(),
-                BundleError::SlotInTheFuture
-            )
-        } else {
-            ensure!(
-                slot_number > *T::BlockSlot::current_slot(),
-                BundleError::SlotInThePast
-            );
-        }
-        if !is_proof_of_time_valid(
-            BlockHash::try_from(frame_system::Pallet::<T>::parent_hash().as_ref())
-                .expect("Must be able to convert to block hash type"),
-            SlotNumber::from(slot_number),
-            WrappedPotOutput::from(proof_of_election.proof_of_time),
-            // Quick verification when entering transaction pool, but not when constructing the block
-            !pre_dispatch,
-        ) {
-            return Err(BundleError::InvalidProofOfTime);
-        }
+        Self::check_slot_and_proof_of_time(
+            proof_of_election.slot_number,
+            proof_of_election.proof_of_time,
+            pre_dispatch,
+        )?;
 
         sp_domains::bundle_producer_election::check_proof_of_election(
             &operator.signing_key,

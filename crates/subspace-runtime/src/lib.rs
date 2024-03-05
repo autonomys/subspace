@@ -69,7 +69,7 @@ use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMe
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Keccak256, NumberFor,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Keccak256, NumberFor, Zero,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -347,6 +347,7 @@ impl pallet_subspace::Config for Runtime {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
+    type BlockSlotCount = BlockSlotCount;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
         OffencesSubspace,
@@ -598,6 +599,10 @@ parameter_types! {
     pub const BundleLongevity: u32 = 5;
 }
 
+// `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
+// keep enough block slot for bundle validation
+const_assert!(BlockSlotCount::get() >= 2 && BlockSlotCount::get() > BundleLongevity::get());
+
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
@@ -606,13 +611,22 @@ const_assert!(StakeWithdrawalLockingPeriod::get() >= BlockTreePruningDepth::get(
 
 pub struct BlockSlot;
 
-impl pallet_domains::BlockSlot for BlockSlot {
-    fn current_slot() -> sp_consensus_slots::Slot {
-        Subspace::current_slot()
+impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
+    fn future_slot(block_number: BlockNumber) -> Option<sp_consensus_slots::Slot> {
+        let block_slots = Subspace::block_slots();
+        block_slots
+            .get(&block_number)
+            .map(|slot| *slot + Slot::from(BlockAuthoringDelay::get()))
     }
 
-    fn future_slot() -> sp_consensus_slots::Slot {
-        Subspace::current_slot() + Slot::from(BlockAuthoringDelay::get())
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> BlockNumber {
+        let block_slots = Subspace::block_slots();
+        for (block_number, slot) in block_slots.into_iter().rev() {
+            if to_check > slot {
+                return block_number;
+            }
+        }
+        Zero::zero()
     }
 }
 
@@ -646,6 +660,7 @@ impl pallet_domains::Config for Runtime {
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
+    type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;

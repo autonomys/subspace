@@ -186,6 +186,7 @@ parameter_types! {
     pub const DomainChainByteFee: Balance = 1;
     pub const MaxInitialDomainAccounts: u32 = 5;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const BundleLongevity: u32 = 5;
 }
 
 pub struct MockRandomness;
@@ -217,13 +218,13 @@ impl StorageFee<Balance> for DummyStorageFee {
 
 pub struct DummyBlockSlot;
 
-impl BlockSlot for DummyBlockSlot {
-    fn current_slot() -> sp_consensus_slots::Slot {
-        0u64.into()
+impl BlockSlot<Test> for DummyBlockSlot {
+    fn future_slot(_block_number: BlockNumberFor<Test>) -> Option<sp_consensus_slots::Slot> {
+        Some(0u64.into())
     }
 
-    fn future_slot() -> sp_consensus_slots::Slot {
-        0u64.into()
+    fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> BlockNumberFor<Test> {
+        0u64
     }
 }
 
@@ -309,6 +310,7 @@ impl pallet_domains::Config for Test {
     type DomainsTransfersTracker = MockDomainsTransfersTracker;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type BundleLongevity = BundleLongevity;
 }
 
 pub struct ExtrinsicStorageFees;
