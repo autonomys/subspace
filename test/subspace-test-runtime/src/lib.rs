@@ -271,6 +271,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
     pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
+    pub const BlockSlotCount: u32 = 6;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -290,6 +291,7 @@ impl pallet_subspace::Config for Runtime {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
+    type BlockSlotCount = BlockSlotCount;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
         OffencesSubspace,

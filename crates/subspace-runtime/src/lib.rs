@@ -319,6 +319,7 @@ parameter_types! {
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
+    pub const BlockSlotCount: u32 = 6;
 }
 
 pub struct ConfirmationDepthK;
@@ -594,6 +595,7 @@ parameter_types! {
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 10;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const BundleLongevity: u32 = 5;
 }
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.

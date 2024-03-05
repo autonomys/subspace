@@ -176,6 +176,7 @@ parameter_types! {
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
     pub const ShouldAdjustSolutionRange: bool = false;
+    pub const BlockSlotCount: u32 = 6;
 }
 
 impl Config for Test {
@@ -195,6 +196,7 @@ impl Config for Test {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = NormalEraChange;
+    type BlockSlotCount = BlockSlotCount;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
