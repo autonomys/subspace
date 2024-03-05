@@ -30,7 +30,14 @@ impl OpenOptionsExt for OpenOptions {
     #[cfg(windows)]
     fn advise_random_access(&mut self) -> &mut Self {
         use std::os::windows::fs::OpenOptionsExt;
-        self.custom_flags(winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS)
+        // `FILE_FLAG_WRITE_THROUGH` below is a bit of a hack, especially in `advise_random_access`,
+        // but it helps with memory usage and feels like should be default. Since `.custom_flags()`
+        // overrides previous value, we need to set bitwise OR of two flags rather that two flags
+        // separately.
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS
+                | winapi::um::winbase::FILE_FLAG_WRITE_THROUGH,
+        )
     }
 
     #[cfg(target_os = "linux")]

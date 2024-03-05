@@ -1303,6 +1303,13 @@ impl_runtime_apis! {
         fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(DomainNumber, DomainHash)>{
             Domains::latest_confirmed_domain_block(domain_id)
         }
+
+        fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: DomainHash) -> bool {
+            Domains::execution_receipt(receipt_hash).map(
+                |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
+            )
+            .unwrap_or(false)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

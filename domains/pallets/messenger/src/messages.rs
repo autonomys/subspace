@@ -1,7 +1,12 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::{
     BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, Config, Error, Event,
     InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use scale_info::TypeInfo;
@@ -12,7 +17,6 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
-use sp_std::vec::Vec;
 
 /// Set of messages to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]

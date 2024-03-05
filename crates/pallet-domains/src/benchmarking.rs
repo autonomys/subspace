@@ -1,11 +1,14 @@
 //! Benchmarking for `pallet-domains`.
 
+extern crate alloc;
+
 use super::*;
-use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
 use crate::{DomainBlockNumberFor, Pallet as Domains};
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
@@ -17,7 +20,7 @@ use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, RuntimeType,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, Zero};
 
 const SEED: u32 = 0;
 
@@ -308,28 +311,30 @@ mod benchmarks {
         );
     }
 
-    #[benchmark]
-    fn switch_domain() {
-        let domain1_id = register_domain::<T>();
-        let domain2_id = register_domain::<T>();
+    // TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
+    // enable this test when `switch_domain` is ready
+    // #[benchmark]
+    // fn switch_domain() {
+    //     let domain1_id = register_domain::<T>();
+    //     let domain2_id = register_domain::<T>();
 
-        let (operator_owner, operator_id) =
-            register_helper_operator::<T>(domain1_id, T::Currency::minimum_balance());
+    //     let (operator_owner, operator_id) =
+    //         register_helper_operator::<T>(domain1_id, T::Currency::minimum_balance());
 
-        #[extrinsic_call]
-        _(
-            RawOrigin::Signed(operator_owner.clone()),
-            operator_id,
-            domain2_id,
-        );
+    //     #[extrinsic_call]
+    //     _(
+    //         RawOrigin::Signed(operator_owner.clone()),
+    //         operator_id,
+    //         domain2_id,
+    //     );
 
-        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
-        assert_eq!(operator.next_domain_id, domain2_id);
+    //     let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+    //     assert_eq!(operator.next_domain_id, domain2_id);
 
-        let pending_switch =
-            PendingOperatorSwitches::<T>::get(domain1_id).expect("pending switch must exist");
-        assert!(pending_switch.contains(&operator_id));
-    }
+    //     let pending_switch =
+    //         PendingOperatorSwitches::<T>::get(domain1_id).expect("pending switch must exist");
+    //     assert!(pending_switch.contains(&operator_id));
+    // }
 
     #[benchmark]
     fn deregister_operator() {
@@ -343,7 +348,7 @@ mod benchmarks {
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
         assert_eq!(
-            operator.status,
+            *operator.status::<T>(operator_id),
             OperatorStatus::Deregistered((domain_id, 0, DomainBlockNumberFor::<T>::zero()).into())
         );
     }

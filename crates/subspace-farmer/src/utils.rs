@@ -20,9 +20,7 @@ use std::{io, thread};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::debug;
-#[cfg(feature = "numa")]
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// It doesn't make a lot of sense to have a huge number of farming threads, 32 is plenty
 const MAX_DEFAULT_FARMING_THREADS: usize = 32;

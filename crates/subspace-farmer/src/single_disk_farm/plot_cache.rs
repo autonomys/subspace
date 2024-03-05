@@ -16,6 +16,13 @@ use subspace_networking::utils::multihash::ToMultihash;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
+/// Max plot space for which to use caching, for larger gaps between the plotted part and the end of
+/// the file it will result in very long period of writing zeroes on Windows, see
+/// https://stackoverflow.com/q/78058306/3806795
+///
+/// Currently set to 2TiB.
+const MAX_WINDOWS_PLOT_SPACE_FOR_CACHE: u64 = 2 * 1024 * 1024 * 1024 * 1024;
+
 /// Disk plot cache open error
 #[derive(Debug, Error)]
 pub enum DiskPlotCacheError {
@@ -68,33 +75,36 @@ impl DiskPlotCache {
             // Clippy complains about `RecordKey`, but it is not changing here, so it is fine
             #[allow(clippy::mutable_key_type)]
             let mut map = HashMap::new();
+            let mut next_offset = None;
 
             let file_size = sector_size * u64::from(target_sector_count);
             let plotted_size = sector_size * sectors_metadata.len() as u64;
 
-            // Step over all free potential offsets for pieces that could have been cached
-            let from_offset = (plotted_size / Self::element_size() as u64) as u32;
-            let to_offset = (file_size / Self::element_size() as u64) as u32;
-            let mut next_offset = None;
-            // TODO: Parallelize or read in larger batches
-            for offset in (from_offset..to_offset).rev() {
-                match Self::read_piece_internal(file, offset, &mut element) {
-                    Ok(maybe_piece_index) => match maybe_piece_index {
-                        Some(piece_index) => {
-                            map.insert(RecordKey::from(piece_index.to_multihash()), offset);
-                        }
-                        None => {
+            // Avoid writing over large gaps on Windows that is very lengthy process
+            if !cfg!(windows) || (file_size - plotted_size) <= MAX_WINDOWS_PLOT_SPACE_FOR_CACHE {
+                // Step over all free potential offsets for pieces that could have been cached
+                let from_offset = (plotted_size / Self::element_size() as u64) as u32;
+                let to_offset = (file_size / Self::element_size() as u64) as u32;
+                // TODO: Parallelize or read in larger batches
+                for offset in (from_offset..to_offset).rev() {
+                    match Self::read_piece_internal(file, offset, &mut element) {
+                        Ok(maybe_piece_index) => match maybe_piece_index {
+                            Some(piece_index) => {
+                                map.insert(RecordKey::from(piece_index.to_multihash()), offset);
+                            }
+                            None => {
+                                next_offset.replace(offset);
+                                break;
+                            }
+                        },
+                        Err(DiskPlotCacheError::ChecksumMismatch) => {
                             next_offset.replace(offset);
                             break;
                         }
-                    },
-                    Err(DiskPlotCacheError::ChecksumMismatch) => {
-                        next_offset.replace(offset);
-                        break;
-                    }
-                    Err(error) => {
-                        warn!(%error, %offset, "Failed to read plot cache element");
-                        break;
+                        Err(error) => {
+                            warn!(%error, %offset, "Failed to read plot cache element");
+                            break;
+                        }
                     }
                 }
             }

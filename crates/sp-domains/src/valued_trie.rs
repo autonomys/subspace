@@ -1,7 +1,11 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use hash_db::Hasher;
 use parity_scale_codec::{Compact, Encode};
 use sp_std::cmp::max;
-use sp_std::vec::Vec;
 use trie_db::node::Value;
 use trie_db::{
     nibble_ops, ChildReference, NibbleSlice, NodeCodec, ProcessEncodedNode, TrieHash, TrieLayout,
@@ -60,10 +64,10 @@ where
         for (k, v) in iter_input {
             single = false;
             let common_depth = nibble_ops::biggest_depth(&previous_value.0, &k);
-            // 0 is a reserved value : could use option
+            // 0 is a reserved value: could use option
             let depth_item = common_depth;
             if common_depth == previous_value.0.len() * nibble_ops::NIBBLE_PER_BYTE {
-                // the new key include the previous one : branch value case
+                // the new key include the previous one: branch value case
                 // just stored value at branch depth
                 depth_queue.set_cache_value(common_depth, Some(previous_value.1));
             } else if depth_item >= last_depth {
@@ -301,7 +305,7 @@ mod test {
                     &exts,
                     i as u32,
                 )
-                .unwrap();
+                    .unwrap();
 
             assert_eq!(
                 StorageProofVerifier::<BlakeTwo256>::get_bare_value(

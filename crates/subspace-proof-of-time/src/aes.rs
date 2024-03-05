@@ -4,6 +4,7 @@
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use aes::cipher::generic_array::GenericArray;
@@ -77,7 +78,6 @@ pub(crate) fn verify_sequential(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use subspace_core_primitives::{PotKey, PotOutput, PotSeed};
 
     const SEED: [u8; 16] = [
         0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1,
@@ -115,7 +115,7 @@ mod tests {
             seed,
             key,
             &*checkpoints,
-            checkpoint_iterations
+            checkpoint_iterations,
         ));
 
         // Decryption of invalid cipher text fails.
@@ -125,7 +125,7 @@ mod tests {
             seed,
             key,
             &*checkpoints_1,
-            checkpoint_iterations
+            checkpoint_iterations,
         ));
 
         // Decryption with wrong number of iterations fails.
@@ -133,13 +133,13 @@ mod tests {
             seed,
             key,
             &*checkpoints,
-            checkpoint_iterations + 2
+            checkpoint_iterations + 2,
         ));
         assert!(!verify_sequential(
             seed,
             key,
             &*checkpoints,
-            checkpoint_iterations - 2
+            checkpoint_iterations - 2,
         ));
 
         // Decryption with wrong seed fails.
@@ -147,7 +147,7 @@ mod tests {
             PotSeed::from(SEED_1),
             key,
             &*checkpoints,
-            checkpoint_iterations
+            checkpoint_iterations,
         ));
 
         // Decryption with wrong key fails.
@@ -155,7 +155,7 @@ mod tests {
             seed,
             PotKey::from(KEY_1),
             &*checkpoints,
-            checkpoint_iterations
+            checkpoint_iterations,
         ));
     }
 }

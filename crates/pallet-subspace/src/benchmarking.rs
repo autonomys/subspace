@@ -1,5 +1,8 @@
 //! Benchmarking for `pallet-subspace`.
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use frame_benchmarking::v2::*;
 
 #[benchmarks]
@@ -9,6 +12,8 @@ mod benchmarks {
         NextSolutionRangeOverride, Pallet, SegmentCommitment, ShouldAdjustSolutionRange,
         SolutionRanges,
     };
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use frame_benchmarking::v2::*;
     use frame_system::pallet_prelude::*;
     use frame_system::{Pallet as System, RawOrigin};
@@ -19,7 +24,6 @@ mod benchmarks {
     use sp_core::Get;
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
-    use sp_std::vec::Vec;
     use subspace_core_primitives::{
         ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotOutput, SegmentHeader,
         SegmentIndex, Solution, SolutionRange,

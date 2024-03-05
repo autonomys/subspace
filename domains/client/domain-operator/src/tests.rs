@@ -4180,61 +4180,75 @@ async fn test_bad_receipt_chain() {
     // Remove the fraud proof from tx pool
     ferdie.clear_tx_pool().await.unwrap();
 
-    // Produce a bundle with another bad ER that use previous bad ER as parent
-    let parent_bad_receipt_hash = bad_receipt_hash;
-    let slot = ferdie.produce_slot();
-    let bundle = bundle_producer
-        .produce_bundle(
-            0,
-            OperatorSlotInfo {
-                slot: slot.0,
-                proof_of_time: slot.1,
-            },
-        )
-        .await
-        .expect("produce bundle must success")
-        .expect("must win the challenge");
-    let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let mut opaque_bundle = bundle;
-        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
-        receipt.domain_block_hash = Default::default();
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
-        (
-            opaque_bundle.receipt().hash::<BlakeTwo256>(),
-            bundle_to_tx(opaque_bundle),
-        )
-    };
-    ferdie
-        .submit_transaction(bad_submit_bundle_tx)
-        .await
-        .unwrap();
-
     // Wait for a fraud proof that target the first bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp,
             FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
-        ) && fp.targeted_bad_receipt_hash() == Some(parent_bad_receipt_hash)
+        ) && fp.targeted_bad_receipt_hash() == Some(bad_receipt_hash)
     });
 
-    // Produce a consensus block that contains the bad receipt and it should
-    // be added to the consensus chain block tree
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+    // Produce more bundle with bad ER that use previous bad ER as parent
+    let mut parent_bad_receipt_hash = bad_receipt_hash;
+    let mut bad_receipt_descendants = vec![];
+    for _ in 0..10 {
+        let slot = ferdie.produce_slot();
+        let bundle = bundle_producer
+            .produce_bundle(
+                0,
+                OperatorSlotInfo {
+                    slot: slot.0,
+                    proof_of_time: slot.1,
+                },
+            )
+            .await
+            .expect("produce bundle must success")
+            .expect("must win the challenge");
+        let (receipt_hash, bad_submit_bundle_tx) = {
+            let mut opaque_bundle = bundle;
+            let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+            receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
+            receipt.domain_block_hash = Default::default();
+            opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+                .pair()
+                .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+                .into();
+            (
+                opaque_bundle.receipt().hash::<BlakeTwo256>(),
+                bundle_to_tx(opaque_bundle),
+            )
+        };
+        parent_bad_receipt_hash = receipt_hash;
+        bad_receipt_descendants.push(receipt_hash);
+        ferdie
+            .produce_block_with_slot_at(
+                slot,
+                ferdie.client.info().best_hash,
+                Some(vec![bad_submit_bundle_tx]),
+            )
+            .await
+            .unwrap();
+    }
+
+    // All bad ERs should be added to the consensus chain block tree
+    for receipt_hash in bad_receipt_descendants.iter().chain(&[bad_receipt_hash]) {
+        assert!(ferdie.does_receipt_exist(*receipt_hash).unwrap());
+    }
 
     // The fraud proof should be submitted
     let _ = wait_for_fraud_proof_fut.await;
 
-    // Both bad ER should be pruned
+    // The first bad ER should be pruned and its descendants are marked as pending to prune
     ferdie.produce_blocks(1).await.unwrap();
-    for er_hash in [parent_bad_receipt_hash, bad_receipt_hash] {
-        assert!(!ferdie.does_receipt_exist(er_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let ferdie_best_hash = ferdie.client.info().best_hash;
+    let runtime_api = ferdie.client.runtime_api();
+    for receipt_hash in bad_receipt_descendants {
+        assert!(ferdie.does_receipt_exist(receipt_hash).unwrap());
+        assert!(runtime_api
+            .is_bad_er_pending_to_prune(ferdie_best_hash, GENESIS_DOMAIN_ID, receipt_hash)
+            .unwrap());
     }
 }
 

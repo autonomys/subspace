@@ -23,6 +23,3 @@ sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polka
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 tracing = "0.1.40"
-
-[dev-dependencies]
-substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }

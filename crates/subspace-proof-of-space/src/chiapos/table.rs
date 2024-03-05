@@ -2,13 +2,16 @@
 mod tests;
 pub(super) mod types;
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT, PARAM_M};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
+#[cfg(not(feature = "std"))]
 use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};

@@ -1,7 +1,10 @@
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::archiver::{Segment, SegmentItem};
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem;
 use core::num::NonZeroUsize;
@@ -40,8 +43,8 @@ pub enum ReconstructorError {
     SegmentDecoding(parity_scale_codec::Error),
     /// Incorrect segment order, each next segment must have monotonically increasing segment index
     #[cfg_attr(
-        feature = "thiserror",
-        error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")
+    feature = "thiserror",
+    error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")
     )]
     IncorrectSegmentOrder {
         expected_segment_index: SegmentIndex,

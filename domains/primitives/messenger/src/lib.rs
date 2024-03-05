@@ -20,12 +20,16 @@
 pub mod endpoint;
 pub mod messages;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::messages::MessageKey;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
-use sp_std::vec::Vec;
 
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {
@@ -112,6 +116,7 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
+    #[api_version(2)]
     pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
         /// Returns `Some(true)` if valid XDM or `Some(false)` if not
         /// Returns None if this is not an XDM

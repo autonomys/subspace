@@ -1,9 +1,13 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::{Balance, Block, Domains, RuntimeCall, UncheckedExtrinsic};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use sp_domains::DomainId;
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_std::vec::Vec;
 
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,

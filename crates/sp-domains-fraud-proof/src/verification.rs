@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::fraud_proof::{
     InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
     InvalidTransfersProof, ValidBundleProof, VerificationError,
@@ -7,6 +10,8 @@ use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
     FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
 };
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::BlockNumber;
 use hash_db::Hasher;
@@ -26,7 +31,6 @@ use sp_runtime::traits::{
     Block as BlockT, Hash, Header as HeaderT, NumberFor, UniqueSaturatedInto,
 };
 use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic, SaturatedConversion};
-use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
 use trie_db::node::Value;

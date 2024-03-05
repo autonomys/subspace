@@ -886,10 +886,18 @@ impl FarmerCache {
 
         let should_store_fut = tokio::task::spawn_blocking({
             let plot_caches = Arc::clone(&self.plot_caches);
+            let piece_caches = Arc::clone(&self.piece_caches);
             let next_plot_cache = Arc::clone(&self.next_plot_cache);
             let piece = piece.clone();
 
             move || {
+                for cache in piece_caches.read().iter() {
+                    if cache.stored_pieces.contains_key(&key) {
+                        // Already stored in normal piece cache, no need to store it again
+                        return;
+                    }
+                }
+
                 let plot_caches = plot_caches.read();
                 let plot_caches_len = plot_caches.len();
 

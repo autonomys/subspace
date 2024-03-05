@@ -15,11 +15,16 @@
 
 //! Defines FeedProcessor and its types
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::CallObject;
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Compact, CompactLen, Decode, Encode};
 use sp_runtime::{DispatchError, DispatchResult};
-use sp_std::vec;
-use sp_std::vec::Vec;
 use subspace_core_primitives::Blake3Hash;
 
 /// Holds the offset to some portion of data within/or the object

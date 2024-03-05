@@ -26,7 +26,6 @@ sp-externalities = { version = "0.19.0", default-features = false, git = "https:
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 
 [features]
 default = ["std"]
@@ -43,7 +42,6 @@ std = [
     "sp-messenger/std",
     "sp-runtime/std",
     "sp-runtime-interface/std",
-    "sp-std/std",
 ]
 
 runtime-benchmarks = []
