@@ -1074,83 +1074,82 @@ impl SingleDiskFarm {
                     }
                 };
 
-                let handle = Handle::current();
-                let span = span.clone();
-                thread_pool.install(move || {
-                    let _span_guard = span.enter();
+                let farming_fut = async move {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return Ok(());
+                    }
 
-                    let farming_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
+                    if let Some(farming_delay) = delay_farmer_receiver {
+                        if farming_delay.await.is_err() {
+                            // Dropped before resolving
                             return Ok(());
                         }
+                    }
 
-                        if let Some(farming_delay) = delay_farmer_receiver {
-                            if farming_delay.await.is_err() {
-                                // Dropped before resolving
-                                return Ok(());
-                            }
-                        }
-
-                        if cfg!(windows) {
-                            let plot = RayonFiles::open_with(
+                    if cfg!(windows) {
+                        let plot = thread_pool.install(|| {
+                            RayonFiles::open_with(
                                 &directory.join(Self::PLOT_FILE),
                                 UnbufferedIoFileWindows::open,
-                            )?;
-                            let plot_audit = PlotAudit::new(&plot);
+                            )
+                        })?;
+                        let plot_audit = PlotAudit::new(&plot);
 
-                            let farming_options = FarmingOptions {
-                                public_key,
-                                reward_address,
-                                node_client,
-                                plot_audit,
-                                sectors_metadata,
-                                kzg,
-                                erasure_coding,
-                                handlers,
-                                modifying_sector_index,
-                                slot_info_notifications: slot_info_forwarder_receiver,
-                            };
-                            farming::<PosTable, _, _>(farming_options).await
-                        } else {
-                            let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                            let plot_audit = PlotAudit::new(&plot);
+                        let farming_options = FarmingOptions {
+                            public_key,
+                            reward_address,
+                            node_client,
+                            plot_audit,
+                            sectors_metadata,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            modifying_sector_index,
+                            slot_info_notifications: slot_info_forwarder_receiver,
+                            thread_pool,
+                        };
+                        farming::<PosTable, _, _>(farming_options).await
+                    } else {
+                        let plot = thread_pool
+                            .install(move || RayonFiles::open(&directory.join(Self::PLOT_FILE)))?;
+                        let plot_audit = PlotAudit::new(&plot);
 
-                            let farming_options = FarmingOptions {
-                                public_key,
-                                reward_address,
-                                node_client,
-                                plot_audit,
-                                sectors_metadata,
-                                kzg,
-                                erasure_coding,
-                                handlers,
-                                modifying_sector_index,
-                                slot_info_notifications: slot_info_forwarder_receiver,
-                            };
-                            farming::<PosTable, _, _>(farming_options).await
-                        }
-                    };
+                        let farming_options = FarmingOptions {
+                            public_key,
+                            reward_address,
+                            node_client,
+                            plot_audit,
+                            sectors_metadata,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            modifying_sector_index,
+                            slot_info_notifications: slot_info_forwarder_receiver,
+                            thread_pool,
+                        };
+                        farming::<PosTable, _, _>(farming_options).await
+                    }
+                };
 
-                    handle.block_on(async {
-                        select! {
-                            farming_result = farming_fut.fuse() => {
-                                if let Err(error) = farming_result
-                                    && let Some(error_sender) = error_sender.lock().take()
-                                    && let Err(error) = error_sender.send(error.into())
-                                {
-                                    error!(
-                                        %error,
-                                        "Farming failed to send error to background task",
-                                    );
-                                }
+                Handle::current().block_on(async {
+                    select! {
+                        farming_result = farming_fut.fuse() => {
+                            if let Err(error) = farming_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
+                                error!(
+                                    %error,
+                                    "Farming failed to send error to background task",
+                                );
                             }
-                            _ = stop_receiver.recv().fuse() => {
-                                // Nothing, just exit
-                            }
                         }
-                    });
-                })
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
             }
         });
         let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);
