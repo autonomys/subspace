@@ -353,6 +353,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     bundle_slot_probability: (u64, u64),
     operator_stake: Balance,
     maybe_illegal_extrinsic_index: Option<u32>,
+    is_valid_xdm: Option<bool>,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -431,6 +432,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::StorageKey { .. } => {
                 FraudProofVerificationInfoResponse::StorageKey(None)
+            }
+            FraudProofVerificationInfoRequest::XDMValidationCheck { .. } => {
+                FraudProofVerificationInfoResponse::XDMValidationCheck(self.is_valid_xdm)
             }
         };
 
@@ -1016,6 +1020,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
         maybe_illegal_extrinsic_index: None,
+        is_valid_xdm: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1097,6 +1102,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
         maybe_illegal_extrinsic_index: None,
+        is_valid_xdm: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1164,6 +1170,7 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
         maybe_illegal_extrinsic_index: None,
+        is_valid_xdm: None,
     }));
     ext.register_extension(fraud_proof_ext);
 

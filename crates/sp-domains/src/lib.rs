@@ -1007,8 +1007,8 @@ impl InvalidBundleType {
             Self::UndecodableTx(_) => 1,
             Self::OutOfRangeTx(_) => 2,
             Self::InherentExtrinsic(_) => 3,
-            Self::IllegalTx(_) => 4,
-            Self::InvalidXDM(_) => 5,
+            Self::InvalidXDM(_) => 4,
+            Self::IllegalTx(_) => 5,
         }
     }
 
@@ -1248,9 +1248,12 @@ sp_api::decl_runtime_apis! {
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 
-        /// Reture the consensus chain byte fee that will used to charge the domain transaction for consensus
+        /// Return the consensus chain byte fee that will used to charge the domain transaction for consensus
         /// chain storage fee
         fn consensus_chain_byte_fee() -> Balance;
+
+        /// Returns the latest confirmed domain block number and hash
+        fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>)>;
 
         /// Return if the receipt is exist and pending to prune
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;

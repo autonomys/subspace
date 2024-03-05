@@ -1110,10 +1110,11 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::InvalidXDM(3)),
                 bundle_index: 1,
             })
         );
+
         assert_eq!(
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
@@ -1127,7 +1128,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::InvalidXDM(3)),
                 bundle_index: 1,
             })
         );

@@ -11,7 +11,8 @@ use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{
-    BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider, ProofProvider,
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
+    ProofProvider,
 };
 use sc_consensus::SharedBlockImport;
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
@@ -19,7 +20,7 @@ use sc_network::NetworkPeers;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
-    SpawnTasksParams, TFullBackend, TaskManager,
+    PruningMode, SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -85,7 +86,7 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -231,6 +232,7 @@ where
     pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
+    pub consensus_state_pruning: PruningMode,
     pub skip_out_of_order_slot: bool,
 }
 
@@ -268,11 +270,12 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
+        + AuxStore
         + Send
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header>
-        + RelayerApi<CBlock, NumberFor<CBlock>>
+        + RelayerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
@@ -292,7 +295,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
     AccountId: DeserializeOwned
         + Encode
         + Decode
@@ -329,6 +332,7 @@ where
         domain_message_receiver,
         provider,
         skip_empty_bundle_production,
+        consensus_state_pruning,
         skip_out_of_order_slot,
     } = domain_params;
 
@@ -455,7 +459,9 @@ where
 
     if is_authority {
         let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
+            domain_id,
             consensus_client.clone(),
+            consensus_state_pruning,
             client.clone(),
             domain_state_pruning,
             // domain relayer will use consensus chain sync oracle instead of domain sync orcle

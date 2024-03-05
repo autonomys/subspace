@@ -32,7 +32,7 @@ pub use runtime_interface::messenger_runtime_interface::get_storage_key;
 pub use runtime_interface::messenger_runtime_interface::HostFunctions;
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
-use sp_messenger::messages::{ChainId, MessageId};
+use sp_messenger::messages::{ChainId, MessageKey};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 
@@ -43,12 +43,12 @@ pub enum StorageKeyRequest {
     /// Request to get Outbox storage key for given chain and message.
     OutboxStorageKey {
         chain_id: ChainId,
-        message_id: MessageId,
+        message_key: MessageKey,
     },
     /// Request to get Inbox response storage key for given chain and message.
     InboxResponseStorageKey {
         chain_id: ChainId,
-        message_id: MessageId,
+        message_key: MessageKey,
     },
 }
 

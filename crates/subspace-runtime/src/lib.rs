@@ -65,7 +65,9 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
+use sp_messenger::messages::{
+    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
@@ -499,17 +501,17 @@ impl sp_messenger::StorageKeys for StorageKeys {
         Some(Domains::confirmed_domain_block_storage_key(domain_id))
     }
 
-    fn outbox_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+    fn outbox_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
         get_storage_key(StorageKeyRequest::OutboxStorageKey {
             chain_id,
-            message_id,
+            message_key,
         })
     }
 
-    fn inbox_responses_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+    fn inbox_responses_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
         get_storage_key(StorageKeyRequest::InboxResponseStorageKey {
             chain_id,
-            message_id,
+            message_key,
         })
     }
 }
@@ -1111,6 +1113,10 @@ impl_runtime_apis! {
             DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
 
+        fn latest_confirmed_domain_block(domain_id: DomainId) -> Option<(DomainNumber, DomainHash)>{
+            Domains::latest_confirmed_domain_block(domain_id)
+        }
+
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: DomainHash) -> bool {
             Domains::execution_receipt(receipt_hash).map(
                 |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
@@ -1179,24 +1185,16 @@ impl_runtime_apis! {
             Domains::confirmed_domain_block_storage_key(domain_id)
         }
 
-        fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
-            Messenger::outbox_storage_key(message_id)
+        fn outbox_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Messenger::outbox_storage_key(message_key)
         }
 
-        fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
-            Messenger::inbox_response_storage_key(message_id)
+        fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Messenger::inbox_response_storage_key(message_key)
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
-        fn chain_id() -> ChainId {
-            SelfChainId::get()
-        }
-
-        fn relay_confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
-        }
-
+    impl sp_messenger::RelayerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             Messenger::get_block_messages()
         }
