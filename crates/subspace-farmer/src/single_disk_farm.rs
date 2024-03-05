@@ -621,6 +621,9 @@ impl SingleDiskFarm {
         } = options;
         fs::create_dir_all(&directory)?;
 
+        let span = info_span!("", %disk_farm_index);
+        let span_guard = span.enter();
+
         let identity = Identity::open_or_create(&directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
@@ -918,8 +921,6 @@ impl SingleDiskFarm {
             (Some(sender), Some(receiver))
         };
 
-        let span = info_span!("", %disk_farm_index);
-
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let kzg = kzg.clone();
@@ -1178,6 +1179,8 @@ impl SingleDiskFarm {
 
             Ok(())
         }));
+
+        drop(span_guard);
 
         let farm = Self {
             farmer_protocol_info: farmer_app_info.protocol_info,
