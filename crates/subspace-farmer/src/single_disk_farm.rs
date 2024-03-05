@@ -8,9 +8,9 @@ use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-use crate::single_disk_farm::farming::unbuffered_io_file_windows::{
-    UnbufferedIoFileWindows, DISK_SECTOR_SIZE,
-};
+#[cfg(windows)]
+use crate::single_disk_farm::farming::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::farming::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
@@ -1087,49 +1087,35 @@ impl SingleDiskFarm {
                         }
                     }
 
-                    if cfg!(windows) {
-                        let plot = thread_pool.install(|| {
+                    let plot = thread_pool.install(|| {
+                        #[cfg(windows)]
+                        {
                             RayonFiles::open_with(
                                 &directory.join(Self::PLOT_FILE),
                                 UnbufferedIoFileWindows::open,
                             )
-                        })?;
-                        let plot_audit = PlotAudit::new(&plot);
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            RayonFiles::open(&directory.join(Self::PLOT_FILE))
+                        }
+                    })?;
+                    let plot_audit = PlotAudit::new(&plot);
 
-                        let farming_options = FarmingOptions {
-                            public_key,
-                            reward_address,
-                            node_client,
-                            plot_audit,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_notifications: slot_info_forwarder_receiver,
-                            thread_pool,
-                        };
-                        farming::<PosTable, _, _>(farming_options).await
-                    } else {
-                        let plot = thread_pool
-                            .install(move || RayonFiles::open(&directory.join(Self::PLOT_FILE)))?;
-                        let plot_audit = PlotAudit::new(&plot);
-
-                        let farming_options = FarmingOptions {
-                            public_key,
-                            reward_address,
-                            node_client,
-                            plot_audit,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_notifications: slot_info_forwarder_receiver,
-                            thread_pool,
-                        };
-                        farming::<PosTable, _, _>(farming_options).await
-                    }
+                    let farming_options = FarmingOptions {
+                        public_key,
+                        reward_address,
+                        node_client,
+                        plot_audit,
+                        sectors_metadata,
+                        kzg,
+                        erasure_coding,
+                        handlers,
+                        modifying_sector_index,
+                        slot_info_notifications: slot_info_forwarder_receiver,
+                        thread_pool,
+                    };
+                    farming::<PosTable, _, _>(farming_options).await
                 };
 
                 Handle::current().block_on(async {
