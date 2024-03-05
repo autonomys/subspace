@@ -54,7 +54,7 @@ impl UnbufferedIoFileWindows {
     pub fn open(path: &Path) -> io::Result<Self> {
         let mut open_options = OpenOptions::new();
         #[cfg(windows)]
-        open_options.advise_random_unbuffered();
+        open_options.advise_unbuffered();
         let file = open_options.read(true).open(path)?;
 
         Ok(Self {
