@@ -8,6 +8,9 @@ use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
+#[cfg(windows)]
+use crate::single_disk_farm::farming::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::farming::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
@@ -723,8 +726,8 @@ impl SingleDiskFarm {
                 / 100
                 * (100 - u64::from(cache_percentage.get()));
             // Do the rounding to make sure we have exactly as much space as fits whole number of
-            // sectors
-            potentially_plottable_space / single_sector_overhead
+            // sectors, account for disk sector size just in case
+            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
         };
 
         if target_sector_count == 0 {
@@ -744,12 +747,17 @@ impl SingleDiskFarm {
                 allocated_space,
             });
         }
+        // Align plot file size for disk sector size
+        let plot_file_size = (target_sector_count * sector_size as u64)
+            .div_ceil(DISK_SECTOR_SIZE as u64)
+            * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
         let cache_capacity = {
             let cache_space = allocated_space
                 - fixed_space_usage
-                - (target_sector_count * single_sector_overhead);
+                - plot_file_size
+                - (sector_metadata_size as u64 * target_sector_count);
             (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         };
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
@@ -876,13 +884,21 @@ impl SingleDiskFarm {
 
         plot_file.advise_random_access()?;
 
-        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
-        // writes to fail later)
-        plot_file
-            .preallocate(sector_size as u64 * u64::from(target_sector_count))
-            .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
-        // Truncating file (if necessary)
-        plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+        if plot_file.allocated_size()? != plot_file_size {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            plot_file
+                .preallocate(plot_file_size)
+                .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
+            // Truncating file (if necessary)
+            plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+
+            // TODO: Hack due to Windows bugs:
+            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
+            if cfg!(windows) {
+                warn!("Farm was resized, farmer restart is needed for optimal performance!")
+            }
+        }
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
         let plot_cache = DiskPlotCache::new(
@@ -1059,61 +1075,68 @@ impl SingleDiskFarm {
                     }
                 };
 
-                let handle = Handle::current();
-                let span = span.clone();
-                thread_pool.install(move || {
-                    let _span_guard = span.enter();
+                let farming_fut = async move {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return Ok(());
+                    }
 
-                    let farming_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
+                    if let Some(farming_delay) = delay_farmer_receiver {
+                        if farming_delay.await.is_err() {
+                            // Dropped before resolving
                             return Ok(());
                         }
+                    }
 
-                        if let Some(farming_delay) = delay_farmer_receiver {
-                            if farming_delay.await.is_err() {
-                                // Dropped before resolving
-                                return Ok(());
-                            }
+                    let plot = thread_pool.install(|| {
+                        #[cfg(windows)]
+                        {
+                            RayonFiles::open_with(
+                                &directory.join(Self::PLOT_FILE),
+                                UnbufferedIoFileWindows::open,
+                            )
                         }
+                        #[cfg(not(windows))]
+                        {
+                            RayonFiles::open(&directory.join(Self::PLOT_FILE))
+                        }
+                    })?;
+                    let plot_audit = PlotAudit::new(&plot);
 
-                        let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                        let plot_audit = PlotAudit::new(&plot);
-
-                        let farming_options = FarmingOptions {
-                            public_key,
-                            reward_address,
-                            node_client,
-                            plot_audit,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_notifications: slot_info_forwarder_receiver,
-                        };
-                        farming::<PosTable, _, _>(farming_options).await
+                    let farming_options = FarmingOptions {
+                        public_key,
+                        reward_address,
+                        node_client,
+                        plot_audit,
+                        sectors_metadata,
+                        kzg,
+                        erasure_coding,
+                        handlers,
+                        modifying_sector_index,
+                        slot_info_notifications: slot_info_forwarder_receiver,
+                        thread_pool,
                     };
+                    farming::<PosTable, _, _>(farming_options).await
+                };
 
-                    handle.block_on(async {
-                        select! {
-                            farming_result = farming_fut.fuse() => {
-                                if let Err(error) = farming_result
-                                    && let Some(error_sender) = error_sender.lock().take()
-                                    && let Err(error) = error_sender.send(error.into())
-                                {
-                                    error!(
-                                        %error,
-                                        "Farming failed to send error to background task",
-                                    );
-                                }
-                            }
-                            _ = stop_receiver.recv().fuse() => {
-                                // Nothing, just exit
+                Handle::current().block_on(async {
+                    select! {
+                        farming_result = farming_fut.fuse() => {
+                            if let Err(error) = farming_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
+                                error!(
+                                    %error,
+                                    "Farming failed to send error to background task",
+                                );
                             }
                         }
-                    });
-                })
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
             }
         });
         let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);

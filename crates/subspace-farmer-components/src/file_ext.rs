@@ -9,6 +9,13 @@ pub trait OpenOptionsExt {
     /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_random_access(&mut self) -> &mut Self;
 
+    /// Advise Windows to not use buffering for this file and that file access will be random.
+    ///
+    /// NOTE: There are major alignment requirements described here:
+    /// https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements
+    #[cfg(windows)]
+    fn advise_unbuffered(&mut self) -> &mut Self;
+
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
     /// desirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_sequential_access(&mut self) -> &mut Self;
@@ -40,6 +47,15 @@ impl OpenOptionsExt for OpenOptions {
         )
     }
 
+    #[cfg(windows)]
+    fn advise_unbuffered(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_WRITE_THROUGH
+                | winapi::um::winbase::FILE_FLAG_NO_BUFFERING,
+        )
+    }
+
     #[cfg(target_os = "linux")]
     fn advise_sequential_access(&mut self) -> &mut Self {
         // Not supported
@@ -62,6 +78,9 @@ impl OpenOptionsExt for OpenOptions {
 /// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
 /// and doing cross-platform exact reads/writes
 pub trait FileExt {
+    /// Get allocated file size
+    fn allocated_size(&self) -> Result<u64>;
+
     /// Make sure file has specified number of bytes allocated for it
     fn preallocate(&self, len: u64) -> Result<()>;
 
@@ -81,7 +100,15 @@ pub trait FileExt {
 }
 
 impl FileExt for File {
+    fn allocated_size(&self) -> Result<u64> {
+        fs4::FileExt::allocated_size(self)
+    }
+
     fn preallocate(&self, len: u64) -> Result<()> {
+        // TODO: Hack due to bugs on Windows: https://github.com/al8n/fs4-rs/issues/13
+        if fs4::FileExt::allocated_size(self)? == len {
+            return Ok(());
+        }
         fs4::FileExt::allocate(self, len)
     }
 
