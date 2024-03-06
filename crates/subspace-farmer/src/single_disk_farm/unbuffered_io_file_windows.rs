@@ -74,7 +74,7 @@ impl UnbufferedIoFileWindows {
 
 #[cfg(test)]
 mod tests {
-    use crate::single_disk_farm::farming::unbuffered_io_file_windows::{
+    use crate::single_disk_farm::unbuffered_io_file_windows::{
         UnbufferedIoFileWindows, MAX_READ_SIZE,
     };
     use rand::prelude::*;

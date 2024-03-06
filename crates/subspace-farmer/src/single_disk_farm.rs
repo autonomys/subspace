@@ -3,14 +3,12 @@ pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotting;
+pub mod unbuffered_io_file_windows;
 
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-#[cfg(windows)]
-use crate::single_disk_farm::farming::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use crate::single_disk_farm::farming::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
@@ -24,6 +22,9 @@ use crate::single_disk_farm::plotting::{
 pub use crate::single_disk_farm::plotting::{
     PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
