@@ -101,7 +101,6 @@ impl DiskPieceCache {
     pub(crate) fn contents(
         &self,
     ) -> impl ExactSizeIterator<Item = (Offset, Option<PieceIndex>)> + '_ {
-        let file = &self.inner.file;
         let mut element = vec![0; Self::element_size() as usize];
         let mut early_exit = false;
 
@@ -111,7 +110,7 @@ impl DiskPieceCache {
                 return (Offset(offset), None);
             }
 
-            match Self::read_piece_internal(file, offset, &mut element) {
+            match self.read_piece_internal(offset, &mut element) {
                 Ok(maybe_piece_index) => {
                     if maybe_piece_index.is_none() {
                         // End of stored pieces, no need to read further
@@ -182,11 +181,7 @@ impl DiskPieceCache {
             });
         }
 
-        Self::read_piece_internal(
-            &self.inner.file,
-            offset,
-            &mut vec![0; Self::element_size() as usize],
-        )
+        self.read_piece_internal(offset, &mut vec![0; Self::element_size() as usize])
     }
 
     /// Read piece from cache at specified offset.
@@ -206,7 +201,7 @@ impl DiskPieceCache {
         }
 
         let mut element = vec![0; Self::element_size() as usize];
-        if Self::read_piece_internal(&self.inner.file, offset, &mut element)?.is_some() {
+        if self.read_piece_internal(offset, &mut element)?.is_some() {
             let mut piece = Piece::default();
             piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
             Ok(Some(piece))
@@ -216,11 +211,13 @@ impl DiskPieceCache {
     }
 
     fn read_piece_internal(
-        file: &File,
+        &self,
         offset: u32,
         element: &mut [u8],
     ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
-        file.read_exact_at(element, u64::from(offset) * u64::from(Self::element_size()))?;
+        self.inner
+            .file
+            .read_exact_at(element, u64::from(offset) * u64::from(Self::element_size()))?;
 
         let (piece_index_bytes, remaining_bytes) = element.split_at(PieceIndex::SIZE);
         let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
