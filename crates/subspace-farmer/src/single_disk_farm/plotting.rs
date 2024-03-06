@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, SectorUpdate, RESERVED_PLOT_METADATA,
 };
@@ -11,6 +13,7 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use std::collections::HashMap;
+#[cfg(not(windows))]
 use std::fs::File;
 use std::io;
 use std::num::NonZeroUsize;
@@ -131,7 +134,7 @@ pub enum PlottingError {
     #[error("Low-level plotting error: {0}")]
     LowLevel(#[from] plotting::PlottingError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Plotting I/O error: {0}")]
     Io(#[from] io::Error),
     /// Background downloading panicked
     #[error("Background downloading panicked")]
@@ -145,8 +148,14 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     pub(super) sector_size: usize,
     pub(super) sector_metadata_size: usize,
     pub(super) metadata_header: PlotMetadataHeader,
+    #[cfg(not(windows))]
     pub(super) plot_file: Arc<File>,
+    #[cfg(windows)]
+    pub(super) plot_file: Arc<UnbufferedIoFileWindows>,
+    #[cfg(not(windows))]
     pub(super) metadata_file: File,
+    #[cfg(windows)]
+    pub(super) metadata_file: UnbufferedIoFileWindows,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) piece_getter: &'a PG,
     pub(super) kzg: &'a Kzg,

@@ -68,7 +68,7 @@ pub enum ReadingError {
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Reading I/O error: {0}")]
     Io(#[from] io::Error),
     /// Checksum mismatch
     #[error("Checksum mismatch")]

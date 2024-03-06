@@ -1,6 +1,9 @@
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use async_lock::RwLock;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
+#[cfg(not(windows))]
 use std::fs::File;
 use std::future::Future;
 use std::sync::Arc;
@@ -32,7 +35,8 @@ impl PieceReader {
     pub(super) fn new<PosTable>(
         public_key: PublicKey,
         pieces_in_sector: u16,
-        plot_file: Arc<File>,
+        #[cfg(not(windows))] plot_file: Arc<File>,
+        #[cfg(windows)] plot_file: Arc<UnbufferedIoFileWindows>,
         sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
         modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
@@ -42,15 +46,18 @@ impl PieceReader {
     {
         let (read_piece_sender, read_piece_receiver) = mpsc::channel(10);
 
-        let reading_fut = read_pieces::<PosTable>(
-            public_key,
-            pieces_in_sector,
-            plot_file,
-            sectors_metadata,
-            erasure_coding,
-            modifying_sector_index,
-            read_piece_receiver,
-        );
+        let reading_fut = async move {
+            read_pieces::<PosTable, _>(
+                public_key,
+                pieces_in_sector,
+                &*plot_file,
+                sectors_metadata,
+                erasure_coding,
+                modifying_sector_index,
+                read_piece_receiver,
+            )
+            .await
+        };
 
         (Self { read_piece_sender }, reading_fut)
     }
@@ -80,16 +87,17 @@ impl PieceReader {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn read_pieces<PosTable>(
+async fn read_pieces<PosTable, S>(
     public_key: PublicKey,
     pieces_in_sector: u16,
-    plot_file: Arc<File>,
+    plot_file: S,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     erasure_coding: ErasureCoding,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
 ) where
     PosTable: Table,
+    S: ReadAtSync,
 {
     let mut table_generator = PosTable::generator();
 

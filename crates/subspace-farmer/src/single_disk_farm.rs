@@ -43,7 +43,6 @@ use static_assertions::const_assert;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
-use std::io::{Seek, SeekFrom};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -58,7 +57,9 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
+use subspace_farmer_components::file_ext::FileExt;
+#[cfg(not(windows))]
+use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
@@ -307,7 +308,7 @@ pub enum SingleDiskFarmError {
     LikelyAlreadyInUse(io::Error),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Single disk farm I/O error: {0}")]
     Io(#[from] io::Error),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
@@ -748,10 +749,10 @@ impl SingleDiskFarm {
                 allocated_space,
             });
         }
+        let plot_file_size = target_sector_count * sector_size as u64;
         // Align plot file size for disk sector size
-        let plot_file_size = (target_sector_count * sector_size as u64)
-            .div_ceil(DISK_SECTOR_SIZE as u64)
-            * DISK_SECTOR_SIZE as u64;
+        let plot_file_size =
+            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
         let cache_capacity = {
@@ -779,6 +780,7 @@ impl SingleDiskFarm {
         };
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
+        #[cfg(not(windows))]
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -786,11 +788,18 @@ impl SingleDiskFarm {
             .advise_random_access()
             .open(&metadata_file_path)?;
 
+        #[cfg(not(windows))]
         metadata_file.advise_random_access()?;
 
-        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        #[cfg(windows)]
+        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+
+        let metadata_size = metadata_file.size()?;
         let expected_metadata_size =
             RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
+        // Align plot file size for disk sector size
+        let expected_metadata_size =
+            expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
         let metadata_header = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
@@ -874,25 +883,28 @@ impl SingleDiskFarm {
             Arc::new(RwLock::new(sectors_metadata))
         };
 
-        let plot_file = Arc::new(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .advise_random_access()
-                .open(directory.join(Self::PLOT_FILE))?,
-        );
+        #[cfg(not(windows))]
+        let mut plot_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .advise_random_access()
+            .open(directory.join(Self::PLOT_FILE))?;
 
+        #[cfg(not(windows))]
         plot_file.advise_random_access()?;
 
-        if plot_file.allocated_size()? != plot_file_size {
+        #[cfg(windows)]
+        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+
+        if plot_file.size()? != plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
             // writes to fail later)
             plot_file
                 .preallocate(plot_file_size)
                 .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
             // Truncating file (if necessary)
-            plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+            plot_file.set_len(plot_file_size)?;
 
             // TODO: Hack due to Windows bugs:
             //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
@@ -900,6 +912,8 @@ impl SingleDiskFarm {
                 warn!("Farm was resized, farmer restart is needed for optimal performance!")
             }
         }
+
+        let plot_file = Arc::new(plot_file);
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
         let plot_cache = DiskPlotCache::new(
@@ -1248,11 +1262,16 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
+        #[cfg(not(windows))]
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        #[cfg(windows)]
+        let mut metadata_file =
+            UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+
+        let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
 
         let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
@@ -1539,7 +1558,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = metadata_file.advise_sequential_access();
 
-            let metadata_size = match metadata_file.seek(SeekFrom::End(0)) {
+            let metadata_size = match metadata_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {
@@ -1640,7 +1659,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = plot_file.advise_sequential_access();
 
-            let plot_size = match plot_file.seek(SeekFrom::End(0)) {
+            let plot_size = match plot_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {
@@ -1907,7 +1926,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = cache_file.advise_sequential_access();
 
-            let cache_size = match cache_file.seek(SeekFrom::End(0)) {
+            let cache_size = match cache_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {

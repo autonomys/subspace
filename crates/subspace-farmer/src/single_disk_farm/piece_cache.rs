@@ -1,14 +1,20 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use derive_more::Display;
+#[cfg(not(windows))]
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash_list;
 use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
-use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
+use subspace_farmer_components::file_ext::FileExt;
+#[cfg(not(windows))]
+use subspace_farmer_components::file_ext::OpenOptionsExt;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
@@ -16,7 +22,7 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Error)]
 pub enum DiskPieceCacheError {
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Disk piece cache I/O error: {0}")]
     Io(#[from] io::Error),
     /// Can't preallocate cache file, probably not enough space on disk
     #[error("Can't preallocate cache file, probably not enough space on disk: {0}")]
@@ -44,7 +50,10 @@ pub struct Offset(u32);
 
 #[derive(Debug)]
 struct Inner {
+    #[cfg(not(windows))]
     file: File,
+    #[cfg(windows)]
+    file: UnbufferedIoFileWindows,
     num_elements: u32,
 }
 
@@ -63,17 +72,25 @@ impl DiskPieceCache {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
 
-        let file = OpenOptions::new()
+        #[cfg(not(windows))]
+        let mut file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .advise_random_access()
             .open(directory.join(Self::FILE_NAME))?;
 
+        #[cfg(not(windows))]
         file.advise_random_access()?;
 
+        #[cfg(windows)]
+        let mut file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
+
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
-        if file.allocated_size()? != expected_size {
+        // Align plot file size for disk sector size
+        let expected_size =
+            expected_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
+        if file.size()? != expected_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
             // writes to fail later)
             file.preallocate(expected_size)
