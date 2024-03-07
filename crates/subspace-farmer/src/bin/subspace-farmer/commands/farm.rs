@@ -732,21 +732,18 @@ where
                 }
             })));
     }
-    // Acknowledgement is not necessary
-    drop(
-        farmer_cache
-            .replace_backing_caches(
-                single_disk_farms
-                    .iter()
-                    .map(|single_disk_farm| single_disk_farm.piece_cache())
-                    .collect(),
-                single_disk_farms
-                    .iter()
-                    .map(|single_disk_farm| single_disk_farm.plot_cache())
-                    .collect(),
-            )
-            .await,
-    );
+    farmer_cache
+        .replace_backing_caches(
+            single_disk_farms
+                .iter()
+                .map(|single_disk_farm| single_disk_farm.piece_cache())
+                .collect(),
+            single_disk_farms
+                .iter()
+                .map(|single_disk_farm| single_disk_farm.plot_cache())
+                .collect(),
+        )
+        .await;
     drop(farmer_cache);
 
     // Store piece readers so we can reference them later
