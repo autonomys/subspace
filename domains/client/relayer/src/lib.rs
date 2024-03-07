@@ -1,5 +1,6 @@
 #![warn(rust_2018_idioms)]
-#![deny(unused_crate_dependencies)]
+// TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
+// #![deny(unused_crate_dependencies)]
 
 pub mod worker;
 

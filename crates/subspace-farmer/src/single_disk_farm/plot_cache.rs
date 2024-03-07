@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use async_lock::RwLock as AsyncRwLock;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+#[cfg(not(windows))]
 use std::fs::File;
 use std::sync::{Arc, Weak};
 use std::{io, mem};
@@ -27,7 +30,7 @@ const MAX_WINDOWS_PLOT_SPACE_FOR_CACHE: u64 = 2 * 1024 * 1024 * 1024 * 1024;
 #[derive(Debug, Error)]
 pub enum DiskPlotCacheError {
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Plot cache I/O error: {0}")]
     Io(#[from] io::Error),
     /// Checksum mismatch
     #[error("Checksum mismatch")]
@@ -54,7 +57,10 @@ struct CachedPieces {
 /// Additional piece cache that exploit part of the plot that does not contain sectors yet
 #[derive(Debug, Clone)]
 pub struct DiskPlotCache {
+    #[cfg(not(windows))]
     file: Weak<File>,
+    #[cfg(windows)]
+    file: Weak<UnbufferedIoFileWindows>,
     sectors_metadata: Weak<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     cached_pieces: Arc<RwLock<CachedPieces>>,
     sector_size: u64,
@@ -62,7 +68,8 @@ pub struct DiskPlotCache {
 
 impl DiskPlotCache {
     pub(crate) fn new(
-        file: &Arc<File>,
+        #[cfg(not(windows))] file: &Arc<File>,
+        #[cfg(windows)] file: &Arc<UnbufferedIoFileWindows>,
         sectors_metadata: &Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         target_sector_count: SectorIndex,
         sector_size: usize,
@@ -240,7 +247,8 @@ impl DiskPlotCache {
     }
 
     fn read_piece_internal(
-        file: &File,
+        #[cfg(not(windows))] file: &File,
+        #[cfg(windows)] file: &UnbufferedIoFileWindows,
         offset: u32,
         element: &mut [u8],
     ) -> Result<Option<PieceIndex>, DiskPlotCacheError> {

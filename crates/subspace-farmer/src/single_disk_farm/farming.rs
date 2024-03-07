@@ -1,5 +1,4 @@
 pub mod rayon_files;
-pub mod unbuffered_io_file_windows;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
@@ -116,7 +115,7 @@ pub enum FarmingError {
     #[error("Low-level proving error: {0}")]
     LowLevelProving(#[from] ProvingError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Farming I/O error: {0}")]
     Io(#[from] io::Error),
     /// Failed to create thread pool
     #[error("Failed to create thread pool: {0}")]

@@ -1,7 +1,7 @@
 //! File extension trait
 
 use std::fs::{File, OpenOptions};
-use std::io::Result;
+use std::io::{Result, Seek, SeekFrom};
 
 /// Extension convenience trait that allows setting some file opening options in cross-platform way
 pub trait OpenOptionsExt {
@@ -78,11 +78,11 @@ impl OpenOptionsExt for OpenOptions {
 /// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
 /// and doing cross-platform exact reads/writes
 pub trait FileExt {
-    /// Get allocated file size
-    fn allocated_size(&self) -> Result<u64>;
+    /// Get file size
+    fn size(&mut self) -> Result<u64>;
 
     /// Make sure file has specified number of bytes allocated for it
-    fn preallocate(&self, len: u64) -> Result<()>;
+    fn preallocate(&mut self, len: u64) -> Result<()>;
 
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
@@ -100,13 +100,13 @@ pub trait FileExt {
 }
 
 impl FileExt for File {
-    fn allocated_size(&self) -> Result<u64> {
-        fs4::FileExt::allocated_size(self)
+    fn size(&mut self) -> Result<u64> {
+        self.seek(SeekFrom::End(0))
     }
 
-    fn preallocate(&self, len: u64) -> Result<()> {
+    fn preallocate(&mut self, len: u64) -> Result<()> {
         // TODO: Hack due to bugs on Windows: https://github.com/al8n/fs4-rs/issues/13
-        if fs4::FileExt::allocated_size(self)? == len {
+        if self.size()? == len {
             return Ok(());
         }
         fs4::FileExt::allocate(self, len)

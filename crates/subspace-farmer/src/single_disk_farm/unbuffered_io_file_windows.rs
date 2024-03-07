@@ -1,9 +1,9 @@
 use parking_lot::Mutex;
 use std::fs::{File, OpenOptions};
+use std::io::{Seek, SeekFrom};
 use std::path::Path;
 use std::{io, mem};
-#[cfg(windows)]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::ReadAtSync;
 
 /// 4096 is as a relatively safe size due to sector size on SSDs commonly being 512 or 4096 bytes
@@ -12,15 +12,46 @@ pub const DISK_SECTOR_SIZE: usize = 4096;
 const MAX_READ_SIZE: usize = 1024 * 1024;
 
 /// Wrapper data structure for unbuffered I/O on Windows.
-// TODO: Implement `FileExt` and use for all reads on Windows
+#[derive(Debug)]
 pub struct UnbufferedIoFileWindows {
-    file: File,
+    read_file: File,
+    write_file: File,
     /// Scratch buffer of aligned memory for reads and writes
     buffer: Mutex<Vec<[u8; DISK_SECTOR_SIZE]>>,
 }
 
 impl ReadAtSync for UnbufferedIoFileWindows {
-    fn read_at(&self, buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        self.read_exact_at(buf, offset)
+    }
+}
+
+impl ReadAtSync for &UnbufferedIoFileWindows {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        (*self).read_at(buf, offset)
+    }
+}
+
+impl FileExt for UnbufferedIoFileWindows {
+    fn size(&mut self) -> io::Result<u64> {
+        self.write_file.seek(SeekFrom::End(0))
+    }
+
+    fn preallocate(&mut self, len: u64) -> io::Result<()> {
+        self.write_file.preallocate(len)
+    }
+
+    fn advise_random_access(&self) -> io::Result<()> {
+        // Ignore, already set
+        Ok(())
+    }
+
+    fn advise_sequential_access(&self) -> io::Result<()> {
+        // Ignore, not supported
+        Ok(())
+    }
+
+    fn read_exact_at(&self, buf: &mut [u8], mut offset: u64) -> io::Result<()> {
         let mut buffer = self.buffer.lock();
 
         // Read from disk in at most 1M chunks to avoid too high memory usage, account for offset
@@ -35,7 +66,7 @@ impl ReadAtSync for UnbufferedIoFileWindows {
                 buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
             }
 
-            self.file.read_at(
+            self.read_file.read_at(
                 buffer[..desired_buffer_size].flatten_mut(),
                 offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64,
             )?;
@@ -47,34 +78,47 @@ impl ReadAtSync for UnbufferedIoFileWindows {
 
         Ok(())
     }
-}
 
-impl ReadAtSync for &UnbufferedIoFileWindows {
-    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
-        (*self).read_at(buf, offset)
+    fn write_all_at(&self, buf: &[u8], offset: u64) -> io::Result<()> {
+        self.write_file.write_all_at(buf, offset)
     }
 }
 
 impl UnbufferedIoFileWindows {
-    /// Open file at specified path for random unbuffered access on Windows.
+    /// Open file at specified path for random unbuffered access on Windows for reads to prevent
+    /// huge memory usage (if file doesn't exist, it will be created).
     ///
     /// This abstraction is useless on other platforms and will just result in extra memory copies
     pub fn open(path: &Path) -> io::Result<Self> {
+        // Open file without unbuffered I/O for easier handling of writes
+        let write_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .advise_random_access()
+            .open(path)?;
+
         let mut open_options = OpenOptions::new();
         #[cfg(windows)]
         open_options.advise_unbuffered();
-        let file = open_options.read(true).open(path)?;
+        let read_file = open_options.read(true).open(path)?;
 
         Ok(Self {
-            file,
+            read_file,
+            write_file,
             buffer: Mutex::default(),
         })
+    }
+
+    /// Truncates or extends the underlying file, updating the size of this file to become `size`.
+    pub fn set_len(&self, size: u64) -> io::Result<()> {
+        self.write_file.set_len(size)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::single_disk_farm::farming::unbuffered_io_file_windows::{
+    use crate::single_disk_farm::unbuffered_io_file_windows::{
         UnbufferedIoFileWindows, MAX_READ_SIZE,
     };
     use rand::prelude::*;

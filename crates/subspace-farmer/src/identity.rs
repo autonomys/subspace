@@ -28,7 +28,7 @@ fn keypair_from_entropy(entropy: &[u8]) -> Keypair {
 #[derive(Debug, Error)]
 pub enum IdentityError {
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Identity I/O error: {0}")]
     Io(#[from] io::Error),
     /// Decoding error
     #[error("Decoding error: {0}")]
