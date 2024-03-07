@@ -676,7 +676,7 @@ where
                         }) => {
                             return Err(anyhow::anyhow!(
                                 "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
-                            {} bytes to be exact)",
+                                {} bytes to be exact)",
                                 bytesize::to_string(allocated_space, true),
                                 bytesize::to_string(allocated_space, false),
                                 bytesize::to_string(min_space, true),
