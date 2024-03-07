@@ -109,7 +109,7 @@ impl FileExt for File {
         if self.size()? == len {
             return Ok(());
         }
-        fs4::FileExt::allocate(self, len)
+        fs2::FileExt::allocate(self, len)
     }
 
     #[cfg(target_os = "linux")]
