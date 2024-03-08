@@ -3,12 +3,22 @@
 extern crate alloc;
 
 use super::*;
+use crate::block_tree::{prune_receipt, BlockTreeNode};
+use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::DomainConfig;
-use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
-use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
+use crate::staking::{
+    do_convert_previous_epoch_deposits, do_reward_operators, do_slash_operators, OperatorConfig,
+    OperatorStatus,
+};
+use crate::staking_epoch::{
+    do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking,
+    do_finalize_slashed_operators, operator_take_reward_tax_and_stake,
+};
 use crate::{DomainBlockNumberFor, Pallet as Domains};
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
@@ -17,10 +27,12 @@ use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::{
-    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, RuntimeType,
+    dummy_opaque_bundle, ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorAllowList,
+    OperatorId, OperatorPublicKey, RuntimeType,
 };
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, Zero};
+use sp_std::collections::btree_set::BTreeSet;
 
 const SEED: u32 = 0;
 
@@ -118,61 +130,349 @@ mod benchmarks {
         );
     }
 
-    /// Benchmark pending staking operation with the worst possible conditions:
-    /// - There are `MaxPendingStakingOperation` number of pending staking operation
-    /// - All pending staking operation are withdrawal that withdraw partial stake
     #[benchmark]
-    fn pending_staking_operation() {
-        let max_pending_staking_op = T::MaxPendingStakingOperation::get();
-        let minimum_nominator_stake = T::Currency::minimum_balance();
-        let withdraw_amount = T::MinOperatorStake::get();
-        let operator_rewards =
-            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(100u32));
-
+    fn submit_fraud_proof() {
         let domain_id = register_domain::<T>();
-        let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
-        do_finalize_domain_current_epoch::<T>(domain_id)
-            .expect("finalize domain staking should success");
+        let (_, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
-        for i in 0..max_pending_staking_op {
-            let nominator = account("nominator", i, SEED);
-            T::Currency::set_balance(
-                &nominator,
-                withdraw_amount * 2u32.into() + T::Currency::minimum_balance(),
+        let mut target_receipt_hash = None;
+        let mut receipt =
+            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
+                .and_then(BlockTreeNodes::<T>::get)
+                .expect("genesis receipt must exist")
+                .execution_receipt;
+        for i in 1u32..=3u32 {
+            let consensus_block_number = i.into();
+            let domain_block_number = i.into();
+
+            // Run to `block_number`
+            run_to_block::<T>(
+                consensus_block_number,
+                frame_system::Pallet::<T>::block_hash(consensus_block_number - One::one()),
             );
-            assert_ok!(Domains::<T>::nominate_operator(
-                RawOrigin::Signed(nominator).into(),
-                operator_id,
-                withdraw_amount * 2u32.into(),
-            ));
+
+            // Submit a bundle with the receipt of the last block
+            let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
+            assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+
+            // Create ER for the above bundle
+            let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+            let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
+                .expect("parent receipt must exist");
+            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+                consensus_block_number,
+                frame_system::Pallet::<T>::block_hash(consensus_block_number),
+                domain_block_number,
+                parent_domain_block_receipt,
+            );
+            if i == 1 {
+                target_receipt_hash.replace(receipt.hash::<DomainHashingFor<T>>());
+            }
+        }
+        assert_eq!(Domains::<T>::head_receipt_number(domain_id), 2u32.into());
+
+        // Construct fraud proof that target the ER at block #1
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, target_receipt_hash.unwrap());
+
+        #[extrinsic_call]
+        submit_fraud_proof(RawOrigin::None, Box::new(fraud_proof));
+
+        assert_eq!(Domains::<T>::head_receipt_number(domain_id), 0u32.into());
+        assert_eq!(
+            Domains::<T>::oldest_unconfirmed_receipt_number(domain_id),
+            None,
+        );
+    }
+
+    /// Benchmark prune bad ER and slash the submitter based on the number of submitter
+    #[benchmark]
+    fn handle_bad_receipt(n: Linear<1, MAX_BUNLDE_PER_BLOCK>) {
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let domain_id = register_domain::<T>();
+        let mut operator_ids = Vec::new();
+        for i in 0..n {
+            let (_, operator_id) =
+                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
+            operator_ids.push(operator_id);
         }
         do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
-        assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
 
-        for i in 0..max_pending_staking_op {
-            let nominator = account("nominator", i, SEED);
-            assert_ok!(Domains::<T>::withdraw_stake(
-                RawOrigin::Signed(nominator).into(),
-                operator_id,
-                withdraw_amount.into(),
-            ));
-        }
-        assert_eq!(
-            PendingStakingOperationCount::<T>::get(domain_id) as u32,
-            max_pending_staking_op
+        // Construct a bad ER ar block #1 and inject it in to the block tree
+        let receipt_number = 1u32.into();
+        let receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+            1u32.into(),
+            frame_system::Pallet::<T>::block_hash::<BlockNumberFor<T>>(1u32.into()),
+            receipt_number,
+            Default::default(),
+        );
+        let receipt_hash = receipt.hash::<DomainHashingFor<T>>();
+        HeadReceiptNumber::<T>::set(domain_id, receipt_number);
+        BlockTree::<T>::insert(domain_id, receipt_number, receipt_hash);
+        BlockTreeNodes::<T>::insert(
+            receipt_hash,
+            BlockTreeNode {
+                execution_receipt: receipt,
+                operator_ids,
+            },
         );
 
         #[block]
         {
-            do_reward_operators::<T>(domain_id, vec![operator_id].into_iter(), operator_rewards)
-                .expect("reward operator should success");
+            let block_tree_node = prune_receipt::<T>(domain_id, receipt_number)
+                .expect("prune bad receipt should success")
+                .expect("block tree node must exist");
 
+            do_slash_operators::<T>(
+                block_tree_node.operator_ids.into_iter(),
+                SlashedReason::BadExecutionReceipt(receipt_hash),
+            )
+            .expect("slash operator should success");
+        }
+
+        assert_eq!(
+            PendingSlashes::<T>::get(domain_id)
+                .expect("pedning slash must exist")
+                .len(),
+            n as usize
+        );
+        assert!(BlockTree::<T>::get(domain_id, receipt_number).is_none());
+    }
+
+    /// Benchmark confirm domain block based on the number of valid and invalid bundles have submitted
+    /// in this block
+    #[benchmark]
+    fn confirm_domain_block(
+        n: Linear<1, MAX_BUNLDE_PER_BLOCK>,
+        s: Linear<0, MAX_BUNLDE_PER_BLOCK>,
+    ) {
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let operator_rewards =
+            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(1000u32));
+        let total_storage_fee =
+            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(1000u32));
+
+        // Ensure the treasury account is above ED
+        T::Currency::set_balance(
+            &T::TreasuryAccount::get(),
+            T::Currency::minimum_balance() + 1u32.into(),
+        );
+
+        let domain_id = register_domain::<T>();
+        let mut operator_ids = Vec::new();
+        for i in 0..(n + s) {
+            let (_, operator_id) =
+                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
+            operator_ids.push(operator_id);
+        }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        #[allow(clippy::unnecessary_to_owned)]
+        #[block]
+        {
+            refund_storage_fee::<T>(
+                total_storage_fee,
+                operator_ids
+                    .iter()
+                    .take(n as usize)
+                    .map(|id| (*id, 1u32))
+                    .collect(),
+            )
+            .expect("refund storage fee should success");
+
+            do_reward_operators::<T>(
+                domain_id,
+                operator_ids[..n as usize].to_vec().into_iter(),
+                operator_rewards,
+            )
+            .expect("reward operator should success");
+
+            do_slash_operators::<T>(
+                operator_ids[n as usize..].to_vec().into_iter(),
+                SlashedReason::InvalidBundle(1u32.into()),
+            )
+            .expect("slash operator should success");
+        }
+
+        let staking_summary =
+            DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
+        assert!(!staking_summary.current_epoch_rewards.is_empty());
+        if s != 0 {
+            assert_eq!(
+                PendingSlashes::<T>::get(domain_id)
+                    .expect("pedning slash must exist")
+                    .len(),
+                s as usize
+            );
+        }
+    }
+
+    /// Benchmark `operator_take_reward_tax_and_stake` based on the number of operator who has reward
+    /// in the current epoch
+    #[benchmark]
+    fn operator_reward_tax_and_restake(n: Linear<1, MAX_BUNLDE_PER_BLOCK>) {
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let operator_rewards =
+            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(1000u32));
+
+        // Ensure the treasury account is above ED
+        T::Currency::set_balance(
+            &T::TreasuryAccount::get(),
+            T::Currency::minimum_balance() + 1u32.into(),
+        );
+
+        let domain_id = register_domain::<T>();
+        let mut operator_ids = Vec::new();
+        for i in 0..n {
+            let (_, operator_id) =
+                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
+            operator_ids.push(operator_id);
+        }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        do_reward_operators::<T>(
+            domain_id,
+            operator_ids.clone().into_iter(),
+            operator_rewards,
+        )
+        .expect("reward operator should success");
+
+        let staking_summary =
+            DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
+        assert_eq!(staking_summary.current_epoch_rewards.len(), n as usize);
+
+        #[block]
+        {
+            operator_take_reward_tax_and_stake::<T>(domain_id)
+                .expect("operator take reward tax and restake should success");
+        }
+
+        let staking_summary =
+            DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
+        assert!(staking_summary.current_epoch_rewards.is_empty());
+    }
+
+    /// Benchmark `do_finalize_slashed_operators` based on the number of operator and the number of their
+    // nominator that has slashed in the current epoch
+    #[benchmark]
+    fn finalize_slashed_operators(
+        n: Linear<1, { MAX_BUNLDE_PER_BLOCK * T::MaxNominators::get() }>,
+    ) {
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let domain_id = register_domain::<T>();
+
+        let (operator_count, nominator_per_operator) = if n <= MAX_BUNLDE_PER_BLOCK {
+            (n, 1)
+        } else {
+            (MAX_BUNLDE_PER_BLOCK, n.div_ceil(MAX_BUNLDE_PER_BLOCK))
+        };
+
+        let mut operator_ids = Vec::new();
+        for i in 0..operator_count {
+            let (_, operator_id) =
+                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
+            operator_ids.push(operator_id);
+        }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        // Ensure the treasury account is above ED
+        T::Currency::set_balance(
+            &T::TreasuryAccount::get(),
+            T::Currency::minimum_balance() + 1u32.into(),
+        );
+
+        for (i, operator_id) in operator_ids.iter().enumerate() {
+            // Minus one since the operator owner is already a nominator
+            for j in 1..nominator_per_operator {
+                let nominator = account("nominator", i as u32, j);
+                T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
+                assert_ok!(Domains::<T>::nominate_operator(
+                    RawOrigin::Signed(nominator).into(),
+                    *operator_id,
+                    minimum_nominator_stake,
+                ));
+            }
             do_finalize_domain_current_epoch::<T>(domain_id)
                 .expect("finalize domain staking should success");
         }
 
-        assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
+        // Slash operator
+        do_slash_operators::<T>(
+            operator_ids.into_iter(),
+            SlashedReason::InvalidBundle(1u32.into()),
+        )
+        .expect("slash operator should success");
+
+        assert_eq!(
+            PendingSlashes::<T>::get(domain_id)
+                .expect("pedning slash must exist")
+                .len(),
+            operator_count as usize
+        );
+
+        #[block]
+        {
+            do_finalize_slashed_operators::<T>(domain_id).expect("finalize slash should success");
+        }
+
+        assert!(PendingSlashes::<T>::get(domain_id).is_none());
+    }
+
+    /// Benchmark `do_finalize_domain_epoch_staking` based on the number of operator who has deposit/withdraw/reward
+    /// happen in the current epoch
+    #[benchmark]
+    fn finalize_domain_epoch_staking(p: Linear<0, { T::MaxPendingStakingOperation::get() }>) {
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let operator_rewards =
+            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(1000u32));
+
+        // Ensure the treasury account is above ED
+        T::Currency::set_balance(
+            &T::TreasuryAccount::get(),
+            T::Currency::minimum_balance() + 1u32.into(),
+        );
+
+        let domain_id = register_domain::<T>();
+        let mut operator_ids = Vec::new();
+        for i in 0..T::MaxPendingStakingOperation::get() {
+            let (_, operator_id) =
+                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
+            operator_ids.push(operator_id);
+        }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        for (i, operator_id) in operator_ids.iter().enumerate().take(p as usize) {
+            let nominator = account("nominator", i as u32, SEED);
+            T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
+            assert_ok!(Domains::<T>::nominate_operator(
+                RawOrigin::Signed(nominator).into(),
+                *operator_id,
+                minimum_nominator_stake,
+            ));
+        }
+        assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), p);
+
+        do_reward_operators::<T>(domain_id, operator_ids.into_iter(), operator_rewards)
+            .expect("reward operator should success");
+
+        let epoch_index = DomainStakingSummary::<T>::get(domain_id)
+            .expect("staking summary must exist")
+            .current_epoch_index;
+
+        #[block]
+        {
+            do_finalize_domain_epoch_staking::<T>(domain_id)
+                .expect("finalize domain staking should success");
+        }
+
+        let staking_summary =
+            DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
+        assert_eq!(staking_summary.current_epoch_index, epoch_index + 1u32);
     }
 
     #[benchmark]
@@ -298,14 +598,15 @@ mod benchmarks {
     }
 
     /// Benchmark `nominate_operator` extrinsic with the worst possible conditions:
-    /// - There is already a pending deposit of the nominator
+    /// - There is already a pending deposit of the nominator from the previous epoch
+    ///   that need to convert into share
     #[benchmark]
     fn nominate_operator() {
         let nominator = account("nominator", 1, SEED);
-        let minimum_nominator_stake = T::Currency::minimum_balance();
+        let minimum_nominator_stake = T::MinNominatorStake::get();
         T::Currency::set_balance(
             &nominator,
-            minimum_nominator_stake * 2u32.into() + T::Currency::minimum_balance(),
+            minimum_nominator_stake * 2u32.into() + T::MinNominatorStake::get(),
         );
 
         let domain_id = register_domain::<T>();
@@ -317,6 +618,8 @@ mod benchmarks {
             operator_id,
             minimum_nominator_stake,
         ));
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         #[extrinsic_call]
         _(
@@ -324,6 +627,9 @@ mod benchmarks {
             operator_id,
             minimum_nominator_stake,
         );
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert!(!operator.deposits_in_epoch.is_zero());
     }
 
     // TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
@@ -371,17 +677,17 @@ mod benchmarks {
     }
 
     /// Benchmark `withdraw_stake` extrinsic with the worst possible conditions:
-    /// - There is unmint reward of the nominator
-    /// - There is already a pending withdrawal of the nominator
+    /// - There is a pending withdrawal and a pending deposit from the previous epoch that
+    ///   need to convert into balance/share
     /// - Only withdraw partial of the nominator's stake
     #[benchmark]
     fn withdraw_stake() {
         let nominator = account("nominator", 1, SEED);
-        let minimum_nominator_stake = T::Currency::minimum_balance();
+        let minimum_nominator_stake = T::MinNominatorStake::get();
         let withdraw_amount = T::MinOperatorStake::get();
         T::Currency::set_balance(
             &nominator,
-            withdraw_amount * 3u32.into() + T::Currency::minimum_balance(),
+            withdraw_amount * 4u32.into() + T::MinNominatorStake::get(),
         );
 
         let domain_id = register_domain::<T>();
@@ -394,23 +700,19 @@ mod benchmarks {
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
-        // Add reward to the operator
-        let _ = DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
-            let stake_summary = maybe_stake_summary
-                .as_mut()
-                .expect("staking summary must exist");
-            stake_summary
-                .current_epoch_rewards
-                .insert(operator_id, T::MinOperatorStake::get());
-            Ok::<_, ()>(())
-        });
-
-        // Add one more withdraw
+        // Add one more withdraw and deposit to the previous epoch
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
             withdraw_amount.into(),
         ));
+        assert_ok!(Domains::<T>::nominate_operator(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            withdraw_amount,
+        ));
+        do_finalize_domain_epoch_staking::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         #[extrinsic_call]
         _(
@@ -418,6 +720,155 @@ mod benchmarks {
             operator_id,
             withdraw_amount.into(),
         );
+
+        let operator = Operators::<T>::get(operator_id).expect("operator must exist");
+        assert_eq!(operator.withdrawals_in_epoch, withdraw_amount.into());
+    }
+
+    /// Benchmark `unlock_funds` extrinsic with the worst possible conditions:
+    /// - Unlock a full withdrawal which also remove the deposit storage for the nominator
+    #[benchmark]
+    fn unlock_funds() {
+        let nominator = account("nominator", 1, SEED);
+        let minimum_nominator_stake = T::MinNominatorStake::get();
+        let staking_amount = T::MinOperatorStake::get();
+        T::Currency::set_balance(&nominator, staking_amount + T::MinNominatorStake::get());
+
+        let domain_id = register_domain::<T>();
+        let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
+        assert_ok!(Domains::<T>::nominate_operator(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            staking_amount,
+        ));
+        do_finalize_domain_epoch_staking::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        // Withdraw all deposit
+        let withdraw_amount = {
+            let mut deposit =
+                Deposits::<T>::get(operator_id, nominator.clone()).expect("deposit must exist");
+            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)
+                .expect("convert must success");
+            deposit.known.shares
+        };
+        assert_ok!(Domains::<T>::withdraw_stake(
+            RawOrigin::Signed(nominator.clone()).into(),
+            operator_id,
+            withdraw_amount,
+        ));
+        do_finalize_domain_epoch_staking::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        // Update the `LatestConfirmedDomainBlock` so unlock can success
+        let confirmed_domain_block_number =
+            Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
+                + T::StakeWithdrawalLockingPeriod::get()
+                + One::one();
+        LatestConfirmedDomainBlock::<T>::insert(
+            domain_id,
+            ConfirmedDomainBlock {
+                block_number: confirmed_domain_block_number,
+                block_hash: Default::default(),
+                parent_block_receipt_hash: Default::default(),
+                state_root: Default::default(),
+                extrinsics_root: Default::default(),
+            },
+        );
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(nominator.clone()), operator_id);
+
+        assert!(Withdrawals::<T>::get(operator_id, nominator.clone()).is_none());
+        assert!(Deposits::<T>::get(operator_id, nominator).is_none());
+    }
+
+    /// Benchmark `unlock_operator` extrinsic based on the number of nominator of the unlocked operator
+    #[benchmark]
+    fn unlock_operator(n: Linear<0, { T::MaxNominators::get() }>) {
+        let domain_id = register_domain::<T>();
+        let (operator_owner, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        // Ensure the treasury account is above ED
+        T::Currency::set_balance(
+            &T::TreasuryAccount::get(),
+            T::Currency::minimum_balance() + 1u32.into(),
+        );
+
+        for i in 0..n {
+            let nominator = account("nominator", i, SEED);
+            T::Currency::set_balance(
+                &nominator,
+                T::MinNominatorStake::get() + T::Currency::minimum_balance(),
+            );
+            assert_ok!(Domains::<T>::nominate_operator(
+                RawOrigin::Signed(nominator).into(),
+                operator_id,
+                T::MinNominatorStake::get(),
+            ));
+        }
+        if n != 0 {
+            assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 1);
+        }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        // Deregister operator
+        assert_ok!(Domains::<T>::deregister_operator(
+            RawOrigin::Signed(operator_owner.clone()).into(),
+            operator_id,
+        ));
+
+        // Update the `LatestConfirmedDomainBlock` so unlock can success
+        let confirmed_domain_block_number =
+            Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
+                + T::StakeWithdrawalLockingPeriod::get()
+                + One::one();
+        LatestConfirmedDomainBlock::<T>::insert(
+            domain_id,
+            ConfirmedDomainBlock {
+                block_number: confirmed_domain_block_number,
+                block_hash: Default::default(),
+                parent_block_receipt_hash: Default::default(),
+                state_root: Default::default(),
+                extrinsics_root: Default::default(),
+            },
+        );
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(operator_owner), operator_id);
+
+        assert!(OperatorIdOwner::<T>::get(operator_id).is_none());
+    }
+
+    #[benchmark]
+    fn update_domain_operator_allow_list() {
+        let domain_id = register_domain::<T>();
+        let _ = register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
+
+        let domain_owner = DomainRegistry::<T>::get(domain_id)
+            .expect("domain object must exist")
+            .owner_account_id;
+        let new_allow_list = OperatorAllowList::Operators(BTreeSet::from_iter(vec![account(
+            "allowed-account",
+            0,
+            SEED,
+        )]));
+
+        #[extrinsic_call]
+        _(
+            RawOrigin::Signed(domain_owner),
+            domain_id,
+            new_allow_list.clone(),
+        );
+
+        let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
+        assert_eq!(domain_obj.domain_config.operator_allow_list, new_allow_list);
     }
 
     fn register_runtime<T: Config>() -> RuntimeId {
