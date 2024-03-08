@@ -687,6 +687,7 @@ impl pallet_domains::Config for Runtime {
     type DomainsTransfersTracker = Transporter;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type DomainBundleSubmitted = Messenger;
 }
 
 parameter_types! {

@@ -41,6 +41,7 @@ use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
+use sp_domains::DomainId;
 use sp_messenger::messages::{
     ChainId, ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce,
 };
@@ -104,7 +105,7 @@ pub struct ValidatedRelayMessage<Balance> {
 }
 
 /// Domain allowlist updates.
-#[derive(Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
 pub struct DomainAllowlistUpdates {
     /// Chains that are allowed to open channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
@@ -169,7 +170,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
-    use sp_domains::DomainOwner;
+    use sp_domains::{DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
@@ -297,6 +298,13 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn chain_allowlist)]
     pub(super) type ChainAllowlist<T: Config> = StorageValue<_, BTreeSet<ChainId>, ValueQuery>;
+
+    /// A temporary storage to store any allowlist updates to domain.
+    /// Will be cleared in the next block once the previous block has a domain bundle.
+    #[pallet::storage]
+    #[pallet::getter(fn domain_chain_allowlist_updates)]
+    pub(super) type DomainChainAllowlistUpdate<T: Config> =
+        StorageMap<_, Identity, DomainId, crate::DomainAllowlistUpdates, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -511,6 +519,9 @@ mod pallet {
 
         /// Operation not allowed.
         OperationNotAllowed,
+
+        /// Account is not a Domain owner.
+        NotDomainOwner,
     }
 
     #[pallet::hooks]
@@ -628,8 +639,49 @@ mod pallet {
             Ok(())
         }
 
-        /// An inherent call to update allowlist for domain.
+        /// A call to initiate chain allowlist update on domains
         #[pallet::call_index(5)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
+        pub fn initiate_domain_update_chain_allowlist(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            update: ChainAllowlistUpdate,
+        ) -> DispatchResult {
+            let domain_owner = ensure_signed(origin)?;
+            ensure!(
+                T::DomainOwner::is_domain_owner(domain_id, domain_owner),
+                Error::<T>::NotDomainOwner
+            );
+
+            ensure!(
+                T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            if let Some(dst_domain_id) = update.chain_id().maybe_domain_chain() {
+                ensure!(dst_domain_id != domain_id, Error::<T>::InvalidAllowedChain);
+            }
+
+            DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_domain_updates| {
+                let mut domain_updates = maybe_domain_updates.take().unwrap_or_default();
+                match update {
+                    ChainAllowlistUpdate::Add(chain_id) => {
+                        domain_updates.remove_chains.remove(&chain_id);
+                        domain_updates.allow_chains.insert(chain_id);
+                    }
+                    ChainAllowlistUpdate::Remove(chain_id) => {
+                        domain_updates.allow_chains.remove(&chain_id);
+                        domain_updates.remove_chains.insert(chain_id);
+                    }
+                }
+
+                *maybe_domain_updates = Some(domain_updates)
+            });
+            Ok(())
+        }
+
+        /// An inherent call to update allowlist for domain.
+        #[pallet::call_index(6)]
         #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Mandatory))]
         pub fn update_domain_allowlist(
             origin: OriginFor<T>,
@@ -1134,5 +1186,11 @@ where
     /// Returns true if the inbox message response has not received acknowledgement yet.
     pub fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
         InboxResponses::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    }
+}
+
+impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
+    fn domain_bundle_submitted(domain_id: DomainId) {
+        DomainChainAllowlistUpdate::<T>::remove(domain_id);
     }
 }

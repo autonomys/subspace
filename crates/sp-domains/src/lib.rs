@@ -1199,6 +1199,10 @@ pub trait DomainBundleSubmitted {
     fn domain_bundle_submitted(domain_id: DomainId);
 }
 
+impl DomainBundleSubmitted for () {
+    fn domain_bundle_submitted(_domain_id: DomainId) {}
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,

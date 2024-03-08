@@ -311,6 +311,7 @@ impl pallet_domains::Config for Test {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type ConsensusSlotProbability = SlotProbability;
+    type DomainBundleSubmitted = ();
 }
 
 pub struct ExtrinsicStorageFees;
