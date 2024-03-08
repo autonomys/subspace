@@ -37,14 +37,14 @@ mod benchmarks {
         let block_tree_pruning_depth = T::BlockTreePruningDepth::get().saturated_into::<u32>();
         let domain_id = register_domain::<T>();
         let (_, operator_id) =
-            register_helper_operator::<T>(domain_id, T::Currency::minimum_balance());
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
         let mut receipt =
             BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
                 .and_then(BlockTreeNodes::<T>::get)
                 .expect("genesis receipt must exist")
                 .execution_receipt;
-        for i in 1..=(block_tree_pruning_depth + 1) {
+        for i in [1, 2, 3, block_tree_pruning_depth] {
             let consensus_block_number = i.into();
             let domain_block_number = i.into();
 
@@ -54,9 +54,32 @@ mod benchmarks {
                 frame_system::Pallet::<T>::block_hash(consensus_block_number - One::one()),
             );
 
-            // Submit a bundle with the receipt of the last block
-            let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
-            assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+            if i != block_tree_pruning_depth {
+                // Submit a bundle with the receipt of the last block
+                let bundle = dummy_opaque_bundle(domain_id, operator_id, receipt);
+                assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+            } else {
+                // Since the challenge period is set to 1 day we don't want to fill up all the ERs
+                // (i.e. 14_400 number of ERs) which seems take forever to finish, thus we instead
+                // manually insert the last ER into the state.
+                let receipt_block_number = domain_block_number - One::one();
+                let receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
+                    consensus_block_number - One::one(),
+                    frame_system::Pallet::<T>::block_hash(consensus_block_number - One::one()),
+                    receipt_block_number,
+                    Default::default(),
+                );
+                let receipt_hash = receipt.hash::<DomainHashingFor<T>>();
+                HeadReceiptNumber::<T>::set(domain_id, receipt_block_number);
+                BlockTree::<T>::insert(domain_id, receipt_block_number, receipt_hash);
+                BlockTreeNodes::<T>::insert(
+                    receipt_hash,
+                    BlockTreeNode {
+                        execution_receipt: receipt,
+                        operator_ids: sp_std::vec![operator_id],
+                    },
+                );
+            }
 
             // Create ER for the above bundle
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
@@ -71,11 +94,11 @@ mod benchmarks {
         }
         assert_eq!(
             Domains::<T>::head_receipt_number(domain_id),
-            (block_tree_pruning_depth).into()
+            (block_tree_pruning_depth - 1).into()
         );
 
         // Construct bundle that will prune the block tree
-        let block_number = (block_tree_pruning_depth + 2).into();
+        let block_number = (block_tree_pruning_depth + 1).into();
         run_to_block::<T>(
             block_number,
             frame_system::Pallet::<T>::block_hash(block_number - One::one()),
@@ -87,7 +110,7 @@ mod benchmarks {
 
         assert_eq!(
             Domains::<T>::head_receipt_number(domain_id),
-            (block_tree_pruning_depth + 1).into()
+            block_tree_pruning_depth.into()
         );
         assert_eq!(
             Domains::<T>::oldest_unconfirmed_receipt_number(domain_id),
@@ -154,39 +177,35 @@ mod benchmarks {
 
     #[benchmark]
     fn register_domain_runtime() {
-        let runtime_blob =
-            include_bytes!("../res/evm_domain_test_runtime.compact.compressed.wasm").to_vec();
+        let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
-        let runtime_hash = T::Hashing::hash(&runtime_blob);
 
         #[extrinsic_call]
         _(
             RawOrigin::Root,
             "evm-domain".to_owned(),
             RuntimeType::Evm,
-            runtime_blob,
+            genesis_storage,
         );
 
         let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).expect("runtime object must exist");
         assert_eq!(runtime_obj.runtime_name, "evm-domain".to_owned());
         assert_eq!(runtime_obj.runtime_type, RuntimeType::Evm);
-        assert_eq!(runtime_obj.hash, runtime_hash);
         assert_eq!(NextRuntimeId::<T>::get(), runtime_id + 1);
     }
 
     #[benchmark]
     fn upgrade_domain_runtime() {
-        let runtime_blob =
-            include_bytes!("../res/evm_domain_test_runtime.compact.compressed.wasm").to_vec();
+        let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
 
-        // The `runtime_blob` have `spec_version = 1` thus we need to modify the runtime object
+        // The `genesis_storage` have `spec_version = 1` thus we need to modify the runtime object
         // version to 0 to bypass the `can_upgrade_code` check when calling `upgrade_domain_runtime`
         assert_ok!(Domains::<T>::register_domain_runtime(
             RawOrigin::Root.into(),
             "evm-domain".to_owned(),
             RuntimeType::Evm,
-            runtime_blob.clone()
+            genesis_storage.clone()
         ));
         RuntimeRegistry::<T>::mutate(runtime_id, |maybe_runtime_object| {
             let runtime_obj = maybe_runtime_object
@@ -196,7 +215,7 @@ mod benchmarks {
         });
 
         #[extrinsic_call]
-        _(RawOrigin::Root, runtime_id, runtime_blob.clone());
+        _(RawOrigin::Root, runtime_id, genesis_storage.clone());
 
         let scheduled_at = frame_system::Pallet::<T>::current_block_number()
             .checked_add(&T::DomainRuntimeUpgradeDelay::get())
@@ -204,18 +223,14 @@ mod benchmarks {
         let scheduled_upgrade = ScheduledRuntimeUpgrades::<T>::get(scheduled_at, runtime_id)
             .expect("scheduled upgrade must exist");
         assert_eq!(scheduled_upgrade.version.spec_version, 1);
-        assert_eq!(
-            scheduled_upgrade.raw_genesis.get_runtime_code().unwrap(),
-            runtime_blob
-        );
     }
 
     #[benchmark]
     fn instantiate_domain() {
-        let creator = account("creator", 1, SEED);
+        let creator = T::SudoId::get();
         T::Currency::set_balance(
             &creator,
-            T::DomainInstantiationDeposit::get() + T::Currency::minimum_balance(),
+            T::DomainInstantiationDeposit::get() + T::MinNominatorStake::get(),
         );
 
         let runtime_id = register_runtime::<T>();
@@ -232,7 +247,7 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
+        _(RawOrigin::Root, domain_config.clone());
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -249,14 +264,14 @@ mod benchmarks {
         let operator_account = account("operator", 1, SEED);
         T::Currency::set_balance(
             &operator_account,
-            T::MinOperatorStake::get() + T::Currency::minimum_balance(),
+            T::MinOperatorStake::get() + T::MinNominatorStake::get(),
         );
 
         let domain_id = register_domain::<T>();
         let operator_id = NextOperatorId::<T>::get();
         let operator_config = OperatorConfig {
             signing_key: OperatorPublicKey::unchecked_from([1u8; 32]),
-            minimum_nominator_stake: T::Currency::minimum_balance(),
+            minimum_nominator_stake: T::MinNominatorStake::get(),
             nomination_tax: Default::default(),
         };
 
@@ -341,7 +356,7 @@ mod benchmarks {
         let domain_id = register_domain::<T>();
 
         let (operator_owner, operator_id) =
-            register_helper_operator::<T>(domain_id, T::Currency::minimum_balance());
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
 
         #[extrinsic_call]
         _(RawOrigin::Signed(operator_owner.clone()), operator_id);
@@ -349,7 +364,9 @@ mod benchmarks {
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
         assert_eq!(
             *operator.status::<T>(operator_id),
-            OperatorStatus::Deregistered((domain_id, 0, DomainBlockNumberFor::<T>::zero()).into())
+            OperatorStatus::Deregistered(
+                (domain_id, 1u32, T::StakeWithdrawalLockingPeriod::get()).into()
+            ),
         );
     }
 
@@ -404,30 +421,26 @@ mod benchmarks {
     }
 
     fn register_runtime<T: Config>() -> RuntimeId {
-        let runtime_blob =
-            include_bytes!("../res/evm_domain_test_runtime.compact.compressed.wasm").to_vec();
+        let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
-        let runtime_hash = T::Hashing::hash(&runtime_blob);
 
         assert_ok!(Domains::<T>::register_domain_runtime(
             RawOrigin::Root.into(),
             "evm-domain".to_owned(),
             RuntimeType::Evm,
-            runtime_blob,
+            genesis_storage,
         ));
 
-        let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).expect("runtime object must exist");
-        assert_eq!(runtime_obj.hash, runtime_hash);
         assert_eq!(NextRuntimeId::<T>::get(), runtime_id + 1);
 
         runtime_id
     }
 
     fn register_domain<T: Config>() -> DomainId {
-        let creator = account("creator", 1, SEED);
+        let creator = T::SudoId::get();
         T::Currency::set_balance(
             &creator,
-            T::DomainInstantiationDeposit::get() + T::Currency::minimum_balance(),
+            T::DomainInstantiationDeposit::get() + T::MinNominatorStake::get(),
         );
 
         let runtime_id = register_runtime::<T>();
@@ -444,7 +457,7 @@ mod benchmarks {
         };
 
         assert_ok!(Domains::<T>::instantiate_domain(
-            RawOrigin::Signed(creator.clone()).into(),
+            RawOrigin::Root.into(),
             domain_config.clone(),
         ));
 
@@ -459,15 +472,28 @@ mod benchmarks {
         domain_id: DomainId,
         minimum_nominator_stake: BalanceOf<T>,
     ) -> (T::AccountId, OperatorId) {
-        let operator_account = account("operator", 1, SEED);
+        register_operator_with_seed::<T>(domain_id, 1u32, minimum_nominator_stake)
+    }
+
+    fn register_operator_with_seed<T: Config>(
+        domain_id: DomainId,
+        operator_seed: u32,
+        minimum_nominator_stake: BalanceOf<T>,
+    ) -> (T::AccountId, OperatorId) {
+        let operator_account = account("operator", operator_seed, SEED);
         T::Currency::set_balance(
             &operator_account,
-            T::MinOperatorStake::get() + T::Currency::minimum_balance(),
+            T::MinOperatorStake::get() + T::MinNominatorStake::get(),
         );
 
+        let key = {
+            let mut k = [0u8; 32];
+            (k[..4]).copy_from_slice(&operator_seed.to_be_bytes()[..]);
+            k
+        };
         let operator_id = NextOperatorId::<T>::get();
         let operator_config = OperatorConfig {
-            signing_key: OperatorPublicKey::unchecked_from([1u8; 32]),
+            signing_key: OperatorPublicKey::unchecked_from(key),
             minimum_nominator_stake,
             nomination_tax: Default::default(),
         };
