@@ -561,6 +561,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
             Error::OperatorNotRegistered
         );
 
+        // If the this is the first staking request of this operator `note_pending_staking_operation` for it
+        if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
+            note_pending_staking_operation::<T>(operator.current_domain_id)?;
+        }
+
         let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
             .ok_or(Error::DomainNotInitialized)?;
 
@@ -727,8 +732,6 @@ pub(crate) fn do_deregister_operator<T: Config>(
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        note_pending_staking_operation::<T>(operator.current_domain_id)?;
-
         ensure!(
             *operator.status::<T>(operator_id) == OperatorStatus::Registered,
             Error::OperatorNotRegistered
@@ -775,6 +778,11 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         );
 
         ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
+
+        // If the this is the first staking request of this operator `note_pending_staking_operation` for it
+        if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
+            note_pending_staking_operation::<T>(operator.current_domain_id)?;
+        }
 
         // calculate shares for any previous epoch
         let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)

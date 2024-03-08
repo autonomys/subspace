@@ -590,7 +590,7 @@ parameter_types! {
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
-    pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxPendingStakingOperation: u32 = 512;
     pub const MaxNominators: u32 = 256;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");

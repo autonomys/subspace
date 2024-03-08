@@ -629,7 +629,7 @@ parameter_types! {
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
-    pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxPendingStakingOperation: u32 = 512;
     pub const MaxNominators: u32 = 100;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
