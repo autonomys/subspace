@@ -1180,6 +1180,25 @@ pub trait DomainsTransfersTracker<Balance> {
     fn reduce_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 }
 
+/// Trait to check domain owner.
+pub trait DomainOwner<AccountId> {
+    /// Returns true if the account is the domain owner.
+    fn is_domain_owner(domain_id: DomainId, acc: AccountId) -> bool;
+}
+
+impl<AccountId> DomainOwner<AccountId> for () {
+    fn is_domain_owner(_domain_id: DomainId, _acc: AccountId) -> bool {
+        false
+    }
+}
+
+/// Post hook to know if the domain had bundle submitted in the previous block.
+pub trait DomainBundleSubmitted {
+    /// Called in the next block initialisation if there was a domain bundle in the previous block.
+    /// This hook if called for domain represents that there is a new domain block for parent consensus block.
+    fn domain_bundle_submitted(domain_id: DomainId);
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,

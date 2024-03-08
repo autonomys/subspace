@@ -33,7 +33,10 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
+use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -43,6 +46,11 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
+
+/// Messenger inherent identifier.
+pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -95,23 +103,73 @@ pub struct ValidatedRelayMessage<Balance> {
     should_init_channel: bool,
 }
 
+/// Domain allowlist updates.
+#[derive(Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+pub struct DomainAllowlistUpdates {
+    /// Chains that are allowed to open channel with this chain.
+    pub allow_chains: BTreeSet<ChainId>,
+    /// Chains that are not allowed to open channel with this chain.
+    pub remove_chains: BTreeSet<ChainId>,
+}
+
+/// The type of the messenger inherent data.
+#[derive(Debug, Encode, Decode)]
+pub struct InherentType {
+    pub maybe_updates: Option<DomainAllowlistUpdates>,
+}
+
+/// Inherent specific errors
+#[derive(Debug, Encode)]
+#[cfg_attr(feature = "std", derive(Decode))]
+pub enum InherentError {
+    MissingAllowlistUpdates,
+    IncorrectAllowlistUpdates,
+}
+
+impl IsFatalError for InherentError {
+    fn is_fatal_error(&self) -> bool {
+        true
+    }
+}
+
+/// Parameter to update chain allow list.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub enum ChainAllowlistUpdate {
+    Add(ChainId),
+    Remove(ChainId),
+}
+
+impl ChainAllowlistUpdate {
+    fn chain_id(&self) -> ChainId {
+        match self {
+            ChainAllowlistUpdate::Add(chain_id) => *chain_id,
+            ChainAllowlistUpdate::Remove(chain_id) => *chain_id,
+        }
+    }
+}
+
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
-        StateRootOf, ValidatedRelayMessage, U256,
+        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, DomainAllowlistUpdates,
+        FeeModel, InherentError, InherentType, Nonce, OutboxMessageResult, StateRootOf,
+        ValidatedRelayMessage, INHERENT_IDENTIFIER, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
     #[cfg(not(feature = "std"))]
+    use alloc::collections::BTreeSet;
+    #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
+    use frame_support::ensure;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
+    use sp_domains::DomainOwner;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
@@ -120,6 +178,8 @@ mod pallet {
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
+    #[cfg(feature = "std")]
+    use std::collections::BTreeSet;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -145,6 +205,8 @@ mod pallet {
         type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, StateRootOf<Self>>;
         /// Storage key provider.
         type StorageKeys: StorageKeys;
+        /// Domain owner provider.
+        type DomainOwner: DomainOwner<Self::AccountId>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -230,6 +292,11 @@ mod pallet {
     #[pallet::getter(fn block_messages)]
     pub(super) type BlockMessages<T: Config> =
         StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
+
+    /// An allowlist of chains that can open channel with this chain.
+    #[pallet::storage]
+    #[pallet::getter(fn chain_allowlist)]
+    pub(super) type ChainAllowlist<T: Config> = StorageValue<_, BTreeSet<ChainId>, ValueQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -436,8 +503,14 @@ mod pallet {
         /// actual processing path
         WeightTagNotMatch,
 
-        /// Emite when the there is balance overflow
+        /// Emits when the there is balance overflow.
         BalanceOverflow,
+
+        /// Invalid allowed chain.
+        InvalidAllowedChain,
+
+        /// Operation not allowed.
+        OperationNotAllowed,
     }
 
     #[pallet::hooks]
@@ -528,6 +601,119 @@ mod pallet {
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
+        }
+
+        /// A call to update consensus chain allow list.
+        #[pallet::call_index(4)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
+        pub fn update_consensus_chain_allowlist(
+            origin: OriginFor<T>,
+            update: ChainAllowlistUpdate,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            ensure!(
+                T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            ensure!(
+                update.chain_id() != T::SelfChainId::get(),
+                Error::<T>::InvalidAllowedChain
+            );
+
+            ChainAllowlist::<T>::mutate(|list| match update {
+                ChainAllowlistUpdate::Add(chain_id) => list.insert(chain_id),
+                ChainAllowlistUpdate::Remove(chain_id) => list.remove(&chain_id),
+            });
+            Ok(())
+        }
+
+        /// An inherent call to update allowlist for domain.
+        #[pallet::call_index(5)]
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Mandatory))]
+        pub fn update_domain_allowlist(
+            origin: OriginFor<T>,
+            updates: DomainAllowlistUpdates,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            ensure!(
+                !T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            let DomainAllowlistUpdates {
+                allow_chains,
+                remove_chains,
+            } = updates;
+
+            ChainAllowlist::<T>::mutate(|list| {
+                // remove chains from set
+                // TODO: should we close the existing channels to the following chains?
+                remove_chains.into_iter().for_each(|chain_id| {
+                    list.remove(&chain_id);
+                });
+
+                // add new chains
+                allow_chains.into_iter().for_each(|chain_id| {
+                    list.insert(chain_id);
+                });
+            });
+
+            Ok(())
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            inherent_data
+                .maybe_updates
+                .map(|updates| Call::update_domain_allowlist { updates })
+        }
+
+        fn is_inherent_required(data: &InherentData) -> Result<Option<Self::Error>, Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            Ok(if inherent_data.maybe_updates.is_none() {
+                None
+            } else {
+                Some(InherentError::MissingAllowlistUpdates)
+            })
+        }
+
+        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            if let Some(provided_updates) = inherent_data.maybe_updates {
+                if let Call::update_domain_allowlist { updates } = call {
+                    if updates != &provided_updates {
+                        return Err(InherentError::IncorrectAllowlistUpdates);
+                    }
+                }
+            } else {
+                return Err(InherentError::MissingAllowlistUpdates);
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::update_domain_allowlist { .. })
         }
     }
 

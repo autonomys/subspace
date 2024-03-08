@@ -582,6 +582,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
+    type DomainOwner = Domains;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -763,7 +764,7 @@ construct_runtime!(
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
-        Messenger: pallet_messenger = 60,
+        Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.

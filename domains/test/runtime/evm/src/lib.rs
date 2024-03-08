@@ -460,6 +460,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
+    type DomainOwner = ();
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -945,6 +946,7 @@ impl_runtime_apis! {
             match &extrinsic.0.function {
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
+                RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
                 _ => false,
             }
         }

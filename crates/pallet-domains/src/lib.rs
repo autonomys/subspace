@@ -2117,6 +2117,16 @@ impl<T: Config> Pallet<T> {
     }
 }
 
+impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
+    fn is_domain_owner(domain_id: DomainId, acc: T::AccountId) -> bool {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
+            domain_obj.owner_account_id == acc
+        } else {
+            false
+        }
+    }
+}
+
 impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
