@@ -351,7 +351,7 @@ where
         CBlock: BlockT,
         CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + ProofProvider<CBlock>,
         CClient::Api: DomainsApi<CBlock, Block::Header>
-            + MessengerApi<CBlock, NumberFor<CBlock>>
+            + MessengerApi<CBlock>
             + MmrApi<CBlock, H256, NumberFor<CBlock>>,
         Client::Api: RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
     {
@@ -436,7 +436,7 @@ where
         CBlock: BlockT,
         CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + ProofProvider<CBlock>,
         CClient::Api: DomainsApi<CBlock, Block::Header>
-            + MessengerApi<CBlock, NumberFor<CBlock>>
+            + MessengerApi<CBlock>
             + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     {
         let (mmr_leaf, mmr_proof) = construct_consensus_mmr_proof(

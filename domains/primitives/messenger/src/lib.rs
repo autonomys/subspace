@@ -25,11 +25,22 @@ extern crate alloc;
 
 use crate::messages::MessageKey;
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
+use frame_support::__private::sp_inherents;
+use frame_support::__private::sp_inherents::Error;
+use frame_support::inherent::{InherentData, InherentIdentifier, IsFatalError};
+use frame_support::pallet_prelude::TypeInfo;
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
+
+/// Messenger inherent identifier.
+pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {
@@ -87,6 +98,79 @@ impl StorageKeys for () {
     }
 }
 
+/// Domain allowlist updates.
+#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+pub struct DomainAllowlistUpdates {
+    /// Chains that are allowed to open channel with this chain.
+    pub allow_chains: BTreeSet<ChainId>,
+    /// Chains that are not allowed to open channel with this chain.
+    pub remove_chains: BTreeSet<ChainId>,
+}
+
+/// The type of the messenger inherent data.
+#[derive(Debug, Encode, Decode)]
+pub struct InherentType {
+    pub maybe_updates: Option<DomainAllowlistUpdates>,
+}
+
+/// Inherent specific errors
+#[derive(Debug, Encode)]
+#[cfg_attr(feature = "std", derive(Decode))]
+pub enum InherentError {
+    MissingAllowlistUpdates,
+    IncorrectAllowlistUpdates,
+}
+
+impl IsFatalError for InherentError {
+    fn is_fatal_error(&self) -> bool {
+        true
+    }
+}
+
+/// Provides the set code inherent data.
+#[cfg(feature = "std")]
+pub struct InherentDataProvider {
+    data: InherentType,
+}
+
+#[cfg(feature = "std")]
+impl InherentDataProvider {
+    /// Create new inherent data provider from the given `data`.
+    pub fn new(data: InherentType) -> Self {
+        Self { data }
+    }
+
+    /// Returns the `data` of this inherent data provider.
+    pub fn data(&self) -> &InherentType {
+        &self.data
+    }
+}
+
+#[cfg(feature = "std")]
+#[async_trait::async_trait]
+impl sp_inherents::InherentDataProvider for InherentDataProvider {
+    async fn provide_inherent_data(
+        &self,
+        inherent_data: &mut InherentData,
+    ) -> Result<(), sp_inherents::Error> {
+        inherent_data.put_data(INHERENT_IDENTIFIER, &self.data)
+    }
+
+    async fn try_handle_error(
+        &self,
+        identifier: &InherentIdentifier,
+        error: &[u8],
+    ) -> Option<Result<(), sp_inherents::Error>> {
+        if *identifier != INHERENT_IDENTIFIER {
+            return None;
+        }
+
+        let error = InherentError::decode(&mut &*error).ok()?;
+
+        Some(Err(Error::Application(Box::from(format!("{error:?}")))))
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi<BlockNumber, CHash>
@@ -116,8 +200,8 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
-    #[api_version(2)]
-    pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
+    #[api_version(3)]
+    pub trait MessengerApi {
         /// Returns `Some(true)` if valid XDM or `Some(false)` if not
         /// Returns None if this is not an XDM
         fn is_xdm_valid(
@@ -133,5 +217,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns storage key for inbox response for a given message_id.
         fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8>;
+
+        /// Returns any domain's chains allowlist updates on consensus chain.
+        fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>;
     }
 }

@@ -118,14 +118,14 @@ where
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block> + MessengerApi<Block, NumberFor<Block>>,
+    Client::Api: DomainCoreApi<Block> + MessengerApi<Block>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
@@ -299,7 +299,7 @@ where
 
             // TODO: remove version check before next network
             let messenger_api_version = runtime_api
-                .api_version::<dyn MessengerApi<Block, NumberFor<Block>>>(at)?
+                .api_version::<dyn MessengerApi<Block>>(at)?
                 // safe to return default version as 1 since there will always be version 1.
                 .unwrap_or(1);
 

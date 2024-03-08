@@ -241,7 +241,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
     CBackend: BackendT<Block> + 'static,

@@ -33,10 +33,7 @@ pub mod weights;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(not(feature = "std"))]
-use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
-use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -47,11 +44,6 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
-#[cfg(feature = "std")]
-use std::collections::BTreeSet;
-
-/// Messenger inherent identifier.
-pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -104,35 +96,6 @@ pub struct ValidatedRelayMessage<Balance> {
     should_init_channel: bool,
 }
 
-/// Domain allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
-pub struct DomainAllowlistUpdates {
-    /// Chains that are allowed to open channel with this chain.
-    pub allow_chains: BTreeSet<ChainId>,
-    /// Chains that are not allowed to open channel with this chain.
-    pub remove_chains: BTreeSet<ChainId>,
-}
-
-/// The type of the messenger inherent data.
-#[derive(Debug, Encode, Decode)]
-pub struct InherentType {
-    pub maybe_updates: Option<DomainAllowlistUpdates>,
-}
-
-/// Inherent specific errors
-#[derive(Debug, Encode)]
-#[cfg_attr(feature = "std", derive(Decode))]
-pub enum InherentError {
-    MissingAllowlistUpdates,
-    IncorrectAllowlistUpdates,
-}
-
-impl IsFatalError for InherentError {
-    fn is_fatal_error(&self) -> bool {
-        true
-    }
-}
-
 /// Parameter to update chain allow list.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
 pub enum ChainAllowlistUpdate {
@@ -153,9 +116,8 @@ impl ChainAllowlistUpdate {
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, DomainAllowlistUpdates,
-        FeeModel, InherentError, InherentType, Nonce, OutboxMessageResult, StateRootOf,
-        ValidatedRelayMessage, INHERENT_IDENTIFIER, U256,
+        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, FeeModel, Nonce,
+        OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -176,7 +138,10 @@ mod pallet {
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
+    use sp_messenger::{
+        DomainAllowlistUpdates, InherentError, InherentType, MmrProofVerifier, OnXDMRewards,
+        StorageKeys, INHERENT_IDENTIFIER,
+    };
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
     #[cfg(feature = "std")]
@@ -304,7 +269,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn domain_chain_allowlist_updates)]
     pub(super) type DomainChainAllowlistUpdate<T: Config> =
-        StorageMap<_, Identity, DomainId, crate::DomainAllowlistUpdates, OptionQuery>;
+        StorageMap<_, Identity, DomainId, DomainAllowlistUpdates, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -1156,6 +1121,12 @@ mod pallet {
 
         pub fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             InboxResponses::<T>::hashed_key_for(message_key)
+        }
+
+        pub fn domain_chains_allowlist_update(
+            domain_id: DomainId,
+        ) -> Option<DomainAllowlistUpdates> {
+            DomainChainAllowlistUpdate::<T>::get(domain_id)
         }
     }
 }

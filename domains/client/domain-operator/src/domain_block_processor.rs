@@ -22,6 +22,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_domains_fraud_proof::FraudProofApi;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{Digest, Saturating};
 use std::cmp::Ordering;
@@ -119,7 +120,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.

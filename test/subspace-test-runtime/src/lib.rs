@@ -62,6 +62,7 @@ use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, Endp
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
+use sp_messenger::DomainAllowlistUpdates;
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::traits::{
@@ -1368,7 +1369,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+    impl sp_messenger::MessengerApi<Block> for Runtime {
         fn is_xdm_valid(
             extrinsic: Vec<u8>,
         ) -> Option<bool> {
@@ -1385,6 +1386,10 @@ impl_runtime_apis! {
 
         fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             Messenger::inbox_response_storage_key(message_key)
+        }
+
+        fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
+            Messenger::domain_chains_allowlist_update(domain_id)
         }
     }
 
