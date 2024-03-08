@@ -8,6 +8,7 @@ use anyhow::anyhow;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
+use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
@@ -627,95 +628,122 @@ where
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
 
-    let single_disk_farms = tokio::task::block_in_place(|| {
+    let (single_disk_farms, plotting_delay_senders) = tokio::task::block_in_place(|| {
         let handle = Handle::current();
+        let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
+            .map(|_| oneshot::channel())
+            .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        disk_farms
+        let single_disk_farms = disk_farms
             .into_par_iter()
+            .zip(plotting_delay_receivers)
             .enumerate()
-            .map(move |(disk_farm_index, disk_farm)| {
-                let _tokio_handle_guard = handle.enter();
+            .map(
+                move |(disk_farm_index, (disk_farm, plotting_delay_receiver))| {
+                    let _tokio_handle_guard = handle.enter();
 
-                debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
-                let node_client = handle.block_on(NodeRpcClient::new(&node_rpc_url))?;
+                    debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
+                    let node_client = handle.block_on(NodeRpcClient::new(&node_rpc_url))?;
 
-                let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
-                    SingleDiskFarmOptions {
-                        directory: disk_farm.directory.clone(),
-                        farmer_app_info: farmer_app_info.clone(),
-                        allocated_space: disk_farm.allocated_plotting_space,
-                        max_pieces_in_sector,
-                        node_client,
-                        reward_address,
-                        kzg: kzg.clone(),
-                        erasure_coding: erasure_coding.clone(),
-                        piece_getter: piece_getter.clone(),
-                        cache_percentage,
-                        downloading_semaphore: Arc::clone(&downloading_semaphore),
-                        record_encoding_concurrency,
-                        farm_during_initial_plotting,
-                        farming_thread_pool_size,
-                        plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
-                        disable_farm_locking,
-                    },
-                    disk_farm_index,
-                );
-
-                let single_disk_farm = match handle.block_on(single_disk_farm_fut) {
-                    Ok(single_disk_farm) => single_disk_farm,
-                    Err(SingleDiskFarmError::InsufficientAllocatedSpace {
-                        min_space,
-                        allocated_space,
-                    }) => {
-                        return Err(anyhow::anyhow!(
-                            "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
-                            {} bytes to be exact)",
-                            bytesize::to_string(allocated_space, true),
-                            bytesize::to_string(allocated_space, false),
-                            bytesize::to_string(min_space, true),
-                            bytesize::to_string(min_space, false),
-                            min_space
-                        ));
-                    }
-                    Err(error) => {
-                        return Err(error.into());
-                    }
-                };
-
-                if !no_info {
-                    let info = single_disk_farm.info();
-                    println!("Single disk farm {disk_farm_index}:");
-                    println!("  ID: {}", info.id());
-                    println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
-                    println!("  Public key: 0x{}", hex::encode(info.public_key()));
-                    println!(
-                        "  Allocated space: {} ({})",
-                        bytesize::to_string(info.allocated_space(), true),
-                        bytesize::to_string(info.allocated_space(), false)
+                    let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
+                        SingleDiskFarmOptions {
+                            directory: disk_farm.directory.clone(),
+                            farmer_app_info: farmer_app_info.clone(),
+                            allocated_space: disk_farm.allocated_plotting_space,
+                            max_pieces_in_sector,
+                            node_client,
+                            reward_address,
+                            kzg: kzg.clone(),
+                            erasure_coding: erasure_coding.clone(),
+                            piece_getter: piece_getter.clone(),
+                            cache_percentage,
+                            downloading_semaphore: Arc::clone(&downloading_semaphore),
+                            record_encoding_concurrency,
+                            farm_during_initial_plotting,
+                            farming_thread_pool_size,
+                            plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
+                            plotting_delay: Some(plotting_delay_receiver),
+                            disable_farm_locking,
+                        },
+                        disk_farm_index,
                     );
-                    println!("  Directory: {}", disk_farm.directory.display());
-                }
 
-                Ok(single_disk_farm)
-            })
-            .collect::<Result<Vec<_>, _>>()
+                    let single_disk_farm = match handle.block_on(single_disk_farm_fut) {
+                        Ok(single_disk_farm) => single_disk_farm,
+                        Err(SingleDiskFarmError::InsufficientAllocatedSpace {
+                            min_space,
+                            allocated_space,
+                        }) => {
+                            return Err(anyhow::anyhow!(
+                                "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
+                                {} bytes to be exact)",
+                                bytesize::to_string(allocated_space, true),
+                                bytesize::to_string(allocated_space, false),
+                                bytesize::to_string(min_space, true),
+                                bytesize::to_string(min_space, false),
+                                min_space
+                            ));
+                        }
+                        Err(error) => {
+                            return Err(error.into());
+                        }
+                    };
+
+                    if !no_info {
+                        let info = single_disk_farm.info();
+                        println!("Single disk farm {disk_farm_index}:");
+                        println!("  ID: {}", info.id());
+                        println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+                        println!("  Public key: 0x{}", hex::encode(info.public_key()));
+                        println!(
+                            "  Allocated space: {} ({})",
+                            bytesize::to_string(info.allocated_space(), true),
+                            bytesize::to_string(info.allocated_space(), false)
+                        );
+                        println!("  Directory: {}", disk_farm.directory.display());
+                    }
+
+                    Ok(single_disk_farm)
+                },
+            )
+            .collect::<Result<Vec<_>, _>>()?;
+
+        anyhow::Ok((single_disk_farms, plotting_delay_senders))
     })?;
 
-    // Acknowledgement is not necessary
-    drop(
-        farmer_cache
-            .replace_backing_caches(
-                single_disk_farms
-                    .iter()
-                    .map(|single_disk_farm| single_disk_farm.piece_cache())
-                    .collect(),
-                single_disk_farms
-                    .iter()
-                    .map(|single_disk_farm| single_disk_farm.plot_cache())
-                    .collect(),
-            )
-            .await,
-    );
+    {
+        let handler_id = Arc::new(Mutex::new(None));
+        // Wait for piece cache to read already cached contents before starting plotting to improve
+        // cache hit ratio
+        handler_id
+            .lock()
+            .replace(farmer_cache.on_sync_progress(Arc::new({
+                let handler_id = Arc::clone(&handler_id);
+                let plotting_delay_senders = Mutex::new(plotting_delay_senders);
+
+                move |_progress| {
+                    for plotting_delay_sender in plotting_delay_senders.lock().drain(..) {
+                        // Doesn't matter if receiver is gone
+                        let _ = plotting_delay_sender.send(());
+                    }
+
+                    // Unsubscribe from this event
+                    handler_id.lock().take();
+                }
+            })));
+    }
+    farmer_cache
+        .replace_backing_caches(
+            single_disk_farms
+                .iter()
+                .map(|single_disk_farm| single_disk_farm.piece_cache())
+                .collect(),
+            single_disk_farms
+                .iter()
+                .map(|single_disk_farm| single_disk_farm.plot_cache())
+                .collect(),
+        )
+        .await;
     drop(farmer_cache);
 
     // Store piece readers so we can reference them later
