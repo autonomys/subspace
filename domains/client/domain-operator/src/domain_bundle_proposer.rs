@@ -129,6 +129,7 @@ where
                 ))
             })?;
 
+        // TODO: This is used to keep compatible with gemini-3h, remove before next network
         if api_version >= 2 {
             self.consensus_client
                 .runtime_api()

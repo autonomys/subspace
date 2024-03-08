@@ -310,7 +310,7 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
     })
 }
 
-// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more detail
+// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
 // about the formula
 pub(crate) fn calculate_max_bundle_weight_and_size(
     max_domain_block_size: u32,
