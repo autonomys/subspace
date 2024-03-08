@@ -946,13 +946,13 @@ mod pallet {
                         if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
-                            let completed_epoch_index =
+                            let epoch_transition_res =
                                 do_finalize_domain_current_epoch::<T>(domain_id)
                                     .map_err(Error::<T>::from)?;
 
                             Self::deposit_event(Event::DomainEpochCompleted {
                                 domain_id,
-                                completed_epoch_index,
+                                completed_epoch_index: epoch_transition_res.completed_epoch_index,
                             });
                             epoch_transitted = true;
                         }
@@ -1281,12 +1281,12 @@ mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let completed_epoch_index =
+            let epoch_transition_res =
                 do_finalize_domain_current_epoch::<T>(domain_id).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::ForceDomainEpochTransition {
                 domain_id,
-                completed_epoch_index,
+                completed_epoch_index: epoch_transition_res.completed_epoch_index,
             });
             Ok(())
         }

@@ -1054,7 +1054,9 @@ pub(crate) fn do_unlock_funds<T: Config>(
 }
 
 /// Unlocks an already de-registered operator given unlock wait period is complete.
-pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+///
+/// Return the number of nominator processed
+pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<usize, Error> {
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
         let operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
@@ -1089,6 +1091,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             operator.total_storage_fee_deposit,
         );
         let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+        let mut nominator_count = 0;
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
             // convert any deposits from the previous epoch to shares
             do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
@@ -1168,6 +1171,8 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
                 .map_err(|_| Error::RemoveLock)?;
 
+            nominator_count += 1;
+
             Ok(())
         })?;
 
@@ -1190,7 +1195,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
         // remove nominator count for this operator.
         NominatorCount::<T>::remove(operator_id);
 
-        Ok(())
+        Ok(nominator_count)
     })
 }
 
