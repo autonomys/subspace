@@ -36,6 +36,8 @@ extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
 use crate::staking::OperatorStatus;
+use crate::staking_epoch::EpochTransitionResult;
+use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
@@ -46,6 +48,7 @@ use frame_support::ensure;
 use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::{Get, Randomness as RandomnessT};
+use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -129,14 +132,21 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
 /// The current storage version.
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
+/// The number of bundle of a particular domain to be included in the block is probabilistic
+/// and based on the consensus chain slot probability and domain bundle slot probability, usually
+/// the value is 6 on average, smaller/bigger value with less probability, we hypocritically use
+/// 100 as the maximum number of bundle per block for benchmarking.
+const MAX_BUNLDE_PER_BLOCK: u32 = 100;
+
 #[frame_support::pallet]
 mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, prune_receipt, AcceptedReceiptType,
-        Error as BlockTreeError, ReceiptType,
+        execution_receipt_type, process_execution_receipt, Error as BlockTreeError, ReceiptType,
     };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::block_tree::{prune_receipt, AcceptedReceiptType};
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
     use crate::bundle_storage_fund::{charge_bundle_storage_fee, Error as BundleStorageFundError};
@@ -158,9 +168,11 @@ mod pallet {
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::DomainHashingFor;
     use crate::{
-        BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, DomainHashingFor,
-        ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor,
+        BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
+        HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, MAX_BUNLDE_PER_BLOCK,
         STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
@@ -858,7 +870,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::submit_bundle().saturating_add(T::WeightInfo::pending_staking_operation()))]
+        #[pallet::weight(Pallet::<T>::max_submit_bundle_weight())]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
@@ -874,12 +886,13 @@ mod pallet {
             let operator_id = opaque_bundle.operator_id();
             let bundle_size = opaque_bundle.size();
             let receipt = opaque_bundle.into_receipt();
+            #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
             let receipt_block_number = receipt.domain_block_number;
 
             #[cfg(not(feature = "runtime-benchmarks"))]
-            let mut epoch_transitted = false;
+            let mut actual_weight = T::WeightInfo::submit_bundle();
             #[cfg(feature = "runtime-benchmarks")]
-            let epoch_transitted = false;
+            let actual_weight = T::WeightInfo::submit_bundle();
 
             match execution_receipt_type::<T>(domain_id, &receipt) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
@@ -889,11 +902,20 @@ mod pallet {
                 ReceiptType::Accepted(accepted_receipt_type) => {
                     // Before adding the new head receipt to the block tree, try to prune any previous
                     // bad ER at the same domain block and slash the submitter.
+                    //
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_bundle` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
                     if accepted_receipt_type == AcceptedReceiptType::NewHead {
                         if let Some(block_tree_node) =
                             prune_receipt::<T>(domain_id, receipt_block_number)
                                 .map_err(Error::<T>::from)?
                         {
+                            actual_weight =
+                                actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                                    block_tree_node.operator_ids.len() as u32,
+                                ));
+
                             let bad_receipt_hash = block_tree_node
                                 .execution_receipt
                                 .hash::<DomainHashingFor<T>>();
@@ -919,11 +941,14 @@ mod pallet {
                     //
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_bundle` call, these operations will be benchmarked separately.
-                    // TODO: in order to get a more accurate actual weight, separately benchmark:
-                    // - `do_reward_operators`,`do_slash_operators`,`do_unlock_pending_withdrawals`
-                    // - `do_finalize_domain_current_epoch`
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
+                        actual_weight =
+                            actual_weight.saturating_add(T::WeightInfo::confirm_domain_block(
+                                confirmed_block_info.operator_ids.len() as u32,
+                                confirmed_block_info.invalid_bundle_authors.len() as u32,
+                            ));
+
                         refund_storage_fee::<T>(
                             confirmed_block_info.total_storage_fee,
                             confirmed_block_info.paid_bundle_storage_fees,
@@ -954,7 +979,10 @@ mod pallet {
                                 domain_id,
                                 completed_epoch_index: epoch_transition_res.completed_epoch_index,
                             });
-                            epoch_transitted = true;
+
+                            actual_weight = actual_weight.saturating_add(
+                                Self::actual_epoch_transition_weight(epoch_transition_res),
+                            );
                         }
                     }
                 }
@@ -992,28 +1020,27 @@ mod pallet {
                 bundle_author: operator_id,
             });
 
-            let actual_weight = if !epoch_transitted {
-                Some(T::WeightInfo::submit_bundle())
-            } else {
-                Some(
-                    T::WeightInfo::submit_bundle()
-                        .saturating_add(T::WeightInfo::pending_staking_operation()),
-                )
-            };
-            Ok(actual_weight.into())
+            // Ensure the returned weight not exceed the maximum weight in the `pallet::weight`
+            Ok(Some(actual_weight.min(Self::max_submit_bundle_weight())).into())
         }
 
         #[pallet::call_index(1)]
-        // TODO: proper weight
-        #[pallet::weight((Weight::from_all(10_000), DispatchClass::Operational, Pays::No))]
+        #[pallet::weight((
+            T::WeightInfo::submit_fraud_proof().saturating_add(
+                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
+            ),
+            DispatchClass::Operational,
+            Pays::No
+        ))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
             let domain_id = fraud_proof.domain_id();
+            let mut actual_weight = T::WeightInfo::submit_fraud_proof();
 
             if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
                 let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
@@ -1032,14 +1059,26 @@ mod pallet {
                 // Prune the bad ER and slash the submitter, the descendants of the bad ER (i.e. all ERs in
                 // `[bad_receipt_number + 1..head_receipt_number]` ) and the corresponding submitter will be
                 // pruned/slashed lazily as the domain progressed.
-                let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
-                    .map_err(Error::<T>::from)?
-                    .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
-                do_slash_operators::<T>(
-                    block_tree_node.operator_ids.into_iter(),
-                    SlashedReason::BadExecutionReceipt(bad_receipt_hash),
-                )
-                .map_err(Error::<T>::from)?;
+                //
+                // NOTE: Skip the following staking related operations when benchmarking the
+                // `submit_fraud_proof` call, these operations will be benchmarked separately.
+                #[cfg(not(feature = "runtime-benchmarks"))]
+                {
+                    let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
+                        .map_err(Error::<T>::from)?
+                        .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
+
+                    actual_weight =
+                        actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                            (block_tree_node.operator_ids.len() as u32).min(MAX_BUNLDE_PER_BLOCK),
+                        ));
+
+                    do_slash_operators::<T>(
+                        block_tree_node.operator_ids.into_iter(),
+                        SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                    )
+                    .map_err(Error::<T>::from)?;
+                }
 
                 // Update the head receipt number to `bad_receipt_number - 1`
                 let new_head_receipt_number = bad_receipt_number.saturating_sub(One::one());
@@ -1062,11 +1101,13 @@ mod pallet {
                     SlashedReason::BundleEquivocation(slot),
                 )
                 .map_err(Error::<T>::from)?;
+
+                actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(1));
             }
 
             SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
 
-            Ok(())
+            Ok(Some(actual_weight).into())
         }
 
         #[pallet::call_index(2)]
@@ -1227,7 +1268,7 @@ mod pallet {
         /// Even if rest of the withdrawals are out of unlocking period, nominator
         /// should call this extrinsic to unlock each withdrawal
         #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_all(10_000))]
+        #[pallet::weight(T::WeightInfo::unlock_funds())]
         pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator_id = ensure_signed(origin)?;
             let unlocked_funds = do_unlock_funds::<T>(operator_id, nominator_id.clone())
@@ -1243,12 +1284,22 @@ mod pallet {
         /// Unlocks the operator given the unlocking period is complete.
         /// Anyone can initiate the operator unlock.
         #[pallet::call_index(11)]
-        #[pallet::weight(Weight::from_all(10_000))]
-        pub fn unlock_operator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+        #[pallet::weight(T::WeightInfo::unlock_operator(T::MaxNominators::get()))]
+        pub fn unlock_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
-            do_unlock_operator::<T>(operator_id).map_err(crate::pallet::Error::<T>::from)?;
+
+            let nominator_count =
+                do_unlock_operator::<T>(operator_id).map_err(crate::pallet::Error::<T>::from)?;
+
             Self::deposit_event(Event::OperatorUnlocked { operator_id });
-            Ok(())
+
+            Ok(Some(T::WeightInfo::unlock_operator(
+                (nominator_count as u32).min(T::MaxNominators::get()),
+            ))
+            .into())
         }
 
         /// Extrinsic to update domain's operator allow list.
@@ -1259,7 +1310,7 @@ mod pallet {
         ///   allow list is set to specific operators, then all the registered not allowed operators
         ///   will continue to operate until they de-register themselves.
         #[pallet::call_index(12)]
-        #[pallet::weight(Weight::from_all(10_000))]
+        #[pallet::weight(T::WeightInfo::update_domain_operator_allow_list())]
         pub fn update_domain_operator_allow_list(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -1274,11 +1325,11 @@ mod pallet {
 
         /// Force staking epoch transition for a given domain
         #[pallet::call_index(13)]
-        #[pallet::weight(T::WeightInfo::pending_staking_operation())]
+        #[pallet::weight(Pallet::<T>::max_staking_epoch_transition())]
         pub fn force_staking_epoch_transition(
             origin: OriginFor<T>,
             domain_id: DomainId,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_root(origin)?;
 
             let epoch_transition_res =
@@ -1288,7 +1339,12 @@ mod pallet {
                 domain_id,
                 completed_epoch_index: epoch_transition_res.completed_epoch_index,
             });
-            Ok(())
+
+            // Ensure the returned weight not exceed the maximum weight in the `pallet::weight`
+            let actual_weight = Self::actual_epoch_transition_weight(epoch_transition_res)
+                .min(Self::max_staking_epoch_transition());
+
+            Ok(Some(actual_weight).into())
         }
     }
 
@@ -2081,6 +2137,49 @@ impl<T: Config> Pallet<T> {
         // meaning the ER is a bad ER and the `head_receipt_number` is previously reverted by
         // a fraud proof
         head_receipt_number < latest_submitted_er
+    }
+
+    pub fn max_submit_bundle_weight() -> Weight {
+        T::WeightInfo::submit_bundle()
+            .saturating_add(
+                // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
+                // `confirm_domain_block` can happen, thus we use the `max` of them
+                T::WeightInfo::handle_bad_receipt(T::MaxNominators::get()).max(
+                    T::WeightInfo::confirm_domain_block(MAX_BUNLDE_PER_BLOCK, MAX_BUNLDE_PER_BLOCK),
+                ),
+            )
+            .saturating_add(Self::max_staking_epoch_transition())
+    }
+
+    pub fn max_staking_epoch_transition() -> Weight {
+        T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK)
+            .saturating_add(T::WeightInfo::finalize_slashed_operators(
+                // FIXME: the actual value should be `N * T::MaxNominators` where `N` is the number of
+                // submitter of the bad ER, which is probabilistically bounded by `bundle_slot_probability`
+                // we use `N = 1` here because `finalize_slashed_operators` is expensive and can consume
+                // more weight than the max block weight
+                T::MaxNominators::get(),
+            ))
+            .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
+                T::MaxPendingStakingOperation::get(),
+            ))
+    }
+
+    fn actual_epoch_transition_weight(epoch_transition_res: EpochTransitionResult) -> Weight {
+        let EpochTransitionResult {
+            rewarded_operator_count,
+            slashed_nominator_count,
+            finalized_operator_count,
+            ..
+        } = epoch_transition_res;
+
+        T::WeightInfo::operator_reward_tax_and_restake(rewarded_operator_count)
+            .saturating_add(T::WeightInfo::finalize_slashed_operators(
+                slashed_nominator_count,
+            ))
+            .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
+                finalized_operator_count,
+            ))
     }
 }
 
