@@ -246,80 +246,81 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     operator_id: OperatorId,
     previous_epoch: EpochIndex,
 ) -> Result<BalanceOf<T>, TransitionError> {
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator
-            .as_mut()
-            .ok_or(TransitionError::UnknownOperator)?;
+    let mut operator = match Operators::<T>::get(operator_id) {
+        Some(op) => op,
+        None => return Err(TransitionError::UnknownOperator),
+    };
 
-        if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
-            return Err(TransitionError::OperatorNotRegistered);
-        }
+    if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
+        return Err(TransitionError::OperatorNotRegistered);
+    }
 
-        // if there are no deposits, withdrawls, and epoch rewards for this operator
-        // then short-circuit and return early.
-        if operator.deposits_in_epoch.is_zero()
-            && operator.withdrawals_in_epoch.is_zero()
-            && operator.current_epoch_rewards.is_zero()
-        {
-            return Ok(operator.current_total_stake);
-        }
+    // if there are no deposits, withdrawls, and epoch rewards for this operator
+    // then short-circuit and return early.
+    if operator.deposits_in_epoch.is_zero()
+        && operator.withdrawals_in_epoch.is_zero()
+        && operator.current_epoch_rewards.is_zero()
+    {
+        return Ok(operator.current_total_stake);
+    }
 
-        let total_stake = operator
-            .current_total_stake
-            .checked_add(&operator.current_epoch_rewards)
+    let total_stake = operator
+        .current_total_stake
+        .checked_add(&operator.current_epoch_rewards)
+        .ok_or(TransitionError::BalanceOverflow)?;
+
+    let total_shares = operator.current_total_shares;
+
+    let share_price = SharePrice::new::<T>(total_shares, total_stake);
+
+    // calculate and subtract total withdrew shares from previous epoch
+    let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
+        let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
+        let total_stake = total_stake
+            .checked_sub(&withdraw_stake)
+            .ok_or(TransitionError::BalanceUnderflow)?;
+        let total_shares = total_shares
+            .checked_sub(&operator.withdrawals_in_epoch)
+            .ok_or(TransitionError::ShareUnderflow)?;
+
+        operator.withdrawals_in_epoch = Zero::zero();
+        (total_stake, total_shares)
+    } else {
+        (total_stake, total_shares)
+    };
+
+    // calculate and add total deposits from the previous epoch
+    let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
+        let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
+        let total_stake = total_stake
+            .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;
+        let total_shares = total_shares
+            .checked_add(&deposited_shares)
+            .ok_or(TransitionError::ShareOverflow)?;
+        operator.deposits_in_epoch = Zero::zero();
+        (total_stake, total_shares)
+    } else {
+        (total_stake, total_shares)
+    };
 
-        let total_shares = operator.current_total_shares;
+    // update operator pool epoch share price
+    // TODO: once we have reference counting, we do not need to
+    //  store this for every epoch for every operator but instead
+    //  store only those share prices of operators which has either a deposit or withdraw
+    OperatorEpochSharePrice::<T>::insert(
+        operator_id,
+        DomainEpoch::from((domain_id, previous_epoch)),
+        share_price,
+    );
 
-        let share_price = SharePrice::new::<T>(total_shares, total_stake);
+    // update operator state
+    operator.current_total_shares = total_shares;
+    operator.current_total_stake = total_stake;
+    operator.current_epoch_rewards = Zero::zero();
+    Operators::<T>::set(operator_id, Some(operator));
 
-        // calculate and subtract total withdrew shares from previous epoch
-        let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
-            let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
-            let total_stake = total_stake
-                .checked_sub(&withdraw_stake)
-                .ok_or(TransitionError::BalanceUnderflow)?;
-            let total_shares = total_shares
-                .checked_sub(&operator.withdrawals_in_epoch)
-                .ok_or(TransitionError::ShareUnderflow)?;
-
-            operator.withdrawals_in_epoch = Zero::zero();
-            (total_stake, total_shares)
-        } else {
-            (total_stake, total_shares)
-        };
-
-        // calculate and add total deposits from the previous epoch
-        let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
-            let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
-            let total_stake = total_stake
-                .checked_add(&operator.deposits_in_epoch)
-                .ok_or(TransitionError::BalanceOverflow)?;
-            let total_shares = total_shares
-                .checked_add(&deposited_shares)
-                .ok_or(TransitionError::ShareOverflow)?;
-            operator.deposits_in_epoch = Zero::zero();
-            (total_stake, total_shares)
-        } else {
-            (total_stake, total_shares)
-        };
-
-        // update operator pool epoch share price
-        // TODO: once we have reference counting, we do not need to
-        //  store this for every epoch for every operator but instead
-        //  store only those share prices of operators which has either a deposit or withdraw
-        OperatorEpochSharePrice::<T>::insert(
-            operator_id,
-            DomainEpoch::from((domain_id, previous_epoch)),
-            share_price,
-        );
-
-        // update operator state
-        operator.current_total_shares = total_shares;
-        operator.current_total_stake = total_stake;
-        operator.current_epoch_rewards = Zero::zero();
-        Ok(total_stake)
-    })
+    Ok(total_stake)
 }
 
 pub(crate) fn mint_funds<T: Config>(
