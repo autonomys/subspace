@@ -1,6 +1,6 @@
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 #[cfg(not(windows))]
@@ -33,15 +33,17 @@ impl PieceReader {
     ///
     /// NOTE: Background future is async, but does blocking operations and should be running in
     /// dedicated thread.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new<PosTable>(
         public_key: PublicKey,
         pieces_in_sector: u16,
         #[cfg(not(windows))] plot_file: Arc<File>,
         #[cfg(windows)] plot_file: Arc<UnbufferedIoFileWindows>,
-        sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+        sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
-        modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+        modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
         read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
+        global_mutex: Arc<AsyncMutex<()>>,
     ) -> (Self, impl Future<Output = ()>)
     where
         PosTable: Table,
@@ -58,6 +60,7 @@ impl PieceReader {
                 modifying_sector_index,
                 read_piece_receiver,
                 read_sector_record_chunks_mode,
+                global_mutex,
             )
             .await
         };
@@ -94,11 +97,12 @@ async fn read_pieces<PosTable, S>(
     public_key: PublicKey,
     pieces_in_sector: u16,
     plot_file: S,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     erasure_coding: ErasureCoding,
-    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
     mode: ReadSectorRecordChunksMode,
+    global_mutex: Arc<AsyncMutex<()>>,
 ) where
     PosTable: Table,
     S: ReadAtSync,
@@ -170,6 +174,9 @@ async fn read_pieces<PosTable, S>(
 
         let sector_size = sector_size(pieces_in_sector);
         let sector = plot_file.offset(u64::from(sector_index) * sector_size as u64);
+
+        // Take mutex briefly to make sure piece reading is allowed right now
+        global_mutex.lock().await;
 
         let maybe_piece = read_piece::<PosTable, _, _>(
             &public_key,

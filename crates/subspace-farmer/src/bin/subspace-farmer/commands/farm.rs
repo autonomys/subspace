@@ -630,6 +630,7 @@ where
 
     let (single_disk_farms, plotting_delay_senders) = tokio::task::block_in_place(|| {
         let handle = Handle::current();
+        let global_mutex = Arc::default();
         let faster_read_sector_record_chunks_mode_barrier = &Barrier::new(disk_farms.len());
         let faster_read_sector_record_chunks_mode_concurrency = &Semaphore::new(1);
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
@@ -665,6 +666,7 @@ where
                             farming_thread_pool_size,
                             plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
                             plotting_delay: Some(plotting_delay_receiver),
+                            global_mutex: Arc::clone(&global_mutex),
                             disable_farm_locking,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,

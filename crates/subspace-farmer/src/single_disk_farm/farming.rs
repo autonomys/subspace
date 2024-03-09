@@ -3,7 +3,7 @@ pub mod rayon_files;
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode, Error, Input, Output};
@@ -324,14 +324,15 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) reward_address: PublicKey,
     pub(super) node_client: NC,
     pub(super) plot_audit: PlotAudit,
-    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) kzg: Kzg,
     pub(super) erasure_coding: ErasureCoding,
     pub(super) handlers: Arc<Handlers>,
-    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
     pub(super) thread_pool: ThreadPool,
     pub(super) read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
+    pub(super) global_mutex: Arc<AsyncMutex<()>>,
 }
 
 /// Starts farming process.
@@ -359,6 +360,7 @@ where
         mut slot_info_notifications,
         thread_pool,
         read_sector_record_chunks_mode,
+        global_mutex,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -373,9 +375,13 @@ where
     let span = Span::current();
 
     while let Some(slot_info) = slot_info_notifications.next().await {
+        let slot = slot_info.slot_number;
+
+        // Take mutex briefly to make sure farming is allowed right now
+        global_mutex.lock().await;
+
         let result: Result<(), FarmingError> = try {
             let start = Instant::now();
-            let slot = slot_info.slot_number;
             let sectors_metadata = sectors_metadata.read().await;
 
             debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
@@ -418,6 +424,10 @@ where
                     sectors_count: sectors_metadata.len() as SectorIndex,
                     time: start.elapsed(),
                 }));
+
+            // Take mutex and hold until proving end to make sure nothing else major happens at the
+            // same time
+            let _proving_guard = global_mutex.lock().await;
 
             'solutions_processing: while let Some((sector_index, sector_solutions)) = thread_pool
                 .install(|| {
