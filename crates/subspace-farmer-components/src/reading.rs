@@ -11,9 +11,7 @@ use std::io;
 use std::mem::ManuallyDrop;
 use std::simd::Simd;
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
-use subspace_core_primitives::{
-    Piece, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorId,
-};
+use subspace_core_primitives::{Piece, PieceOffset, Record, SBucket, SectorId};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
@@ -88,17 +86,6 @@ impl ReadingError {
             ReadingError::ChecksumMismatch => false,
         }
     }
-}
-
-/// Record contained in the plot
-#[derive(Debug, Clone)]
-pub struct PlotRecord {
-    /// Record scalars
-    pub scalars: Box<[Scalar; Record::NUM_CHUNKS]>,
-    /// Record commitment
-    pub commitment: RecordCommitment,
-    /// Record witness
-    pub witness: RecordWitness,
 }
 
 /// Read sector record chunks, only plotted s-buckets are returned (in decoded form).
