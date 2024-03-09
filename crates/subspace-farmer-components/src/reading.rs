@@ -26,7 +26,7 @@ pub enum ReadingError {
     ///
     /// This is an implementation bug, most likely due to mismatch between sector contents map and
     /// other farming parameters.
-    #[error("Failed to read chunk at location {chunk_location}")]
+    #[error("Failed to read chunk at location {chunk_location}: {error}")]
     FailedToReadChunk {
         /// Chunk location
         chunk_location: u64,
