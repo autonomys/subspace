@@ -61,6 +61,7 @@ use subspace_farmer_components::file_ext::FileExt;
 #[cfg(not(windows))]
 use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::KnownPeersManager;
@@ -927,6 +928,11 @@ impl SingleDiskFarm {
             sector_size,
         );
 
+        let read_sector_record_chunks_mode = faster_read_sector_record_chunks_mode(
+            &*plot_file,
+            sector_size,
+        )?;
+
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -1141,6 +1147,7 @@ impl SingleDiskFarm {
                         modifying_sector_index,
                         slot_info_notifications: slot_info_forwarder_receiver,
                         thread_pool,
+                        read_sector_record_chunks_mode,
                     };
                     farming::<PosTable, _, _>(farming_options).await
                 };
@@ -1183,6 +1190,7 @@ impl SingleDiskFarm {
             Arc::clone(&sectors_metadata),
             erasure_coding,
             modifying_sector_index,
+            read_sector_record_chunks_mode,
         );
 
         let reading_join_handle = tokio::task::spawn_blocking({
@@ -2052,4 +2060,15 @@ fn write_dummy_sector_metadata(
             offset: sector_offset,
             error,
         })
+}
+
+fn faster_read_sector_record_chunks_mode<P>(
+    _plot: &P,
+    _sector_size: usize,
+) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
+where
+    P: FileExt,
+{
+    // TODO: Do quick benchmark and select correct value dynamically
+    Ok(ReadSectorRecordChunksMode::ConcurrentChunks)
 }

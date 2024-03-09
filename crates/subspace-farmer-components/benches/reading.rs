@@ -16,7 +16,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
-use subspace_farmer_components::reading::read_piece;
+use subspace_farmer_components::reading::{read_piece, ReadSectorRecordChunksMode};
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
@@ -159,6 +159,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&plotted_sector.sector_metadata),
                 black_box(&ReadAt::from_sync(&plotted_sector_bytes)),
                 black_box(&erasure_coding),
+                black_box(ReadSectorRecordChunksMode::ConcurrentChunks),
                 black_box(&mut *table_generator.lock()),
             )
             .now_or_never()
@@ -202,6 +203,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&plotted_sector.sector_metadata),
                         black_box(&ReadAt::from_sync(&sector)),
                         black_box(&erasure_coding),
+                        black_box(ReadSectorRecordChunksMode::ConcurrentChunks),
                         black_box(&mut *table_generator.lock()),
                     )
                     .now_or_never()

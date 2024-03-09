@@ -41,6 +41,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
@@ -175,9 +176,13 @@ async fn start_farming<PosTable, Client>(
                 .unwrap()
                 .unwrap()
                 .solution_candidates
-                .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
-                    table_generator.generate_parallel(seed)
-                })
+                .into_solutions(
+                    &public_key,
+                    &kzg,
+                    &erasure_coding,
+                    ReadSectorRecordChunksMode::ConcurrentChunks,
+                    |seed: &PosSeed| table_generator.generate_parallel(seed),
+                )
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")

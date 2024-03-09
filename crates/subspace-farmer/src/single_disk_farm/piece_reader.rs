@@ -9,6 +9,7 @@ use std::future::Future;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::{reading, ReadAt, ReadAtAsync, ReadAtSync};
 use subspace_proof_of_space::Table;
@@ -40,6 +41,7 @@ impl PieceReader {
         sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
         modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+        read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
     ) -> (Self, impl Future<Output = ()>)
     where
         PosTable: Table,
@@ -55,6 +57,7 @@ impl PieceReader {
                 erasure_coding,
                 modifying_sector_index,
                 read_piece_receiver,
+                read_sector_record_chunks_mode,
             )
             .await
         };
@@ -95,6 +98,7 @@ async fn read_pieces<PosTable, S>(
     erasure_coding: ErasureCoding,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
+    mode: ReadSectorRecordChunksMode,
 ) where
     PosTable: Table,
     S: ReadAtSync,
@@ -174,6 +178,7 @@ async fn read_pieces<PosTable, S>(
             // TODO: Async
             &ReadAt::from_sync(&sector),
             &erasure_coding,
+            mode,
             &mut table_generator,
         )
         .await;
@@ -189,6 +194,7 @@ async fn read_piece<PosTable, S, A>(
     sector_metadata: &SectorMetadataChecksummed,
     sector: &ReadAt<S, A>,
     erasure_coding: &ErasureCoding,
+    mode: ReadSectorRecordChunksMode,
     table_generator: &mut PosTable::Generator,
 ) -> Option<Piece>
 where
@@ -206,6 +212,7 @@ where
         sector_metadata,
         sector,
         erasure_coding,
+        mode,
         table_generator,
     )
     .await

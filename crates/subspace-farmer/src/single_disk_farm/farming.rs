@@ -17,6 +17,7 @@ use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, Soluti
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -222,6 +223,8 @@ where
     /// Optional sector that is currently being modified (for example replotted) and should not be
     /// audited
     pub maybe_sector_being_modified: Option<SectorIndex>,
+    /// Mode of reading chunks during proving
+    pub read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
@@ -272,6 +275,7 @@ where
             kzg,
             erasure_coding,
             maybe_sector_being_modified,
+            read_sector_record_chunks_mode: mode,
             table_generator,
         } = options;
 
@@ -293,6 +297,7 @@ where
                     reward_address,
                     kzg,
                     erasure_coding,
+                    mode,
                     |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
                 );
 
@@ -331,6 +336,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
     pub(super) thread_pool: ThreadPool,
+    pub(super) read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
 }
 
 /// Starts farming process.
@@ -357,6 +363,7 @@ where
         modifying_sector_index,
         mut slot_info_notifications,
         thread_pool,
+        read_sector_record_chunks_mode,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -393,6 +400,7 @@ where
                         kzg: &kzg,
                         erasure_coding: &erasure_coding,
                         maybe_sector_being_modified,
+                        read_sector_record_chunks_mode,
                         table_generator: &table_generator,
                     })
                 })?
