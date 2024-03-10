@@ -70,7 +70,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Semaphore};
+use tokio::sync::{broadcast, Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -300,6 +300,8 @@ pub struct SingleDiskFarmOptions<'a, NC, PG> {
     pub plotting_delay: Option<oneshot::Receiver<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
+    /// Barrier before internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_barrier: &'a Barrier,
     /// Limit concurrency of internal benchmarking between different farms
     pub faster_read_sector_record_chunks_mode_concurrency: &'a Semaphore,
 }
@@ -634,6 +636,7 @@ impl SingleDiskFarm {
             plotting_delay,
             farm_during_initial_plotting,
             disable_farm_locking,
+            faster_read_sector_record_chunks_mode_barrier,
             faster_read_sector_record_chunks_mode_concurrency,
         } = options;
         fs::create_dir_all(&directory)?;
@@ -1093,6 +1096,8 @@ impl SingleDiskFarm {
                 RayonFiles::open(&directory.join(Self::PLOT_FILE))
             }
         })?;
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
 
         let read_sector_record_chunks_mode = {
             // Error doesn't matter here
