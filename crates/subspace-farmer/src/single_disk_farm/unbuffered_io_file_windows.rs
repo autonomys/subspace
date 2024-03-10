@@ -16,6 +16,7 @@ const MAX_READ_SIZE: usize = 1024 * 1024;
 pub struct UnbufferedIoFileWindows {
     read_file: File,
     write_file: File,
+    physical_sector_size: usize,
     /// Scratch buffer of aligned memory for reads and writes
     buffer: Mutex<Vec<[u8; DISK_SECTOR_SIZE]>>,
 }
@@ -66,9 +67,14 @@ impl FileExt for UnbufferedIoFileWindows {
                 buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
             }
 
+            // While buffer above is allocated with granularity of `MAX_DISK_SECTOR_SIZE`, reads are
+            // done with granularity of physical sector size
+            let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
             self.read_file.read_at(
-                buffer[..desired_buffer_size].flatten_mut(),
-                offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64,
+                &mut buffer.flatten_mut()[..(bytes_to_read + offset_in_buffer)
+                    .div_ceil(self.physical_sector_size)
+                    * self.physical_sector_size],
+                offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
             )?;
 
             buf.copy_from_slice(&buffer.flatten()[offset_in_buffer..][..bytes_to_read]);
@@ -103,9 +109,17 @@ impl UnbufferedIoFileWindows {
         open_options.advise_unbuffered();
         let read_file = open_options.read(true).open(path)?;
 
+        // Physical sector size on many SSDs is smaller than 4096 and should improve performance
+        let physical_sector_size = if read_file.read_at(&mut [0; 512], 512).is_ok() {
+            512
+        } else {
+            DISK_SECTOR_SIZE
+        };
+
         Ok(Self {
             read_file,
             write_file,
+            physical_sector_size,
             buffer: Mutex::default(),
         })
     }
@@ -134,24 +148,39 @@ mod tests {
         thread_rng().fill(data.as_mut_slice());
         fs::write(&file_path, &data).unwrap();
 
-        let file = UnbufferedIoFileWindows::open(&file_path).unwrap();
+        let mut file = UnbufferedIoFileWindows::open(&file_path).unwrap();
 
-        let mut buffer = Vec::new();
-        for (offset, size) in [
-            (0_usize, 4096_usize),
-            (0, 4000),
-            (5, 50),
-            (5, 4091),
-            (5, MAX_READ_SIZE * 2),
-        ] {
-            buffer.resize(size, 0);
-            file.read_at(buffer.as_mut_slice(), offset as u64)
-                .unwrap_or_else(|error| panic!("Offset {offset}, size {size}: {error}"));
-            assert_eq!(
-                &data[offset..][..size],
-                buffer.as_slice(),
-                "Offset {offset}, size {size}"
-            );
+        for override_physical_sector_size in [None, Some(4096)] {
+            if let Some(physical_sector_size) = override_physical_sector_size {
+                file.physical_sector_size = physical_sector_size;
+            }
+
+            let mut buffer = Vec::new();
+            for (offset, size) in [
+                (0_usize, 4096_usize),
+                (0, 4000),
+                (5, 50),
+                (5, 4091),
+                (4091, 5),
+                (10000, 5),
+                (5, MAX_READ_SIZE * 2),
+            ] {
+                buffer.resize(size, 0);
+                file.read_at(buffer.as_mut_slice(), offset as u64)
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "Offset {offset}, size {size}, override physical sector size \
+                            {override_physical_sector_size:?}: {error}"
+                        )
+                    });
+
+                assert_eq!(
+                    &data[offset..][..size],
+                    buffer.as_slice(),
+                    "Offset {offset}, size {size}, override physical sector size \
+                    {override_physical_sector_size:?}"
+                );
+            }
         }
     }
 }
