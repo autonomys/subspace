@@ -8,7 +8,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode, Error, Input, Output};
 use parking_lot::Mutex;
-use rayon::{ThreadPool, ThreadPoolBuildError};
+use rayon::ThreadPool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io};
@@ -118,9 +118,6 @@ pub enum FarmingError {
     /// I/O error occurred
     #[error("Farming I/O error: {0}")]
     Io(#[from] io::Error),
-    /// Failed to create thread pool
-    #[error("Failed to create thread pool: {0}")]
-    FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
     /// Decoded farming error
     #[error("Decoded farming error {0}")]
     Decoded(DecodedFarmingError),
@@ -152,7 +149,6 @@ impl FarmingError {
             FarmingError::LowLevelAuditing(_) => "LowLevelAuditing",
             FarmingError::LowLevelProving(_) => "LowLevelProving",
             FarmingError::Io(_) => "Io",
-            FarmingError::FailedToCreateThreadPool(_) => "FailedToCreateThreadPool",
             FarmingError::Decoded(_) => "Decoded",
             FarmingError::SlotNotificationStreamEnded => "SlotNotificationStreamEnded",
         }
@@ -166,7 +162,6 @@ impl FarmingError {
             FarmingError::LowLevelAuditing(_) => true,
             FarmingError::LowLevelProving(error) => error.is_fatal(),
             FarmingError::Io(_) => true,
-            FarmingError::FailedToCreateThreadPool(_) => true,
             FarmingError::Decoded(error) => error.is_fatal,
             FarmingError::SlotNotificationStreamEnded => true,
         }

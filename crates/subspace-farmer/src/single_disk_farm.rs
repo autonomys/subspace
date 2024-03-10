@@ -38,7 +38,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::error::Error;
@@ -64,7 +64,7 @@ use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, ReadAtSync};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
@@ -396,6 +396,9 @@ pub enum SingleDiskFarmError {
         max_space: u64,
         max_sectors: u16,
     },
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(ThreadPoolBuildError),
 }
 
 /// Errors happening during scrubbing
@@ -932,14 +935,6 @@ impl SingleDiskFarm {
             sector_size,
         );
 
-        let read_sector_record_chunks_mode = {
-            // Error doesn't matter here
-            let _permit = faster_read_sector_record_chunks_mode_concurrency
-                .acquire()
-                .await;
-            faster_read_sector_record_chunks_mode(&*plot_file, sector_size)?
-        };
-
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -1079,6 +1074,36 @@ impl SingleDiskFarm {
             }
         }));
 
+        let farming_thread_pool = ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()
+            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
+        let farming_plot = farming_thread_pool.install(|| {
+            #[cfg(windows)]
+            {
+                RayonFiles::open_with(
+                    &directory.join(Self::PLOT_FILE),
+                    UnbufferedIoFileWindows::open,
+                )
+            }
+            #[cfg(not(windows))]
+            {
+                RayonFiles::open(&directory.join(Self::PLOT_FILE))
+            }
+        })?;
+
+        let read_sector_record_chunks_mode = {
+            // Error doesn't matter here
+            let _permit = faster_read_sector_record_chunks_mode_concurrency
+                .acquire()
+                .await;
+            farming_thread_pool.install(|| {
+                faster_read_sector_record_chunks_mode(&*plot_file, &farming_plot, sector_size)
+            })?
+        };
+
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
@@ -1091,28 +1116,6 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
-                let thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("farming-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(farming_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(FarmingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(
-                                    %error,
-                                    "Farming failed to send error to background task",
-                                );
-                            }
-                        }
-                        return;
-                    }
-                };
 
                 let farming_fut = async move {
                     if start_receiver.recv().await.is_err() {
@@ -1127,20 +1130,7 @@ impl SingleDiskFarm {
                         }
                     }
 
-                    let plot = thread_pool.install(|| {
-                        #[cfg(windows)]
-                        {
-                            RayonFiles::open_with(
-                                &directory.join(Self::PLOT_FILE),
-                                UnbufferedIoFileWindows::open,
-                            )
-                        }
-                        #[cfg(not(windows))]
-                        {
-                            RayonFiles::open(&directory.join(Self::PLOT_FILE))
-                        }
-                    })?;
-                    let plot_audit = PlotAudit::new(&plot);
+                    let plot_audit = PlotAudit::new(&farming_plot);
 
                     let farming_options = FarmingOptions {
                         public_key,
@@ -1153,7 +1143,7 @@ impl SingleDiskFarm {
                         handlers,
                         modifying_sector_index,
                         slot_info_notifications: slot_info_forwarder_receiver,
-                        thread_pool,
+                        thread_pool: farming_thread_pool,
                         read_sector_record_chunks_mode,
                     };
                     farming::<PosTable, _, _>(farming_options).await
@@ -2069,22 +2059,24 @@ fn write_dummy_sector_metadata(
         })
 }
 
-fn faster_read_sector_record_chunks_mode<P>(
-    plot: &P,
+fn faster_read_sector_record_chunks_mode<OP, FP>(
+    original_plot: &OP,
+    farming_plot: &FP,
     sector_size: usize,
 ) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
 where
-    P: FileExt + Sync,
+    OP: FileExt + Sync,
+    FP: ReadAtSync,
 {
     info!("Benchmarking faster proving method");
 
     let mut sector_bytes = vec![0u8; sector_size];
 
-    plot.read_exact_at(&mut sector_bytes, 0)?;
+    original_plot.read_exact_at(&mut sector_bytes, 0)?;
 
     if sector_bytes.iter().all(|byte| *byte == 0) {
         thread_rng().fill_bytes(&mut sector_bytes);
-        plot.write_all_at(&sector_bytes, 0)?;
+        original_plot.write_all_at(&sector_bytes, 0)?;
     }
 
     let mut fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
@@ -2099,7 +2091,7 @@ where
                 .try_for_each(|_| {
                     let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
                         * Scalar::FULL_BYTES;
-                    plot.read_exact_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
                 })?;
             let elapsed = start.elapsed();
 
@@ -2111,7 +2103,7 @@ where
         // Reading the whole sector at once
         {
             let start = Instant::now();
-            plot.read_exact_at(&mut sector_bytes, 0)?;
+            farming_plot.read_at(&mut sector_bytes, 0)?;
             let elapsed = start.elapsed();
 
             if fastest_time > elapsed {
