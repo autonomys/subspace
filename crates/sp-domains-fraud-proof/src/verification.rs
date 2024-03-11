@@ -7,8 +7,9 @@ use crate::fraud_proof::{
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
-    fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
+    fraud_proof_runtime_interface, DomainChainAllowlistUpdateExtrinsic,
+    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+    StorageKeyRequest,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -87,6 +88,13 @@ where
     .and_then(|resp| resp.into_consensus_chain_byte_fee_extrinsic())
     .ok_or(VerificationError::FailedToDeriveConsensusChainByteFeeExtrinsic)?;
 
+    let domain_chain_allowlist_extrinsic = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::DomainChainsAllowlistUpdateExtrinsic(*domain_id),
+    )
+    .map(|resp| resp.into_domain_chain_allowlist_update_extrinsic())
+    .ok_or(VerificationError::FailedToDeriveDomainChainAllowlistExtrinsic)?;
+
     let bad_receipt_valid_bundle_digests = bad_receipt.valid_bundle_digests();
     if valid_bundle_digests.len() != bad_receipt_valid_bundle_digests.len() {
         return Err(VerificationError::InvalidBundleDigest);
@@ -116,6 +124,15 @@ where
 
     // NOTE: the order of the inherent extrinsic MUST aligned with the
     // `domain-block-preprocessor::CreateInherentDataProvider`
+    if let DomainChainAllowlistUpdateExtrinsic::EncodedExtrinsic(domain_chain_allowlist_extrinsic) =
+        domain_chain_allowlist_extrinsic
+    {
+        let domain_set_code_extrinsic = ExtrinsicDigest::new::<
+            LayoutV1<HeaderHashingFor<DomainHeader>>,
+        >(domain_chain_allowlist_extrinsic);
+        ordered_extrinsics.push_front(domain_set_code_extrinsic);
+    }
+
     if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
         maybe_domain_set_code_extrinsic
     {

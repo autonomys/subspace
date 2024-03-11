@@ -99,6 +99,8 @@ pub enum FraudProofVerificationInfoRequest {
     /// Domain `set_consensus_chain_byte_fee` extrinsic using the `consensus_chain_byte_fee` at a given
     /// consensus block hash.
     ConsensusChainByteFeeExtrinsic(DomainId),
+    /// Domains `update_domain_chain_allowlist` extrinsic at a given consensus block hash.
+    DomainChainsAllowlistUpdateExtrinsic(DomainId),
     /// The body of domain bundle included in a given consensus block at a given index
     DomainBundleBody {
         domain_id: DomainId,
@@ -172,6 +174,15 @@ pub enum SetCodeExtrinsic {
     EncodedExtrinsic(Vec<u8>),
 }
 
+/// Type that maybe holds an encoded update domain chain allowlist extrinsic
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum DomainChainAllowlistUpdateExtrinsic {
+    /// No updates
+    None,
+    /// Holds an encoded extrinsic with updates.
+    EncodedExtrinsic(Vec<u8>),
+}
+
 /// Response holds required verification information for fraud proof from Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProofVerificationInfoResponse {
@@ -188,6 +199,9 @@ pub enum FraudProofVerificationInfoResponse {
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
     DomainSetCodeExtrinsic(SetCodeExtrinsic),
+    /// Encoded domain update_chain_allowlist extrinsic if there are any updates on consensus chain
+    /// for this domain at a specific consensus hash.
+    DomainChainAllowlistUpdateExtrinsic(DomainChainAllowlistUpdateExtrinsic),
     /// If particular extrinsic is in range for (domain, bundle) pair at given domain block
     TxRangeCheck(bool),
     /// If the particular extrinsic provided is either inherent or not.
@@ -245,6 +259,17 @@ impl FraudProofVerificationInfoResponse {
                 maybe_set_code_extrinsic,
             ) => maybe_set_code_extrinsic,
             _ => SetCodeExtrinsic::None,
+        }
+    }
+
+    pub fn into_domain_chain_allowlist_update_extrinsic(
+        self,
+    ) -> DomainChainAllowlistUpdateExtrinsic {
+        match self {
+            FraudProofVerificationInfoResponse::DomainChainAllowlistUpdateExtrinsic(
+                allowlist_update_extrinsic,
+            ) => allowlist_update_extrinsic,
+            _ => DomainChainAllowlistUpdateExtrinsic::None,
         }
     }
 

@@ -35,8 +35,8 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidExtrinsicsRootProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
-    FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+    DomainChainAllowlistUpdateExtrinsic, FraudProofExtension, FraudProofHostFunctions,
+    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One,
@@ -438,6 +438,11 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::XDMValidationCheck { .. } => {
                 FraudProofVerificationInfoResponse::XDMValidationCheck(self.is_valid_xdm)
+            }
+            FraudProofVerificationInfoRequest::DomainChainsAllowlistUpdateExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::DomainChainAllowlistUpdateExtrinsic(
+                    DomainChainAllowlistUpdateExtrinsic::None,
+                )
             }
         };
 

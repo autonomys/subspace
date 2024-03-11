@@ -346,6 +346,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to derive domain set code extrinsic")
     )]
     FailedToDeriveDomainSetCodeExtrinsic,
+    /// Failed to derive domain chain allowlist extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive domain chain allowlist extrinsic")
+    )]
+    FailedToDeriveDomainChainAllowlistExtrinsic,
     /// Bundle with requested index not found in execution receipt
     #[cfg_attr(
         feature = "thiserror",

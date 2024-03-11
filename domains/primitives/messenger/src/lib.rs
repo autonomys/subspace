@@ -25,19 +25,14 @@ extern crate alloc;
 
 use crate::messages::MessageKey;
 #[cfg(not(feature = "std"))]
-use alloc::collections::BTreeSet;
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::__private::sp_inherents;
 use frame_support::__private::sp_inherents::Error;
 use frame_support::inherent::{InherentData, InherentIdentifier, IsFatalError};
-use frame_support::pallet_prelude::TypeInfo;
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
-use sp_domains::{ChainId, DomainId};
+use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
-#[cfg(feature = "std")]
-use std::collections::BTreeSet;
 
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
@@ -96,15 +91,6 @@ impl StorageKeys for () {
     ) -> Option<Vec<u8>> {
         None
     }
-}
-
-/// Domain allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
-pub struct DomainAllowlistUpdates {
-    /// Chains that are allowed to open channel with this chain.
-    pub allow_chains: BTreeSet<ChainId>,
-    /// Chains that are not allowed to open channel with this chain.
-    pub remove_chains: BTreeSet<ChainId>,
 }
 
 /// The type of the messenger inherent data.

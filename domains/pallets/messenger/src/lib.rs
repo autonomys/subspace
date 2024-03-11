@@ -132,15 +132,15 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
-    use sp_domains::{DomainId, DomainOwner};
+    use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        DomainAllowlistUpdates, InherentError, InherentType, MmrProofVerifier, OnXDMRewards,
-        StorageKeys, INHERENT_IDENTIFIER,
+        InherentError, InherentType, MmrProofVerifier, OnXDMRewards, StorageKeys,
+        INHERENT_IDENTIFIER,
     };
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;

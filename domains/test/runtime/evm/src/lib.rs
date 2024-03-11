@@ -43,12 +43,11 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{DomainId, Transfers};
+use sp_domains::{DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
-use sp_messenger::DomainAllowlistUpdates;
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
@@ -940,6 +939,12 @@ impl_runtime_apis! {
         fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
             UncheckedExtrinsic::new_unsigned(
                 pallet_timestamp::Call::set{ now: moment }.into()
+            )
+        }
+
+        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
+             UncheckedExtrinsic::new_unsigned(
+                pallet_messenger::Call::update_domain_allowlist{ updates }.into()
             )
         }
 

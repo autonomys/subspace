@@ -7,6 +7,7 @@ use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::messages::MessageKey;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -215,6 +216,17 @@ where
             self,
             Default::default(),
             consensus_chain_byte_fee,
+        )
+    }
+
+    pub fn construct_domain_update_chain_allowlist_extrinsic(
+        &self,
+        updates: DomainAllowlistUpdates,
+    ) -> Result<Block::Extrinsic, ApiError> {
+        <Self as DomainCoreApi<Block>>::construct_domain_update_chain_allowlist_extrinsic(
+            self,
+            Default::default(),
+            updates,
         )
     }
 
