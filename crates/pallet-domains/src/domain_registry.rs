@@ -25,10 +25,10 @@ use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    derive_domain_block_hash, DomainId, DomainsDigestItem, DomainsTransfersTracker,
-    OperatorAllowList, RuntimeId, RuntimeType,
+    derive_domain_block_hash, DomainBundleLimit, DomainId, DomainsDigestItem,
+    DomainsTransfersTracker, OperatorAllowList, RuntimeId, RuntimeType,
 };
-use sp_runtime::traits::{CheckedAdd, Zero};
+use sp_runtime::traits::{CheckedAdd, IntegerSquareRoot, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
@@ -55,6 +55,7 @@ pub enum Error {
     MaxInitialDomainAccounts,
     DuplicateInitialAccounts,
     FailedToGenerateRawGenesis(crate::runtime_registry::Error),
+    BundleLimitCalculationOverflow,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -121,6 +122,16 @@ where
 
         Ok(())
     }
+
+    pub(crate) fn calculate_bundle_limit<T: Config>(&self) -> Result<DomainBundleLimit, Error> {
+        calculate_max_bundle_weight_and_size(
+            self.max_block_size,
+            self.max_block_weight,
+            T::ConsensusSlotProbability::get(),
+            self.bundle_slot_probability,
+        )
+        .ok_or(Error::BundleLimitCalculationOverflow)
+    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -169,6 +180,9 @@ pub(crate) fn can_instantiate_domain<T: Config>(
         numerator != 0 && denominator != 0 && numerator <= denominator,
         Error::InvalidSlotProbability
     );
+
+    // Ensure the bundle limit can be calculated successfully
+    let _ = domain_config.calculate_bundle_limit::<T>()?;
 
     ensure!(
         T::Currency::reducible_balance(owner_account_id, Preservation::Protect, Fortitude::Polite)
@@ -298,6 +312,45 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 
         domain_obj.domain_config.operator_allow_list = updated_operator_allow_list;
         Ok(())
+    })
+}
+
+// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
+// about the formula
+pub(crate) fn calculate_max_bundle_weight_and_size(
+    max_domain_block_size: u32,
+    max_domain_block_weight: Weight,
+    consensus_slot_probability: (u64, u64),
+    bundle_slot_probability: (u64, u64),
+) -> Option<DomainBundleLimit> {
+    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
+    // This represents: bundle_slot_probability/SLOT_PROBABILITY
+    let expected_bundles_per_block = bundle_slot_probability
+        .0
+        .checked_mul(consensus_slot_probability.1)?
+        .checked_div(
+            bundle_slot_probability
+                .1
+                .checked_mul(consensus_slot_probability.0)?,
+        )?;
+
+    // This represents: Ceil[2*Sqrt[bundle_slot_probability/SLOT_PROBABILITY]])
+    let std_of_expected_bundles_per_block = expected_bundles_per_block
+        .integer_sqrt()
+        .checked_mul(2)?
+        .checked_add(1)?;
+
+    // max_bundle_weight = TargetDomainBlockWeight/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
+    let max_bundle_weight = max_domain_block_weight
+        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
+
+    // max_bundle_size = TargetDomainBlockSize/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
+    let max_bundle_size = (max_domain_block_size as u64)
+        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
+
+    Some(DomainBundleLimit {
+        max_bundle_size: max_bundle_size as u32,
+        max_bundle_weight,
     })
 }
 

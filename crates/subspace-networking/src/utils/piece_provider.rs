@@ -39,6 +39,7 @@ pub struct PieceProvider<PV> {
 }
 
 impl<PV> fmt::Debug for PieceProvider<PV> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("PieceProvider").finish_non_exhaustive()
     }
