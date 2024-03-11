@@ -416,8 +416,6 @@ where
                 a_solution_distance.cmp(&b_solution_distance)
             });
 
-            let mut sectors_solutions = sectors_solutions.into_iter();
-
             handlers
                 .farming_notification
                 .call_simple(&FarmingNotification::Auditing(AuditingDetails {
@@ -429,18 +427,16 @@ where
             // same time
             let _proving_guard = global_mutex.lock().await;
 
-            'solutions_processing: while let Some((sector_index, sector_solutions)) = thread_pool
-                .install(|| {
-                    let _span_guard = span.enter();
-
-                    sectors_solutions.next()
-                })
-            {
+            'solutions_processing: for (sector_index, mut sector_solutions) in sectors_solutions {
                 if sector_solutions.is_empty() {
                     continue;
                 }
                 let mut start = Instant::now();
-                for maybe_solution in sector_solutions {
+                while let Some(maybe_solution) = thread_pool.install(|| {
+                    let _span_guard = span.enter();
+
+                    sector_solutions.next()
+                }) {
                     let solution = match maybe_solution {
                         Ok(solution) => solution,
                         Err(error) => {
