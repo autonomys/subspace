@@ -123,7 +123,22 @@ where
     );
 
     // NOTE: the order of the inherent extrinsic MUST aligned with the
-    // `domain-block-preprocessor::CreateInherentDataProvider`
+    // pallets order defined in `construct_runtime` macro for domains.
+    // currently this is the following order
+    // - timestamp extrinsic
+    // - executive set_code extrinsic
+    // - messenger update_domain_allowlist extrinsic
+    // - block_fees transaction_byte_fee_extrinsic
+    // since we use `push_front` the extrinsic should be pushed in reversed order
+    // TODO: this will not be valid once we have a different runtime. To achive consistency across
+    //  domains, we should define a runtime api for each domain that should order the extrinsics
+    //  like inherent are derived while domain block is being built
+
+    let transaction_byte_fee_extrinsic = ExtrinsicDigest::new::<
+        LayoutV1<HeaderHashingFor<DomainHeader>>,
+    >(consensus_chain_byte_fee_extrinsic);
+    ordered_extrinsics.push_front(transaction_byte_fee_extrinsic);
+
     if let DomainChainAllowlistUpdateExtrinsic::EncodedExtrinsic(domain_chain_allowlist_extrinsic) =
         domain_chain_allowlist_extrinsic
     {
@@ -141,11 +156,6 @@ where
         >(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);
     }
-
-    let transaction_byte_fee_extrinsic = ExtrinsicDigest::new::<
-        LayoutV1<HeaderHashingFor<DomainHeader>>,
-    >(consensus_chain_byte_fee_extrinsic);
-    ordered_extrinsics.push_front(transaction_byte_fee_extrinsic);
 
     let timestamp_extrinsic = ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
         domain_timestamp_extrinsic,

@@ -384,6 +384,8 @@ mod pallet {
                     }
                     Self::pre_dispatch_relay_message_response(msg)
                 }
+                // always accept inherent extrinsic
+                Call::update_domain_allowlist { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -487,6 +489,9 @@ mod pallet {
 
         /// Account is not a Domain owner.
         NotDomainOwner,
+
+        /// Chain not allowed to open channel
+        ChainNotAllowed,
     }
 
     #[pallet::hooks]
@@ -874,6 +879,12 @@ mod pallet {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
                 Error::<T>::InvalidChain,
+            );
+
+            let chain_allowlist = ChainAllowlist::<T>::get();
+            ensure!(
+                chain_allowlist.contains(&dst_chain_id),
+                Error::<T>::ChainNotAllowed
             );
 
             let channel_id = NextChannelId::<T>::get(dst_chain_id);
