@@ -28,7 +28,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -298,6 +298,10 @@ pub struct SingleDiskFarmOptions<'a, NC, PG> {
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
+    /// Global mutex that can restrict concurrency of resource-intensive operations and make sure
+    /// that those operations that are very sensitive (like proving) have all the resources
+    /// available to them for the highest probability of success
+    pub global_mutex: Arc<AsyncMutex<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
     /// Barrier before internal benchmarking between different farms
@@ -575,7 +579,7 @@ pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
     single_disk_farm_info: SingleDiskFarmInfo,
     /// Metadata of all sectors plotted so far
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
     total_sectors_count: SectorIndex,
     span: Span,
@@ -635,6 +639,7 @@ impl SingleDiskFarm {
             plotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
+            global_mutex,
             disable_farm_locking,
             faster_read_sector_record_chunks_mode_barrier,
             faster_read_sector_record_chunks_mode_concurrency,
@@ -895,7 +900,7 @@ impl SingleDiskFarm {
                 sectors_metadata.push(sector_metadata);
             }
 
-            Arc::new(RwLock::new(sectors_metadata))
+            Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
         #[cfg(not(windows))]
@@ -954,7 +959,7 @@ impl SingleDiskFarm {
         let handlers = Arc::<Handlers>::default();
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
-        let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
+        let modifying_sector_index = Arc::<AsyncRwLock<Option<SectorIndex>>>::default();
         let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
@@ -977,6 +982,7 @@ impl SingleDiskFarm {
             let plot_file = Arc::clone(&plot_file);
             let error_sender = Arc::clone(&error_sender);
             let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
 
             move || {
                 let _span_guard = span.enter();
@@ -1001,6 +1007,7 @@ impl SingleDiskFarm {
                     record_encoding_concurrency,
                     plotting_thread_pool_manager,
                     stop_receiver: stop_receiver.resubscribe(),
+                    global_mutex: &global_mutex,
                 };
 
                 let plotting_fut = async {
@@ -1118,6 +1125,7 @@ impl SingleDiskFarm {
             let mut stop_receiver = stop_sender.subscribe();
             let node_client = node_client.clone();
             let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
 
             move || {
                 let _span_guard = span.enter();
@@ -1150,6 +1158,7 @@ impl SingleDiskFarm {
                         slot_info_notifications: slot_info_forwarder_receiver,
                         thread_pool: farming_thread_pool,
                         read_sector_record_chunks_mode,
+                        global_mutex,
                     };
                     farming::<PosTable, _, _>(farming_options).await
                 };
@@ -1193,6 +1202,7 @@ impl SingleDiskFarm {
             erasure_coding,
             modifying_sector_index,
             read_sector_record_chunks_mode,
+            global_mutex,
         );
 
         let reading_join_handle = tokio::task::spawn_blocking({

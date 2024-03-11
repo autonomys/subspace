@@ -209,6 +209,7 @@ where
             sector_metadata_output,
             table_generators,
             abort_early,
+            global_mutex: &Default::default(),
         },
     )
 }
@@ -345,6 +346,10 @@ where
     pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
+    /// Global mutex that can restrict concurrency of resource-intensive operations and make sure
+    /// that those operations that are very sensitive (like proving) have all the resources
+    /// available to them for the highest probability of success
+    pub global_mutex: &'a AsyncMutex<()>,
 }
 
 pub fn encode_sector<PosTable>(
@@ -368,6 +373,7 @@ where
         sector_metadata_output,
         table_generators,
         abort_early,
+        global_mutex,
     } = encoding_options;
 
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
@@ -410,6 +416,9 @@ where
                     let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
 
                     loop {
+                        // Take mutex briefly to make sure encoding is allowed right now
+                        global_mutex.lock_blocking();
+
                         // This instead of `while` above because otherwise mutex will be held for
                         // the duration of the loop and will limit concurrency to 1 table generator
                         let Some(((piece_offset, record), encoded_chunks_used)) =
