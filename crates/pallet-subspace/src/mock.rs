@@ -54,6 +54,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -481,9 +482,13 @@ pub fn create_signed_vote(
 
         let solution = audit_result
             .solution_candidates
-            .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
-                table_generator.generate_parallel(seed)
-            })
+            .into_solutions(
+                &reward_address,
+                kzg,
+                erasure_coding,
+                ReadSectorRecordChunksMode::ConcurrentChunks,
+                |seed: &PosSeed| table_generator.generate_parallel(seed),
+            )
             .unwrap()
             .next()
             .unwrap()

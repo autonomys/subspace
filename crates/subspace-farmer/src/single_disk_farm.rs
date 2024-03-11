@@ -36,8 +36,9 @@ use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use rand::prelude::*;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::error::Error;
@@ -48,10 +49,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fs, io, mem};
-use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, Piece, PieceOffset, PublicKey, Record, SectorId, SectorIndex,
     SegmentIndex,
@@ -61,14 +62,15 @@ use subspace_farmer_components::file_ext::FileExt;
 #[cfg(not(windows))]
 use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, ReadAtSync};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Semaphore};
+use tokio::sync::{broadcast, Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -260,7 +262,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<NC, PG> {
+pub struct SingleDiskFarmOptions<'a, NC, PG> {
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -298,6 +300,10 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub plotting_delay: Option<oneshot::Receiver<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
+    /// Barrier before internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_barrier: &'a Barrier,
+    /// Limit concurrency of internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_concurrency: &'a Semaphore,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -392,6 +398,9 @@ pub enum SingleDiskFarmError {
         max_space: u64,
         max_sectors: u16,
     },
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(ThreadPoolBuildError),
 }
 
 /// Errors happening during scrubbing
@@ -601,7 +610,7 @@ impl SingleDiskFarm {
     ///
     /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskFarmOptions<NC, PG>,
+        options: SingleDiskFarmOptions<'_, NC, PG>,
         disk_farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
@@ -627,6 +636,8 @@ impl SingleDiskFarm {
             plotting_delay,
             farm_during_initial_plotting,
             disable_farm_locking,
+            faster_read_sector_record_chunks_mode_barrier,
+            faster_read_sector_record_chunks_mode_concurrency,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -1066,6 +1077,38 @@ impl SingleDiskFarm {
             }
         }));
 
+        let farming_thread_pool = ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()
+            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
+        let farming_plot = farming_thread_pool.install(|| {
+            #[cfg(windows)]
+            {
+                RayonFiles::open_with(
+                    &directory.join(Self::PLOT_FILE),
+                    UnbufferedIoFileWindows::open,
+                )
+            }
+            #[cfg(not(windows))]
+            {
+                RayonFiles::open(&directory.join(Self::PLOT_FILE))
+            }
+        })?;
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
+        let read_sector_record_chunks_mode = {
+            // Error doesn't matter here
+            let _permit = faster_read_sector_record_chunks_mode_concurrency
+                .acquire()
+                .await;
+            farming_thread_pool.install(|| {
+                faster_read_sector_record_chunks_mode(&*plot_file, &farming_plot, sector_size)
+            })?
+        };
+
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
@@ -1078,28 +1121,6 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
-                let thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("farming-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(farming_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(FarmingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(
-                                    %error,
-                                    "Farming failed to send error to background task",
-                                );
-                            }
-                        }
-                        return;
-                    }
-                };
 
                 let farming_fut = async move {
                     if start_receiver.recv().await.is_err() {
@@ -1114,20 +1135,7 @@ impl SingleDiskFarm {
                         }
                     }
 
-                    let plot = thread_pool.install(|| {
-                        #[cfg(windows)]
-                        {
-                            RayonFiles::open_with(
-                                &directory.join(Self::PLOT_FILE),
-                                UnbufferedIoFileWindows::open,
-                            )
-                        }
-                        #[cfg(not(windows))]
-                        {
-                            RayonFiles::open(&directory.join(Self::PLOT_FILE))
-                        }
-                    })?;
-                    let plot_audit = PlotAudit::new(&plot);
+                    let plot_audit = PlotAudit::new(&farming_plot);
 
                     let farming_options = FarmingOptions {
                         public_key,
@@ -1140,7 +1148,8 @@ impl SingleDiskFarm {
                         handlers,
                         modifying_sector_index,
                         slot_info_notifications: slot_info_forwarder_receiver,
-                        thread_pool,
+                        thread_pool: farming_thread_pool,
+                        read_sector_record_chunks_mode,
                     };
                     farming::<PosTable, _, _>(farming_options).await
                 };
@@ -1183,6 +1192,7 @@ impl SingleDiskFarm {
             Arc::clone(&sectors_metadata),
             erasure_coding,
             modifying_sector_index,
+            read_sector_record_chunks_mode,
         );
 
         let reading_join_handle = tokio::task::spawn_blocking({
@@ -2052,4 +2062,63 @@ fn write_dummy_sector_metadata(
             offset: sector_offset,
             error,
         })
+}
+
+fn faster_read_sector_record_chunks_mode<OP, FP>(
+    original_plot: &OP,
+    farming_plot: &FP,
+    sector_size: usize,
+) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
+where
+    OP: FileExt + Sync,
+    FP: ReadAtSync,
+{
+    info!("Benchmarking faster proving method");
+
+    let mut sector_bytes = vec![0u8; sector_size];
+
+    original_plot.read_exact_at(&mut sector_bytes, 0)?;
+
+    if sector_bytes.iter().all(|byte| *byte == 0) {
+        thread_rng().fill_bytes(&mut sector_bytes);
+        original_plot.write_all_at(&sector_bytes, 0)?;
+    }
+
+    let mut fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+    let mut fastest_time = Duration::MAX;
+
+    for _ in 0..3 {
+        // A lot simplified version of concurrent chunks
+        {
+            let start = Instant::now();
+            (0..Record::NUM_S_BUCKETS)
+                .into_par_iter()
+                .try_for_each(|_| {
+                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                        * Scalar::FULL_BYTES;
+                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+                })?;
+            let elapsed = start.elapsed();
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+                fastest_time = elapsed;
+            }
+        }
+        // Reading the whole sector at once
+        {
+            let start = Instant::now();
+            farming_plot.read_at(&mut sector_bytes, 0)?;
+            let elapsed = start.elapsed();
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::WholeSector;
+                fastest_time = elapsed;
+            }
+        }
+    }
+
+    debug!(?fastest_mode, "Faster proving method found");
+
+    Ok(fastest_mode)
 }
