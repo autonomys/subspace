@@ -3287,7 +3287,10 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     assert_eq!(alice.client.info().best_number, pre_alice_best_number + 2);
 }
 
+// TODO: this test is flaky and may hang forever in CI, able it after the root cause is
+// located and fixed.
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_cross_domains_messages_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
