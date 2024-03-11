@@ -8,8 +8,11 @@ mod precompiles;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
+use alloc::format;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
@@ -45,7 +48,9 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::{DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId};
+use sp_messenger::messages::{
+    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+};
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
@@ -433,17 +438,17 @@ impl sp_messenger::StorageKeys for StorageKeys {
         get_storage_key(StorageKeyRequest::ConfirmedDomainBlockStorageKey(domain_id))
     }
 
-    fn outbox_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+    fn outbox_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
         get_storage_key(StorageKeyRequest::OutboxStorageKey {
             chain_id,
-            message_id,
+            message_key,
         })
     }
 
-    fn inbox_responses_storage_key(chain_id: ChainId, message_id: MessageId) -> Option<Vec<u8>> {
+    fn inbox_responses_storage_key(chain_id: ChainId, message_key: MessageKey) -> Option<Vec<u8>> {
         get_storage_key(StorageKeyRequest::InboxResponseStorageKey {
             chain_id,
-            message_id,
+            message_key,
         })
     }
 }
@@ -804,6 +809,12 @@ fn check_transaction_and_do_pre_dispatch_inner(
     }
 }
 
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_system_benchmarking::Config for Runtime {}
+
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_benchmarking::baseline::Config for Runtime {}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -999,7 +1010,7 @@ impl_runtime_apis! {
         ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
             let encoded = opaque_extrinsic.encode();
             UncheckedExtrinsic::decode(&mut encoded.as_slice())
-                .map_err(|err| DecodeExtrinsicError(alloc::format!("{}", err)))
+                .map_err(|err| DecodeExtrinsicError(format!("{}", err)))
         }
 
         fn extrinsic_era(
@@ -1051,24 +1062,16 @@ impl_runtime_apis! {
             vec![]
         }
 
-        fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
-            Messenger::outbox_storage_key(message_id)
+        fn outbox_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Messenger::outbox_storage_key(message_key)
         }
 
-        fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
-            Messenger::inbox_response_storage_key(message_id)
+        fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Messenger::inbox_response_storage_key(message_key)
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
-        fn chain_id() -> ChainId {
-            SelfChainId::get()
-        }
-
-        fn relay_confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
-        }
-
+    impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockHash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             Messenger::get_block_messages()
         }
@@ -1294,9 +1297,6 @@ impl_runtime_apis! {
             use frame_system_benchmarking::Pallet as SystemBench;
             use frame_support::traits::WhitelistedStorageKeys;
             use baseline::Pallet as BaselineBench;
-
-            impl frame_system_benchmarking::Config for Runtime {}
-            impl baseline::Config for Runtime {}
 
             let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 

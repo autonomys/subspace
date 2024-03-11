@@ -87,6 +87,8 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
     FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
+use sp_core::offchain::storage::OffchainDb;
+use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
@@ -227,6 +229,7 @@ pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     kzg: Kzg,
     client: Arc<Client>,
+    backend: Arc<FullBackend>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
     domains_executor: Arc<sc_domains::RuntimeExecutor>,
@@ -368,13 +371,14 @@ where
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, _, _>::new(
                 self.client.clone(),
                 self.domains_executor.clone(),
-                Box::new(DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
-                    self.client.clone(),
-                    self.domains_executor.clone(),
-                )),
+                |client, executor| {
+                    let extension_factory =
+                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(client, executor);
+                    Box::new(extension_factory) as Box<dyn ExtensionsFactory<DomainBlock>>
+                },
             ),
         )));
 
@@ -388,6 +392,13 @@ where
                 self.executor.clone(),
             ),
         )));
+
+        // if the offchain storage is available, then add offchain extension
+        // to generate and verify MMR proofs
+        if let Some(offchain_storage) = self.backend.offchain_storage() {
+            let offchain_db = OffchainDb::new(offchain_storage);
+            exts.register(OffchainDbExt::new(offchain_db));
+        }
 
         exts
     }
@@ -485,6 +496,7 @@ where
             pot_verifier: pot_verifier.clone(),
             executor: executor.clone(),
             domains_executor: Arc::new(domains_executor),
+            backend: backend.clone(),
             _pos_table: PhantomData,
         });
 

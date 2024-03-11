@@ -1,6 +1,11 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 #[cfg(feature = "std")]
 use crate::FraudProofExtension;
 use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use domain_runtime_primitives::BlockNumber;
 use sp_core::H256;
 use sp_domains::DomainId;
@@ -8,7 +13,6 @@ use sp_domains::DomainId;
 use sp_externalities::ExternalitiesExt;
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::runtime_interface;
-use sp_std::vec::Vec;
 
 /// Domain fraud proof related runtime interface
 #[runtime_interface]

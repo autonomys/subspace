@@ -1,5 +1,8 @@
 //! Domain registry for domains
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::block_tree::import_genesis_receipt;
 use crate::pallet::{DomainStakingSummary, NextEVMChainId};
 use crate::runtime_registry::DomainRuntimeInfo;
@@ -8,7 +11,10 @@ use crate::{
     BalanceOf, Config, DomainHashingFor, DomainRegistry, ExecutionReceiptOf, HoldIdentifier,
     NextDomainId, RuntimeRegistry,
 };
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::MultiAccountId;
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -26,7 +32,6 @@ use sp_runtime::traits::{CheckedAdd, IntegerSquareRoot, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use sp_std::vec::Vec;
 
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -352,7 +357,6 @@ pub(crate) fn calculate_max_bundle_weight_and_size(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter};
@@ -361,7 +365,6 @@ mod tests {
     use hex_literal::hex;
     use sp_domains::storage::RawGenesis;
     use sp_runtime::traits::Convert;
-    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
     use subspace_runtime_primitives::SSC;

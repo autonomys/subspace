@@ -190,7 +190,21 @@ async fn basic() {
         let farmer_cache_worker_exited =
             tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
 
-        let initialized_fut = farmer_cache
+        let (sender, receiver) = oneshot::channel();
+        farmer_cache
+            .on_sync_progress(Arc::new({
+                let sender = Mutex::new(Some(sender));
+
+                move |progress| {
+                    if *progress == 100.0 {
+                        if let Some(sender) = sender.lock().take() {
+                            sender.send(()).unwrap();
+                        }
+                    }
+                }
+            }))
+            .detach();
+        farmer_cache
             .replace_backing_caches(
                 vec![
                     DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
@@ -201,7 +215,7 @@ async fn basic() {
             .await;
 
         // Wait for piece cache to be initialized
-        initialized_fut.await.unwrap();
+        receiver.await.unwrap();
 
         // These 2 pieces are requested from node during initialization
         {
@@ -375,8 +389,22 @@ async fn basic() {
 
         let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
 
+        let (sender, receiver) = oneshot::channel();
+        farmer_cache
+            .on_sync_progress(Arc::new({
+                let sender = Mutex::new(Some(sender));
+
+                move |progress| {
+                    if *progress == 100.0 {
+                        if let Some(sender) = sender.lock().take() {
+                            sender.send(()).unwrap();
+                        }
+                    }
+                }
+            }))
+            .detach();
         // Reopen with the same backing caches
-        let initialized_fut = farmer_cache
+        farmer_cache
             .replace_backing_caches(
                 vec![
                     DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
@@ -388,7 +416,7 @@ async fn basic() {
         drop(farmer_cache);
 
         // Wait for piece cache to be initialized
-        initialized_fut.await.unwrap();
+        receiver.await.unwrap();
 
         // Same state as before, no pieces should be requested during initialization
         assert_eq!(pieces.lock().len(), 0);

@@ -1,11 +1,15 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::OperatorPublicKey;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use blake2::digest::FixedOutput;
 use blake2::{Blake2b, Digest};
 use parity_scale_codec::{Decode, Encode};
 use rs_merkle::Hasher;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{BlakeTwo256, Hash};
-use sp_std::vec::Vec;
 use subspace_core_primitives::Blake3Hash;
 
 /// Merkle tree using [`Blake2b256Algorithm`].

@@ -6,7 +6,6 @@ use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
 use crate::single_disk_farm::plot_cache::{DiskPlotCache, MaybePieceStoredResult};
 use crate::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use event_listener_primitives::{Bag, HandlerId};
-use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
@@ -52,7 +51,6 @@ struct DiskPieceCacheState {
 enum WorkerCommand {
     ReplaceBackingCaches {
         new_piece_caches: Vec<DiskPieceCache>,
-        acknowledgement: oneshot::Sender<()>,
     },
     ForgetKey {
         key: RecordKey,
@@ -101,15 +99,11 @@ where
             .take()
             .expect("Always set during worker instantiation");
 
-        if let Some(WorkerCommand::ReplaceBackingCaches {
-            new_piece_caches,
-            acknowledgement,
-        }) = worker_receiver.recv().await
+        if let Some(WorkerCommand::ReplaceBackingCaches { new_piece_caches }) =
+            worker_receiver.recv().await
         {
             self.initialize(&piece_getter, &mut worker_state, new_piece_caches)
                 .await;
-            // Doesn't matter if receiver is still waiting for acknowledgement
-            let _ = acknowledgement.send(());
         } else {
             // Piece cache is dropped before backing caches were sent
             return;
@@ -162,14 +156,9 @@ where
         PG: PieceGetter,
     {
         match command {
-            WorkerCommand::ReplaceBackingCaches {
-                new_piece_caches,
-                acknowledgement,
-            } => {
+            WorkerCommand::ReplaceBackingCaches { new_piece_caches } => {
                 self.initialize(piece_getter, worker_state, new_piece_caches)
                     .await;
-                // Doesn't matter if receiver is still waiting for acknowledgement
-                let _ = acknowledgement.send(());
             }
             // TODO: Consider implementing optional re-sync of the piece instead of just forgetting
             WorkerCommand::ForgetKey { key } => {
@@ -886,10 +875,18 @@ impl FarmerCache {
 
         let should_store_fut = tokio::task::spawn_blocking({
             let plot_caches = Arc::clone(&self.plot_caches);
+            let piece_caches = Arc::clone(&self.piece_caches);
             let next_plot_cache = Arc::clone(&self.next_plot_cache);
             let piece = piece.clone();
 
             move || {
+                for cache in piece_caches.read().iter() {
+                    if cache.stored_pieces.contains_key(&key) {
+                        // Already stored in normal piece cache, no need to store it again
+                        return;
+                    }
+                }
+
                 let plot_caches = plot_caches.read();
                 let plot_caches_len = plot_caches.len();
 
@@ -924,28 +921,21 @@ impl FarmerCache {
         }
     }
 
-    /// Initialize replacement of backing caches, returns acknowledgement receiver that can be used
-    /// to identify when cache initialization has finished
+    /// Initialize replacement of backing caches
     pub async fn replace_backing_caches(
         &self,
         new_piece_caches: Vec<DiskPieceCache>,
         new_plot_caches: Vec<DiskPlotCache>,
-    ) -> oneshot::Receiver<()> {
-        let (sender, receiver) = oneshot::channel();
+    ) {
         if let Err(error) = self
             .worker_sender
-            .send(WorkerCommand::ReplaceBackingCaches {
-                new_piece_caches,
-                acknowledgement: sender,
-            })
+            .send(WorkerCommand::ReplaceBackingCaches { new_piece_caches })
             .await
         {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
 
         *self.plot_caches.write() = new_plot_caches;
-
-        receiver
     }
 
     /// Subscribe to cache sync notifications

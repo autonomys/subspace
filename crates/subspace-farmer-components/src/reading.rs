@@ -26,7 +26,7 @@ pub enum ReadingError {
     ///
     /// This is an implementation bug, most likely due to mismatch between sector contents map and
     /// other farming parameters.
-    #[error("Failed to read chunk at location {chunk_location}")]
+    #[error("Failed to read chunk at location {chunk_location}: {error}")]
     FailedToReadChunk {
         /// Chunk location
         chunk_location: u64,
@@ -68,7 +68,7 @@ pub enum ReadingError {
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Reading I/O error: {0}")]
     Io(#[from] io::Error),
     /// Checksum mismatch
     #[error("Checksum mismatch")]
@@ -148,16 +148,39 @@ where
         )
         .collect::<Vec<_>>();
 
+    let sector_contents_map_size = SectorContentsMap::encoded_size(pieces_in_sector) as u64;
     match sector {
         ReadAt::Sync(sector) => {
+            // TODO: Random reads are slow on Windows due to a variety of bugs with its disk
+            //  subsystem:
+            //    * https://learn.microsoft.com/en-us/answers/questions/1601862/windows-is-leaking-memory-when-reading-random-chun
+            //    * https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
+            //    * and likely some more that are less obvious
+            //  As a workaround, read the whole sector at once instead of individual record chunks,
+            //  which while results in higher data transfer from SSD, reads data in larger blocks
+            //  and ends up being faster in many cases even though it uses more RAM while doing so.
+            //  It is also likely possible to read large parts of the sector instead of the whole
+            //  sector if code below is not parallelized, but logic will become even more
+            //  convoluted, so for now it is not done.
+            #[cfg(windows)]
+            let sector_bytes = {
+                let mut sector_bytes = vec![0u8; crate::sector::sector_size(pieces_in_sector)];
+                sector.read_at(&mut sector_bytes, 0)?;
+                sector_bytes
+            };
             read_chunks_inputs.into_par_iter().flatten().try_for_each(
                 |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| {
                     let mut record_chunk = [0; Scalar::FULL_BYTES];
+                    #[cfg(windows)]
+                    record_chunk.copy_from_slice(
+                        &sector_bytes[sector_contents_map_size as usize
+                            + chunk_location as usize * Scalar::FULL_BYTES..][..Scalar::FULL_BYTES],
+                    );
+                    #[cfg(not(windows))]
                     sector
                         .read_at(
                             &mut record_chunk,
-                            SectorContentsMap::encoded_size(pieces_in_sector) as u64
-                                + chunk_location * Scalar::FULL_BYTES as u64,
+                            sector_contents_map_size + chunk_location * Scalar::FULL_BYTES as u64,
                         )
                         .map_err(|error| ReadingError::FailedToReadChunk {
                             chunk_location,
@@ -198,8 +221,7 @@ where
                             &sector
                                 .read_at(
                                     vec![0; Scalar::FULL_BYTES],
-                                    SectorContentsMap::encoded_size(pieces_in_sector) as u64
-                                        + chunk_location * Scalar::FULL_BYTES as u64,
+                                    sector_contents_map_size + chunk_location * Scalar::FULL_BYTES as u64,
                                 )
                                 .await
                                 .map_err(|error| ReadingError::FailedToReadChunk {

@@ -1,4 +1,9 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::verification::InvalidBundleEquivocationError;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -11,7 +16,6 @@ use sp_domains::{
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
-use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
 
@@ -242,10 +246,10 @@ pub enum VerificationError<DomainHash> {
     InitializeBlockOrApplyExtrinsicDecode(codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
     #[cfg_attr(
-        feature = "thiserror",
-        error(
-            "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
-        )
+    feature = "thiserror",
+    error(
+    "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
+    )
     )]
     StorageRootDecode(codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
@@ -350,8 +354,8 @@ pub enum VerificationError<DomainHash> {
     BundleNotFound,
     /// Invalid bundle entry in bad receipt was expected to be valid but instead found invalid entry
     #[cfg_attr(
-        feature = "thiserror",
-        error("Unexpected bundle entry at {bundle_index} in bad receipt found: {targeted_entry_bundle:?} with fraud proof's type of proof: {fraud_proof_invalid_type_of_proof:?}")
+    feature = "thiserror",
+    error("Unexpected bundle entry at {bundle_index} in bad receipt found: {targeted_entry_bundle:?} with fraud proof's type of proof: {fraud_proof_invalid_type_of_proof:?}")
     )]
     UnexpectedTargetedBundleEntry {
         bundle_index: u32,
@@ -382,6 +386,9 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Failed to check if a given extrinsic is inherent or not.
+    #[cfg_attr(feature = "thiserror", error("Failed to validate given XDM"))]
+    FailedToValidateXDM,
     /// Failed to check if a given extrinsic is decodable or not.
     #[cfg_attr(
         feature = "thiserror",

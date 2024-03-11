@@ -18,11 +18,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
 use sp_core::parameter_types;
 use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};
 use sp_runtime::{FixedPointNumber, MultiSignature, Perquintill};
-use sp_std::vec::Vec;
 pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,

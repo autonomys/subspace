@@ -1,7 +1,7 @@
 use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, Handler, HandlerFn, PeerAddress};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
-use fs4::FileExt;
+use fs2::FileExt;
 use futures::future::{pending, Fuse};
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
@@ -341,6 +341,7 @@ impl KnownPeersManager {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         let known_addresses_size = Self::known_addresses_size(cache_size);

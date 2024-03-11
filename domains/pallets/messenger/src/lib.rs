@@ -20,18 +20,18 @@
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 #![feature(let_chains)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+mod fees;
+mod messages;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
-
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
-
 pub mod weights;
 
-mod fees;
-mod messages;
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::Inspect;
@@ -102,6 +102,10 @@ mod pallet {
         BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
     };
+    #[cfg(not(feature = "std"))]
+    use alloc::boxed::Box;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::Mutate;
     use frame_support::weights::WeightToFee;
@@ -110,14 +114,12 @@ mod pallet {
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
+        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
-    use sp_std::boxed::Box;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -733,8 +735,8 @@ mod pallet {
             // derive the key as stored on the src_chain.
             let key = StorageKey(
                 T::StorageKeys::outbox_storage_key(
-                    T::SelfChainId::get(),
-                    (xdm.channel_id, xdm.nonce),
+                    xdm.src_chain_id,
+                    (T::SelfChainId::get(), xdm.channel_id, xdm.nonce),
                 )
                 .ok_or(UnknownTransaction::CannotLookup)?,
             );
@@ -815,8 +817,8 @@ mod pallet {
             // derive the key as stored on the src_chain.
             let key = StorageKey(
                 T::StorageKeys::inbox_responses_storage_key(
-                    T::SelfChainId::get(),
-                    (xdm.channel_id, xdm.nonce),
+                    xdm.src_chain_id,
+                    (T::SelfChainId::get(), xdm.channel_id, xdm.nonce),
                 )
                 .ok_or(UnknownTransaction::CannotLookup)?,
             );
@@ -881,7 +883,7 @@ mod pallet {
                 .map_err(|err| {
                     log::error!(
                         target: "runtime::messenger",
-                        "Failed to verify storage proof: {:?}",
+                        "Failed to verify storage proof for confirmed Domain block: {:?}",
                         err
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
@@ -901,7 +903,7 @@ mod pallet {
                 .map_err(|err| {
                     log::error!(
                         target: "runtime::messenger",
-                        "Failed to verify storage proof: {:?}",
+                        "Failed to verify storage proof for message: {:?}",
                         err
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
@@ -910,14 +912,12 @@ mod pallet {
             Ok(msg)
         }
 
-        pub fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
-            let (channel_id, nonce) = message_id;
-            Outbox::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        pub fn outbox_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Outbox::<T>::hashed_key_for(message_key)
         }
 
-        pub fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
-            let (channel_id, nonce) = message_id;
-            InboxResponses::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        pub fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
+            InboxResponses::<T>::hashed_key_for(message_key)
         }
     }
 }

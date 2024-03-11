@@ -16,11 +16,14 @@
 
 //! Inherents for Subspace consensus
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use sp_consensus_slots::Slot;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
-use sp_std::result::Result;
-use sp_std::vec::Vec;
 use subspace_core_primitives::SegmentHeader;
 
 /// The Subspace inherent identifier.

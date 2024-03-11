@@ -21,8 +21,11 @@
 //! * for global objects in the global history of the blockchain
 
 #[cfg(not(feature = "std"))]
+#[cfg(not(feature = "std"))]
 extern crate alloc;
+
 use crate::{Blake3Hash, PieceIndex};
+#[cfg(not(feature = "std"))]
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};

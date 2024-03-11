@@ -235,7 +235,7 @@ mod tests {
     use parking_lot::Mutex;
     use sp_core::hash::H256;
     use std::collections::HashMap;
-    use subspace_runtime_primitives::{Balance, BlockNumber, Hash};
+    use subspace_runtime_primitives::{Balance, Hash};
     use subspace_test_runtime::Block as CBlock;
 
     type ExecutionReceipt =

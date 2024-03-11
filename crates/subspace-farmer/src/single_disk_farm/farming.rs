@@ -8,7 +8,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode, Error, Input, Output};
 use parking_lot::Mutex;
-use rayon::ThreadPoolBuildError;
+use rayon::{ThreadPool, ThreadPoolBuildError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io};
@@ -22,7 +22,7 @@ use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn, Span};
 
 /// Auditing details
 #[derive(Debug, Copy, Clone, Encode, Decode)]
@@ -115,7 +115,7 @@ pub enum FarmingError {
     #[error("Low-level proving error: {0}")]
     LowLevelProving(#[from] ProvingError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Farming I/O error: {0}")]
     Io(#[from] io::Error),
     /// Failed to create thread pool
     #[error("Failed to create thread pool: {0}")]
@@ -330,6 +330,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
+    pub(super) thread_pool: ThreadPool,
 }
 
 /// Starts farming process.
@@ -355,6 +356,7 @@ where
         handlers,
         modifying_sector_index,
         mut slot_info_notifications,
+        thread_pool,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -366,6 +368,7 @@ where
     let farming_timeout = farmer_app_info.farming_timeout;
 
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
+    let span = Span::current();
 
     while let Some(slot_info) = slot_info_notifications.next().await {
         let result: Result<(), FarmingError> = try {
@@ -379,15 +382,19 @@ where
                 let modifying_sector_guard = modifying_sector_index.read().await;
                 let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-                plot_audit.audit(PlotAuditOptions::<PosTable> {
-                    public_key: &public_key,
-                    reward_address: &reward_address,
-                    slot_info,
-                    sectors_metadata: &sectors_metadata,
-                    kzg: &kzg,
-                    erasure_coding: &erasure_coding,
-                    maybe_sector_being_modified,
-                    table_generator: &table_generator,
+                thread_pool.install(|| {
+                    let _span_guard = span.enter();
+
+                    plot_audit.audit(PlotAuditOptions::<PosTable> {
+                        public_key: &public_key,
+                        reward_address: &reward_address,
+                        slot_info,
+                        sectors_metadata: &sectors_metadata,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
+                        maybe_sector_being_modified,
+                        table_generator: &table_generator,
+                    })
                 })?
             };
 
@@ -400,6 +407,8 @@ where
                 a_solution_distance.cmp(&b_solution_distance)
             });
 
+            let mut sectors_solutions = sectors_solutions.into_iter();
+
             handlers
                 .farming_notification
                 .call_simple(&FarmingNotification::Auditing(AuditingDetails {
@@ -407,7 +416,13 @@ where
                     time: start.elapsed(),
                 }));
 
-            'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+            'solutions_processing: while let Some((sector_index, sector_solutions)) = thread_pool
+                .install(|| {
+                    let _span_guard = span.enter();
+
+                    sectors_solutions.next()
+                })
+            {
                 if sector_solutions.is_empty() {
                     continue;
                 }

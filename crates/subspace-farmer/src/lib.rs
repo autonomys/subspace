@@ -9,6 +9,7 @@
     iter_collect_into,
     let_chains,
     never_type,
+    slice_flatten,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,

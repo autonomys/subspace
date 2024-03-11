@@ -328,49 +328,49 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sp_blockchain::HeaderBackend;
-    use sp_core::Blake2Hasher;
-    use sp_state_machine::Backend;
-    // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
-    use std::collections::VecDeque;
-    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
-
-    // TODO: Unlock this test, it got broken in https://github.com/subspace/subspace/pull/1548 and
-    //  doesn't run on Windows at all
-    #[test]
-    #[ignore]
-    fn block_building_storage_proof_does_not_include_runtime_by_default() {
-        let (client, backend) =
-            substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
-
-        let block = BlockBuilder::new(
-            &client,
-            client.info().best_hash,
-            client.info().best_number,
-            RecordProof::Yes,
-            Default::default(),
-            &*backend,
-            VecDeque::new(),
-            Default::default(),
-        )
-        .unwrap()
-        .build()
-        .unwrap();
-
-        let proof = block.proof.expect("Proof is build on request");
-
-        let backend = sp_state_machine::create_proof_check_backend::<Blake2Hasher>(
-            block.storage_changes.transaction_storage_root,
-            proof,
-        )
-        .unwrap();
-
-        assert!(backend
-            .storage(sp_core::storage::well_known_keys::CODE)
-            .unwrap_err()
-            .contains("Database missing expected key"));
-    }
-}
+// TODO: Unlock this test, it got broken in https://github.com/subspace/subspace/pull/1548 and
+//  doesn't run on Windows at all, also needs to not use substrate_test_runtime_client
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use sp_blockchain::HeaderBackend;
+//     use sp_core::Blake2Hasher;
+//     use sp_state_machine::Backend;
+//     // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
+//     use std::collections::VecDeque;
+//     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
+//
+//     #[test]
+//     #[ignore]
+//     fn block_building_storage_proof_does_not_include_runtime_by_default() {
+//         let (client, backend) =
+//             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
+//
+//         let block = BlockBuilder::new(
+//             &client,
+//             client.info().best_hash,
+//             client.info().best_number,
+//             RecordProof::Yes,
+//             Default::default(),
+//             &*backend,
+//             VecDeque::new(),
+//             Default::default(),
+//         )
+//         .unwrap()
+//         .build()
+//         .unwrap();
+//
+//         let proof = block.proof.expect("Proof is build on request");
+//
+//         let backend = sp_state_machine::create_proof_check_backend::<Blake2Hasher>(
+//             block.storage_changes.transaction_storage_root,
+//             proof,
+//         )
+//         .unwrap();
+//
+//         assert!(backend
+//             .storage(sp_core::storage::well_known_keys::CODE)
+//             .unwrap_err()
+//             .contains("Database missing expected key"));
+//     }
+// }

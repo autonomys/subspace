@@ -119,7 +119,7 @@ fn main() -> Result<(), Error> {
                 })?
                 .unwrap_or_default();
 
-        let consensus_state_pruning_mode = consensus_chain_config
+        let consensus_state_pruning = consensus_chain_config
             .state_pruning
             .clone()
             .unwrap_or_default();
@@ -273,7 +273,7 @@ fn main() -> Result<(), Error> {
                 let relayer_worker =
                     domain_client_message_relayer::worker::relay_consensus_chain_messages(
                         consensus_chain_node.client.clone(),
-                        consensus_state_pruning_mode,
+                        consensus_state_pruning.clone(),
                         consensus_chain_node.sync_service.clone(),
                         xdm_gossip_worker_builder.gossip_msg_sink(),
                     );
@@ -338,6 +338,7 @@ fn main() -> Result<(), Error> {
                 consensus_sync_service: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                consensus_state_pruning,
             };
 
             consensus_chain_node

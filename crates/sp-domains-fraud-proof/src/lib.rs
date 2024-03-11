@@ -26,14 +26,17 @@ pub mod fraud_proof;
 mod host_functions;
 mod runtime_interface;
 #[cfg(test)]
-mod tests;
-
-#[cfg(test)]
 pub mod test_ethereum_tx;
-
+#[cfg(test)]
+mod tests;
 pub mod verification;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::fraud_proof::FraudProof;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{
@@ -50,7 +53,6 @@ use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
-use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;
@@ -126,6 +128,12 @@ pub enum FraudProofVerificationInfoRequest {
         /// Extrinsic for which we need to if it is decodable or not.
         opaque_extrinsic: OpaqueExtrinsic,
     },
+    /// Request to check if the XDM is valid
+    XDMValidationCheck {
+        domain_id: DomainId,
+        /// Encoded XDM extrinsic that needs to be validated.
+        opaque_extrinsic: OpaqueExtrinsic,
+    },
     /// Request to get Domain election params.
     DomainElectionParams { domain_id: DomainId },
     /// Request to get Operator stake.
@@ -184,6 +192,9 @@ pub enum FraudProofVerificationInfoResponse {
     TxRangeCheck(bool),
     /// If the particular extrinsic provided is either inherent or not.
     InherentExtrinsicCheck(bool),
+    /// If the particular xdm extrinsic is valid or not.
+    /// Returns None if extrinsic is not an XDM
+    XDMValidationCheck(Option<bool>),
     /// If the domain extrinsic is decodable or not.
     ExtrinsicDecodableCheck(bool),
     /// Domain's total stake at a given Consensus hash.
@@ -258,6 +269,13 @@ impl FraudProofVerificationInfoResponse {
             FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent) => {
                 Some(is_inherent)
             }
+            _ => None,
+        }
+    }
+
+    pub fn into_xdm_validation_check(self) -> Option<bool> {
+        match self {
+            FraudProofVerificationInfoResponse::XDMValidationCheck(maybe_valid) => maybe_valid,
             _ => None,
         }
     }

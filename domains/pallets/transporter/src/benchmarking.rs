@@ -1,9 +1,11 @@
 //! Benchmarking for `pallet-transporter`.
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, Sender,

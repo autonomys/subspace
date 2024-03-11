@@ -29,7 +29,7 @@ fdlimit = "0.3.0"
 fs4 = "0.8.0"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
-hwlocality = { version = "1.0.0-alpha.1", features = ["vendored"], optional = true }
+hwlocality = { version = "1.0.0-alpha.3", features = ["vendored"], optional = true }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.12.1"
 mimalloc = "0.1.39"
@@ -53,7 +53,7 @@ subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-substrate-bip39 = "0.4.5"
+substrate-bip39 = "0.4.6"
 supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"

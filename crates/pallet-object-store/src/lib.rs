@@ -32,7 +32,6 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use log::debug;
-    use sp_std::prelude::*;
     use subspace_core_primitives::{crypto, Blake3Hash};
 
     #[pallet::config]
@@ -47,7 +46,7 @@ mod pallet {
 
     /// `pallet-object-store` events
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// New object was added.
         ObjectSubmitted {

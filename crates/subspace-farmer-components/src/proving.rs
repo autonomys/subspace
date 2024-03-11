@@ -53,7 +53,7 @@ pub enum ProvingError {
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Proving I/O error: {0}")]
     Io(#[from] io::Error),
     /// Record reading error
     #[error("Record reading error: {0}")]

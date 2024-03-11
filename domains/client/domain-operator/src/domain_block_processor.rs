@@ -968,8 +968,7 @@ where
 mod tests {
     use super::*;
     use domain_test_service::evm_domain_test_runtime::Block;
-    use sp_core::{sp_std, H256};
-    use sp_domains::{ExecutionReceipt, InboxedBundle, InvalidBundleType};
+    use sp_domains::{InboxedBundle, InvalidBundleType};
     use subspace_test_runtime::Block as CBlock;
 
     fn create_test_execution_receipt(
@@ -988,7 +987,7 @@ mod tests {
             consensus_block_number: Zero::zero(),
             inboxed_bundles,
             final_state_root: Default::default(),
-            execution_trace: sp_std::vec![],
+            execution_trace: vec![],
             execution_trace_root: Default::default(),
             block_fees: Default::default(),
             transfers: Default::default(),
@@ -1111,10 +1110,11 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::InvalidXDM(3)),
                 bundle_index: 1,
             })
         );
+
         assert_eq!(
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
@@ -1128,7 +1128,7 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::InvalidXDM(3)),
                 bundle_index: 1,
             })
         );

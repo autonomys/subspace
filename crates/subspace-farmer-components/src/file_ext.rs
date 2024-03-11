@@ -1,13 +1,20 @@
 //! File extension trait
 
 use std::fs::{File, OpenOptions};
-use std::io::Result;
+use std::io::{Result, Seek, SeekFrom};
 
 /// Extension convenience trait that allows setting some file opening options in cross-platform way
 pub trait OpenOptionsExt {
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_random_access(&mut self) -> &mut Self;
+
+    /// Advise Windows to not use buffering for this file and that file access will be random.
+    ///
+    /// NOTE: There are major alignment requirements described here:
+    /// https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements
+    #[cfg(windows)]
+    fn advise_unbuffered(&mut self) -> &mut Self;
 
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
     /// desirable, only has impact on Windows, for other operating systems see [`FileExt`]
@@ -30,7 +37,23 @@ impl OpenOptionsExt for OpenOptions {
     #[cfg(windows)]
     fn advise_random_access(&mut self) -> &mut Self {
         use std::os::windows::fs::OpenOptionsExt;
-        self.custom_flags(winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS)
+        // `FILE_FLAG_WRITE_THROUGH` below is a bit of a hack, especially in `advise_random_access`,
+        // but it helps with memory usage and feels like should be default. Since `.custom_flags()`
+        // overrides previous value, we need to set bitwise OR of two flags rather that two flags
+        // separately.
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS
+                | winapi::um::winbase::FILE_FLAG_WRITE_THROUGH,
+        )
+    }
+
+    #[cfg(windows)]
+    fn advise_unbuffered(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_WRITE_THROUGH
+                | winapi::um::winbase::FILE_FLAG_NO_BUFFERING,
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -55,8 +78,11 @@ impl OpenOptionsExt for OpenOptions {
 /// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
 /// and doing cross-platform exact reads/writes
 pub trait FileExt {
+    /// Get file size
+    fn size(&mut self) -> Result<u64>;
+
     /// Make sure file has specified number of bytes allocated for it
-    fn preallocate(&self, len: u64) -> Result<()>;
+    fn preallocate(&mut self, len: u64) -> Result<()>;
 
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
@@ -74,8 +100,16 @@ pub trait FileExt {
 }
 
 impl FileExt for File {
-    fn preallocate(&self, len: u64) -> Result<()> {
-        fs4::FileExt::allocate(self, len)
+    fn size(&mut self) -> Result<u64> {
+        self.seek(SeekFrom::End(0))
+    }
+
+    fn preallocate(&mut self, len: u64) -> Result<()> {
+        // TODO: Hack due to bugs on Windows: https://github.com/al8n/fs4-rs/issues/13
+        if self.size()? == len {
+            return Ok(());
+        }
+        fs2::FileExt::allocate(self, len)
     }
 
     #[cfg(target_os = "linux")]

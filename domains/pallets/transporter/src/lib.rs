@@ -19,6 +19,17 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+pub mod weights;
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::dispatch::DispatchResult;
@@ -31,16 +42,6 @@ use sp_messenger::endpoint::EndpointResponse;
 use sp_messenger::messages::ChainId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Get};
 use sp_std::vec;
-
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-mod tests;
-
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
-
-pub mod weights;
 
 /// Location that either sends or receives transfers between chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -74,6 +75,8 @@ type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
@@ -87,7 +90,6 @@ mod pallet {
     use sp_messenger::messages::ChainId;
     use sp_runtime::traits::Convert;
     use sp_std::vec;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
