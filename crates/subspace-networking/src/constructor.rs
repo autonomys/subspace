@@ -249,6 +249,7 @@ pub struct Config<LocalRecordProvider> {
 }
 
 impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }

@@ -135,6 +135,7 @@ impl<LocalRecordProvider> fmt::Debug for NodeRunner<LocalRecordProvider>
 where
     LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("NodeRunner").finish_non_exhaustive()
     }
