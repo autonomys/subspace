@@ -37,6 +37,9 @@ macro_rules! impl_runtime {
         use sp_domains::ChannelId;
         use scale_info::TypeInfo;
         use codec::MaxEncodedLen;
+        use sp_domains::MessengerHoldIdentifier;
+        use frame_support::traits::VariantCount;
+        use core::mem;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -93,10 +96,17 @@ macro_rules! impl_runtime {
         #[derive(
             PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
         )]
-        pub struct MockHoldIdentifer((ChainId, ChannelId));
-        impl HoldIdentifier for MockHoldIdentifer{
+        pub enum MockHoldIdentifer {
+            Messenger(MessengerHoldIdentifier)
+        }
+
+        impl VariantCount for MockHoldIdentifer {
+            const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+        }
+
+        impl HoldIdentifier<$runtime> for MockHoldIdentifer {
             fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-                MockHoldIdentifer((dst_chain_id, channel_id))
+                MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
             }
         }
 
@@ -137,6 +147,10 @@ macro_rules! impl_runtime {
             }
         }
 
+        parameter_types! {
+            pub const MaxHolds: u32 = 10;
+        }
+
         impl pallet_balances::Config for $runtime {
             type RuntimeFreezeReason = RuntimeFreezeReason;
             type AccountStore = System;
@@ -150,8 +164,8 @@ macro_rules! impl_runtime {
             type WeightInfo = ();
             type FreezeIdentifier = ();
             type MaxFreezes = ();
-            type RuntimeHoldReason = ();
-            type MaxHolds = ();
+            type RuntimeHoldReason = MockHoldIdentifer;
+            type MaxHolds = MaxHolds;
         }
 
         parameter_types! {

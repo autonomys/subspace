@@ -1,3 +1,4 @@
+#![feature(variant_count)]
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
@@ -14,6 +15,7 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
@@ -30,7 +32,7 @@ use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
+    OnUnbalanced, VariantCount,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -316,6 +318,10 @@ impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
     }
 }
 
+parameter_types! {
+    pub const MaxHolds: u32 = 100;
+}
+
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -331,8 +337,8 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type RuntimeHoldReason = HoldIdentifier;
+    type MaxHolds = MaxHolds;
 }
 
 parameter_types! {
@@ -463,7 +469,11 @@ pub enum HoldIdentifier {
     Messenger(MessengerHoldIdentifier),
 }
 
-impl pallet_messenger::HoldIdentifier for HoldIdentifier {
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
     fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
         Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
     }

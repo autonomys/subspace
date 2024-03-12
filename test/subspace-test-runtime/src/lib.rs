@@ -334,7 +334,7 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     }
 }
 
-impl pallet_messenger::HoldIdentifier for HoldIdentifier {
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
     fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
         Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
     }

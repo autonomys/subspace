@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
-#![feature(let_chains)]
+#![feature(let_chains, variant_count)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -34,7 +34,7 @@ pub mod weights;
 extern crate alloc;
 
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::Inspect;
+use frame_support::traits::fungible::{Inspect, InspectHold};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -59,7 +59,7 @@ pub enum ChannelState {
 
 /// Channel describes a bridge to exchange messages between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Channel<Balance> {
+pub struct Channel<Balance, AccountId> {
     /// Channel identifier.
     pub(crate) channel_id: ChannelId,
     /// State of the channel.
@@ -74,6 +74,9 @@ pub struct Channel<Balance> {
     pub(crate) max_outgoing_messages: u32,
     /// Fee model for this channel between the chains.
     pub(crate) fee: FeeModel<Balance>,
+    /// Owner of the channel
+    /// Owner maybe None if the channel was initiated on the other chain.
+    pub(crate) maybe_owner: Option<AccountId>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -87,6 +90,8 @@ pub enum OutboxMessageResult {
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
+pub(crate) type FungibleHoldId<T> =
+    <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
 
 /// A validated relay message.
 #[derive(Debug)]
@@ -112,17 +117,25 @@ impl ChainAllowlistUpdate {
     }
 }
 
+/// Channel can be closed either by Channel owner or Sudo
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub(crate) enum CloseChannelBy<AccountId> {
+    Owner(AccountId),
+    Sudo,
+}
+
 /// Hold identifier trait for messenger specific balance holds
-pub trait HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self;
+pub trait HoldIdentifier<T: Config> {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> FungibleHoldId<T>;
 }
 
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, FeeModel,
-        HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
+        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
+        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
+        U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -132,7 +145,8 @@ mod pallet {
     use alloc::vec::Vec;
     use frame_support::ensure;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
+    use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+    use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
@@ -181,7 +195,7 @@ mod pallet {
         /// Domain owner provider.
         type DomainOwner: DomainOwner<Self::AccountId>;
         /// A variation of the Identifier used for holding the funds used for Messenger
-        type HoldIdentifier: HoldIdentifier;
+        type HoldIdentifier: HoldIdentifier<Self>;
         /// Channel reserve fee to open a channel.
         #[pallet::constant]
         type ChannelReserveFee: Get<BalanceOf<Self>>;
@@ -208,7 +222,7 @@ mod pallet {
         ChainId,
         Identity,
         ChannelId,
-        Channel<BalanceOf<T>>,
+        Channel<BalanceOf<T>, T::AccountId>,
         OptionQuery,
     >;
 
@@ -504,6 +518,18 @@ mod pallet {
 
         /// Chain not allowed to open channel
         ChainNotAllowed,
+
+        /// Not enough balance to do the operation
+        InsufficientBalance,
+
+        /// Failed to hold balance
+        BalanceHold,
+
+        /// Not a channel owner
+        ChannelOwner,
+
+        /// Failed to unlock the balance
+        BalanceUnlock,
     }
 
     #[pallet::hooks]
@@ -527,11 +553,22 @@ mod pallet {
             dst_chain_id: ChainId,
             params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
-            ensure_root(origin)?;
-            // TODO(ved): fee for channel open
+            let owner = ensure_signed(origin)?;
 
             // initiate the channel config
-            let channel_id = Self::do_init_channel(dst_chain_id, params)?;
+            let channel_id = Self::do_init_channel(dst_chain_id, params, Some(owner.clone()))?;
+
+            // reserve channel open fees
+            let hold_id = T::HoldIdentifier::messenger_channel(dst_chain_id, channel_id);
+            let amount = T::ChannelReserveFee::get();
+
+            // ensure there is enough free balance to lock
+            ensure!(
+                T::Currency::reducible_balance(&owner, Preservation::Preserve, Fortitude::Polite)
+                    >= amount,
+                Error::<T>::InsufficientBalance
+            );
+            T::Currency::hold(&hold_id, &owner, amount).map_err(|_| Error::<T>::BalanceHold)?;
 
             // send message to dst_chain
             Self::new_outbox_message(
@@ -556,8 +593,13 @@ mod pallet {
             chain_id: ChainId,
             channel_id: ChannelId,
         ) -> DispatchResult {
-            ensure_root(origin)?;
-            Self::do_close_channel(chain_id, channel_id)?;
+            // either owner can close the channel
+            // or sudo can close the channel
+            let close_channel_by = match ensure_signed_or_root(origin)? {
+                Some(owner) => CloseChannelBy::Owner(owner),
+                None => CloseChannelBy::Sudo,
+            };
+            Self::do_close_channel(chain_id, channel_id, close_channel_by)?;
             Self::new_outbox_message(
                 T::SelfChainId::get(),
                 chain_id,
@@ -792,7 +834,7 @@ mod pallet {
                 max_outgoing_messages: 100,
                 fee_model,
             };
-            let channel_id = Self::do_init_channel(dst_chain_id, init_params)?;
+            let channel_id = Self::do_init_channel(dst_chain_id, init_params, None)?;
             Self::do_open_channel(dst_chain_id, channel_id)?;
             Ok(())
         }
@@ -863,7 +905,11 @@ mod pallet {
             Ok(())
         }
 
-        pub(crate) fn do_close_channel(chain_id: ChainId, channel_id: ChannelId) -> DispatchResult {
+        pub(crate) fn do_close_channel(
+            chain_id: ChainId,
+            channel_id: ChannelId,
+            close_channel_by: CloseChannelBy<T::AccountId>,
+        ) -> DispatchResult {
             Channels::<T>::try_mutate(chain_id, channel_id, |maybe_channel| -> DispatchResult {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
 
@@ -871,6 +917,17 @@ mod pallet {
                     channel.state == ChannelState::Open,
                     Error::<T>::InvalidChannelState
                 );
+
+                if let CloseChannelBy::Owner(owner) = close_channel_by {
+                    ensure!(channel.maybe_owner == Some(owner), Error::<T>::ChannelOwner);
+                }
+
+                if let Some(owner) = &channel.maybe_owner {
+                    let hold_id = T::HoldIdentifier::messenger_channel(chain_id, channel_id);
+                    let locked_amount = T::Currency::balance_on_hold(&hold_id, owner);
+                    T::Currency::release(&hold_id, owner, locked_amount, Precision::Exact)
+                        .map_err(|_| Error::<T>::BalanceUnlock)?;
+                }
 
                 channel.state = ChannelState::Closed;
                 Ok(())
@@ -887,6 +944,7 @@ mod pallet {
         pub(crate) fn do_init_channel(
             dst_chain_id: ChainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
+            maybe_owner: Option<T::AccountId>,
         ) -> Result<ChannelId, DispatchError> {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
@@ -915,6 +973,7 @@ mod pallet {
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
                     fee: init_params.fee_model,
+                    maybe_owner,
                 },
             );
 
@@ -999,7 +1058,9 @@ mod pallet {
                     ProtocolMessageRequest::ChannelOpen(params),
                 ))) = msg.payload
                 {
-                    Self::do_init_channel(msg.src_chain_id, params).map_err(|err| {
+                    // channel is being opened without an owner since this is a relay message
+                    // from other chain
+                    Self::do_init_channel(msg.src_chain_id, params, None).map_err(|err| {
                         log::error!(
                             "Error initiating channel: {:?} with chain: {:?}: {:?}",
                             msg.channel_id,
