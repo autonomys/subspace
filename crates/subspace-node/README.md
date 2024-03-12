@@ -14,11 +14,13 @@ It is recommended to follow general farming instructions that explain how to run
 
 Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
 
+`protoc` is required for `libp2p`.
+
 ### Ubuntu
 
 LLVM/Clang and `make` are necessary:
 ```bash
-sudo apt-get install llvm clang cmake make
+sudo apt-get install llvm clang cmake make protobuf-compiler
 ```
 
 ### macOS
@@ -26,7 +28,7 @@ sudo apt-get install llvm clang cmake make
 1. Install via Homebrew:
 
 ```bash
-brew install llvm@15 clang cmake make
+brew install llvm clang cmake make protobuf
 ```
 
 2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
