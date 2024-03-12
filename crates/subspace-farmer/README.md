@@ -10,12 +10,14 @@ It is recommended to follow general farming instructions that explain how to run
 
 Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
 
-`automake`,`libtool` and `pkg-config` on Linux/macOS or CMake on Windows for `hwlocality-sys` (if `numa` features is enabled, it is by default), also LLVM/Clang is necessary.
+`protoc` is required for `libp2p`.
+`automake`,`libtool` and `pkg-config` on Linux/macOS or CMake on Windows for `hwlocality-sys` (if `numa` features is
+enabled, it is by default), also LLVM/Clang is necessary.
 
 ### Ubuntu
 
 ```bash
-sudo apt-get install automake libtool pkg-config llvm clang
+sudo apt-get install automake libtool pkg-config llvm clang protobuf-compiler
 ```
 
 ### macOS
@@ -23,7 +25,7 @@ sudo apt-get install automake libtool pkg-config llvm clang
 1. Install via Homebrew:
 
 ```bash
-brew install automake libtool llvm@15 clang
+brew install automake libtool llvm clang protobuf
 ```
 
 2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
