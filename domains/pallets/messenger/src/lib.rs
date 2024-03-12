@@ -112,12 +112,17 @@ impl ChainAllowlistUpdate {
     }
 }
 
+/// Hold identifier trait for messenger specific balance holds
+pub trait HoldIdentifier {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self;
+}
+
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, FeeModel, Nonce,
-        OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
+        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, FeeModel,
+        HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -127,7 +132,7 @@ mod pallet {
     use alloc::vec::Vec;
     use frame_support::ensure;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::fungible::Mutate;
+    use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
@@ -156,7 +161,9 @@ mod pallet {
         fn get_endpoint_handler(endpoint: &Endpoint)
             -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
-        type Currency: Mutate<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>
+            + InspectHold<Self::AccountId>
+            + MutateHold<Self::AccountId>;
         /// Confirmation depth for XDM coming from chains.
         type ConfirmationDepth: Get<BlockNumberFor<Self>>;
         /// Weight information for extrinsics in this pallet.
@@ -173,6 +180,11 @@ mod pallet {
         type StorageKeys: StorageKeys;
         /// Domain owner provider.
         type DomainOwner: DomainOwner<Self::AccountId>;
+        /// A variation of the Identifier used for holding the funds used for Messenger
+        type HoldIdentifier: HoldIdentifier;
+        /// Channel reserve fee to open a channel.
+        #[pallet::constant]
+        type ChannelReserveFee: Get<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
