@@ -1004,6 +1004,8 @@ impl SingleDiskFarm {
                 .acquire()
                 .await;
             farming_thread_pool.install(|| {
+                let _span_guard = span.enter();
+
                 faster_read_sector_record_chunks_mode(
                     &*plot_file,
                     &farming_plot,
