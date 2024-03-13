@@ -1,5 +1,7 @@
 use crate::auditing::ChunkCandidate;
-use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
+use crate::reading::{
+    read_record_metadata, read_sector_record_chunks, ReadSectorRecordChunksMode, ReadingError,
+};
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
 };
@@ -53,7 +55,7 @@ pub enum ProvingError {
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Proving I/O error: {0}")]
     Io(#[from] io::Error),
     /// Record reading error
     #[error("Record reading error: {0}")]
@@ -152,6 +154,7 @@ where
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
+        mode: ReadSectorRecordChunksMode,
         table_generator: TableGenerator,
     ) -> Result<impl ProvableSolutions<Item = MaybeSolution<RewardAddress>> + 'a, ProvingError>
     where
@@ -169,6 +172,7 @@ where
             kzg,
             erasure_coding,
             self.chunk_candidates,
+            mode,
             table_generator,
         )
     }
@@ -195,6 +199,7 @@ where
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     best_solution_distance: Option<SolutionRange>,
+    mode: ReadSectorRecordChunksMode,
     table_generator: TableGenerator,
 }
 
@@ -242,6 +247,7 @@ where
                 &self.sector_contents_map,
                 &pos_table,
                 &self.sector,
+                self.mode,
             );
             let sector_record_chunks = sector_record_chunks_fut
                 .now_or_never()
@@ -346,6 +352,7 @@ where
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,
+        mode: ReadSectorRecordChunksMode,
         table_generator: TableGenerator,
     ) -> Result<Self, ProvingError> {
         if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
@@ -405,6 +412,7 @@ where
             winning_chunks,
             count,
             best_solution_distance,
+            mode,
             table_generator,
         })
     }

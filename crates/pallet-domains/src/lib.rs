@@ -35,6 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
+use crate::domain_registry::Error as DomainRegistryError;
 use crate::staking::OperatorStatus;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
@@ -55,8 +56,9 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
+    OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
@@ -259,6 +261,10 @@ mod pallet {
         /// The block tree pruning depth.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
+
+        /// Consensus chain slot probability.
+        #[pallet::constant]
+        type ConsensusSlotProbability: Get<(u64, u64)>;
 
         /// The maximum block size limit for all domain.
         #[pallet::constant]
@@ -633,6 +639,10 @@ mod pallet {
         SlotInTheFuture,
         /// The bundle is built on a slot in the past
         SlotInThePast,
+        /// Unable to calculate bundle limit
+        UnableToCalculateBundleLimit,
+        /// Bundle weight exceeds the max bundle weight limit
+        BundleTooHeavy,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1683,11 +1693,20 @@ impl<T: Config> Pallet<T> {
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
 
-        // TODO: check bundle weight with `domain_config.max_block_weight`
+        let domain_bundle_limit = domain_config
+            .calculate_bundle_limit::<T>()
+            .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
 
         ensure!(
-            opaque_bundle.size() <= domain_config.max_block_size,
+            opaque_bundle.size() <= domain_bundle_limit.max_bundle_size,
             BundleError::BundleTooLarge
+        );
+
+        ensure!(
+            opaque_bundle
+                .estimated_weight()
+                .all_lte(domain_bundle_limit.max_bundle_weight),
+            BundleError::BundleTooHeavy
         );
 
         Self::check_extrinsics_root(opaque_bundle)?;
@@ -2025,12 +2044,33 @@ impl<T: Config> Pallet<T> {
             .unwrap_or_default()
     }
 
+    pub fn latest_confirmed_domain_block(
+        domain_id: DomainId,
+    ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
+        LatestConfirmedDomainBlock::<T>::get(domain_id)
+            .map(|block| (block.block_number, block.block_hash))
+    }
+
     /// Returns the domain block limit of the given domain.
     pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
         DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
             max_block_size: domain_obj.domain_config.max_block_size,
             max_block_weight: domain_obj.domain_config.max_block_weight,
         })
+    }
+
+    /// Returns the domain bundle limit of the given domain
+    pub fn domain_bundle_limit(
+        domain_id: DomainId,
+    ) -> Result<Option<DomainBundleLimit>, DomainRegistryError> {
+        let domain_config = match DomainRegistry::<T>::get(domain_id) {
+            None => return Ok(None),
+            Some(domain_obj) => domain_obj.domain_config,
+        };
+
+        let bundle_limit = domain_config.calculate_bundle_limit::<T>()?;
+
+        Ok(Some(bundle_limit))
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.

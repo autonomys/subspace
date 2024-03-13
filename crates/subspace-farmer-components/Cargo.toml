@@ -20,7 +20,8 @@ async-lock = "3.3.0"
 async-trait = "0.1.77"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
-fs4 = "0.8.0"
+# TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
+fs2 = "0.4.3"
 futures = "0.3.29"
 hex = "0.4.3"
 libc = "0.2.152"

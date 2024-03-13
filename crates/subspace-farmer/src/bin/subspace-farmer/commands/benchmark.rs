@@ -11,7 +11,9 @@ use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
+use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
@@ -152,6 +154,8 @@ fn audit(
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
                         };
 
@@ -161,12 +165,15 @@ fn audit(
                 )
             });
         }
-        {
-            let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
-                .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
+        if cfg!(windows) {
+            let plot = RayonFiles::open_with(
+                &disk_farm.join(SingleDiskFarm::PLOT_FILE),
+                UnbufferedIoFileWindows::open,
+            )
+            .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
 
-            group.bench_function("plot/rayon", |b| {
+            group.bench_function("plot/rayon/unbuffered", |b| {
                 b.iter_batched(
                     rand::random,
                     |global_challenge| {
@@ -185,6 +192,43 @@ fn audit(
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
+                            table_generator: &table_generator,
+                        };
+
+                        black_box(plot_audit.audit(black_box(options)))
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+        }
+        {
+            let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
+                .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
+            let plot_audit = PlotAudit::new(&plot);
+
+            group.bench_function("plot/rayon/regular", |b| {
+                b.iter_batched(
+                    rand::random,
+                    |global_challenge| {
+                        let options = PlotAuditOptions::<PosTable> {
+                            public_key: single_disk_farm_info.public_key(),
+                            reward_address: single_disk_farm_info.public_key(),
+                            slot_info: SlotInfo {
+                                slot_number: 0,
+                                global_challenge,
+                                // No solution will be found, pure audit
+                                solution_range: SolutionRange::MIN,
+                                // No solution will be found, pure audit
+                                voting_solution_range: SolutionRange::MIN,
+                            },
+                            sectors_metadata: &sectors_metadata,
+                            kzg: &kzg,
+                            erasure_coding: &erasure_coding,
+                            maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
                         };
 
@@ -252,7 +296,7 @@ fn prove(
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions::<PosTable> {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -267,24 +311,123 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
-                table_generator: &table_generator,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
+                table_generator: &Mutex::new(PosTable::generator()),
             };
 
             let mut audit_results = plot_audit.audit(options).unwrap();
 
-            group.bench_function("plot/single", |b| {
+            group.bench_function("plot/single/concurrent-chunks", |b| {
                 b.iter_batched(
                     || {
                         if let Some(result) = audit_results.pop() {
                             return result;
                         }
 
+                        options.slot_info.global_challenge = rand::random();
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
                     |(_sector_index, mut provable_solutions)| {
-                        while (provable_solutions.next()).is_none() {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/single/whole-sector", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+        }
+        if cfg!(windows) {
+            let plot = RayonFiles::open_with(
+                &disk_farm.join(SingleDiskFarm::PLOT_FILE),
+                UnbufferedIoFileWindows::open,
+            )
+            .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
+            let plot_audit = PlotAudit::new(&plot);
+            let mut options = PlotAuditOptions::<PosTable> {
+                public_key: single_disk_farm_info.public_key(),
+                reward_address: single_disk_farm_info.public_key(),
+                slot_info: SlotInfo {
+                    slot_number: 0,
+                    global_challenge: rand::random(),
+                    // Solution is guaranteed to be found
+                    solution_range: SolutionRange::MAX,
+                    // Solution is guaranteed to be found
+                    voting_solution_range: SolutionRange::MAX,
+                },
+                sectors_metadata: &sectors_metadata,
+                kzg: &kzg,
+                erasure_coding: &erasure_coding,
+                maybe_sector_being_modified: None,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
+                table_generator: &table_generator,
+            };
+
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/rayon/unbuffered/concurrent-chunks", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/rayon/unbuffered/whole-sector", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
                             // Try to create one solution and exit
                         }
                     },
@@ -296,7 +439,7 @@ fn prove(
             let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
-            let options = PlotAuditOptions::<PosTable> {
+            let mut options = PlotAuditOptions::<PosTable> {
                 public_key: single_disk_farm_info.public_key(),
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
@@ -311,23 +454,50 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &table_generator,
             };
+
             let mut audit_results = plot_audit.audit(options).unwrap();
 
-            group.bench_function("plot/rayon", |b| {
+            group.bench_function("plot/rayon/regular/concurrent-chunks", |b| {
                 b.iter_batched(
                     || {
                         if let Some(result) = audit_results.pop() {
                             return result;
                         }
 
+                        options.slot_info.global_challenge = rand::random();
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
                     },
                     |(_sector_index, mut provable_solutions)| {
-                        while (provable_solutions.next()).is_none() {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/rayon/regular/whole-sector", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
                             // Try to create one solution and exit
                         }
                     },

@@ -24,7 +24,8 @@ clap = { version = "4.4.18", features = ["color", "derive"] }
 derive_more = "0.99.17"
 either = "1.8.1"
 event-listener-primitives = "2.0.1"
-fs4 = "0.8.0"
+# TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
+fs2 = "0.4.3"
 futures = "0.3.29"
 futures-timer = "3.0.2"
 hex = "0.4.3"

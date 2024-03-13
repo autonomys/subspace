@@ -1,14 +1,21 @@
 use crate::single_disk_farm::plot_cache::{DiskPlotCache, MaybePieceStoredResult};
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
+#[cfg(not(windows))]
+use std::fs::OpenOptions;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use subspace_core_primitives::{HistorySize, Piece, PieceIndex, Record, SectorIndex};
 use subspace_farmer_components::file_ext::FileExt;
+#[cfg(not(windows))]
+use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed};
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
-use tempfile::tempfile;
+use tempfile::tempdir;
 
 const FAKE_SECTOR_SIZE: usize = 2 * 1024 * 1024;
 const TARGET_SECTOR_COUNT: SectorIndex = 5;
@@ -22,9 +29,28 @@ fn basic() {
         history_size: HistorySize::new(NonZeroU64::MIN),
     });
 
-    let file = Arc::new(tempfile().unwrap());
-    file.preallocate(FAKE_SECTOR_SIZE as u64 * u64::from(TARGET_SECTOR_COUNT))
+    let tempdir = tempdir().unwrap();
+    #[cfg(not(windows))]
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .advise_random_access()
+        .open(tempdir.path().join("plot.bin"))
         .unwrap();
+
+    #[cfg(windows)]
+    let mut file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
+
+    // Align plot file size for disk sector size
+    file.preallocate(
+        (FAKE_SECTOR_SIZE as u64 * u64::from(TARGET_SECTOR_COUNT))
+            .div_ceil(DISK_SECTOR_SIZE as u64)
+            * DISK_SECTOR_SIZE as u64,
+    )
+    .unwrap();
+
+    let file = Arc::new(file);
 
     let piece_index_0 = PieceIndex::from(0);
     let piece_index_1 = PieceIndex::from(1);

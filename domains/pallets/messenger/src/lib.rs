@@ -114,8 +114,8 @@ mod pallet {
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
+        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
     use sp_mmr_primitives::EncodableOpaqueLeaf;
@@ -735,8 +735,8 @@ mod pallet {
             // derive the key as stored on the src_chain.
             let key = StorageKey(
                 T::StorageKeys::outbox_storage_key(
-                    T::SelfChainId::get(),
-                    (xdm.channel_id, xdm.nonce),
+                    xdm.src_chain_id,
+                    (T::SelfChainId::get(), xdm.channel_id, xdm.nonce),
                 )
                 .ok_or(UnknownTransaction::CannotLookup)?,
             );
@@ -817,8 +817,8 @@ mod pallet {
             // derive the key as stored on the src_chain.
             let key = StorageKey(
                 T::StorageKeys::inbox_responses_storage_key(
-                    T::SelfChainId::get(),
-                    (xdm.channel_id, xdm.nonce),
+                    xdm.src_chain_id,
+                    (T::SelfChainId::get(), xdm.channel_id, xdm.nonce),
                 )
                 .ok_or(UnknownTransaction::CannotLookup)?,
             );
@@ -883,7 +883,7 @@ mod pallet {
                 .map_err(|err| {
                     log::error!(
                         target: "runtime::messenger",
-                        "Failed to verify storage proof: {:?}",
+                        "Failed to verify storage proof for confirmed Domain block: {:?}",
                         err
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
@@ -903,7 +903,7 @@ mod pallet {
                 .map_err(|err| {
                     log::error!(
                         target: "runtime::messenger",
-                        "Failed to verify storage proof: {:?}",
+                        "Failed to verify storage proof for message: {:?}",
                         err
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
@@ -912,14 +912,12 @@ mod pallet {
             Ok(msg)
         }
 
-        pub fn outbox_storage_key(message_id: MessageId) -> Vec<u8> {
-            let (channel_id, nonce) = message_id;
-            Outbox::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        pub fn outbox_storage_key(message_key: MessageKey) -> Vec<u8> {
+            Outbox::<T>::hashed_key_for(message_key)
         }
 
-        pub fn inbox_response_storage_key(message_id: MessageId) -> Vec<u8> {
-            let (channel_id, nonce) = message_id;
-            InboxResponses::<T>::hashed_key_for((T::SelfChainId::get(), channel_id, nonce))
+        pub fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
+            InboxResponses::<T>::hashed_key_for(message_key)
         }
     }
 }

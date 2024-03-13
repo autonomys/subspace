@@ -3,6 +3,7 @@ pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotting;
+pub mod unbuffered_io_file_windows;
 
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
@@ -21,10 +22,13 @@ use crate::single_disk_farm::plotting::{
 pub use crate::single_disk_farm::plotting::{
     PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
+#[cfg(windows)]
+use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -32,38 +36,41 @@ use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use rand::prelude::*;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
-use std::io::{Seek, SeekFrom};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fs, io, mem};
-use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, Piece, PieceOffset, PublicKey, Record, SectorId, SectorIndex,
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
+use subspace_farmer_components::file_ext::FileExt;
+#[cfg(not(windows))]
+use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, ReadAtSync};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Semaphore};
+use tokio::sync::{broadcast, Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -255,7 +262,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<NC, PG> {
+pub struct SingleDiskFarmOptions<'a, NC, PG> {
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -288,8 +295,19 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub farming_thread_pool_size: usize,
     /// Thread pool manager used for plotting
     pub plotting_thread_pool_manager: PlottingThreadPoolManager,
+    /// Notification for plotter to start, can be used to delay plotting until some initialization
+    /// has happened externally
+    pub plotting_delay: Option<oneshot::Receiver<()>>,
+    /// Global mutex that can restrict concurrency of resource-intensive operations and make sure
+    /// that those operations that are very sensitive (like proving) have all the resources
+    /// available to them for the highest probability of success
+    pub global_mutex: Arc<AsyncMutex<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
+    /// Barrier before internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_barrier: &'a Barrier,
+    /// Limit concurrency of internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_concurrency: &'a Semaphore,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -303,7 +321,7 @@ pub enum SingleDiskFarmError {
     LikelyAlreadyInUse(io::Error),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
-    #[error("I/O error: {0}")]
+    #[error("Single disk farm I/O error: {0}")]
     Io(#[from] io::Error),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
@@ -384,6 +402,9 @@ pub enum SingleDiskFarmError {
         max_space: u64,
         max_sectors: u16,
     },
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(ThreadPoolBuildError),
 }
 
 /// Errors happening during scrubbing
@@ -558,7 +579,7 @@ pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
     single_disk_farm_info: SingleDiskFarmInfo,
     /// Metadata of all sectors plotted so far
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
     total_sectors_count: SectorIndex,
     span: Span,
@@ -593,7 +614,7 @@ impl SingleDiskFarm {
     ///
     /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskFarmOptions<NC, PG>,
+        options: SingleDiskFarmOptions<'_, NC, PG>,
         disk_farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
@@ -616,10 +637,17 @@ impl SingleDiskFarm {
             record_encoding_concurrency,
             farming_thread_pool_size,
             plotting_thread_pool_manager,
+            plotting_delay,
             farm_during_initial_plotting,
+            global_mutex,
             disable_farm_locking,
+            faster_read_sector_record_chunks_mode_barrier,
+            faster_read_sector_record_chunks_mode_concurrency,
         } = options;
         fs::create_dir_all(&directory)?;
+
+        let span = info_span!("", %disk_farm_index);
+        let span_guard = span.enter();
 
         let identity = Identity::open_or_create(&directory)?;
         let public_key = identity.public_key().to_bytes().into();
@@ -720,8 +748,8 @@ impl SingleDiskFarm {
                 / 100
                 * (100 - u64::from(cache_percentage.get()));
             // Do the rounding to make sure we have exactly as much space as fits whole number of
-            // sectors
-            potentially_plottable_space / single_sector_overhead
+            // sectors, account for disk sector size just in case
+            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
         };
 
         if target_sector_count == 0 {
@@ -741,12 +769,17 @@ impl SingleDiskFarm {
                 allocated_space,
             });
         }
+        let plot_file_size = target_sector_count * sector_size as u64;
+        // Align plot file size for disk sector size
+        let plot_file_size =
+            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
         let cache_capacity = {
             let cache_space = allocated_space
                 - fixed_space_usage
-                - (target_sector_count * single_sector_overhead);
+                - plot_file_size
+                - (sector_metadata_size as u64 * target_sector_count);
             (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         };
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
@@ -767,6 +800,7 @@ impl SingleDiskFarm {
         };
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
+        #[cfg(not(windows))]
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -774,11 +808,18 @@ impl SingleDiskFarm {
             .advise_random_access()
             .open(&metadata_file_path)?;
 
+        #[cfg(not(windows))]
         metadata_file.advise_random_access()?;
 
-        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        #[cfg(windows)]
+        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+
+        let metadata_size = metadata_file.size()?;
         let expected_metadata_size =
             RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
+        // Align plot file size for disk sector size
+        let expected_metadata_size =
+            expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
         let metadata_header = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
@@ -859,27 +900,40 @@ impl SingleDiskFarm {
                 sectors_metadata.push(sector_metadata);
             }
 
-            Arc::new(RwLock::new(sectors_metadata))
+            Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
-        let plot_file = Arc::new(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .advise_random_access()
-                .open(directory.join(Self::PLOT_FILE))?,
-        );
+        #[cfg(not(windows))]
+        let mut plot_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .advise_random_access()
+            .open(directory.join(Self::PLOT_FILE))?;
 
+        #[cfg(not(windows))]
         plot_file.advise_random_access()?;
 
-        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
-        // writes to fail later)
-        plot_file
-            .preallocate(sector_size as u64 * u64::from(target_sector_count))
-            .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
-        // Truncating file (if necessary)
-        plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
+        #[cfg(windows)]
+        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+
+        if plot_file.size()? != plot_file_size {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            plot_file
+                .preallocate(plot_file_size)
+                .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
+            // Truncating file (if necessary)
+            plot_file.set_len(plot_file_size)?;
+
+            // TODO: Hack due to Windows bugs:
+            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
+            if cfg!(windows) {
+                warn!("Farm was resized, farmer restart is needed for optimal performance!")
+            }
+        }
+
+        let plot_file = Arc::new(plot_file);
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
         let plot_cache = DiskPlotCache::new(
@@ -905,7 +959,7 @@ impl SingleDiskFarm {
         let handlers = Arc::<Handlers>::default();
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
-        let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
+        let modifying_sector_index = Arc::<AsyncRwLock<Option<SectorIndex>>>::default();
         let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
@@ -918,8 +972,6 @@ impl SingleDiskFarm {
             (Some(sender), Some(receiver))
         };
 
-        let span = info_span!("", %disk_farm_index);
-
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let kzg = kzg.clone();
@@ -930,6 +982,7 @@ impl SingleDiskFarm {
             let plot_file = Arc::clone(&plot_file);
             let error_sender = Arc::clone(&error_sender);
             let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
 
             move || {
                 let _span_guard = span.enter();
@@ -954,12 +1007,20 @@ impl SingleDiskFarm {
                     record_encoding_concurrency,
                     plotting_thread_pool_manager,
                     stop_receiver: stop_receiver.resubscribe(),
+                    global_mutex: &global_mutex,
                 };
 
                 let plotting_fut = async {
                     if start_receiver.recv().await.is_err() {
                         // Dropped before starting
                         return Ok(());
+                    }
+
+                    if let Some(plotting_delay) = plotting_delay {
+                        if plotting_delay.await.is_err() {
+                            // Dropped before resolving
+                            return Ok(());
+                        }
                     }
 
                     plotting::<_, _, PosTable>(plotting_options).await
@@ -1023,6 +1084,38 @@ impl SingleDiskFarm {
             }
         }));
 
+        let farming_thread_pool = ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()
+            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
+        let farming_plot = farming_thread_pool.install(|| {
+            #[cfg(windows)]
+            {
+                RayonFiles::open_with(
+                    &directory.join(Self::PLOT_FILE),
+                    UnbufferedIoFileWindows::open,
+                )
+            }
+            #[cfg(not(windows))]
+            {
+                RayonFiles::open(&directory.join(Self::PLOT_FILE))
+            }
+        })?;
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
+        let read_sector_record_chunks_mode = {
+            // Error doesn't matter here
+            let _permit = faster_read_sector_record_chunks_mode_concurrency
+                .acquire()
+                .await;
+            farming_thread_pool.install(|| {
+                faster_read_sector_record_chunks_mode(&*plot_file, &farming_plot, sector_size)
+            })?
+        };
+
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
@@ -1032,87 +1125,62 @@ impl SingleDiskFarm {
             let mut stop_receiver = stop_sender.subscribe();
             let node_client = node_client.clone();
             let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
 
             move || {
                 let _span_guard = span.enter();
-                let thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("farming-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(farming_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(FarmingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
+
+                let farming_fut = async move {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return Ok(());
+                    }
+
+                    if let Some(farming_delay) = delay_farmer_receiver {
+                        if farming_delay.await.is_err() {
+                            // Dropped before resolving
+                            return Ok(());
+                        }
+                    }
+
+                    let plot_audit = PlotAudit::new(&farming_plot);
+
+                    let farming_options = FarmingOptions {
+                        public_key,
+                        reward_address,
+                        node_client,
+                        plot_audit,
+                        sectors_metadata,
+                        kzg,
+                        erasure_coding,
+                        handlers,
+                        modifying_sector_index,
+                        slot_info_notifications: slot_info_forwarder_receiver,
+                        thread_pool: farming_thread_pool,
+                        read_sector_record_chunks_mode,
+                        global_mutex,
+                    };
+                    farming::<PosTable, _, _>(farming_options).await
+                };
+
+                Handle::current().block_on(async {
+                    select! {
+                        farming_result = farming_fut.fuse() => {
+                            if let Err(error) = farming_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
                                 error!(
                                     %error,
                                     "Farming failed to send error to background task",
                                 );
                             }
                         }
-                        return;
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
                     }
-                };
-
-                let handle = Handle::current();
-                let span = span.clone();
-                thread_pool.install(move || {
-                    let _span_guard = span.enter();
-
-                    let farming_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
-                            return Ok(());
-                        }
-
-                        if let Some(farming_delay) = delay_farmer_receiver {
-                            if farming_delay.await.is_err() {
-                                // Dropped before resolving
-                                return Ok(());
-                            }
-                        }
-
-                        let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                        let plot_audit = PlotAudit::new(&plot);
-
-                        let farming_options = FarmingOptions {
-                            public_key,
-                            reward_address,
-                            node_client,
-                            plot_audit,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_notifications: slot_info_forwarder_receiver,
-                        };
-                        farming::<PosTable, _, _>(farming_options).await
-                    };
-
-                    handle.block_on(async {
-                        select! {
-                            farming_result = farming_fut.fuse() => {
-                                if let Err(error) = farming_result
-                                    && let Some(error_sender) = error_sender.lock().take()
-                                    && let Err(error) = error_sender.send(error.into())
-                                {
-                                    error!(
-                                        %error,
-                                        "Farming failed to send error to background task",
-                                    );
-                                }
-                            }
-                            _ = stop_receiver.recv().fuse() => {
-                                // Nothing, just exit
-                            }
-                        }
-                    });
-                })
+                });
             }
         });
         let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);
@@ -1133,6 +1201,8 @@ impl SingleDiskFarm {
             Arc::clone(&sectors_metadata),
             erasure_coding,
             modifying_sector_index,
+            read_sector_record_chunks_mode,
+            global_mutex,
         );
 
         let reading_join_handle = tokio::task::spawn_blocking({
@@ -1179,6 +1249,8 @@ impl SingleDiskFarm {
             Ok(())
         }));
 
+        drop(span_guard);
+
         let farm = Self {
             farmer_protocol_info: farmer_app_info.protocol_info,
             single_disk_farm_info,
@@ -1221,11 +1293,16 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
+        #[cfg(not(windows))]
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        #[cfg(windows)]
+        let mut metadata_file =
+            UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+
+        let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
 
         let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
@@ -1512,7 +1589,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = metadata_file.advise_sequential_access();
 
-            let metadata_size = match metadata_file.seek(SeekFrom::End(0)) {
+            let metadata_size = match metadata_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {
@@ -1613,7 +1690,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = plot_file.advise_sequential_access();
 
-            let plot_size = match plot_file.seek(SeekFrom::End(0)) {
+            let plot_size = match plot_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {
@@ -1880,7 +1957,7 @@ impl SingleDiskFarm {
             // Error doesn't matter here
             let _ = cache_file.advise_sequential_access();
 
-            let cache_size = match cache_file.seek(SeekFrom::End(0)) {
+            let cache_size = match cache_file.size() {
                 Ok(metadata_size) => metadata_size,
                 Err(error) => {
                     return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize {
@@ -1995,4 +2072,63 @@ fn write_dummy_sector_metadata(
             offset: sector_offset,
             error,
         })
+}
+
+fn faster_read_sector_record_chunks_mode<OP, FP>(
+    original_plot: &OP,
+    farming_plot: &FP,
+    sector_size: usize,
+) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
+where
+    OP: FileExt + Sync,
+    FP: ReadAtSync,
+{
+    info!("Benchmarking faster proving method");
+
+    let mut sector_bytes = vec![0u8; sector_size];
+
+    original_plot.read_exact_at(&mut sector_bytes, 0)?;
+
+    if sector_bytes.iter().all(|byte| *byte == 0) {
+        thread_rng().fill_bytes(&mut sector_bytes);
+        original_plot.write_all_at(&sector_bytes, 0)?;
+    }
+
+    let mut fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+    let mut fastest_time = Duration::MAX;
+
+    for _ in 0..3 {
+        // A lot simplified version of concurrent chunks
+        {
+            let start = Instant::now();
+            (0..Record::NUM_S_BUCKETS)
+                .into_par_iter()
+                .try_for_each(|_| {
+                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                        * Scalar::FULL_BYTES;
+                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+                })?;
+            let elapsed = start.elapsed();
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+                fastest_time = elapsed;
+            }
+        }
+        // Reading the whole sector at once
+        {
+            let start = Instant::now();
+            farming_plot.read_at(&mut sector_bytes, 0)?;
+            let elapsed = start.elapsed();
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::WholeSector;
+                fastest_time = elapsed;
+            }
+        }
+    }
+
+    debug!(?fastest_mode, "Faster proving method found");
+
+    Ok(fastest_mode)
 }

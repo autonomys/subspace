@@ -633,9 +633,32 @@ where
             }
             Ok(())
         }
+        InvalidBundleType::InvalidXDM(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
 
-        // TODO: implement the other invalid bundle types
-        _ => Err(VerificationError::InvalidProof),
+            let is_valid_xdm = get_fraud_proof_verification_info(
+                H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
+                FraudProofVerificationInfoRequest::XDMValidationCheck {
+                    domain_id: invalid_bundles_fraud_proof.domain_id,
+                    opaque_extrinsic: extrinsic,
+                },
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_xdm_validation_check)
+            .ok_or(VerificationError::FailedToValidateXDM)?;
+
+            // Proof to be considered valid only,
+            // If it is true invalid fraud proof then extrinsic must be an invalid xdm and
+            // If it is false invalid fraud proof then extrinsic must be a valid xdm
+            if is_valid_xdm != invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
+                Ok(())
+            } else {
+                Err(VerificationError::InvalidProof)
+            }
+        }
     }
 }
 

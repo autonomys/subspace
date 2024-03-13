@@ -386,6 +386,9 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Failed to check if a given extrinsic is inherent or not.
+    #[cfg_attr(feature = "thiserror", error("Failed to validate given XDM"))]
+    FailedToValidateXDM,
     /// Failed to check if a given extrinsic is decodable or not.
     #[cfg_attr(
         feature = "thiserror",

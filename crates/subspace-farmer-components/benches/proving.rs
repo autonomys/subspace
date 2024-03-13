@@ -20,6 +20,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
@@ -176,9 +177,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         if !solution_candidates
             .clone()
-            .into_solutions(reward_address, kzg, erasure_coding, |seed: &PosSeed| {
-                table_generator.generate_parallel(seed)
-            })
+            .into_solutions(
+                reward_address,
+                kzg,
+                erasure_coding,
+                ReadSectorRecordChunksMode::ConcurrentChunks,
+                |seed: &PosSeed| table_generator.generate_parallel(seed),
+            )
             .unwrap()
             .is_empty()
         {
@@ -199,6 +204,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         black_box(reward_address),
                         black_box(kzg),
                         black_box(erasure_coding),
+                        black_box(ReadSectorRecordChunksMode::ConcurrentChunks),
                         black_box(|seed: &PosSeed| table_generator.lock().generate_parallel(seed)),
                     )
                     .unwrap()
@@ -266,6 +272,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                                     black_box(reward_address),
                                     black_box(kzg),
                                     black_box(erasure_coding),
+                                    black_box(ReadSectorRecordChunksMode::ConcurrentChunks),
                                     black_box(|seed: &PosSeed| {
                                         table_generator.lock().generate_parallel(seed)
                                     }),
