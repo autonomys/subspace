@@ -976,6 +976,45 @@ impl SingleDiskFarm {
             (Some(sender), Some(receiver))
         };
 
+        let farming_thread_pool = ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()
+            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
+        let farming_plot = farming_thread_pool.install(|| {
+            #[cfg(windows)]
+            {
+                RayonFiles::open_with(
+                    &directory.join(Self::PLOT_FILE),
+                    UnbufferedIoFileWindows::open,
+                )
+            }
+            #[cfg(not(windows))]
+            {
+                RayonFiles::open(&directory.join(Self::PLOT_FILE))
+            }
+        })?;
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
+        let read_sector_record_chunks_mode = {
+            // Error doesn't matter here
+            let _permit = faster_read_sector_record_chunks_mode_concurrency
+                .acquire()
+                .await;
+            farming_thread_pool.install(|| {
+                faster_read_sector_record_chunks_mode(
+                    &*plot_file,
+                    &farming_plot,
+                    sector_size,
+                    metadata_header.plotted_sector_count,
+                )
+            })?
+        };
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let kzg = kzg.clone();
@@ -1087,40 +1126,6 @@ impl SingleDiskFarm {
                     .map_err(BackgroundTaskError::Farming)
             }
         }));
-
-        let farming_thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
-            .num_threads(farming_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()
-            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
-        let farming_plot = farming_thread_pool.install(|| {
-            #[cfg(windows)]
-            {
-                RayonFiles::open_with(
-                    &directory.join(Self::PLOT_FILE),
-                    UnbufferedIoFileWindows::open,
-                )
-            }
-            #[cfg(not(windows))]
-            {
-                RayonFiles::open(&directory.join(Self::PLOT_FILE))
-            }
-        })?;
-
-        faster_read_sector_record_chunks_mode_barrier.wait().await;
-
-        let read_sector_record_chunks_mode = {
-            // Error doesn't matter here
-            let _permit = faster_read_sector_record_chunks_mode_concurrency
-                .acquire()
-                .await;
-            farming_thread_pool.install(|| {
-                faster_read_sector_record_chunks_mode(&*plot_file, &farming_plot, sector_size)
-            })?
-        };
-
-        faster_read_sector_record_chunks_mode_barrier.wait().await;
 
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
@@ -2084,6 +2089,7 @@ fn faster_read_sector_record_chunks_mode<OP, FP>(
     original_plot: &OP,
     farming_plot: &FP,
     sector_size: usize,
+    mut plotted_sector_count: SectorIndex,
 ) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
 where
     OP: FileExt + Sync,
@@ -2095,15 +2101,21 @@ where
 
     original_plot.read_exact_at(&mut sector_bytes, 0)?;
 
-    if sector_bytes.iter().all(|byte| *byte == 0) {
+    if plotted_sector_count == 0 {
         thread_rng().fill_bytes(&mut sector_bytes);
         original_plot.write_all_at(&sector_bytes, 0)?;
+
+        plotted_sector_count = 1;
     }
 
     let mut fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
     let mut fastest_time = Duration::MAX;
 
     for _ in 0..3 {
+        let sector_offset =
+            sector_size as u64 * thread_rng().gen_range(0..plotted_sector_count) as u64;
+        let farming_plot = farming_plot.offset(sector_offset);
+
         // A lot simplified version of concurrent chunks
         {
             let start = Instant::now();
