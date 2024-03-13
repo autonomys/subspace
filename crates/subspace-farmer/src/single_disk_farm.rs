@@ -83,6 +83,10 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
 const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
+/// Limit for reads in internal benchmark.
+///
+/// 4 seconds is proving time, hence 3 seconds for reads.
+const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -2109,6 +2113,14 @@ where
                     farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
                 })?;
             let elapsed = start.elapsed();
+
+            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
+                debug!(
+                    ?elapsed,
+                    "Proving method with chunks reading is too slow, using whole sector"
+                );
+                return Ok(ReadSectorRecordChunksMode::WholeSector);
+            }
 
             if fastest_time > elapsed {
                 fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
