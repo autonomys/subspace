@@ -1120,6 +1120,8 @@ impl SingleDiskFarm {
             })?
         };
 
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
