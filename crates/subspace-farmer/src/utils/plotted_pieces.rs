@@ -1,4 +1,5 @@
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
+use rand::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -34,7 +35,7 @@ impl PlottedPieces {
         self.pieces.contains_key(piece_index)
     }
 
-    /// Read plotted piece from oneof the farms.
+    /// Read plotted piece from one of the farms.
     ///
     /// If piece doesn't exist `None` is returned, if by the time future is polled piece is no
     /// longer in the plot, future will resolve with `None`.
@@ -44,7 +45,7 @@ impl PlottedPieces {
     ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
         let piece_details = match self.pieces.get(piece_index) {
             Some(piece_details) => piece_details
-                .first()
+                .choose(&mut thread_rng())
                 .copied()
                 .expect("Empty lists are not stored in the map; qed"),
             None => {
