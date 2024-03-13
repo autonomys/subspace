@@ -1633,8 +1633,19 @@ impl<T: Config> Pallet<T> {
         }
 
         // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
-        let produced_after_block_number = T::BlockSlot::slot_produced_after(slot_number.into())
-            .ok_or(BundleError::SlotInThePast)?;
+        let produced_after_block_number =
+            match T::BlockSlot::slot_produced_after(slot_number.into()) {
+                Some(n) => n,
+                None => {
+                    // There is no slot for the genesis block, if the current block is less than `BundleLongevity`
+                    // than we assume the slot is produced after the genesis block.
+                    if current_block_number > T::BundleLongevity::get().into() {
+                        return Err(BundleError::SlotInThePast);
+                    } else {
+                        Zero::zero()
+                    }
+                }
+            };
         let produced_after_block_hash = if produced_after_block_number == current_block_number {
             // The hash of the current block is only available in the next block thus use the parent hash here
             frame_system::Pallet::<T>::parent_hash()
