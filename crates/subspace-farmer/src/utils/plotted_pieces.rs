@@ -1,4 +1,4 @@
-use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -16,13 +16,13 @@ struct PieceDetails {
 /// Wrapper data structure for pieces plotted under multiple plots.
 #[derive(Debug)]
 pub struct PlottedPieces {
-    readers: Vec<PieceReader>,
+    readers: Vec<DiskPieceReader>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
 }
 
 impl PlottedPieces {
     /// Initialize with readers for each farm
-    pub fn new(readers: Vec<PieceReader>) -> Self {
+    pub fn new(readers: Vec<DiskPieceReader>) -> Self {
         Self {
             readers,
             pieces: HashMap::new(),

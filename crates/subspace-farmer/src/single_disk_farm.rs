@@ -14,7 +14,7 @@ use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
-use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
@@ -613,7 +613,7 @@ pub struct SingleDiskFarm {
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
     plot_cache: DiskPlotCache,
-    piece_reader: PieceReader,
+    piece_reader: DiskPieceReader,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
@@ -975,7 +975,7 @@ impl SingleDiskFarm {
             })
         }));
 
-        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+        let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
             plot_file,
@@ -1517,7 +1517,7 @@ impl SingleDiskFarm {
     }
 
     /// Get piece reader to read plotted pieces later
-    pub fn piece_reader(&self) -> PieceReader {
+    pub fn piece_reader(&self) -> DiskPieceReader {
         self.piece_reader.clone()
     }
 

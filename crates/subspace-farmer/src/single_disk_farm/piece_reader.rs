@@ -24,11 +24,11 @@ struct ReadPieceRequest {
 
 /// Wrapper data structure that can be used to read pieces from single disk farm
 #[derive(Debug, Clone)]
-pub struct PieceReader {
+pub struct DiskPieceReader {
     read_piece_sender: mpsc::Sender<ReadPieceRequest>,
 }
 
-impl PieceReader {
+impl DiskPieceReader {
     /// Creates new piece reader instance and background future that handles reads internally.
     ///
     /// NOTE: Background future is async, but does blocking operations and should be running in
