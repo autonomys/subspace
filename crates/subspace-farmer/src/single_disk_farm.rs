@@ -2138,6 +2138,8 @@ where
                 return Ok(ReadSectorRecordChunksMode::WholeSector);
             }
 
+            debug!(?elapsed, "Chunks");
+
             if fastest_time > elapsed {
                 fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
                 fastest_time = elapsed;
@@ -2149,6 +2151,8 @@ where
             farming_plot.read_at(&mut sector_bytes, 0)?;
             let elapsed = start.elapsed();
 
+            debug!(?elapsed, "Whole sector");
+
             if fastest_time > elapsed {
                 fastest_mode = ReadSectorRecordChunksMode::WholeSector;
                 fastest_time = elapsed;
@@ -2156,7 +2160,7 @@ where
         }
     }
 
-    debug!(?fastest_mode, "Faster proving method found");
+    info!(?fastest_mode, "Faster proving method found");
 
     Ok(fastest_mode)
 }
