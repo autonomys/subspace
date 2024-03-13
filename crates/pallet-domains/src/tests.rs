@@ -223,8 +223,8 @@ impl BlockSlot<Test> for DummyBlockSlot {
         Some(0u64.into())
     }
 
-    fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> BlockNumberFor<Test> {
-        0u64
+    fn slot_produced_after(_slot: sp_consensus_slots::Slot) -> Option<BlockNumberFor<Test>> {
+        Some(0u64)
     }
 }
 

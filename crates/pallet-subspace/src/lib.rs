@@ -244,7 +244,7 @@ pub mod pallet {
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
 
-        /// How many block slot to keep
+        /// Maximum number of block number to block slot mappings to keep (oldest pruned first).
         #[pallet::constant]
         type BlockSlotCount: Get<u32>;
     }
@@ -381,6 +381,7 @@ pub mod pallet {
     #[pallet::getter(fn current_slot)]
     pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
 
+    /// Bounded mapping from block number to slot
     #[pallet::storage]
     #[pallet::getter(fn block_slots)]
     pub type BlockSlots<T: Config> =

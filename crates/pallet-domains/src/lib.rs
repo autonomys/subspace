@@ -91,9 +91,8 @@ pub trait BlockSlot<T: frame_system::Config> {
     // Return the future slot of the given `block_number`
     fn future_slot(block_number: BlockNumberFor<T>) -> Option<sp_consensus_slots::Slot>;
 
-    // Return the latest block number whose slot is less than the given `to_check` slot,
-    // return zero if no such block found.
-    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> BlockNumberFor<T>;
+    // Return the latest block number whose slot is less than the given `to_check` slot
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumberFor<T>>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -1624,7 +1623,8 @@ impl<T: Config> Pallet<T> {
         }
 
         // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
-        let produced_after_block_number = T::BlockSlot::slot_produced_after(slot_number.into());
+        let produced_after_block_number = T::BlockSlot::slot_produced_after(slot_number.into())
+            .ok_or(BundleError::SlotInThePast)?;
         let produced_after_block_hash = if produced_after_block_number == current_block_number {
             // The hash of the current block is only available in the next block thus use the parent hash here
             frame_system::Pallet::<T>::parent_hash()

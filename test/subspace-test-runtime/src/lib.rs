@@ -642,6 +642,10 @@ parameter_types! {
 // keep enough block slot for bundle validation
 const_assert!(BlockSlotCount::get() >= 2 && BlockSlotCount::get() > BundleLongevity::get());
 
+// `BlockHashCount` must greater than `BlockSlotCount` because we need to use the block number found
+// with `BlockSlotCount` to get the block hash.
+const_assert!(BlockHashCount::get() > BlockSlotCount::get());
+
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
@@ -655,14 +659,14 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
             .map(|slot| *slot + Slot::from(BlockAuthoringDelay::get()))
     }
 
-    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> BlockNumber {
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumber> {
         let block_slots = Subspace::block_slots();
         for (block_number, slot) in block_slots.into_iter().rev() {
             if to_check > slot {
-                return block_number;
+                return Some(block_number);
             }
         }
-        Zero::zero()
+        None
     }
 }
 
