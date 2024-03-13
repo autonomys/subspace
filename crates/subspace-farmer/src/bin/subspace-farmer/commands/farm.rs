@@ -631,6 +631,7 @@ where
     let (single_disk_farms, plotting_delay_senders) = tokio::task::block_in_place(|| {
         let handle = Handle::current();
         let global_mutex = Arc::default();
+        let info_mutex = &Mutex::<()>::default();
         let faster_read_sector_record_chunks_mode_barrier = &Barrier::new(disk_farms.len());
         let faster_read_sector_record_chunks_mode_concurrency = &Semaphore::new(1);
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
@@ -696,6 +697,8 @@ where
                     };
 
                     if !no_info {
+                        let _info_guard = info_mutex.lock();
+
                         let info = single_disk_farm.info();
                         println!("Single disk farm {disk_farm_index}:");
                         println!("  ID: {}", info.id());
