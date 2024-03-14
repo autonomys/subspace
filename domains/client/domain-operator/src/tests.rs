@@ -3029,7 +3029,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
+    produce_blocks!(ferdie, alice, 10).await.unwrap();
     let bundle_to_tx = |opaque_bundle| {
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
@@ -3062,21 +3062,23 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         )
     };
 
-    let (_, bundle1) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let (_, bundle2) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     ferdie.clear_tx_pool().await.unwrap();
 
-    // Produce one block that only included `bundle1`
-    produce_block_with!(
-        ferdie.produce_block_with_extrinsics(vec![bundle_to_tx(bundle1)]),
-        alice
-    )
-    .await
-    .unwrap();
+    // Bundle is valid and can submit to tx pool for 5 consensus blocks
+    for _ in 0..5 {
+        ferdie
+            .submit_transaction(bundle_to_tx(bundle.clone()))
+            .await
+            .unwrap();
 
-    // `bundle2` will be rejected because its PoT is stale
+        ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
+        ferdie.clear_tx_pool().await.unwrap();
+    }
+
+    // Bundle will be rejected because its PoT is stale now
     match ferdie
-        .submit_transaction(bundle_to_tx(bundle2))
+        .submit_transaction(bundle_to_tx(bundle))
         .await
         .unwrap_err()
     {
@@ -3085,6 +3087,20 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         }
         e => panic!("Unexpected error: {e}"),
     }
+
+    // Produce a bundle with slot newer than the consensus block slot but less its the future slot
+    let slot = ferdie.produce_slot();
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bundle_to_tx(bundle)])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
 
     // Bundle with unknow PoT and in future slot will be rejected before entring the tx pool
     let (valid_slot, valid_pot) = ferdie.produce_slot();

@@ -243,6 +243,10 @@ pub mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Maximum number of block number to block slot mappings to keep (oldest pruned first).
+        #[pallet::constant]
+        type BlockSlotCount: Get<u32>;
     }
 
     #[derive(Debug, Default, Encode, Decode, TypeInfo)]
@@ -371,10 +375,17 @@ pub mod pallet {
     #[pallet::getter(fn genesis_slot)]
     pub type GenesisSlot<T> = StorageValue<_, Slot, ValueQuery>;
 
+    // TODO: Replace `CurrentSlot` with `BlockSlots`
     /// Current slot number.
     #[pallet::storage]
     #[pallet::getter(fn current_slot)]
     pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
+
+    /// Bounded mapping from block number to slot
+    #[pallet::storage]
+    #[pallet::getter(fn block_slots)]
+    pub type BlockSlots<T: Config> =
+        StorageValue<_, BoundedBTreeMap<BlockNumberFor<T>, Slot, T::BlockSlotCount>, ValueQuery>;
 
     // TODO: Clarify when this value is updated (when it is updated, right now it is not)
     /// Number of iterations for proof of time per slot
@@ -781,6 +792,15 @@ impl<T: Config> Pallet<T> {
 
         // The slot number of the current block being initialized.
         CurrentSlot::<T>::put(pre_digest.slot());
+
+        BlockSlots::<T>::mutate(|block_slots| {
+            if let Some(to_remove) = block_number.checked_sub(&T::BlockSlotCount::get().into()) {
+                block_slots.remove(&to_remove);
+            }
+            block_slots
+                .try_insert(block_number, pre_digest.slot())
+                .expect("one entry just removed before inserting; qed");
+        });
 
         {
             let farmer_public_key = pre_digest.solution().public_key.clone();
