@@ -1106,11 +1106,13 @@ where
                     reward_signing_notification_stream: reward_signing_notification_stream.clone(),
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
+
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
                     backend: backend.clone(),
+                    node: node.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

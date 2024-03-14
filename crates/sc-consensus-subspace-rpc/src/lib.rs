@@ -62,11 +62,13 @@ use subspace_core_primitives::{
     Solution,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
-use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::libp2p::{Multiaddr, PeerId};
+use subspace_networking::Node;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
+
 use tracing::{debug, error, warn};
 
 /// This is essentially equal to expected number of votes per block, one more is added implicitly by
@@ -128,6 +130,9 @@ pub trait SubspaceRpcApi {
 
     #[method(name = "subspace_lastSegmentHeaders")]
     async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>>;
+
+    #[method(name = "subspace_connectedPeers")]
+    async fn connected_peers(&self) -> RpcResult<Vec<PeerId>>;
 }
 
 #[derive(Default)]
@@ -189,6 +194,7 @@ where
     pub deny_unsafe: DenyUnsafe,
     /// Kzg instance
     pub kzg: Kzg,
+    pub node: Node,
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
@@ -218,6 +224,7 @@ where
     max_pieces_in_sector: u16,
     kzg: Kzg,
     deny_unsafe: DenyUnsafe,
+    node: Node,
     _block: PhantomData<Block>,
 }
 
@@ -275,6 +282,7 @@ where
             max_pieces_in_sector,
             kzg: config.kzg,
             deny_unsafe: config.deny_unsafe,
+            node: config.node,
             _block: PhantomData,
         })
     }
@@ -781,5 +789,13 @@ where
             .collect::<Vec<_>>();
 
         Ok(last_segment_headers)
+    }
+
+    async fn connected_peers(&self) -> RpcResult<Vec<PeerId>> {
+        Ok(self
+            .node
+            .connected_peers()
+            .await
+            .expect("Failed to get connected peers "))
     }
 }

@@ -45,6 +45,7 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::BlockNumber;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::Node;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
 use substrate_frame_rpc_system::{System, SystemApiServer};
@@ -82,6 +83,8 @@ where
     pub kzg: Kzg,
     /// Backend used by the node.
     pub backend: Arc<B>,
+    /// Node used for network
+    pub node: Node,
 }
 
 /// Instantiate all full RPC extensions.
@@ -123,6 +126,7 @@ where
         sync_oracle,
         kzg,
         backend,
+        node,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -145,6 +149,7 @@ where
             sync_oracle,
             kzg,
             deny_unsafe,
+            node,
         })?
         .into_rpc(),
     )?;
