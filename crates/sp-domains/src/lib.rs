@@ -32,6 +32,8 @@ extern crate alloc;
 
 use crate::storage::{RawGenesis, StorageKey};
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -60,11 +62,12 @@ use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_trie::TrieLayout;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{bidirectional_distance, Blake3Hash, PotOutput, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
@@ -1180,6 +1183,29 @@ pub trait DomainsTransfersTracker<Balance> {
     fn reduce_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 }
 
+/// Trait to check domain owner.
+pub trait DomainOwner<AccountId> {
+    /// Returns true if the account is the domain owner.
+    fn is_domain_owner(domain_id: DomainId, acc: AccountId) -> bool;
+}
+
+impl<AccountId> DomainOwner<AccountId> for () {
+    fn is_domain_owner(_domain_id: DomainId, _acc: AccountId) -> bool {
+        false
+    }
+}
+
+/// Post hook to know if the domain had bundle submitted in the previous block.
+pub trait DomainBundleSubmitted {
+    /// Called in the next block initialisation if there was a domain bundle in the previous block.
+    /// This hook if called for domain represents that there is a new domain block for parent consensus block.
+    fn domain_bundle_submitted(domain_id: DomainId);
+}
+
+impl DomainBundleSubmitted for () {
+    fn domain_bundle_submitted(_domain_id: DomainId) {}
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
@@ -1187,6 +1213,15 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     <DomainHeader as HeaderT>::Hash,
     Balance,
 >;
+
+/// Domain chains allowlist updates.
+#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+pub struct DomainAllowlistUpdates {
+    /// Chains that are allowed to open channel with this chain.
+    pub allow_chains: BTreeSet<ChainId>,
+    /// Chains that are not allowed to open channel with this chain.
+    pub remove_chains: BTreeSet<ChainId>,
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.

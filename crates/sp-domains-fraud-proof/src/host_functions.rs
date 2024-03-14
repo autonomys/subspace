@@ -2,8 +2,8 @@
 extern crate alloc;
 
 use crate::{
-    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
-    StorageKeyRequest,
+    DomainChainAllowlistUpdateExtrinsic, FraudProofVerificationInfoRequest,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -24,6 +24,7 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
 use sp_externalities::Extensions;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::{create_proof_check_backend, Error, OverlayedChanges, StateMachine};
@@ -118,7 +119,9 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256> + Into<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>
+        + BundleProducerElectionApi<Block, Balance>
+        + MessengerApi<Block>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -144,6 +147,26 @@ where
 
         domain_stateless_runtime
             .construct_timestamp_extrinsic(timestamp)
+            .ok()
+            .map(|ext| ext.encode())
+    }
+
+    fn derive_domain_chain_allowlist_update_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+    ) -> Option<Vec<u8>> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let updates = runtime_api
+            .domain_chains_allowlist_update(consensus_block_hash.into(), domain_id)
+            .ok()??;
+
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+
+        domain_stateless_runtime
+            .construct_domain_update_chain_allowlist_extrinsic(updates)
             .ok()
             .map(|ext| ext.encode())
     }
@@ -429,7 +452,9 @@ where
     DomainBlock::Hash: From<H256> + Into<H256>,
     NumberFor<DomainBlock>: From<BlockNumber>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>
+        + BundleProducerElectionApi<Block, Balance>
+        + MessengerApi<Block>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -553,6 +578,18 @@ where
             } => Some(FraudProofVerificationInfoResponse::XDMValidationCheck(
                 self.is_valid_xdm(consensus_block_hash, domain_id, opaque_extrinsic),
             )),
+            FraudProofVerificationInfoRequest::DomainChainsAllowlistUpdateExtrinsic(domain_id) => {
+                Some(
+                    FraudProofVerificationInfoResponse::DomainChainAllowlistUpdateExtrinsic(
+                        self.derive_domain_chain_allowlist_update_extrinsic(
+                            consensus_block_hash,
+                            domain_id,
+                        )
+                        .map(DomainChainAllowlistUpdateExtrinsic::EncodedExtrinsic)
+                        .unwrap_or(DomainChainAllowlistUpdateExtrinsic::None),
+                    ),
+                )
+            }
         }
     }
 

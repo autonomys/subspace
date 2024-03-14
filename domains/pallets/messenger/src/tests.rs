@@ -6,8 +6,8 @@ use crate::mock::{
     AccountId, Balance, TestExternalities,
 };
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
-    Outbox, OutboxMessageResult, OutboxResponses, Pallet, U256,
+    ChainAllowlist, Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox,
+    InboxResponses, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet, U256,
 };
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
@@ -22,12 +22,16 @@ use sp_messenger::messages::{
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::Convert;
 use sp_trie::StorageProof;
+use std::collections::BTreeSet;
 
 fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
     let params = InitiateChannelParams {
         max_outgoing_messages: 100,
         fee_model,
     };
+
+    let list = BTreeSet::from([chain_id]);
+    ChainAllowlist::<chain_a::Runtime>::put(list);
     assert_ok!(Messenger::initiate_channel(
         RuntimeOrigin::root(),
         chain_id,
@@ -483,6 +487,8 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     };
 
     let channel = Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap_or_else(|| {
+        let list = BTreeSet::from([dst_chain_id]);
+        ChainAllowlist::<Runtime>::put(list);
         Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params).unwrap();
         Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap()
     });

@@ -75,7 +75,7 @@ where
     CBlock::Hash: From<H256>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + MessengerApi<CBlock>
         + DomainsApi<CBlock, Block::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {

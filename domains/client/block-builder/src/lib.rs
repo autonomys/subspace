@@ -179,7 +179,8 @@ where
 
         if let Some(inherent_data) = maybe_inherent_data {
             let inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
-            for inherent_extrinsic in inherent_extrinsics {
+            // reverse and push the inherents so that order is maintained
+            for inherent_extrinsic in inherent_extrinsics.into_iter().rev() {
                 extrinsics.push_front(inherent_extrinsic)
             }
         }

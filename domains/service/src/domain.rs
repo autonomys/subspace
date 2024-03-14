@@ -74,7 +74,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
@@ -85,7 +85,7 @@ where
         + TaggedTransactionQueue<Block>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
     AccountId: Encode + Decode,
 {
@@ -147,12 +147,10 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Header>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
-        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
+    CClient::Api:
+        DomainsApi<CBlock, Header> + MessengerApi<CBlock> + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
-    RuntimeApi::RuntimeApi:
-        TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>> + ApiExt<Block>,
+    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block> + MessengerApi<Block> + ApiExt<Block>,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi>>,
 {
     let telemetry = config
@@ -276,7 +274,7 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header>
         + RelayerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + MessengerApi<CBlock>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
@@ -291,7 +289,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>

@@ -82,7 +82,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -136,7 +136,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + RelayerApi<Block, NumberFor<Block>, <CBlock as BlockT>::Hash>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,

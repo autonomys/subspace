@@ -9,9 +9,10 @@ use domain_runtime_primitives::{AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
-use domain_test_service::Sr25519Keyring::{self, Ferdie};
+use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{construct_extrinsic_generic, GENESIS_DOMAIN_ID};
 use futures::StreamExt;
+use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
@@ -3222,10 +3223,10 @@ async fn test_cross_domains_messages_should_work() {
 
     let tokio_handle = tokio::runtime::Handle::current();
 
-    // Start Ferdie
+    // Start Ferdie with Alice Key since that is the sudo key
     let mut ferdie = MockConsensusNode::run_with_finalization_depth(
         tokio_handle.clone(),
-        Ferdie,
+        Sr25519Alice,
         BasePath::new(directory.path().join("ferdie")),
         // finalization depth
         Some(10),
@@ -3244,6 +3245,35 @@ async fn test_cross_domains_messages_should_work() {
     ferdie.start_cross_domain_gossip_message_worker();
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: GENESIS_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Open channel between the Consensus chain and EVM domains
     let fee_model = FeeModel { relay_fee: 1 };
@@ -3278,7 +3308,7 @@ async fn test_cross_domains_messages_should_work() {
         .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
             dst_location: pallet_transporter::Location {
                 chain_id: ChainId::Consensus,
-                account_id: AccountIdConverter::convert(Ferdie.into()),
+                account_id: AccountIdConverter::convert(Sr25519Alice.into()),
             },
             amount: transfer_amount,
         })
