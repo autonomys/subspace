@@ -1,8 +1,9 @@
-use crate::single_disk_farm::piece_reader::DiskPieceReader;
+use crate::farm::PieceReader;
 use rand::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
@@ -17,13 +18,13 @@ struct PieceDetails {
 /// Wrapper data structure for pieces plotted under multiple plots.
 #[derive(Debug)]
 pub struct PlottedPieces {
-    readers: Vec<DiskPieceReader>,
+    readers: Vec<Arc<dyn PieceReader>>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
 }
 
 impl PlottedPieces {
     /// Initialize with readers for each farm
-    pub fn new(readers: Vec<DiskPieceReader>) -> Self {
+    pub fn new(readers: Vec<Arc<dyn PieceReader>>) -> Self {
         Self {
             readers,
             pieces: HashMap::new(),
@@ -41,9 +42,9 @@ impl PlottedPieces {
     /// longer in the plot, future will resolve with `None`.
     pub fn read_piece(
         &self,
-        piece_index: &PieceIndex,
+        piece_index: PieceIndex,
     ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
-        let piece_details = match self.pieces.get(piece_index) {
+        let piece_details = match self.pieces.get(&piece_index) {
             Some(piece_details) => piece_details
                 .choose(&mut thread_rng())
                 .copied()
@@ -56,7 +57,7 @@ impl PlottedPieces {
                 return None;
             }
         };
-        let mut reader = match self.readers.get(usize::from(piece_details.disk_farm_index)) {
+        let reader = match self.readers.get(usize::from(piece_details.disk_farm_index)) {
             Some(reader) => reader.clone(),
             None => {
                 warn!(?piece_index, ?piece_details, "Plot offset is invalid");
@@ -68,6 +69,16 @@ impl PlottedPieces {
             reader
                 .read_piece(piece_details.sector_index, piece_details.piece_offset)
                 .await
+                .unwrap_or_else(|error| {
+                    warn!(
+                        %error,
+                        %piece_index,
+                        disk_farm_index = piece_details.disk_farm_index,
+                        sector_index = piece_details.sector_index,
+                        "Failed to retrieve piece"
+                    );
+                    None
+                })
         })
     }
 

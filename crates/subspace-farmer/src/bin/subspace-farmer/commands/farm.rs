@@ -807,12 +807,12 @@ where
         .replace_backing_caches(
             single_disk_farms
                 .iter()
-                .map(|single_disk_farm| single_disk_farm.piece_cache())
+                .map(|single_disk_farm| Arc::new(single_disk_farm.piece_cache()) as Arc<_>)
                 .collect(),
             if plot_cache {
                 single_disk_farms
                     .iter()
-                    .map(|single_disk_farm| single_disk_farm.plot_cache())
+                    .map(|single_disk_farm| Arc::new(single_disk_farm.plot_cache()) as Arc<_>)
                     .collect()
             } else {
                 Vec::new()
@@ -824,7 +824,7 @@ where
     // Store piece readers so we can reference them later
     let piece_readers = single_disk_farms
         .iter()
-        .map(|single_disk_farm| single_disk_farm.piece_reader())
+        .map(|single_disk_farm| Arc::new(single_disk_farm.piece_reader()) as Arc<_>)
         .collect::<Vec<_>>();
 
     info!("Collecting already plotted pieces (this will take some time)...");

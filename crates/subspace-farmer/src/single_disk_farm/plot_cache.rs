@@ -1,9 +1,13 @@
 #[cfg(test)]
 mod tests;
 
+use crate::farm::{FarmError, PlotCache};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
+use async_trait::async_trait;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(not(windows))]
@@ -25,13 +29,16 @@ pub enum DiskPlotCacheError {
     /// I/O error occurred
     #[error("Plot cache I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Failed to spawn task for blocking thread
+    #[error("Failed to spawn task for blocking thread: {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
     /// Checksum mismatch
     #[error("Checksum mismatch")]
     ChecksumMismatch,
 }
 
-#[derive(Debug)]
-pub(crate) enum MaybePieceStoredResult {
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub enum MaybePieceStoredResult {
     /// Definitely not stored
     No,
     /// Maybe has vacant slot to store
@@ -57,6 +64,28 @@ pub struct DiskPlotCache {
     sectors_metadata: Weak<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     cached_pieces: Arc<RwLock<CachedPieces>>,
     sector_size: u64,
+}
+
+#[async_trait]
+impl PlotCache for DiskPlotCache {
+    async fn is_piece_maybe_stored(
+        &self,
+        key: &RecordKey,
+    ) -> Result<MaybePieceStoredResult, FarmError> {
+        Ok(self.is_piece_maybe_stored(key))
+    }
+
+    async fn try_store_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> Result<bool, FarmError> {
+        Ok(self.try_store_piece(piece_index, piece).await?)
+    }
+
+    async fn read_piece(&self, key: &RecordKey) -> Result<Option<Piece>, FarmError> {
+        Ok(self.read_piece(key).await)
+    }
 }
 
 impl DiskPlotCache {
@@ -145,6 +174,7 @@ impl DiskPlotCache {
         };
 
         let element_offset = u64::from(offset) * u64::from(Self::element_size());
+        // Blocking read is fine because writes in farmer are very rare and very brief
         let plotted_bytes = self.sector_size * sectors_metadata.read_blocking().len() as u64;
 
         // Make sure offset is after anything that is already plotted
@@ -158,7 +188,7 @@ impl DiskPlotCache {
     }
 
     /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
-    pub(crate) fn try_store_piece(
+    pub(crate) async fn try_store_piece(
         &self,
         piece_index: PieceIndex,
         piece: &Piece,
@@ -179,7 +209,7 @@ impl DiskPlotCache {
         };
 
         let element_offset = u64::from(offset) * u64::from(Self::element_size());
-        let sectors_metadata = sectors_metadata.write_blocking();
+        let sectors_metadata = sectors_metadata.read().await;
         let plotted_bytes = self.sector_size * sectors_metadata.len() as u64;
 
         // Make sure offset is after anything that is already plotted
@@ -196,12 +226,21 @@ impl DiskPlotCache {
         };
 
         let piece_index_bytes = piece_index.to_bytes();
-        file.write_all_at(&piece_index_bytes, element_offset)?;
-        file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
-        file.write_all_at(
-            &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
-            element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
-        )?;
+        let write_fut = tokio::task::spawn_blocking({
+            let piece = piece.clone();
+
+            move || {
+                file.write_all_at(&piece_index_bytes, element_offset)?;
+                file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
+                file.write_all_at(
+                    &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
+                    element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
+                )
+            }
+        });
+
+        AsyncJoinOnDrop::new(write_fut, false).await??;
+
         // Just to be safe, avoid any overlap of write locks
         drop(sectors_metadata);
         // Store newly written piece in the map
@@ -216,24 +255,32 @@ impl DiskPlotCache {
     /// Read piece from cache.
     ///
     /// Returns `None` if not cached.
-    pub(crate) fn read_piece(&self, key: &RecordKey) -> Option<Piece> {
+    pub(crate) async fn read_piece(&self, key: &RecordKey) -> Option<Piece> {
         let offset = self.cached_pieces.read().map.get(key).copied()?;
 
         let file = self.file.upgrade()?;
+        let cached_pieces = Arc::clone(&self.cached_pieces);
+        let key = key.clone();
 
-        let mut element = vec![0; Self::element_size() as usize];
-        match Self::read_piece_internal(&file, offset, &mut element) {
-            Ok(Some(_piece_index)) => {
-                let mut piece = Piece::default();
-                piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
-                Some(piece)
+        let read_fut = tokio::task::spawn_blocking(move || {
+            let mut element = vec![0; Self::element_size() as usize];
+            match Self::read_piece_internal(&file, offset, &mut element) {
+                Ok(Some(_piece_index)) => {
+                    let mut piece = Piece::default();
+                    piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
+                    Some(piece)
+                }
+                _ => {
+                    // Remove entry just in case it was overridden with a sector already
+                    cached_pieces.write().map.remove(&key);
+                    None
+                }
             }
-            _ => {
-                // Remove entry just in case it was overridden with a sector already
-                self.cached_pieces.write().map.remove(key);
-                None
-            }
-        }
+        });
+
+        AsyncJoinOnDrop::new(read_fut, false)
+            .await
+            .unwrap_or_default()
     }
 
     fn read_piece_internal(

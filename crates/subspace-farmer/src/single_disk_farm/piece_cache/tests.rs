@@ -1,4 +1,4 @@
-use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError, Offset};
+use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError, PieceCacheOffset};
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -21,7 +21,7 @@ fn basic() {
 
         // Write first piece into cache
         {
-            let offset = Offset(0);
+            let offset = PieceCacheOffset(0);
             let piece_index = PieceIndex::ZERO;
             let piece = {
                 let mut piece = Piece::default();
@@ -54,7 +54,7 @@ fn basic() {
 
         // Write second piece into cache
         {
-            let offset = Offset(1);
+            let offset = PieceCacheOffset(1);
             let piece_index = PieceIndex::from(10);
             let piece = {
                 let mut piece = Piece::default();
@@ -87,13 +87,13 @@ fn basic() {
 
         // Writing beyond capacity fails
         assert_matches!(
-            disk_piece_cache.write_piece(Offset(2), PieceIndex::ZERO, &Piece::default()),
+            disk_piece_cache.write_piece(PieceCacheOffset(2), PieceIndex::ZERO, &Piece::default()),
             Err(DiskPieceCacheError::OffsetOutsideOfRange { .. })
         );
 
         // Override works
         {
-            let offset = Offset(0);
+            let offset = PieceCacheOffset(0);
             let piece_index = PieceIndex::from(13);
             let piece = {
                 let mut piece = Piece::default();

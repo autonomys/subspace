@@ -109,7 +109,7 @@ pub(super) fn configure_dsn(
                                 }
                             };
 
-                            plotted_pieces.read_piece(&piece_index)?.in_current_span()
+                            plotted_pieces.read_piece(piece_index)?.in_current_span()
                         };
 
                         let piece = read_piece_fut.await;

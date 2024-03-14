@@ -1,6 +1,8 @@
+use crate::farm::{FarmError, PieceReader};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 #[cfg(not(windows))]
@@ -26,6 +28,17 @@ struct ReadPieceRequest {
 #[derive(Debug, Clone)]
 pub struct DiskPieceReader {
     read_piece_sender: mpsc::Sender<ReadPieceRequest>,
+}
+
+#[async_trait]
+impl PieceReader for DiskPieceReader {
+    async fn read_piece(
+        &self,
+        sector_index: SectorIndex,
+        piece_offset: PieceOffset,
+    ) -> Result<Option<Piece>, FarmError> {
+        Ok(self.read_piece(sector_index, piece_offset).await)
+    }
 }
 
 impl DiskPieceReader {
@@ -75,12 +88,13 @@ impl DiskPieceReader {
     /// Read piece from sector by offset, `None` means input parameters are incorrect or piece
     /// reader was shut down
     pub async fn read_piece(
-        &mut self,
+        &self,
         sector_index: SectorIndex,
         piece_offset: PieceOffset,
     ) -> Option<Piece> {
         let (response_sender, response_receiver) = oneshot::channel();
         self.read_piece_sender
+            .clone()
             .send(ReadPieceRequest {
                 sector_index,
                 piece_offset,
