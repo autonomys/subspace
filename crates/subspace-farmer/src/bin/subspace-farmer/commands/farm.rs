@@ -5,6 +5,7 @@ use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
+use async_lock::Mutex as AsyncMutex;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -13,7 +14,6 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
-use rayon::prelude::*;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
@@ -49,9 +49,8 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use thread_priority::ThreadPriority;
-use tokio::runtime::Handle;
 use tokio::sync::{Barrier, Semaphore};
-use tracing::{debug, error, info, info_span, warn};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 /// Get piece retry attempts number.
@@ -650,46 +649,63 @@ where
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
 
-    let (single_disk_farms, plotting_delay_senders) = tokio::task::block_in_place(|| {
-        let handle = Handle::current();
+    let (single_disk_farms, plotting_delay_senders) = {
+        let node_rpc_url = &node_rpc_url;
         let global_mutex = Arc::default();
-        let info_mutex = &Mutex::<()>::default();
-        let faster_read_sector_record_chunks_mode_barrier = &Barrier::new(disk_farms.len());
-        let faster_read_sector_record_chunks_mode_concurrency = &Semaphore::new(1);
+        let info_mutex = &AsyncMutex::new(());
+        let faster_read_sector_record_chunks_mode_barrier =
+            Arc::new(Barrier::new(disk_farms.len()));
+        let faster_read_sector_record_chunks_mode_concurrency = Arc::new(Semaphore::new(1));
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        let single_disk_farms = disk_farms
-            .into_par_iter()
+        let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
+        let mut single_disk_farms_stream = disk_farms
+            .into_iter()
             .zip(plotting_delay_receivers)
             .enumerate()
-            .map(
-                move |(disk_farm_index, (disk_farm, plotting_delay_receiver))| {
-                    let _tokio_handle_guard = handle.enter();
+            .map(|(disk_farm_index, (disk_farm, plotting_delay_receiver))| {
+                let farmer_app_info = farmer_app_info.clone();
+                let kzg = kzg.clone();
+                let erasure_coding = erasure_coding.clone();
+                let piece_getter = piece_getter.clone();
+                let downloading_semaphore = Arc::clone(&downloading_semaphore);
+                let plotting_thread_pool_manager = plotting_thread_pool_manager.clone();
+                let global_mutex = Arc::clone(&global_mutex);
+                let faster_read_sector_record_chunks_mode_barrier =
+                    Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
+                let faster_read_sector_record_chunks_mode_concurrency =
+                    Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
-                    debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
-                    let node_client = handle.block_on(NodeRpcClient::new(&node_rpc_url))?;
+                async move {
+                    debug!(url = %node_rpc_url, "Connecting to node RPC");
+                    let node_client = match NodeRpcClient::new(node_rpc_url).await {
+                        Ok(node_client) => node_client,
+                        Err(error) => {
+                            return (disk_farm_index, Err(error.into()));
+                        }
+                    };
 
                     let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
-                            farmer_app_info: farmer_app_info.clone(),
+                            farmer_app_info,
                             allocated_space: disk_farm.allocated_plotting_space,
                             max_pieces_in_sector,
                             node_client,
                             reward_address,
-                            kzg: kzg.clone(),
-                            erasure_coding: erasure_coding.clone(),
-                            piece_getter: piece_getter.clone(),
+                            kzg,
+                            erasure_coding,
+                            piece_getter,
                             cache_percentage,
-                            downloading_semaphore: Arc::clone(&downloading_semaphore),
+                            downloading_semaphore,
                             record_encoding_concurrency,
                             farm_during_initial_plotting,
                             farming_thread_pool_size,
-                            plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
+                            plotting_thread_pool_manager,
                             plotting_delay: Some(plotting_delay_receiver),
-                            global_mutex: Arc::clone(&global_mutex),
+                            global_mutex,
                             disable_farm_locking,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
@@ -697,50 +713,65 @@ where
                         disk_farm_index,
                     );
 
-                    let single_disk_farm = match handle.block_on(single_disk_farm_fut) {
+                    let single_disk_farm = match single_disk_farm_fut.await {
                         Ok(single_disk_farm) => single_disk_farm,
                         Err(SingleDiskFarmError::InsufficientAllocatedSpace {
                             min_space,
                             allocated_space,
                         }) => {
-                            return Err(anyhow::anyhow!(
-                                "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
-                                {} bytes to be exact)",
-                                bytesize::to_string(allocated_space, true),
-                                bytesize::to_string(allocated_space, false),
-                                bytesize::to_string(min_space, true),
-                                bytesize::to_string(min_space, false),
-                                min_space
-                            ));
+                            return (
+                                disk_farm_index,
+                                Err(anyhow::anyhow!(
+                                    "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
+                                    {} bytes to be exact)",
+                                    bytesize::to_string(allocated_space, true),
+                                    bytesize::to_string(allocated_space, false),
+                                    bytesize::to_string(min_space, true),
+                                    bytesize::to_string(min_space, false),
+                                    min_space
+                                )),
+                            );
                         }
                         Err(error) => {
-                            return Err(error.into());
+                            return (disk_farm_index, Err(error.into()));
                         }
                     };
 
                     if !no_info {
-                        let _info_guard = info_mutex.lock();
+                        let _info_guard = info_mutex.lock().await;
 
                         let info = single_disk_farm.info();
-                        println!("Single disk farm {disk_farm_index}:");
-                        println!("  ID: {}", info.id());
-                        println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
-                        println!("  Public key: 0x{}", hex::encode(info.public_key()));
-                        println!(
+                        info!("Single disk farm {disk_farm_index}:");
+                        info!("  ID: {}", info.id());
+                        info!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+                        info!("  Public key: 0x{}", hex::encode(info.public_key()));
+                        info!(
                             "  Allocated space: {} ({})",
                             bytesize::to_string(info.allocated_space(), true),
                             bytesize::to_string(info.allocated_space(), false)
                         );
-                        println!("  Directory: {}", disk_farm.directory.display());
+                        info!("  Directory: {}", disk_farm.directory.display());
                     }
 
-                    Ok(single_disk_farm)
-                },
-            )
-            .collect::<Result<Vec<_>, _>>()?;
+                    (disk_farm_index, Ok(single_disk_farm))
+                }
+                .instrument(info_span!("", %disk_farm_index))
+            })
+            .collect::<FuturesUnordered<_>>();
 
-        anyhow::Ok((single_disk_farms, plotting_delay_senders))
-    })?;
+        while let Some((disk_farm_index, single_disk_farm)) = single_disk_farms_stream.next().await
+        {
+            if let Err(error) = &single_disk_farm {
+                let span = info_span!("", %disk_farm_index);
+                let _span_guard = span.enter();
+
+                error!(%error, "Single disk creation failed");
+            }
+            single_disk_farms.push(single_disk_farm?);
+        }
+
+        (single_disk_farms, plotting_delay_senders)
+    };
 
     {
         let handler_id = Arc::new(Mutex::new(None));

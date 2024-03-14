@@ -71,7 +71,7 @@ use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Barrier, Semaphore};
-use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -266,7 +266,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<'a, NC, PG> {
+pub struct SingleDiskFarmOptions<NC, PG> {
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -309,9 +309,9 @@ pub struct SingleDiskFarmOptions<'a, NC, PG> {
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
     /// Barrier before internal benchmarking between different farms
-    pub faster_read_sector_record_chunks_mode_barrier: &'a Barrier,
+    pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
     /// Limit concurrency of internal benchmarking between different farms
-    pub faster_read_sector_record_chunks_mode_concurrency: &'a Semaphore,
+    pub faster_read_sector_record_chunks_mode_concurrency: Arc<Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -327,6 +327,9 @@ pub enum SingleDiskFarmError {
     /// I/O error occurred
     #[error("Single disk farm I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Failed to spawn task for blocking thread
+    #[error("Failed to spawn task for blocking thread: {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
@@ -574,6 +577,25 @@ struct Handlers {
     solution: Handler<SolutionResponse>,
 }
 
+struct SingleDiskFarmInit {
+    identity: Identity,
+    single_disk_farm_info: SingleDiskFarmInfo,
+    single_disk_farm_info_lock: Option<SingleDiskFarmInfoLock>,
+    #[cfg(not(windows))]
+    plot_file: Arc<File>,
+    #[cfg(windows)]
+    plot_file: Arc<UnbufferedIoFileWindows>,
+    #[cfg(not(windows))]
+    metadata_file: File,
+    #[cfg(windows)]
+    metadata_file: UnbufferedIoFileWindows,
+    metadata_header: PlotMetadataHeader,
+    target_sector_count: u16,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
+    piece_cache: DiskPieceCache,
+    plot_cache: DiskPlotCache,
+}
+
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
 /// disk.
 ///
@@ -615,10 +637,8 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    ///
-    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskFarmOptions<'_, NC, PG>,
+        options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
@@ -626,17 +646,46 @@ impl SingleDiskFarm {
         PG: PieceGetter + Clone + Send + Sync + 'static,
         PosTable: Table,
     {
+        let span = Span::current();
+
+        let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+            let span = span.clone();
+            let _span_guard = span.enter();
+
+            move || {
+                Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+            }
+        });
+
+        let (single_disk_farm_init, options) =
+            AsyncJoinOnDrop::new(single_disk_farm_init_fut, false).await??;
+
+        let SingleDiskFarmInit {
+            identity,
+            single_disk_farm_info,
+            single_disk_farm_info_lock,
+            plot_file,
+            metadata_file,
+            metadata_header,
+            target_sector_count,
+            sectors_metadata,
+            piece_cache,
+            plot_cache,
+        } = single_disk_farm_init;
+
+        let public_key = *single_disk_farm_info.public_key();
+        let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+        let sector_size = sector_size(pieces_in_sector);
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
+
         let SingleDiskFarmOptions {
             directory,
             farmer_app_info,
-            allocated_space,
-            max_pieces_in_sector,
             node_client,
             reward_address,
             piece_getter,
             kzg,
             erasure_coding,
-            cache_percentage,
             downloading_semaphore,
             record_encoding_concurrency,
             farming_thread_pool_size,
@@ -644,308 +693,10 @@ impl SingleDiskFarm {
             plotting_delay,
             farm_during_initial_plotting,
             global_mutex,
-            disable_farm_locking,
             faster_read_sector_record_chunks_mode_barrier,
             faster_read_sector_record_chunks_mode_concurrency,
+            ..
         } = options;
-        fs::create_dir_all(&directory)?;
-
-        let span = info_span!("", %disk_farm_index);
-        let span_guard = span.enter();
-
-        let identity = Identity::open_or_create(&directory)?;
-        let public_key = identity.public_key().to_bytes().into();
-
-        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory)? {
-            Some(mut single_disk_farm_info) => {
-                if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
-                    return Err(SingleDiskFarmError::WrongChain {
-                        id: *single_disk_farm_info.id(),
-                        correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
-                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
-                    });
-                }
-
-                if &public_key != single_disk_farm_info.public_key() {
-                    return Err(SingleDiskFarmError::IdentityMismatch {
-                        id: *single_disk_farm_info.id(),
-                        correct_public_key: *single_disk_farm_info.public_key(),
-                        wrong_public_key: public_key,
-                    });
-                }
-
-                let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
-
-                if max_pieces_in_sector < pieces_in_sector {
-                    return Err(SingleDiskFarmError::InvalidPiecesInSector {
-                        id: *single_disk_farm_info.id(),
-                        max_supported: max_pieces_in_sector,
-                        initialized_with: pieces_in_sector,
-                    });
-                }
-
-                if max_pieces_in_sector > pieces_in_sector {
-                    info!(
-                        pieces_in_sector,
-                        max_pieces_in_sector,
-                        "Farm initialized with smaller number of pieces in sector, farm needs to \
-                        be re-created for increase"
-                    );
-                }
-
-                if allocated_space != single_disk_farm_info.allocated_space() {
-                    info!(
-                        old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
-                        new_space = %bytesize::to_string(allocated_space, true),
-                        "Farm size has changed"
-                    );
-
-                    {
-                        let new_allocated_space = allocated_space;
-                        let SingleDiskFarmInfo::V0 {
-                            allocated_space, ..
-                        } = &mut single_disk_farm_info;
-                        *allocated_space = new_allocated_space;
-                    }
-
-                    single_disk_farm_info.store_to(&directory)?;
-                }
-
-                single_disk_farm_info
-            }
-            None => {
-                let single_disk_farm_info = SingleDiskFarmInfo::new(
-                    SingleDiskFarmId::new(),
-                    farmer_app_info.genesis_hash,
-                    public_key,
-                    max_pieces_in_sector,
-                    allocated_space,
-                );
-
-                single_disk_farm_info.store_to(&directory)?;
-
-                single_disk_farm_info
-            }
-        };
-
-        let single_disk_farm_info_lock = if disable_farm_locking {
-            None
-        } else {
-            Some(
-                SingleDiskFarmInfo::try_lock(&directory)
-                    .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
-            )
-        };
-
-        let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
-        let sector_size = sector_size(pieces_in_sector);
-        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
-        let single_sector_overhead = (sector_size + sector_metadata_size) as u64;
-        // Fixed space usage regardless of plot size
-        let fixed_space_usage = RESERVED_PLOT_METADATA
-            + RESERVED_FARM_INFO
-            + Identity::file_size() as u64
-            + KnownPeersManager::file_size(KNOWN_PEERS_CACHE_SIZE) as u64;
-        // Calculate how many sectors can fit
-        let target_sector_count = {
-            let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
-                / 100
-                * (100 - u64::from(cache_percentage.get()));
-            // Do the rounding to make sure we have exactly as much space as fits whole number of
-            // sectors, account for disk sector size just in case
-            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
-        };
-
-        if target_sector_count == 0 {
-            let mut single_plot_with_cache_space =
-                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage.get())) * 100;
-            // Cache must not be empty, ensure it contains at least one element even if
-            // percentage-wise it will use more space
-            if single_plot_with_cache_space - single_sector_overhead
-                < DiskPieceCache::element_size() as u64
-            {
-                single_plot_with_cache_space =
-                    single_sector_overhead + DiskPieceCache::element_size() as u64;
-            }
-
-            return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
-                min_space: fixed_space_usage + single_plot_with_cache_space,
-                allocated_space,
-            });
-        }
-        let plot_file_size = target_sector_count * sector_size as u64;
-        // Align plot file size for disk sector size
-        let plot_file_size =
-            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
-
-        // Remaining space will be used for caching purposes
-        let cache_capacity = {
-            let cache_space = allocated_space
-                - fixed_space_usage
-                - plot_file_size
-                - (sector_metadata_size as u64 * target_sector_count);
-            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
-        };
-        let target_sector_count = match SectorIndex::try_from(target_sector_count) {
-            Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
-                target_sector_count
-            }
-            _ => {
-                // We use this for both count and index, hence index must not reach actual `MAX`
-                // (consensus doesn't care about this, just farmer implementation detail)
-                let max_sectors = SectorIndex::MAX - 1;
-                return Err(SingleDiskFarmError::FarmTooLarge {
-                    allocated_space: target_sector_count * sector_size as u64,
-                    allocated_sectors: target_sector_count,
-                    max_space: max_sectors as u64 * sector_size as u64,
-                    max_sectors,
-                });
-            }
-        };
-
-        let metadata_file_path = directory.join(Self::METADATA_FILE);
-        #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(&metadata_file_path)?;
-
-        #[cfg(not(windows))]
-        metadata_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
-
-        let metadata_size = metadata_file.size()?;
-        let expected_metadata_size =
-            RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
-        // Align plot file size for disk sector size
-        let expected_metadata_size =
-            expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
-        let metadata_header = if metadata_size == 0 {
-            let metadata_header = PlotMetadataHeader {
-                version: 0,
-                plotted_sector_count: 0,
-            };
-
-            metadata_file
-                .preallocate(expected_metadata_size)
-                .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
-            metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
-
-            metadata_header
-        } else {
-            if metadata_size != expected_metadata_size {
-                // Allocating the whole file (`set_len` below can create a sparse file, which will
-                // cause writes to fail later)
-                metadata_file
-                    .preallocate(expected_metadata_size)
-                    .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
-                // Truncating file (if necessary)
-                metadata_file.set_len(expected_metadata_size)?;
-            }
-
-            let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
-            metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
-
-            let mut metadata_header =
-                PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
-                    .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
-
-            if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
-                return Err(SingleDiskFarmError::UnexpectedMetadataVersion(
-                    metadata_header.version,
-                ));
-            }
-
-            if metadata_header.plotted_sector_count > target_sector_count {
-                metadata_header.plotted_sector_count = target_sector_count;
-                metadata_file.write_all_at(&metadata_header.encode(), 0)?;
-            }
-
-            metadata_header
-        };
-
-        let sectors_metadata = {
-            let mut sectors_metadata =
-                Vec::<SectorMetadataChecksummed>::with_capacity(usize::from(target_sector_count));
-
-            let mut sector_metadata_bytes = vec![0; sector_metadata_size];
-            for sector_index in 0..metadata_header.plotted_sector_count {
-                let sector_offset =
-                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index);
-                metadata_file.read_exact_at(&mut sector_metadata_bytes, sector_offset)?;
-
-                let sector_metadata =
-                    match SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()) {
-                        Ok(sector_metadata) => sector_metadata,
-                        Err(error) => {
-                            warn!(
-                                path = %metadata_file_path.display(),
-                                %error,
-                                %sector_index,
-                                "Failed to decode sector metadata, replacing with dummy expired \
-                                sector metadata"
-                            );
-
-                            let dummy_sector = SectorMetadataChecksummed::from(SectorMetadata {
-                                sector_index,
-                                pieces_in_sector,
-                                s_bucket_sizes: Box::new([0; Record::NUM_S_BUCKETS]),
-                                history_size: HistorySize::from(SegmentIndex::ZERO),
-                            });
-                            metadata_file.write_all_at(&dummy_sector.encode(), sector_offset)?;
-
-                            dummy_sector
-                        }
-                    };
-                sectors_metadata.push(sector_metadata);
-            }
-
-            Arc::new(AsyncRwLock::new(sectors_metadata))
-        };
-
-        #[cfg(not(windows))]
-        let mut plot_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(directory.join(Self::PLOT_FILE))?;
-
-        #[cfg(not(windows))]
-        plot_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
-
-        if plot_file.size()? != plot_file_size {
-            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
-            // writes to fail later)
-            plot_file
-                .preallocate(plot_file_size)
-                .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
-            // Truncating file (if necessary)
-            plot_file.set_len(plot_file_size)?;
-
-            // TODO: Hack due to Windows bugs:
-            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
-            if cfg!(windows) {
-                warn!("Farm was resized, farmer restart is needed for optimal performance!")
-            }
-        }
-
-        let plot_file = Arc::new(plot_file);
-
-        let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
-        let plot_cache = DiskPlotCache::new(
-            &plot_file,
-            &sectors_metadata,
-            target_sector_count,
-            sector_size,
-        );
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -982,37 +733,54 @@ impl SingleDiskFarm {
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
             .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
-        let farming_plot = farming_thread_pool.install(|| {
-            #[cfg(windows)]
-            {
-                RayonFiles::open_with(
-                    &directory.join(Self::PLOT_FILE),
-                    UnbufferedIoFileWindows::open,
-                )
-            }
-            #[cfg(not(windows))]
-            {
-                RayonFiles::open(&directory.join(Self::PLOT_FILE))
-            }
-        })?;
+        let farming_plot_fut = tokio::task::spawn_blocking(|| {
+            farming_thread_pool
+                .install(move || {
+                    #[cfg(windows)]
+                    {
+                        RayonFiles::open_with(
+                            &directory.join(Self::PLOT_FILE),
+                            UnbufferedIoFileWindows::open,
+                        )
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        RayonFiles::open(&directory.join(Self::PLOT_FILE))
+                    }
+                })
+                .map(|farming_plot| (farming_plot, farming_thread_pool))
+        });
+
+        let (farming_plot, farming_thread_pool) =
+            AsyncJoinOnDrop::new(farming_plot_fut, false).await??;
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 
-        let read_sector_record_chunks_mode = {
+        let (read_sector_record_chunks_mode, farming_plot, farming_thread_pool) = {
             // Error doesn't matter here
             let _permit = faster_read_sector_record_chunks_mode_concurrency
                 .acquire()
                 .await;
-            farming_thread_pool.install(|| {
-                let _span_guard = span.enter();
+            let span = span.clone();
+            let plot_file = Arc::clone(&plot_file);
 
-                faster_read_sector_record_chunks_mode(
-                    &*plot_file,
-                    &farming_plot,
-                    sector_size,
-                    metadata_header.plotted_sector_count,
-                )
-            })?
+            let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                farming_thread_pool
+                    .install(move || {
+                        let _span_guard = span.enter();
+
+                        faster_read_sector_record_chunks_mode(
+                            &*plot_file,
+                            &farming_plot,
+                            sector_size,
+                            metadata_header.plotted_sector_count,
+                        )
+                        .map(|mode| (mode, farming_plot))
+                    })
+                    .map(|(mode, farming_plot)| (mode, farming_plot, farming_thread_pool))
+            });
+
+            AsyncJoinOnDrop::new(read_sector_record_chunks_mode_fut, false).await??
         };
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
@@ -1262,8 +1030,6 @@ impl SingleDiskFarm {
             Ok(())
         }));
 
-        drop(span_guard);
-
         let farm = Self {
             farmer_protocol_info: farmer_app_info.protocol_info,
             single_disk_farm_info,
@@ -1282,6 +1048,332 @@ impl SingleDiskFarm {
         };
 
         Ok(farm)
+    }
+
+    fn init<NC, PG>(
+        options: &SingleDiskFarmOptions<NC, PG>,
+    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
+        let SingleDiskFarmOptions {
+            directory,
+            farmer_app_info,
+            allocated_space,
+            max_pieces_in_sector,
+            cache_percentage,
+            disable_farm_locking,
+            ..
+        } = options;
+
+        let allocated_space = *allocated_space;
+        let max_pieces_in_sector = *max_pieces_in_sector;
+
+        fs::create_dir_all(directory)?;
+
+        let identity = Identity::open_or_create(directory)?;
+        let public_key = identity.public_key().to_bytes().into();
+
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(directory)? {
+            Some(mut single_disk_farm_info) => {
+                if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
+                    return Err(SingleDiskFarmError::WrongChain {
+                        id: *single_disk_farm_info.id(),
+                        correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
+                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
+                    });
+                }
+
+                if &public_key != single_disk_farm_info.public_key() {
+                    return Err(SingleDiskFarmError::IdentityMismatch {
+                        id: *single_disk_farm_info.id(),
+                        correct_public_key: *single_disk_farm_info.public_key(),
+                        wrong_public_key: public_key,
+                    });
+                }
+
+                let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+
+                if max_pieces_in_sector < pieces_in_sector {
+                    return Err(SingleDiskFarmError::InvalidPiecesInSector {
+                        id: *single_disk_farm_info.id(),
+                        max_supported: max_pieces_in_sector,
+                        initialized_with: pieces_in_sector,
+                    });
+                }
+
+                if max_pieces_in_sector > pieces_in_sector {
+                    info!(
+                        pieces_in_sector,
+                        max_pieces_in_sector,
+                        "Farm initialized with smaller number of pieces in sector, farm needs to \
+                        be re-created for increase"
+                    );
+                }
+
+                if allocated_space != single_disk_farm_info.allocated_space() {
+                    info!(
+                        old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
+                        new_space = %bytesize::to_string(allocated_space, true),
+                        "Farm size has changed"
+                    );
+
+                    {
+                        let new_allocated_space = allocated_space;
+                        let SingleDiskFarmInfo::V0 {
+                            allocated_space, ..
+                        } = &mut single_disk_farm_info;
+                        *allocated_space = new_allocated_space;
+                    }
+
+                    single_disk_farm_info.store_to(directory)?;
+                }
+
+                single_disk_farm_info
+            }
+            None => {
+                let single_disk_farm_info = SingleDiskFarmInfo::new(
+                    SingleDiskFarmId::new(),
+                    farmer_app_info.genesis_hash,
+                    public_key,
+                    max_pieces_in_sector,
+                    allocated_space,
+                );
+
+                single_disk_farm_info.store_to(directory)?;
+
+                single_disk_farm_info
+            }
+        };
+
+        let single_disk_farm_info_lock = if *disable_farm_locking {
+            None
+        } else {
+            Some(
+                SingleDiskFarmInfo::try_lock(directory)
+                    .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
+            )
+        };
+
+        let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+        let sector_size = sector_size(pieces_in_sector);
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
+        let single_sector_overhead = (sector_size + sector_metadata_size) as u64;
+        // Fixed space usage regardless of plot size
+        let fixed_space_usage = RESERVED_PLOT_METADATA
+            + RESERVED_FARM_INFO
+            + Identity::file_size() as u64
+            + KnownPeersManager::file_size(KNOWN_PEERS_CACHE_SIZE) as u64;
+        // Calculate how many sectors can fit
+        let target_sector_count = {
+            let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
+                / 100
+                * (100 - u64::from(cache_percentage.get()));
+            // Do the rounding to make sure we have exactly as much space as fits whole number of
+            // sectors, account for disk sector size just in case
+            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
+        };
+
+        if target_sector_count == 0 {
+            let mut single_plot_with_cache_space =
+                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage.get())) * 100;
+            // Cache must not be empty, ensure it contains at least one element even if
+            // percentage-wise it will use more space
+            if single_plot_with_cache_space - single_sector_overhead
+                < DiskPieceCache::element_size() as u64
+            {
+                single_plot_with_cache_space =
+                    single_sector_overhead + DiskPieceCache::element_size() as u64;
+            }
+
+            return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
+                min_space: fixed_space_usage + single_plot_with_cache_space,
+                allocated_space,
+            });
+        }
+        let plot_file_size = target_sector_count * sector_size as u64;
+        // Align plot file size for disk sector size
+        let plot_file_size =
+            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
+
+        // Remaining space will be used for caching purposes
+        let cache_capacity = {
+            let cache_space = allocated_space
+                - fixed_space_usage
+                - plot_file_size
+                - (sector_metadata_size as u64 * target_sector_count);
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
+        };
+        let target_sector_count = match SectorIndex::try_from(target_sector_count) {
+            Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
+                target_sector_count
+            }
+            _ => {
+                // We use this for both count and index, hence index must not reach actual `MAX`
+                // (consensus doesn't care about this, just farmer implementation detail)
+                let max_sectors = SectorIndex::MAX - 1;
+                return Err(SingleDiskFarmError::FarmTooLarge {
+                    allocated_space: target_sector_count * sector_size as u64,
+                    allocated_sectors: target_sector_count,
+                    max_space: max_sectors as u64 * sector_size as u64,
+                    max_sectors,
+                });
+            }
+        };
+
+        let metadata_file_path = directory.join(Self::METADATA_FILE);
+        #[cfg(not(windows))]
+        let mut metadata_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .advise_random_access()
+            .open(&metadata_file_path)?;
+
+        #[cfg(not(windows))]
+        metadata_file.advise_random_access()?;
+
+        #[cfg(windows)]
+        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+
+        let metadata_size = metadata_file.size()?;
+        let expected_metadata_size =
+            RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
+        // Align plot file size for disk sector size
+        let expected_metadata_size =
+            expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
+        let metadata_header = if metadata_size == 0 {
+            let metadata_header = PlotMetadataHeader {
+                version: 0,
+                plotted_sector_count: 0,
+            };
+
+            metadata_file
+                .preallocate(expected_metadata_size)
+                .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
+            metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
+
+            metadata_header
+        } else {
+            if metadata_size != expected_metadata_size {
+                // Allocating the whole file (`set_len` below can create a sparse file, which will
+                // cause writes to fail later)
+                metadata_file
+                    .preallocate(expected_metadata_size)
+                    .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
+                // Truncating file (if necessary)
+                metadata_file.set_len(expected_metadata_size)?;
+            }
+
+            let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
+            metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
+
+            let mut metadata_header =
+                PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
+                    .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
+
+            if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
+                return Err(SingleDiskFarmError::UnexpectedMetadataVersion(
+                    metadata_header.version,
+                ));
+            }
+
+            if metadata_header.plotted_sector_count > target_sector_count {
+                metadata_header.plotted_sector_count = target_sector_count;
+                metadata_file.write_all_at(&metadata_header.encode(), 0)?;
+            }
+
+            metadata_header
+        };
+
+        let sectors_metadata = {
+            let mut sectors_metadata =
+                Vec::<SectorMetadataChecksummed>::with_capacity(usize::from(target_sector_count));
+
+            let mut sector_metadata_bytes = vec![0; sector_metadata_size];
+            for sector_index in 0..metadata_header.plotted_sector_count {
+                let sector_offset =
+                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index);
+                metadata_file.read_exact_at(&mut sector_metadata_bytes, sector_offset)?;
+
+                let sector_metadata =
+                    match SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()) {
+                        Ok(sector_metadata) => sector_metadata,
+                        Err(error) => {
+                            warn!(
+                                path = %metadata_file_path.display(),
+                                %error,
+                                %sector_index,
+                                "Failed to decode sector metadata, replacing with dummy expired \
+                                sector metadata"
+                            );
+
+                            let dummy_sector = SectorMetadataChecksummed::from(SectorMetadata {
+                                sector_index,
+                                pieces_in_sector,
+                                s_bucket_sizes: Box::new([0; Record::NUM_S_BUCKETS]),
+                                history_size: HistorySize::from(SegmentIndex::ZERO),
+                            });
+                            metadata_file.write_all_at(&dummy_sector.encode(), sector_offset)?;
+
+                            dummy_sector
+                        }
+                    };
+                sectors_metadata.push(sector_metadata);
+            }
+
+            Arc::new(AsyncRwLock::new(sectors_metadata))
+        };
+
+        #[cfg(not(windows))]
+        let mut plot_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .advise_random_access()
+            .open(directory.join(Self::PLOT_FILE))?;
+
+        #[cfg(not(windows))]
+        plot_file.advise_random_access()?;
+
+        #[cfg(windows)]
+        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+
+        if plot_file.size()? != plot_file_size {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            plot_file
+                .preallocate(plot_file_size)
+                .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
+            // Truncating file (if necessary)
+            plot_file.set_len(plot_file_size)?;
+
+            // TODO: Hack due to Windows bugs:
+            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
+            if cfg!(windows) {
+                warn!("Farm was resized, farmer restart is needed for optimal performance!")
+            }
+        }
+
+        let plot_file = Arc::new(plot_file);
+
+        let piece_cache = DiskPieceCache::open(directory, cache_capacity)?;
+        let plot_cache = DiskPlotCache::new(
+            &plot_file,
+            &sectors_metadata,
+            target_sector_count,
+            sector_size,
+        );
+
+        Ok(SingleDiskFarmInit {
+            identity,
+            single_disk_farm_info,
+            single_disk_farm_info_lock,
+            plot_file,
+            metadata_file,
+            metadata_header,
+            target_sector_count,
+            sectors_metadata,
+            piece_cache,
+            plot_cache,
+        })
     }
 
     /// Collect summary of single disk farm for presentational purposes
