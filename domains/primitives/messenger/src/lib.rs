@@ -27,11 +27,10 @@ use crate::messages::MessageKey;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use frame_support::__private::sp_inherents;
-use frame_support::__private::sp_inherents::Error;
 use frame_support::inherent::{InherentData, InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
+use sp_inherents::Error;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 
 /// Messenger inherent identifier.
