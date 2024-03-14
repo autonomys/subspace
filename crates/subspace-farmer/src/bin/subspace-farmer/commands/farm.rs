@@ -50,7 +50,7 @@ use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use thread_priority::ThreadPriority;
 use tokio::sync::{Barrier, Semaphore};
-use tracing::{debug, error, info, info_span, warn};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 /// Get piece retry attempts number.
@@ -679,8 +679,13 @@ where
                     Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
-                    debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
-                    let node_client = NodeRpcClient::new(node_rpc_url).await?;
+                    debug!(url = %node_rpc_url, "Connecting to node RPC");
+                    let node_client = match NodeRpcClient::new(node_rpc_url).await {
+                        Ok(node_client) => node_client,
+                        Err(error) => {
+                            return (disk_farm_index, Err(error.into()));
+                        }
+                    };
 
                     let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
                         SingleDiskFarmOptions {
@@ -714,18 +719,21 @@ where
                             min_space,
                             allocated_space,
                         }) => {
-                            return Err(anyhow::anyhow!(
-                                "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
-                                {} bytes to be exact)",
-                                bytesize::to_string(allocated_space, true),
-                                bytesize::to_string(allocated_space, false),
-                                bytesize::to_string(min_space, true),
-                                bytesize::to_string(min_space, false),
-                                min_space
-                            ));
+                            return (
+                                disk_farm_index,
+                                Err(anyhow::anyhow!(
+                                    "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
+                                    {} bytes to be exact)",
+                                    bytesize::to_string(allocated_space, true),
+                                    bytesize::to_string(allocated_space, false),
+                                    bytesize::to_string(min_space, true),
+                                    bytesize::to_string(min_space, false),
+                                    min_space
+                                )),
+                            );
                         }
                         Err(error) => {
-                            return Err(error.into());
+                            return (disk_farm_index, Err(error.into()));
                         }
                     };
 
@@ -733,24 +741,32 @@ where
                         let _info_guard = info_mutex.lock().await;
 
                         let info = single_disk_farm.info();
-                        println!("Single disk farm {disk_farm_index}:");
-                        println!("  ID: {}", info.id());
-                        println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
-                        println!("  Public key: 0x{}", hex::encode(info.public_key()));
-                        println!(
+                        info!("Single disk farm {disk_farm_index}:");
+                        info!("  ID: {}", info.id());
+                        info!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+                        info!("  Public key: 0x{}", hex::encode(info.public_key()));
+                        info!(
                             "  Allocated space: {} ({})",
                             bytesize::to_string(info.allocated_space(), true),
                             bytesize::to_string(info.allocated_space(), false)
                         );
-                        println!("  Directory: {}", disk_farm.directory.display());
+                        info!("  Directory: {}", disk_farm.directory.display());
                     }
 
-                    Ok(single_disk_farm)
+                    (disk_farm_index, Ok(single_disk_farm))
                 }
+                .instrument(info_span!("", %disk_farm_index))
             })
             .collect::<FuturesUnordered<_>>();
 
-        while let Some(single_disk_farm) = single_disk_farms_stream.next().await {
+        while let Some((disk_farm_index, single_disk_farm)) = single_disk_farms_stream.next().await
+        {
+            if let Err(error) = &single_disk_farm {
+                let span = info_span!("", %disk_farm_index);
+                let _span_guard = span.enter();
+
+                error!(%error, "Single disk creation failed");
+            }
             single_disk_farms.push(single_disk_farm?);
         }
 

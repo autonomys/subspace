@@ -71,7 +71,7 @@ use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Barrier, Semaphore};
-use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -646,11 +646,15 @@ impl SingleDiskFarm {
         PG: PieceGetter + Clone + Send + Sync + 'static,
         PosTable: Table,
     {
-        let span = info_span!("", %disk_farm_index);
-        let span_guard = span.enter();
+        let span = Span::current();
 
-        let single_disk_farm_init_fut = tokio::task::spawn_blocking(move || {
-            Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+        let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+            let span = span.clone();
+            let _span_guard = span.enter();
+
+            move || {
+                Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+            }
         });
 
         let (single_disk_farm_init, options) =
@@ -1025,8 +1029,6 @@ impl SingleDiskFarm {
 
             Ok(())
         }));
-
-        drop(span_guard);
 
         let farm = Self {
             farmer_protocol_info: farmer_app_info.protocol_info,
