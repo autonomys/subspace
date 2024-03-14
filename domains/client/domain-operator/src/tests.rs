@@ -3278,17 +3278,15 @@ async fn test_cross_domains_messages_should_work() {
     // Open channel between the Consensus chain and EVM domains
     let fee_model = FeeModel { relay_fee: 1 };
     alice
-        .construct_and_send_extrinsic(pallet_sudo::Call::sudo {
-            call: Box::new(evm_domain_test_runtime::RuntimeCall::Messenger(
-                pallet_messenger::Call::initiate_channel {
-                    dst_chain_id: ChainId::Consensus,
-                    params: InitiateChannelParams {
-                        max_outgoing_messages: 100,
-                        fee_model,
-                    },
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                    fee_model,
                 },
-            )),
-        })
+            },
+        ))
         .await
         .expect("Failed to construct and send extrinsic");
     // Wait until channel open
@@ -3321,6 +3319,31 @@ async fn test_cross_domains_messages_should_work() {
 
         post_alice_free_balance < pre_alice_free_balance - transfer_amount
             && post_ferdie_free_balance == pre_ferdie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    // close channel on consensus chain using sudo since
+    // channel is opened on domain
+    let channel_id = alice
+        .get_open_channel_for_chain(ChainId::Consensus)
+        .unwrap();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::close_channel {
+                    chain_id: ChainId::Domain(GENESIS_DOMAIN_ID),
+                    channel_id,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to close channel");
+    // Wait until channel close
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_none()
     })
     .await
     .unwrap();

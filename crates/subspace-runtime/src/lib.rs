@@ -60,8 +60,9 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, OpaqueBundle, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
+    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
+    StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -375,6 +376,7 @@ parameter_types! {
 )]
 pub enum HoldIdentifier {
     Domains(DomainsHoldIdentifier),
+    Messenger(MessengerHoldIdentifier),
 }
 
 impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
@@ -390,6 +392,12 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
 
     fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
         Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
+}
+
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
     }
 }
 
@@ -516,6 +524,11 @@ impl sp_messenger::StorageKeys for StorageKeys {
     }
 }
 
+parameter_types! {
+    // TODO: update value
+    pub const ChannelReserveFee: Balance = 100 * SSC;
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -537,6 +550,8 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
+    type HoldIdentifier = HoldIdentifier;
+    type ChannelReserveFee = ChannelReserveFee;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

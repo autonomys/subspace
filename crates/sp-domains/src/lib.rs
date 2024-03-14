@@ -832,6 +832,18 @@ pub enum StakingHoldIdentifier {
     Staked(OperatorId),
 }
 
+/// Channel identity.
+pub type ChannelId = sp_core::U256;
+
+/// Messenger specific hold identifier
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum MessengerHoldIdentifier {
+    /// Holds the current reserved balance for channel opening
+    Channel((ChainId, ChannelId)),
+}
+
 /// Domains specific Identifier for Balances holds.
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,

@@ -1,3 +1,4 @@
+#![feature(variant_count)]
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
@@ -13,7 +14,8 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::format;
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
@@ -25,8 +27,10 @@ use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
+use frame_support::pallet_prelude::TypeInfo;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
+    VariantCount,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -43,7 +47,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{DomainAllowlistUpdates, DomainId, Transfers};
+use sp_domains::{DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
@@ -69,7 +73,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
 use sp_subspace_mmr::MmrLeaf;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
+    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SSC,
 };
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -302,6 +306,10 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
+parameter_types! {
+    pub const MaxHolds: u32 = 100;
+}
+
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -317,8 +325,8 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type RuntimeHoldReason = HoldIdentifier;
+    type MaxHolds = MaxHolds;
 }
 
 parameter_types! {
@@ -418,6 +426,28 @@ impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
     }
 }
 
+/// Balance hold identifier for this runtime.
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum HoldIdentifier {
+    Messenger(MessengerHoldIdentifier),
+}
+
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+    }
+}
+
+parameter_types! {
+    pub const ChannelReserveFee: Balance = SSC;
+}
+
 pub struct StorageKeys;
 
 impl sp_messenger::StorageKeys for StorageKeys {
@@ -461,6 +491,8 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = ();
+    type HoldIdentifier = HoldIdentifier;
+    type ChannelReserveFee = ChannelReserveFee;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

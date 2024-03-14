@@ -2,8 +2,8 @@
 extern crate alloc;
 
 use crate::{
-    BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, Config, Error, Event,
-    InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
+    BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, CloseChannelBy, Config,
+    Error, Event, InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -226,7 +226,9 @@ impl<T: Config> Pallet<T> {
                 if weight_tag != &MessageWeightTag::ProtocolChannelClose {
                     return Err(Error::<T>::WeightTagNotMatch.into());
                 }
-                Self::do_close_channel(chain_id, channel_id)
+                // closing of this channel is coming from the other chain
+                // so safe to close it as Sudo here
+                Self::do_close_channel(chain_id, channel_id, CloseChannelBy::Sudo)
             }
         }
     }
