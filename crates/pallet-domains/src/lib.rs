@@ -1478,7 +1478,9 @@ mod pallet {
                     }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
+                        // Bundle have a bit higher priority than normal extrinsic but must less than
+                        // fraud proof
+                        .priority(1)
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
