@@ -43,7 +43,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{DomainId, Transfers};
+use sp_domains::{DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
@@ -460,6 +460,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
+    type DomainOwner = ();
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -941,10 +942,17 @@ impl_runtime_apis! {
             )
         }
 
+        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
+             UncheckedExtrinsic::new_unsigned(
+                pallet_messenger::Call::update_domain_allowlist{ updates }.into()
+            )
+        }
+
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
             match &extrinsic.0.function {
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
+                RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
                 _ => false,
             }
         }
@@ -1017,7 +1025,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+    impl sp_messenger::MessengerApi<Block> for Runtime {
         fn is_xdm_valid(
             extrinsic: Vec<u8>,
         ) -> Option<bool> {
@@ -1034,6 +1042,11 @@ impl_runtime_apis! {
 
         fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             Messenger::inbox_response_storage_key(message_key)
+        }
+
+        fn domain_chains_allowlist_update(_domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
+            // not valid call on domains
+            None
         }
     }
 

@@ -184,8 +184,9 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, EpochIndex,
-        GenesisDomain, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
+        OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -354,6 +355,9 @@ mod pallet {
         /// How many block a bundle should still consider as valid after produced
         #[pallet::constant]
         type BundleLongevity: Get<u32>;
+
+        /// Post hook to notify accepted domain bundles in previous block.
+        type DomainBundleSubmitted: DomainBundleSubmitted;
     }
 
     #[pallet::pallet]
@@ -1381,6 +1385,7 @@ mod pallet {
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+                T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
             }
 
             let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
@@ -2162,6 +2167,16 @@ impl<T: Config> Pallet<T> {
         // meaning the ER is a bad ER and the `head_receipt_number` is previously reverted by
         // a fraud proof
         head_receipt_number < latest_submitted_er
+    }
+}
+
+impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
+    fn is_domain_owner(domain_id: DomainId, acc: T::AccountId) -> bool {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
+            domain_obj.owner_account_id == acc
+        } else {
+            false
+        }
     }
 }
 

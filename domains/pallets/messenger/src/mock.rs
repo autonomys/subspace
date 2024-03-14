@@ -39,7 +39,7 @@ macro_rules! impl_runtime {
         frame_support::construct_runtime!(
             pub struct Runtime {
                 System: frame_system,
-                Messenger: crate,
+                Messenger: crate exclude_parts{ Inherent },
                 Balances: pallet_balances,
                 Transporter: pallet_transporter,
             }
@@ -96,6 +96,7 @@ macro_rules! impl_runtime {
             type MmrHash = H256;
             type MmrProofVerifier = ();
             type StorageKeys = ();
+            type DomainOwner = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

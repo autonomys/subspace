@@ -136,7 +136,7 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
@@ -146,7 +146,7 @@ where
         + ProvideRuntimeApi<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + MessengerApi<CBlock>
         + FraudProofApi<CBlock, Block::Header>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,

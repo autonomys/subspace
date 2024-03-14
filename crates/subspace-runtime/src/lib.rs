@@ -60,8 +60,8 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
-    OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
+    ExecutionReceiptFor, OpaqueBundle, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -538,6 +538,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
+    type DomainOwner = Domains;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -671,6 +672,7 @@ impl pallet_domains::Config for Runtime {
     type DomainsTransfersTracker = Transporter;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type DomainBundleSubmitted = Messenger;
 }
 
 parameter_types! {
@@ -753,7 +755,7 @@ construct_runtime!(
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
-        Messenger: pallet_messenger = 60,
+        Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
@@ -1200,7 +1202,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+    impl sp_messenger::MessengerApi<Block> for Runtime {
         fn is_xdm_valid(
             extrinsic: Vec<u8>,
         ) -> Option<bool> {
@@ -1217,6 +1219,10 @@ impl_runtime_apis! {
 
         fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             Messenger::inbox_response_storage_key(message_key)
+        }
+
+        fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
+            Messenger::domain_chains_allowlist_update(domain_id)
         }
     }
 

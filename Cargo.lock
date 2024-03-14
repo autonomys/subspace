@@ -10882,6 +10882,7 @@ dependencies = [
  "sp-domain-digests",
  "sp-domains",
  "sp-externalities",
+ "sp-messenger",
  "sp-runtime",
  "sp-runtime-interface",
  "sp-state-machine",
@@ -11001,6 +11002,7 @@ dependencies = [
 name = "sp-messenger"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "frame-support",
  "hash-db",
  "log",
@@ -11010,6 +11012,7 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-domains",
+ "sp-inherents",
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-trie",
@@ -12142,10 +12145,12 @@ dependencies = [
  "cross-domain-message-gossip",
  "domain-client-message-relayer",
  "domain-runtime-primitives",
+ "frame-system",
  "futures",
  "jsonrpsee",
  "mmr-gadget",
  "pallet-domains",
+ "pallet-transaction-payment",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand",
@@ -12185,6 +12190,8 @@ dependencies = [
  "subspace-test-client",
  "subspace-test-primitives",
  "subspace-test-runtime",
+ "substrate-frame-rpc-system",
+ "substrate-test-client",
  "tokio",
  "tracing",
 ]

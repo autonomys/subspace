@@ -12,10 +12,11 @@
 //! Deriving these extrinsics during fraud proof verification should be possible since
 //! verification environment will have access to consensus chain.
 
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Header};
 use sp_timestamp::InherentType;
 use std::error::Error;
@@ -31,7 +32,7 @@ where
     CBlock: BlockT,
     Block: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
 {
     let create_inherent_data_providers =
         CreateInherentDataProvider::new(consensus_client, Some(consensus_block_hash), domain_id);
@@ -171,12 +172,13 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
 {
     type InherentDataProviders = (
         sp_timestamp::InherentDataProvider,
         sp_block_fees::InherentDataProvider,
         sp_executive::InherentDataProvider,
+        sp_messenger::InherentDataProvider,
     );
 
     async fn create_inherent_data_providers(
@@ -210,10 +212,28 @@ where
         let storage_price_provider =
             sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
 
+        // TODO: remove version check before next network
+        let messenger_api_version = runtime_api
+            .api_version::<dyn MessengerApi<Block>>(consensus_block_hash)?
+            // safe to return default version as 1 since there will always be version 1.
+            .unwrap_or(1);
+
+        let domain_chains_allowlist_update = if messenger_api_version >= 3 {
+            runtime_api.domain_chains_allowlist_update(consensus_block_hash, self.domain_id)?
+        } else {
+            None
+        };
+
+        let messenger_inherent_provider =
+            sp_messenger::InherentDataProvider::new(sp_messenger::InherentType {
+                maybe_updates: domain_chains_allowlist_update,
+            });
+
         Ok((
             timestamp_provider,
             storage_price_provider,
             runtime_upgrade_provider,
+            messenger_inherent_provider,
         ))
     }
 }
