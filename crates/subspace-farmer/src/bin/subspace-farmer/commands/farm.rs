@@ -60,6 +60,9 @@ const PIECE_GETTER_MAX_RETRIES: u16 = 7;
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
+/// NOTE: for large gaps between the plotted part and the end of the file plot cache will result in
+/// very long period of writing zeroes on Windows, see https://stackoverflow.com/q/78058306/3806795
+const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 
 fn should_farm_during_initial_plotting() -> bool {
     let total_cpu_cores = all_cpu_cores()
@@ -244,6 +247,15 @@ pub(crate) struct FarmingArgs {
     /// farming is successful and computer can be used comfortably for other things
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
     plotting_thread_priority: PlottingThreadPriority,
+    /// Enable plot cache.
+    ///
+    /// Plot cache uses unplotted space as additional cache improving plotting speeds, especially
+    /// for small farmers.
+    ///
+    /// On Windows enabled by default if total plotting space doesn't exceed 7TiB, for other OSs
+    /// enabled by default regardless of farm size.
+    #[arg(long)]
+    plot_cache: Option<bool>,
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
     disable_farm_locking: bool,
@@ -398,8 +410,18 @@ where
         replotting_thread_pool_size,
         replotting_cpu_cores,
         plotting_thread_priority,
+        plot_cache,
         disable_farm_locking,
     } = farming_args;
+
+    let plot_cache = plot_cache.unwrap_or_else(|| {
+        !cfg!(windows)
+            || disk_farms
+                .iter()
+                .map(|farm| farm.allocated_plotting_space)
+                .sum::<u64>()
+                <= MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS
+    });
 
     // Override flags with `--dev`
     dsn.allow_private_ips = dsn.allow_private_ips || dev;
@@ -631,6 +653,7 @@ where
     let (single_disk_farms, plotting_delay_senders) = tokio::task::block_in_place(|| {
         let handle = Handle::current();
         let global_mutex = Arc::default();
+        let info_mutex = &Mutex::<()>::default();
         let faster_read_sector_record_chunks_mode_barrier = &Barrier::new(disk_farms.len());
         let faster_read_sector_record_chunks_mode_concurrency = &Semaphore::new(1);
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
@@ -696,6 +719,8 @@ where
                     };
 
                     if !no_info {
+                        let _info_guard = info_mutex.lock();
+
                         let info = single_disk_farm.info();
                         println!("Single disk farm {disk_farm_index}:");
                         println!("  ID: {}", info.id());
@@ -744,10 +769,14 @@ where
                 .iter()
                 .map(|single_disk_farm| single_disk_farm.piece_cache())
                 .collect(),
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.plot_cache())
-                .collect(),
+            if plot_cache {
+                single_disk_farms
+                    .iter()
+                    .map(|single_disk_farm| single_disk_farm.plot_cache())
+                    .collect()
+            } else {
+                Vec::new()
+            },
         )
         .await;
     drop(farmer_cache);
