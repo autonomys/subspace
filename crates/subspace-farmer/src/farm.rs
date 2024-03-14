@@ -1,14 +1,24 @@
+use crate::single_disk_farm::farming::FarmingNotification;
 use crate::single_disk_farm::plot_cache::MaybePieceStoredResult;
+use crate::single_disk_farm::SectorUpdate;
 use async_trait::async_trait;
-use derive_more::Display;
+use derive_more::{Display, From};
 use futures::Stream;
 use parity_scale_codec::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
+use subspace_farmer_components::plotting::PlottedSector;
 use subspace_networking::libp2p::kad::RecordKey;
+use subspace_rpc_primitives::SolutionResponse;
+use ulid::Ulid;
 
 /// Erased error type
 pub type FarmError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 
 /// Offset wrapper for pieces in [`PieceCache`]
 #[derive(Debug, Display, Copy, Clone, Encode, Decode)]
@@ -93,4 +103,79 @@ pub trait PieceReader: Send + Sync + fmt::Debug {
         sector_index: SectorIndex,
         piece_offset: PieceOffset,
     ) -> Result<Option<Piece>, FarmError>;
+}
+
+/// Opaque handler ID for event handlers, once dropped handler will be removed automatically
+pub trait HandlerId: Send + fmt::Debug {
+    /// Consumes [`HandlerId`] and prevents handler from being removed automatically.
+    fn detach(&self);
+}
+
+impl HandlerId for event_listener_primitives::HandlerId {
+    fn detach(&self) {
+        self.detach();
+    }
+}
+
+/// An identifier for a farm, can be used for in logs, thread names, etc.
+#[derive(
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
+)]
+#[serde(untagged)]
+pub enum FarmId {
+    /// Farm ID
+    Ulid(Ulid),
+}
+
+#[allow(clippy::new_without_default)]
+impl FarmId {
+    /// Creates new ID
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
+
+/// Abstract farm implementation
+#[async_trait(?Send)]
+pub trait Farm {
+    /// ID of this farm
+    fn id(&self) -> &FarmId;
+
+    /// Number of sectors in this farm
+    fn total_sectors_count(&self) -> SectorIndex;
+
+    /// Number of sectors successfully plotted so far
+    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError>;
+
+    /// Read information about sectors plotted so far
+    async fn plotted_sectors(
+        &self,
+    ) -> Result<Box<dyn Stream<Item = Result<PlottedSector, FarmError>> + Unpin + '_>, FarmError>;
+
+    /// Get piece cache instance
+    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static>;
+
+    /// Get plot cache instance
+    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static>;
+
+    /// Get piece reader to read plotted pieces later
+    fn piece_reader(&self) -> Arc<dyn PieceReader + 'static>;
+
+    /// Subscribe to sector updates
+    fn on_sector_update(
+        &self,
+        callback: HandlerFn<(SectorIndex, SectorUpdate)>,
+    ) -> Box<dyn HandlerId>;
+
+    /// Subscribe to farming notifications
+    fn on_farming_notification(
+        &self,
+        callback: HandlerFn<FarmingNotification>,
+    ) -> Box<dyn HandlerId>;
+
+    /// Subscribe to new solution notification
+    fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn HandlerId>;
+
+    /// Run and wait for background threads to exit or return an error
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<FarmId>> + Send>>;
 }

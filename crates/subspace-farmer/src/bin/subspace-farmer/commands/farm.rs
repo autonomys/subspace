@@ -11,7 +11,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -25,6 +25,7 @@ use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::farm::Farm;
 use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
@@ -776,7 +777,7 @@ where
 
         let single_disk_farms = single_disk_farms
             .into_iter()
-            .map(|(_disk_farm_index, single_disk_farm)| single_disk_farm)
+            .map(|(_disk_farm_index, single_disk_farm)| Box::new(single_disk_farm) as Box<dyn Farm>)
             .collect::<Vec<_>>();
 
         (single_disk_farms, plotting_delay_senders)
@@ -807,12 +808,12 @@ where
         .replace_backing_caches(
             single_disk_farms
                 .iter()
-                .map(|single_disk_farm| Arc::new(single_disk_farm.piece_cache()) as Arc<_>)
+                .map(|single_disk_farm| single_disk_farm.piece_cache())
                 .collect(),
             if plot_cache {
                 single_disk_farms
                     .iter()
-                    .map(|single_disk_farm| Arc::new(single_disk_farm.plot_cache()) as Arc<_>)
+                    .map(|single_disk_farm| single_disk_farm.plot_cache())
                     .collect()
             } else {
                 Vec::new()
@@ -824,7 +825,7 @@ where
     // Store piece readers so we can reference them later
     let piece_readers = single_disk_farms
         .iter()
-        .map(|single_disk_farm| Arc::new(single_disk_farm.piece_reader()) as Arc<_>)
+        .map(|single_disk_farm| single_disk_farm.piece_reader())
         .collect::<Vec<_>>();
 
     info!("Collecting already plotted pieces (this will take some time)...");
@@ -841,10 +842,11 @@ where
                 )
             })?;
 
-            (0 as SectorIndex..)
-                .zip(single_disk_farm.plotted_sectors().await)
-                .for_each(
-                    |(sector_index, plotted_sector_result)| match plotted_sector_result {
+            for (sector_index, mut plotted_sectors) in
+                (0 as SectorIndex..).zip(single_disk_farm.plotted_sectors().await)
+            {
+                while let Some(plotted_sector_result) = plotted_sectors.next().await {
+                    match plotted_sector_result {
                         Ok(plotted_sector) => {
                             future_plotted_pieces.add_sector(disk_farm_index, &plotted_sector);
                         }
@@ -856,8 +858,9 @@ where
                                 "Failed reading plotted sector on startup, skipping"
                             );
                         }
-                    },
-                );
+                    }
+                }
+            }
         }
 
         plotted_pieces.lock().replace(future_plotted_pieces);
@@ -867,15 +870,25 @@ where
 
     let total_and_plotted_sectors = single_disk_farms
         .iter()
-        .map(|single_disk_farm| async {
+        .enumerate()
+        .map(|(disk_farm_index, single_disk_farm)| async move {
             let total_sector_count = single_disk_farm.total_sectors_count();
-            let plotted_sectors_count = single_disk_farm.plotted_sectors_count().await;
+            let plotted_sectors_count =
+                single_disk_farm
+                    .plotted_sectors_count()
+                    .await
+                    .map_err(|error| {
+                        anyhow!(
+                            "Failed to get plotted sectors count from from index \
+                            {disk_farm_index}: {error}"
+                        )
+                    })?;
 
-            (total_sector_count, plotted_sectors_count)
+            anyhow::Ok((total_sector_count, plotted_sectors_count))
         })
         .collect::<FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+        .try_collect::<Vec<_>>()
+        .await?;
 
     let mut single_disk_farms_stream = single_disk_farms
         .into_iter()
