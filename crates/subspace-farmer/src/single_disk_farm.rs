@@ -266,7 +266,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<'a, NC, PG> {
+pub struct SingleDiskFarmOptions<NC, PG> {
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -309,9 +309,9 @@ pub struct SingleDiskFarmOptions<'a, NC, PG> {
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
     /// Barrier before internal benchmarking between different farms
-    pub faster_read_sector_record_chunks_mode_barrier: &'a Barrier,
+    pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
     /// Limit concurrency of internal benchmarking between different farms
-    pub faster_read_sector_record_chunks_mode_concurrency: &'a Semaphore,
+    pub faster_read_sector_record_chunks_mode_concurrency: Arc<Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -327,6 +327,9 @@ pub enum SingleDiskFarmError {
     /// I/O error occurred
     #[error("Single disk farm I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Failed to spawn task for blocking thread
+    #[error("Failed to spawn task for blocking thread: {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
@@ -634,10 +637,8 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    ///
-    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskFarmOptions<'_, NC, PG>,
+        options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
@@ -647,6 +648,13 @@ impl SingleDiskFarm {
     {
         let span = info_span!("", %disk_farm_index);
         let span_guard = span.enter();
+
+        let single_disk_farm_init_fut = tokio::task::spawn_blocking(move || {
+            Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+        });
+
+        let (single_disk_farm_init, options) =
+            AsyncJoinOnDrop::new(single_disk_farm_init_fut, false).await??;
 
         let SingleDiskFarmInit {
             identity,
@@ -659,7 +667,7 @@ impl SingleDiskFarm {
             sectors_metadata,
             piece_cache,
             plot_cache,
-        } = Self::init(&options)?;
+        } = single_disk_farm_init;
 
         let public_key = *single_disk_farm_info.public_key();
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
@@ -721,37 +729,54 @@ impl SingleDiskFarm {
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
             .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
-        let farming_plot = farming_thread_pool.install(|| {
-            #[cfg(windows)]
-            {
-                RayonFiles::open_with(
-                    &directory.join(Self::PLOT_FILE),
-                    UnbufferedIoFileWindows::open,
-                )
-            }
-            #[cfg(not(windows))]
-            {
-                RayonFiles::open(&directory.join(Self::PLOT_FILE))
-            }
-        })?;
+        let farming_plot_fut = tokio::task::spawn_blocking(|| {
+            farming_thread_pool
+                .install(move || {
+                    #[cfg(windows)]
+                    {
+                        RayonFiles::open_with(
+                            &directory.join(Self::PLOT_FILE),
+                            UnbufferedIoFileWindows::open,
+                        )
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        RayonFiles::open(&directory.join(Self::PLOT_FILE))
+                    }
+                })
+                .map(|farming_plot| (farming_plot, farming_thread_pool))
+        });
+
+        let (farming_plot, farming_thread_pool) =
+            AsyncJoinOnDrop::new(farming_plot_fut, false).await??;
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 
-        let read_sector_record_chunks_mode = {
+        let (read_sector_record_chunks_mode, farming_plot, farming_thread_pool) = {
             // Error doesn't matter here
             let _permit = faster_read_sector_record_chunks_mode_concurrency
                 .acquire()
                 .await;
-            farming_thread_pool.install(|| {
-                let _span_guard = span.enter();
+            let span = span.clone();
+            let plot_file = Arc::clone(&plot_file);
 
-                faster_read_sector_record_chunks_mode(
-                    &*plot_file,
-                    &farming_plot,
-                    sector_size,
-                    metadata_header.plotted_sector_count,
-                )
-            })?
+            let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                farming_thread_pool
+                    .install(move || {
+                        let _span_guard = span.enter();
+
+                        faster_read_sector_record_chunks_mode(
+                            &*plot_file,
+                            &farming_plot,
+                            sector_size,
+                            metadata_header.plotted_sector_count,
+                        )
+                        .map(|mode| (mode, farming_plot))
+                    })
+                    .map(|(mode, farming_plot)| (mode, farming_plot, farming_thread_pool))
+            });
+
+            AsyncJoinOnDrop::new(read_sector_record_chunks_mode_fut, false).await??
         };
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
@@ -1024,7 +1049,7 @@ impl SingleDiskFarm {
     }
 
     fn init<NC, PG>(
-        options: &SingleDiskFarmOptions<'_, NC, PG>,
+        options: &SingleDiskFarmOptions<NC, PG>,
     ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
         let SingleDiskFarmOptions {
             directory,
