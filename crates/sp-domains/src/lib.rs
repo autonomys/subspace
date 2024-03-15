@@ -1320,6 +1320,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return if the receipt is exist and pending to prune
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
+
+        /// Return the balance of the storage fund account
+        fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

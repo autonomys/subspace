@@ -1166,6 +1166,10 @@ impl_runtime_apis! {
             )
             .unwrap_or(false)
         }
+
+        fn storage_fund_account_balance(operator_id: OperatorId) -> Balance {
+            Domains::storage_fund_account_balance(operator_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

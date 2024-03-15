@@ -184,7 +184,7 @@ where
                 })?;
             let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
-                .propose_bundle_at(proof_of_election, tx_range)
+                .propose_bundle_at(proof_of_election, tx_range, operator_id)
                 .await?;
 
             // if there are no extrinsics and no receipts to confirm, skip the bundle
