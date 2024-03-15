@@ -3,12 +3,13 @@ use codec::Encode;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
+    BundleHeader, DomainBundleLimit, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor,
+    ProofOfElection,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::Percent;
@@ -116,6 +117,48 @@ where
         }
     }
 
+    pub(crate) fn fetch_domain_bundle_limit(&self) -> sp_blockchain::Result<DomainBundleLimit> {
+        let best_hash = self.consensus_client.info().best_hash;
+        let consensus_runtime_api = self.consensus_client.runtime_api();
+        let api_version = consensus_runtime_api
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(best_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("DomainsApi not found at: {:?}", best_hash).into(),
+                ))
+            })?;
+
+        // TODO: This is used to keep compatible with gemini-3h, remove before next network
+        if api_version >= 2 {
+            self.consensus_client
+                .runtime_api()
+                .domain_bundle_limit(best_hash, self.domain_id)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Application(
+                        format!("Domain bundle limit for {:?} not found", self.domain_id).into(),
+                    )
+                })
+        } else {
+            // If bundle limit runtime api is not available, we need to revert to old behaviour and
+            // fetch domain block limit.
+            let domain_block_limit = self
+                .consensus_client
+                .runtime_api()
+                .domain_block_limit(best_hash, self.domain_id)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Application(
+                        format!("Domain block limit for {:?} not found", self.domain_id).into(),
+                    )
+                })?;
+
+            Ok(DomainBundleLimit {
+                max_bundle_weight: domain_block_limit.max_block_weight,
+                max_bundle_size: domain_block_limit.max_block_size,
+            })
+        }
+    }
+
     pub(crate) async fn propose_bundle_at(
         &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
@@ -146,15 +189,9 @@ where
             .maybe_clear(self.consensus_client.info().best_hash);
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
-        let domain_block_limit = self
-            .consensus_client
-            .runtime_api()
-            .domain_block_limit(self.consensus_client.info().best_hash, self.domain_id)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Application(
-                    format!("Domain block limit for {:?} not found", self.domain_id).into(),
-                )
-            })?;
+
+        let domain_bundle_limit = self.fetch_domain_bundle_limit()?;
+
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
@@ -199,11 +236,11 @@ where
                     })?;
                 let next_estimated_bundle_weight =
                     estimated_bundle_weight.saturating_add(tx_weight);
-                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                if next_estimated_bundle_weight.any_gt(domain_bundle_limit.max_bundle_weight) {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
                         && Percent::from_rational(
                             estimated_bundle_weight.ref_time(),
-                            domain_block_limit.max_block_weight.ref_time(),
+                            domain_bundle_limit.max_bundle_weight.ref_time(),
                         ) < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
@@ -213,9 +250,9 @@ where
                 }
 
                 let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
-                if next_bundle_size > domain_block_limit.max_block_size {
+                if next_bundle_size > domain_bundle_limit.max_bundle_size {
                     if skipped < MAX_SKIPPED_TRANSACTIONS
-                        && Percent::from_rational(bundle_size, domain_block_limit.max_block_size)
+                        && Percent::from_rational(bundle_size, domain_bundle_limit.max_bundle_size)
                             < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;

@@ -6,14 +6,11 @@ use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
-pub use sp_domains::ChainId;
+pub use sp_domains::{ChainId, ChannelId};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::DispatchError;
 use sp_trie::StorageProof;
-
-/// Channel identity.
-pub type ChannelId = U256;
 
 /// Nonce used as an identifier and ordering of messages within a channel.
 /// Nonce is always increasing.

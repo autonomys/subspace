@@ -32,6 +32,8 @@ extern crate alloc;
 
 use crate::storage::{RawGenesis, StorageKey};
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -60,11 +62,12 @@ use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_trie::TrieLayout;
 use sp_version::RuntimeVersion;
 use sp_weights::Weight;
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{bidirectional_distance, Blake3Hash, PotOutput, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
@@ -447,6 +450,10 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
             .map(|tx| tx.encoded_size() as u32)
             .sum::<u32>()
     }
+
+    pub fn estimated_weight(&self) -> Weight {
+        self.sealed_header.header.estimated_bundle_weight
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -825,6 +832,18 @@ pub enum StakingHoldIdentifier {
     Staked(OperatorId),
 }
 
+/// Channel identity.
+pub type ChannelId = sp_core::U256;
+
+/// Messenger specific hold identifier
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum MessengerHoldIdentifier {
+    /// Holds the current reserved balance for channel opening
+    Channel((ChainId, ChannelId)),
+}
+
 /// Domains specific Identifier for Balances holds.
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
@@ -960,6 +979,14 @@ pub struct DomainBlockLimit {
     pub max_block_size: u32,
     /// The max block weight for the domain.
     pub max_block_weight: Weight,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub struct DomainBundleLimit {
+    /// The max bundle size for the domain.
+    pub max_bundle_size: u32,
+    /// The max bundle weight for the domain.
+    pub max_bundle_weight: Weight,
 }
 
 /// Checks if the signer Id hash is within the tx range
@@ -1168,6 +1195,29 @@ pub trait DomainsTransfersTracker<Balance> {
     fn reduce_domain_balance(domain_id: DomainId, amount: Balance) -> Result<(), Self::Error>;
 }
 
+/// Trait to check domain owner.
+pub trait DomainOwner<AccountId> {
+    /// Returns true if the account is the domain owner.
+    fn is_domain_owner(domain_id: DomainId, acc: AccountId) -> bool;
+}
+
+impl<AccountId> DomainOwner<AccountId> for () {
+    fn is_domain_owner(_domain_id: DomainId, _acc: AccountId) -> bool {
+        false
+    }
+}
+
+/// Post hook to know if the domain had bundle submitted in the previous block.
+pub trait DomainBundleSubmitted {
+    /// Called in the next block initialisation if there was a domain bundle in the previous block.
+    /// This hook if called for domain represents that there is a new domain block for parent consensus block.
+    fn domain_bundle_submitted(domain_id: DomainId);
+}
+
+impl DomainBundleSubmitted for () {
+    fn domain_bundle_submitted(_domain_id: DomainId) {}
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
@@ -1176,8 +1226,18 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     Balance,
 >;
 
+/// Domain chains allowlist updates.
+#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+pub struct DomainAllowlistUpdates {
+    /// Chains that are allowed to open channel with this chain.
+    pub allow_chains: BTreeSet<ChainId>,
+    /// Chains that are not allowed to open channel with this chain.
+    pub remove_chains: BTreeSet<ChainId>,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
+    #[api_version(2)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1226,6 +1286,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the domain block limit of the given domain.
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
+
+        /// Returns the domain bundle limit of the given domain.
+        fn domain_bundle_limit(domain_id: DomainId) -> Option<DomainBundleLimit>;
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
         fn non_empty_er_exists(domain_id: DomainId) -> bool;

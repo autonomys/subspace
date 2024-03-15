@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::{BlockFees, Transfers};
+use crate::{BlockFees, DomainAllowlistUpdates, Transfers};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::{
@@ -45,6 +45,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns an encoded extrinsic to set domain transaction byte fee.
         fn construct_consensus_chain_byte_fee_extrinsic(consensus_chain_byte_fee: Balance) -> Block::Extrinsic;
+
+        /// Returns an extrinsic to update chain allowlist.
+        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> Block::Extrinsic;
 
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;

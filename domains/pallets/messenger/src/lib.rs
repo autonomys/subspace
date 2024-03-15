@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
-#![feature(let_chains)]
+#![feature(let_chains, variant_count)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -34,10 +34,11 @@ pub mod weights;
 extern crate alloc;
 
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::Inspect;
+use frame_support::traits::fungible::{Inspect, InspectHold};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
+use sp_domains::DomainId;
 use sp_messenger::messages::{
     ChainId, ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce,
 };
@@ -58,7 +59,7 @@ pub enum ChannelState {
 
 /// Channel describes a bridge to exchange messages between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Channel<Balance> {
+pub struct Channel<Balance, AccountId> {
     /// Channel identifier.
     pub(crate) channel_id: ChannelId,
     /// State of the channel.
@@ -73,6 +74,9 @@ pub struct Channel<Balance> {
     pub(crate) max_outgoing_messages: u32,
     /// Fee model for this channel between the chains.
     pub(crate) fee: FeeModel<Balance>,
+    /// Owner of the channel
+    /// Owner maybe None if the channel was initiated on the other chain.
+    pub(crate) maybe_owner: Option<AccountId>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -86,6 +90,8 @@ pub enum OutboxMessageResult {
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
+pub(crate) type FungibleHoldId<T> =
+    <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
 
 /// A validated relay message.
 #[derive(Debug)]
@@ -95,31 +101,70 @@ pub struct ValidatedRelayMessage<Balance> {
     should_init_channel: bool,
 }
 
+/// Parameter to update chain allow list.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub enum ChainAllowlistUpdate {
+    Add(ChainId),
+    Remove(ChainId),
+}
+
+impl ChainAllowlistUpdate {
+    fn chain_id(&self) -> ChainId {
+        match self {
+            ChainAllowlistUpdate::Add(chain_id) => *chain_id,
+            ChainAllowlistUpdate::Remove(chain_id) => *chain_id,
+        }
+    }
+}
+
+/// Channel can be closed either by Channel owner or Sudo
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub(crate) enum CloseChannelBy<AccountId> {
+    Owner(AccountId),
+    Sudo,
+}
+
+/// Hold identifier trait for messenger specific balance holds
+pub trait HoldIdentifier<T: Config> {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> FungibleHoldId<T>;
+}
+
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
-        StateRootOf, ValidatedRelayMessage, U256,
+        BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
+        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
+        U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
     #[cfg(not(feature = "std"))]
+    use alloc::collections::BTreeSet;
+    #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
+    use frame_support::ensure;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::fungible::Mutate;
+    use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+    use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
+    use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::{MmrProofVerifier, OnXDMRewards, StorageKeys};
+    use sp_messenger::{
+        InherentError, InherentType, MmrProofVerifier, OnXDMRewards, StorageKeys,
+        INHERENT_IDENTIFIER,
+    };
     use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
+    #[cfg(feature = "std")]
+    use std::collections::BTreeSet;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -130,7 +175,9 @@ mod pallet {
         fn get_endpoint_handler(endpoint: &Endpoint)
             -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
-        type Currency: Mutate<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>
+            + InspectHold<Self::AccountId>
+            + MutateHold<Self::AccountId>;
         /// Confirmation depth for XDM coming from chains.
         type ConfirmationDepth: Get<BlockNumberFor<Self>>;
         /// Weight information for extrinsics in this pallet.
@@ -145,6 +192,13 @@ mod pallet {
         type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, StateRootOf<Self>>;
         /// Storage key provider.
         type StorageKeys: StorageKeys;
+        /// Domain owner provider.
+        type DomainOwner: DomainOwner<Self::AccountId>;
+        /// A variation of the Identifier used for holding the funds used for Messenger
+        type HoldIdentifier: HoldIdentifier<Self>;
+        /// Channel reserve fee to open a channel.
+        #[pallet::constant]
+        type ChannelReserveFee: Get<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -168,7 +222,7 @@ mod pallet {
         ChainId,
         Identity,
         ChannelId,
-        Channel<BalanceOf<T>>,
+        Channel<BalanceOf<T>, T::AccountId>,
         OptionQuery,
     >;
 
@@ -230,6 +284,18 @@ mod pallet {
     #[pallet::getter(fn block_messages)]
     pub(super) type BlockMessages<T: Config> =
         StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
+
+    /// An allowlist of chains that can open channel with this chain.
+    #[pallet::storage]
+    #[pallet::getter(fn chain_allowlist)]
+    pub(super) type ChainAllowlist<T: Config> = StorageValue<_, BTreeSet<ChainId>, ValueQuery>;
+
+    /// A temporary storage to store any allowlist updates to domain.
+    /// Will be cleared in the next block once the previous block has a domain bundle.
+    #[pallet::storage]
+    #[pallet::getter(fn domain_chain_allowlist_updates)]
+    pub(super) type DomainChainAllowlistUpdate<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainAllowlistUpdates, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -344,6 +410,8 @@ mod pallet {
                     }
                     Self::pre_dispatch_relay_message_response(msg)
                 }
+                // always accept inherent extrinsic
+                Call::update_domain_allowlist { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -436,8 +504,32 @@ mod pallet {
         /// actual processing path
         WeightTagNotMatch,
 
-        /// Emite when the there is balance overflow
+        /// Emits when the there is balance overflow.
         BalanceOverflow,
+
+        /// Invalid allowed chain.
+        InvalidAllowedChain,
+
+        /// Operation not allowed.
+        OperationNotAllowed,
+
+        /// Account is not a Domain owner.
+        NotDomainOwner,
+
+        /// Chain not allowed to open channel
+        ChainNotAllowed,
+
+        /// Not enough balance to do the operation
+        InsufficientBalance,
+
+        /// Failed to hold balance
+        BalanceHold,
+
+        /// Not a channel owner
+        ChannelOwner,
+
+        /// Failed to unlock the balance
+        BalanceUnlock,
     }
 
     #[pallet::hooks]
@@ -461,11 +553,22 @@ mod pallet {
             dst_chain_id: ChainId,
             params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
-            ensure_root(origin)?;
-            // TODO(ved): fee for channel open
+            let owner = ensure_signed(origin)?;
 
             // initiate the channel config
-            let channel_id = Self::do_init_channel(dst_chain_id, params)?;
+            let channel_id = Self::do_init_channel(dst_chain_id, params, Some(owner.clone()))?;
+
+            // reserve channel open fees
+            let hold_id = T::HoldIdentifier::messenger_channel(dst_chain_id, channel_id);
+            let amount = T::ChannelReserveFee::get();
+
+            // ensure there is enough free balance to lock
+            ensure!(
+                T::Currency::reducible_balance(&owner, Preservation::Preserve, Fortitude::Polite)
+                    >= amount,
+                Error::<T>::InsufficientBalance
+            );
+            T::Currency::hold(&hold_id, &owner, amount).map_err(|_| Error::<T>::BalanceHold)?;
 
             // send message to dst_chain
             Self::new_outbox_message(
@@ -490,8 +593,13 @@ mod pallet {
             chain_id: ChainId,
             channel_id: ChannelId,
         ) -> DispatchResult {
-            ensure_root(origin)?;
-            Self::do_close_channel(chain_id, channel_id)?;
+            // either owner can close the channel
+            // or sudo can close the channel
+            let close_channel_by = match ensure_signed_or_root(origin)? {
+                Some(owner) => CloseChannelBy::Owner(owner),
+                None => CloseChannelBy::Sudo,
+            };
+            Self::do_close_channel(chain_id, channel_id, close_channel_by)?;
             Self::new_outbox_message(
                 T::SelfChainId::get(),
                 chain_id,
@@ -528,6 +636,160 @@ mod pallet {
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
+        }
+
+        /// A call to update consensus chain allow list.
+        #[pallet::call_index(4)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
+        pub fn update_consensus_chain_allowlist(
+            origin: OriginFor<T>,
+            update: ChainAllowlistUpdate,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            ensure!(
+                T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            ensure!(
+                update.chain_id() != T::SelfChainId::get(),
+                Error::<T>::InvalidAllowedChain
+            );
+
+            ChainAllowlist::<T>::mutate(|list| match update {
+                ChainAllowlistUpdate::Add(chain_id) => list.insert(chain_id),
+                ChainAllowlistUpdate::Remove(chain_id) => list.remove(&chain_id),
+            });
+            Ok(())
+        }
+
+        /// A call to initiate chain allowlist update on domains
+        #[pallet::call_index(5)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(1, 1))]
+        pub fn initiate_domain_update_chain_allowlist(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            update: ChainAllowlistUpdate,
+        ) -> DispatchResult {
+            let domain_owner = ensure_signed(origin)?;
+            ensure!(
+                T::DomainOwner::is_domain_owner(domain_id, domain_owner),
+                Error::<T>::NotDomainOwner
+            );
+
+            ensure!(
+                T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            if let Some(dst_domain_id) = update.chain_id().maybe_domain_chain() {
+                ensure!(dst_domain_id != domain_id, Error::<T>::InvalidAllowedChain);
+            }
+
+            DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_domain_updates| {
+                let mut domain_updates = maybe_domain_updates.take().unwrap_or_default();
+                match update {
+                    ChainAllowlistUpdate::Add(chain_id) => {
+                        domain_updates.remove_chains.remove(&chain_id);
+                        domain_updates.allow_chains.insert(chain_id);
+                    }
+                    ChainAllowlistUpdate::Remove(chain_id) => {
+                        domain_updates.allow_chains.remove(&chain_id);
+                        domain_updates.remove_chains.insert(chain_id);
+                    }
+                }
+
+                *maybe_domain_updates = Some(domain_updates)
+            });
+            Ok(())
+        }
+
+        /// An inherent call to update allowlist for domain.
+        #[pallet::call_index(6)]
+        #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), DispatchClass::Mandatory))]
+        pub fn update_domain_allowlist(
+            origin: OriginFor<T>,
+            updates: DomainAllowlistUpdates,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            ensure!(
+                !T::SelfChainId::get().is_consensus_chain(),
+                Error::<T>::OperationNotAllowed
+            );
+
+            let DomainAllowlistUpdates {
+                allow_chains,
+                remove_chains,
+            } = updates;
+
+            ChainAllowlist::<T>::mutate(|list| {
+                // remove chains from set
+                // TODO: should we close the existing channels to the following chains?
+                remove_chains.into_iter().for_each(|chain_id| {
+                    list.remove(&chain_id);
+                });
+
+                // add new chains
+                allow_chains.into_iter().for_each(|chain_id| {
+                    list.insert(chain_id);
+                });
+            });
+
+            Ok(())
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            inherent_data
+                .maybe_updates
+                .map(|updates| Call::update_domain_allowlist { updates })
+        }
+
+        fn is_inherent_required(data: &InherentData) -> Result<Option<Self::Error>, Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            Ok(if inherent_data.maybe_updates.is_none() {
+                None
+            } else {
+                Some(InherentError::MissingAllowlistUpdates)
+            })
+        }
+
+        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Messenger inherent data not correctly encoded")
+                .expect("Messenger inherent data must be provided");
+
+            if let Some(provided_updates) = inherent_data.maybe_updates {
+                if let Call::update_domain_allowlist { updates } = call {
+                    if updates != &provided_updates {
+                        return Err(InherentError::IncorrectAllowlistUpdates);
+                    }
+                }
+            } else {
+                return Err(InherentError::MissingAllowlistUpdates);
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::update_domain_allowlist { .. })
         }
     }
 
@@ -572,7 +834,7 @@ mod pallet {
                 max_outgoing_messages: 100,
                 fee_model,
             };
-            let channel_id = Self::do_init_channel(dst_chain_id, init_params)?;
+            let channel_id = Self::do_init_channel(dst_chain_id, init_params, None)?;
             Self::do_open_channel(dst_chain_id, channel_id)?;
             Ok(())
         }
@@ -643,7 +905,11 @@ mod pallet {
             Ok(())
         }
 
-        pub(crate) fn do_close_channel(chain_id: ChainId, channel_id: ChannelId) -> DispatchResult {
+        pub(crate) fn do_close_channel(
+            chain_id: ChainId,
+            channel_id: ChannelId,
+            close_channel_by: CloseChannelBy<T::AccountId>,
+        ) -> DispatchResult {
             Channels::<T>::try_mutate(chain_id, channel_id, |maybe_channel| -> DispatchResult {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
 
@@ -651,6 +917,17 @@ mod pallet {
                     channel.state == ChannelState::Open,
                     Error::<T>::InvalidChannelState
                 );
+
+                if let CloseChannelBy::Owner(owner) = close_channel_by {
+                    ensure!(channel.maybe_owner == Some(owner), Error::<T>::ChannelOwner);
+                }
+
+                if let Some(owner) = &channel.maybe_owner {
+                    let hold_id = T::HoldIdentifier::messenger_channel(chain_id, channel_id);
+                    let locked_amount = T::Currency::balance_on_hold(&hold_id, owner);
+                    T::Currency::release(&hold_id, owner, locked_amount, Precision::Exact)
+                        .map_err(|_| Error::<T>::BalanceUnlock)?;
+                }
 
                 channel.state = ChannelState::Closed;
                 Ok(())
@@ -667,10 +944,17 @@ mod pallet {
         pub(crate) fn do_init_channel(
             dst_chain_id: ChainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
+            maybe_owner: Option<T::AccountId>,
         ) -> Result<ChannelId, DispatchError> {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
                 Error::<T>::InvalidChain,
+            );
+
+            let chain_allowlist = ChainAllowlist::<T>::get();
+            ensure!(
+                chain_allowlist.contains(&dst_chain_id),
+                Error::<T>::ChainNotAllowed
             );
 
             let channel_id = NextChannelId::<T>::get(dst_chain_id);
@@ -689,6 +973,7 @@ mod pallet {
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
                     fee: init_params.fee_model,
+                    maybe_owner,
                 },
             );
 
@@ -773,7 +1058,9 @@ mod pallet {
                     ProtocolMessageRequest::ChannelOpen(params),
                 ))) = msg.payload
                 {
-                    Self::do_init_channel(msg.src_chain_id, params).map_err(|err| {
+                    // channel is being opened without an owner since this is a relay message
+                    // from other chain
+                    Self::do_init_channel(msg.src_chain_id, params, None).map_err(|err| {
                         log::error!(
                             "Error initiating channel: {:?} with chain: {:?}: {:?}",
                             msg.channel_id,
@@ -919,6 +1206,12 @@ mod pallet {
         pub fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             InboxResponses::<T>::hashed_key_for(message_key)
         }
+
+        pub fn domain_chains_allowlist_update(
+            domain_id: DomainId,
+        ) -> Option<DomainAllowlistUpdates> {
+            DomainChainAllowlistUpdate::<T>::get(domain_id)
+        }
     }
 }
 
@@ -948,5 +1241,11 @@ where
     /// Returns true if the inbox message response has not received acknowledgement yet.
     pub fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
         InboxResponses::<T>::contains_key((dst_chain_id, msg_id.0, msg_id.1))
+    }
+}
+
+impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
+    fn domain_bundle_submitted(domain_id: DomainId) {
+        DomainChainAllowlistUpdate::<T>::remove(domain_id);
     }
 }

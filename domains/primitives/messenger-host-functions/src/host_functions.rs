@@ -8,7 +8,7 @@ use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
 pub use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -96,7 +96,7 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: MessengerApi<Block, NumberFor<Block>> + DomainsApi<Block, DomainBlock::Header>,
+    Client::Api: MessengerApi<Block> + DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_storage_key(&self, req: StorageKeyRequest) -> Option<Vec<u8>> {

@@ -43,6 +43,7 @@ pub struct FarmerPieceGetter<PV, NC> {
 }
 
 impl<PV, NC> fmt::Debug for FarmerPieceGetter<PV, NC> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("FarmerPieceGetter").finish_non_exhaustive()
     }
@@ -355,6 +356,7 @@ pub struct WeakFarmerPieceGetter<PV, NC> {
 }
 
 impl<PV, NC> fmt::Debug for WeakFarmerPieceGetter<PV, NC> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("WeakFarmerPieceGetter")
             .finish_non_exhaustive()

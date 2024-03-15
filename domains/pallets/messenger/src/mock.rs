@@ -33,13 +33,20 @@ macro_rules! impl_runtime {
             BlakeTwo256, ConstU16, ConstU32, ConstU64, Convert, IdentityLookup,
         };
         use sp_runtime::BuildStorage;
+        use crate::HoldIdentifier;
+        use sp_domains::ChannelId;
+        use scale_info::TypeInfo;
+        use codec::MaxEncodedLen;
+        use sp_domains::MessengerHoldIdentifier;
+        use frame_support::traits::VariantCount;
+        use core::mem;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
         frame_support::construct_runtime!(
             pub struct Runtime {
                 System: frame_system,
-                Messenger: crate,
+                Messenger: crate exclude_parts{ Inherent },
                 Balances: pallet_balances,
                 Transporter: pallet_transporter,
             }
@@ -83,6 +90,24 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub SelfChainId: ChainId = $chain_id.into();
+            pub const ChannelReserveFee: Balance = 10;
+        }
+
+        #[derive(
+            PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+        )]
+        pub enum MockHoldIdentifer {
+            Messenger(MessengerHoldIdentifier)
+        }
+
+        impl VariantCount for MockHoldIdentifer {
+            const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+        }
+
+        impl HoldIdentifier<$runtime> for MockHoldIdentifer {
+            fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+                MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+            }
         }
 
         impl crate::Config for $runtime {
@@ -96,6 +121,9 @@ macro_rules! impl_runtime {
             type MmrHash = H256;
             type MmrProofVerifier = ();
             type StorageKeys = ();
+            type DomainOwner = ();
+            type ChannelReserveFee = ChannelReserveFee;
+            type HoldIdentifier = MockHoldIdentifer;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,
@@ -119,6 +147,10 @@ macro_rules! impl_runtime {
             }
         }
 
+        parameter_types! {
+            pub const MaxHolds: u32 = 10;
+        }
+
         impl pallet_balances::Config for $runtime {
             type RuntimeFreezeReason = RuntimeFreezeReason;
             type AccountStore = System;
@@ -132,8 +164,8 @@ macro_rules! impl_runtime {
             type WeightInfo = ();
             type FreezeIdentifier = ();
             type MaxFreezes = ();
-            type RuntimeHoldReason = ();
-            type MaxHolds = ();
+            type RuntimeHoldReason = MockHoldIdentifer;
+            type MaxHolds = MaxHolds;
         }
 
         parameter_types! {

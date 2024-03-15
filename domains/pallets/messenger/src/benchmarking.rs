@@ -1,7 +1,7 @@
 //! Benchmarking for `pallet-messenger`.
 
 use super::*;
-use crate::Pallet as Messenger;
+use crate::{CloseChannelBy, Pallet as Messenger};
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::Get;
@@ -58,7 +58,8 @@ mod benchmarks {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         assert_ok!(Messenger::<T>::do_init_channel(
             dst_chain_id,
-            dummy_channel_params::<T>()
+            dummy_channel_params::<T>(),
+            None,
         ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
@@ -80,7 +81,11 @@ mod benchmarks {
 
         #[block]
         {
-            assert_ok!(Messenger::<T>::do_close_channel(dst_chain_id, channel_id));
+            assert_ok!(Messenger::<T>::do_close_channel(
+                dst_chain_id,
+                channel_id,
+                CloseChannelBy::Sudo
+            ));
         }
 
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
@@ -217,7 +222,7 @@ mod benchmarks {
         params: InitiateChannelParams<BalanceOf<T>>,
     ) -> ChannelId {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
-        assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params));
+        assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params, None));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
 

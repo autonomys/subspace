@@ -7,6 +7,7 @@ use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
 use sp_domains::core_api::DomainCoreApi;
+use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::messages::MessageKey;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -65,7 +66,7 @@ where
     }
 }
 
-impl<Block, Executor> MessengerApi<Block, NumberFor<Block>> for StatelessRuntime<Block, Executor>
+impl<Block, Executor> MessengerApi<Block> for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     NumberFor<Block>: Codec,
@@ -164,7 +165,7 @@ where
     }
 
     pub fn outbox_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
-        let storage_key = <Self as MessengerApi<Block, _>>::outbox_storage_key(
+        let storage_key = <Self as MessengerApi<Block>>::outbox_storage_key(
             self,
             Default::default(),
             message_key,
@@ -173,7 +174,7 @@ where
     }
 
     pub fn inbox_response_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
-        let storage_key = <Self as MessengerApi<Block, _>>::inbox_response_storage_key(
+        let storage_key = <Self as MessengerApi<Block>>::inbox_response_storage_key(
             self,
             Default::default(),
             message_key,
@@ -218,6 +219,17 @@ where
         )
     }
 
+    pub fn construct_domain_update_chain_allowlist_extrinsic(
+        &self,
+        updates: DomainAllowlistUpdates,
+    ) -> Result<Block::Extrinsic, ApiError> {
+        <Self as DomainCoreApi<Block>>::construct_domain_update_chain_allowlist_extrinsic(
+            self,
+            Default::default(),
+            updates,
+        )
+    }
+
     pub fn is_inherent_extrinsic(
         &self,
         extrinsic: &<Block as BlockT>::Extrinsic,
@@ -226,11 +238,7 @@ where
     }
 
     pub fn is_valid_xdm(&self, extrinsic: Vec<u8>) -> Result<Option<bool>, ApiError> {
-        <Self as MessengerApi<Block, NumberFor<Block>>>::is_xdm_valid(
-            self,
-            Default::default(),
-            extrinsic,
-        )
+        <Self as MessengerApi<Block>>::is_xdm_valid(self, Default::default(), extrinsic)
     }
 
     pub fn decode_extrinsic(

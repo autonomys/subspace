@@ -28,7 +28,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -36,8 +36,9 @@ use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use rand::prelude::*;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::error::Error;
@@ -48,10 +49,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fs, io, mem};
-use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, Piece, PieceOffset, PublicKey, Record, SectorId, SectorIndex,
     SegmentIndex,
@@ -61,15 +62,16 @@ use subspace_farmer_components::file_ext::FileExt;
 #[cfg(not(windows))]
 use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, ReadAtSync};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Semaphore};
-use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
+use tokio::sync::{broadcast, Barrier, Semaphore};
+use tracing::{debug, error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -81,6 +83,10 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
 const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
+/// Limit for reads in internal benchmark.
+///
+/// 4 seconds is proving time, hence 3 seconds for reads.
+const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -296,8 +302,16 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
+    /// Global mutex that can restrict concurrency of resource-intensive operations and make sure
+    /// that those operations that are very sensitive (like proving) have all the resources
+    /// available to them for the highest probability of success
+    pub global_mutex: Arc<AsyncMutex<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
+    /// Barrier before internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
+    /// Limit concurrency of internal benchmarking between different farms
+    pub faster_read_sector_record_chunks_mode_concurrency: Arc<Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -313,6 +327,9 @@ pub enum SingleDiskFarmError {
     /// I/O error occurred
     #[error("Single disk farm I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Failed to spawn task for blocking thread
+    #[error("Failed to spawn task for blocking thread: {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
@@ -392,6 +409,9 @@ pub enum SingleDiskFarmError {
         max_space: u64,
         max_sectors: u16,
     },
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(ThreadPoolBuildError),
 }
 
 /// Errors happening during scrubbing
@@ -557,6 +577,25 @@ struct Handlers {
     solution: Handler<SolutionResponse>,
 }
 
+struct SingleDiskFarmInit {
+    identity: Identity,
+    single_disk_farm_info: SingleDiskFarmInfo,
+    single_disk_farm_info_lock: Option<SingleDiskFarmInfoLock>,
+    #[cfg(not(windows))]
+    plot_file: Arc<File>,
+    #[cfg(windows)]
+    plot_file: Arc<UnbufferedIoFileWindows>,
+    #[cfg(not(windows))]
+    metadata_file: File,
+    #[cfg(windows)]
+    metadata_file: UnbufferedIoFileWindows,
+    metadata_header: PlotMetadataHeader,
+    target_sector_count: u16,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
+    piece_cache: DiskPieceCache,
+    plot_cache: DiskPlotCache,
+}
+
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
 /// disk.
 ///
@@ -566,7 +605,7 @@ pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
     single_disk_farm_info: SingleDiskFarmInfo,
     /// Metadata of all sectors plotted so far
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
     total_sectors_count: SectorIndex,
     span: Span,
@@ -598,8 +637,6 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    ///
-    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
@@ -609,34 +646,432 @@ impl SingleDiskFarm {
         PG: PieceGetter + Clone + Send + Sync + 'static,
         PosTable: Table,
     {
+        let span = Span::current();
+
+        let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+            let span = span.clone();
+            let _span_guard = span.enter();
+
+            move || {
+                Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+            }
+        });
+
+        let (single_disk_farm_init, options) =
+            AsyncJoinOnDrop::new(single_disk_farm_init_fut, false).await??;
+
+        let SingleDiskFarmInit {
+            identity,
+            single_disk_farm_info,
+            single_disk_farm_info_lock,
+            plot_file,
+            metadata_file,
+            metadata_header,
+            target_sector_count,
+            sectors_metadata,
+            piece_cache,
+            plot_cache,
+        } = single_disk_farm_init;
+
+        let public_key = *single_disk_farm_info.public_key();
+        let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+        let sector_size = sector_size(pieces_in_sector);
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
+
         let SingleDiskFarmOptions {
             directory,
             farmer_app_info,
-            allocated_space,
-            max_pieces_in_sector,
             node_client,
             reward_address,
             piece_getter,
             kzg,
             erasure_coding,
-            cache_percentage,
             downloading_semaphore,
             record_encoding_concurrency,
             farming_thread_pool_size,
             plotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
-            disable_farm_locking,
+            global_mutex,
+            faster_read_sector_record_chunks_mode_barrier,
+            faster_read_sector_record_chunks_mode_concurrency,
+            ..
         } = options;
-        fs::create_dir_all(&directory)?;
 
-        let span = info_span!("", %disk_farm_index);
-        let span_guard = span.enter();
+        let (error_sender, error_receiver) = oneshot::channel();
+        let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
-        let identity = Identity::open_or_create(&directory)?;
+        let tasks = FuturesUnordered::<BackgroundTask>::new();
+
+        tasks.push(Box::pin(async move {
+            if let Ok(error) = error_receiver.await {
+                return Err(error);
+            }
+
+            Ok(())
+        }));
+
+        let handlers = Arc::<Handlers>::default();
+        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
+        let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
+        let modifying_sector_index = Arc::<AsyncRwLock<Option<SectorIndex>>>::default();
+        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
+        // Some sectors may already be plotted, skip them
+        let sectors_indices_left_to_plot =
+            metadata_header.plotted_sector_count..target_sector_count;
+
+        let (farming_delay_sender, delay_farmer_receiver) = if farm_during_initial_plotting {
+            (None, None)
+        } else {
+            let (sender, receiver) = oneshot::channel();
+            (Some(sender), Some(receiver))
+        };
+
+        let farming_thread_pool = ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()
+            .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
+        let farming_plot_fut = tokio::task::spawn_blocking(|| {
+            farming_thread_pool
+                .install(move || {
+                    #[cfg(windows)]
+                    {
+                        RayonFiles::open_with(
+                            &directory.join(Self::PLOT_FILE),
+                            UnbufferedIoFileWindows::open,
+                        )
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        RayonFiles::open(&directory.join(Self::PLOT_FILE))
+                    }
+                })
+                .map(|farming_plot| (farming_plot, farming_thread_pool))
+        });
+
+        let (farming_plot, farming_thread_pool) =
+            AsyncJoinOnDrop::new(farming_plot_fut, false).await??;
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
+        let (read_sector_record_chunks_mode, farming_plot, farming_thread_pool) = {
+            // Error doesn't matter here
+            let _permit = faster_read_sector_record_chunks_mode_concurrency
+                .acquire()
+                .await;
+            let span = span.clone();
+            let plot_file = Arc::clone(&plot_file);
+
+            let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                farming_thread_pool
+                    .install(move || {
+                        let _span_guard = span.enter();
+
+                        faster_read_sector_record_chunks_mode(
+                            &*plot_file,
+                            &farming_plot,
+                            sector_size,
+                            metadata_header.plotted_sector_count,
+                        )
+                        .map(|mode| (mode, farming_plot))
+                    })
+                    .map(|(mode, farming_plot)| (mode, farming_plot, farming_thread_pool))
+            });
+
+            AsyncJoinOnDrop::new(read_sector_record_chunks_mode_fut, false).await??
+        };
+
+        faster_read_sector_record_chunks_mode_barrier.wait().await;
+
+        let plotting_join_handle = tokio::task::spawn_blocking({
+            let sectors_metadata = Arc::clone(&sectors_metadata);
+            let kzg = kzg.clone();
+            let erasure_coding = erasure_coding.clone();
+            let handlers = Arc::clone(&handlers);
+            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let node_client = node_client.clone();
+            let plot_file = Arc::clone(&plot_file);
+            let error_sender = Arc::clone(&error_sender);
+            let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
+
+            move || {
+                let _span_guard = span.enter();
+
+                let plotting_options = PlottingOptions {
+                    public_key,
+                    node_client: &node_client,
+                    pieces_in_sector,
+                    sector_size,
+                    sector_metadata_size,
+                    metadata_header,
+                    plot_file,
+                    metadata_file,
+                    sectors_metadata,
+                    piece_getter: &piece_getter,
+                    kzg: &kzg,
+                    erasure_coding: &erasure_coding,
+                    handlers,
+                    modifying_sector_index,
+                    sectors_to_plot_receiver,
+                    downloading_semaphore,
+                    record_encoding_concurrency,
+                    plotting_thread_pool_manager,
+                    stop_receiver: stop_receiver.resubscribe(),
+                    global_mutex: &global_mutex,
+                };
+
+                let plotting_fut = async {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return Ok(());
+                    }
+
+                    if let Some(plotting_delay) = plotting_delay {
+                        if plotting_delay.await.is_err() {
+                            // Dropped before resolving
+                            return Ok(());
+                        }
+                    }
+
+                    plotting::<_, _, PosTable>(plotting_options).await
+                };
+
+                Handle::current().block_on(async {
+                    select! {
+                        plotting_result = plotting_fut.fuse() => {
+                            if let Err(error) = plotting_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task"
+                                );
+                            }
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
+            }
+        });
+        let plotting_join_handle = AsyncJoinOnDrop::new(plotting_join_handle, false);
+
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            plotting_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("plotting-{disk_farm_index}"),
+                }
+            })
+        }));
+
+        let plotting_scheduler_options = PlottingSchedulerOptions {
+            public_key_hash: public_key.hash(),
+            sectors_indices_left_to_plot,
+            target_sector_count,
+            last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
+            min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
+            node_client: node_client.clone(),
+            handlers: Arc::clone(&handlers),
+            sectors_metadata: Arc::clone(&sectors_metadata),
+            sectors_to_plot_sender,
+            initial_plotting_finished: farming_delay_sender,
+            new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
+        };
+        tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
+
+        let (slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
+
+        tasks.push(Box::pin({
+            let node_client = node_client.clone();
+
+            async move {
+                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
+                    .await
+                    .map_err(BackgroundTaskError::Farming)
+            }
+        }));
+
+        let farming_join_handle = tokio::task::spawn_blocking({
+            let erasure_coding = erasure_coding.clone();
+            let handlers = Arc::clone(&handlers);
+            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let sectors_metadata = Arc::clone(&sectors_metadata);
+            let mut start_receiver = start_sender.subscribe();
+            let mut stop_receiver = stop_sender.subscribe();
+            let node_client = node_client.clone();
+            let span = span.clone();
+            let global_mutex = Arc::clone(&global_mutex);
+
+            move || {
+                let _span_guard = span.enter();
+
+                let farming_fut = async move {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return Ok(());
+                    }
+
+                    if let Some(farming_delay) = delay_farmer_receiver {
+                        if farming_delay.await.is_err() {
+                            // Dropped before resolving
+                            return Ok(());
+                        }
+                    }
+
+                    let plot_audit = PlotAudit::new(&farming_plot);
+
+                    let farming_options = FarmingOptions {
+                        public_key,
+                        reward_address,
+                        node_client,
+                        plot_audit,
+                        sectors_metadata,
+                        kzg,
+                        erasure_coding,
+                        handlers,
+                        modifying_sector_index,
+                        slot_info_notifications: slot_info_forwarder_receiver,
+                        thread_pool: farming_thread_pool,
+                        read_sector_record_chunks_mode,
+                        global_mutex,
+                    };
+                    farming::<PosTable, _, _>(farming_options).await
+                };
+
+                Handle::current().block_on(async {
+                    select! {
+                        farming_result = farming_fut.fuse() => {
+                            if let Err(error) = farming_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
+                                error!(
+                                    %error,
+                                    "Farming failed to send error to background task",
+                                );
+                            }
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
+            }
+        });
+        let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);
+
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            farming_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("farming-{disk_farm_index}"),
+                }
+            })
+        }));
+
+        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            plot_file,
+            Arc::clone(&sectors_metadata),
+            erasure_coding,
+            modifying_sector_index,
+            read_sector_record_chunks_mode,
+            global_mutex,
+        );
+
+        let reading_join_handle = tokio::task::spawn_blocking({
+            let mut stop_receiver = stop_sender.subscribe();
+            let reading_fut = reading_fut.instrument(span.clone());
+
+            move || {
+                Handle::current().block_on(async {
+                    select! {
+                        _ = reading_fut.fuse() => {
+                            // Nothing, just exit
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
+            }
+        });
+        let reading_join_handle = AsyncJoinOnDrop::new(reading_join_handle, false);
+
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            reading_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("reading-{disk_farm_index}"),
+                }
+            })
+        }));
+
+        tasks.push(Box::pin(async move {
+            match reward_signing(node_client, identity).await {
+                Ok(reward_signing_fut) => {
+                    reward_signing_fut.await;
+                }
+                Err(error) => {
+                    return Err(BackgroundTaskError::RewardSigning(
+                        format!("Failed to subscribe to reward signing notifications: {error}")
+                            .into(),
+                    ));
+                }
+            }
+
+            Ok(())
+        }));
+
+        let farm = Self {
+            farmer_protocol_info: farmer_app_info.protocol_info,
+            single_disk_farm_info,
+            sectors_metadata,
+            pieces_in_sector,
+            total_sectors_count: target_sector_count,
+            span,
+            tasks,
+            handlers,
+            piece_cache,
+            plot_cache,
+            piece_reader,
+            start_sender: Some(start_sender),
+            stop_sender: Some(stop_sender),
+            _single_disk_farm_info_lock: single_disk_farm_info_lock,
+        };
+
+        Ok(farm)
+    }
+
+    fn init<NC, PG>(
+        options: &SingleDiskFarmOptions<NC, PG>,
+    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
+        let SingleDiskFarmOptions {
+            directory,
+            farmer_app_info,
+            allocated_space,
+            max_pieces_in_sector,
+            cache_percentage,
+            disable_farm_locking,
+            ..
+        } = options;
+
+        let allocated_space = *allocated_space;
+        let max_pieces_in_sector = *max_pieces_in_sector;
+
+        fs::create_dir_all(directory)?;
+
+        let identity = Identity::open_or_create(directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
-        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory)? {
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(directory)? {
             Some(mut single_disk_farm_info) => {
                 if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
                     return Err(SingleDiskFarmError::WrongChain {
@@ -688,7 +1123,7 @@ impl SingleDiskFarm {
                         *allocated_space = new_allocated_space;
                     }
 
-                    single_disk_farm_info.store_to(&directory)?;
+                    single_disk_farm_info.store_to(directory)?;
                 }
 
                 single_disk_farm_info
@@ -702,17 +1137,17 @@ impl SingleDiskFarm {
                     allocated_space,
                 );
 
-                single_disk_farm_info.store_to(&directory)?;
+                single_disk_farm_info.store_to(directory)?;
 
                 single_disk_farm_info
             }
         };
 
-        let single_disk_farm_info_lock = if disable_farm_locking {
+        let single_disk_farm_info_lock = if *disable_farm_locking {
             None
         } else {
             Some(
-                SingleDiskFarmInfo::try_lock(&directory)
+                SingleDiskFarmInfo::try_lock(directory)
                     .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
             )
         };
@@ -884,7 +1319,7 @@ impl SingleDiskFarm {
                 sectors_metadata.push(sector_metadata);
             }
 
-            Arc::new(RwLock::new(sectors_metadata))
+            Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
         #[cfg(not(windows))]
@@ -919,7 +1354,7 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
+        let piece_cache = DiskPieceCache::open(directory, cache_capacity)?;
         let plot_cache = DiskPlotCache::new(
             &plot_file,
             &sectors_metadata,
@@ -927,328 +1362,18 @@ impl SingleDiskFarm {
             sector_size,
         );
 
-        let (error_sender, error_receiver) = oneshot::channel();
-        let error_sender = Arc::new(Mutex::new(Some(error_sender)));
-
-        let tasks = FuturesUnordered::<BackgroundTask>::new();
-
-        tasks.push(Box::pin(async move {
-            if let Ok(error) = error_receiver.await {
-                return Err(error);
-            }
-
-            Ok(())
-        }));
-
-        let handlers = Arc::<Handlers>::default();
-        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
-        let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
-        let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
-        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
-        // Some sectors may already be plotted, skip them
-        let sectors_indices_left_to_plot =
-            metadata_header.plotted_sector_count..target_sector_count;
-
-        let (farming_delay_sender, delay_farmer_receiver) = if farm_during_initial_plotting {
-            (None, None)
-        } else {
-            let (sender, receiver) = oneshot::channel();
-            (Some(sender), Some(receiver))
-        };
-
-        let plotting_join_handle = tokio::task::spawn_blocking({
-            let sectors_metadata = Arc::clone(&sectors_metadata);
-            let kzg = kzg.clone();
-            let erasure_coding = erasure_coding.clone();
-            let handlers = Arc::clone(&handlers);
-            let modifying_sector_index = Arc::clone(&modifying_sector_index);
-            let node_client = node_client.clone();
-            let plot_file = Arc::clone(&plot_file);
-            let error_sender = Arc::clone(&error_sender);
-            let span = span.clone();
-
-            move || {
-                let _span_guard = span.enter();
-
-                let plotting_options = PlottingOptions {
-                    public_key,
-                    node_client: &node_client,
-                    pieces_in_sector,
-                    sector_size,
-                    sector_metadata_size,
-                    metadata_header,
-                    plot_file,
-                    metadata_file,
-                    sectors_metadata,
-                    piece_getter: &piece_getter,
-                    kzg: &kzg,
-                    erasure_coding: &erasure_coding,
-                    handlers,
-                    modifying_sector_index,
-                    sectors_to_plot_receiver,
-                    downloading_semaphore,
-                    record_encoding_concurrency,
-                    plotting_thread_pool_manager,
-                    stop_receiver: stop_receiver.resubscribe(),
-                };
-
-                let plotting_fut = async {
-                    if start_receiver.recv().await.is_err() {
-                        // Dropped before starting
-                        return Ok(());
-                    }
-
-                    if let Some(plotting_delay) = plotting_delay {
-                        if plotting_delay.await.is_err() {
-                            // Dropped before resolving
-                            return Ok(());
-                        }
-                    }
-
-                    plotting::<_, _, PosTable>(plotting_options).await
-                };
-
-                Handle::current().block_on(async {
-                    select! {
-                        plotting_result = plotting_fut.fuse() => {
-                            if let Err(error) = plotting_result
-                                && let Some(error_sender) = error_sender.lock().take()
-                                && let Err(error) = error_sender.send(error.into())
-                            {
-                                error!(
-                                    %error,
-                                    "Plotting failed to send error to background task"
-                                );
-                            }
-                        }
-                        _ = stop_receiver.recv().fuse() => {
-                            // Nothing, just exit
-                        }
-                    }
-                });
-            }
-        });
-        let plotting_join_handle = AsyncJoinOnDrop::new(plotting_join_handle, false);
-
-        tasks.push(Box::pin(async move {
-            // Panic will already be printed by now
-            plotting_join_handle.await.map_err(|_error| {
-                BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("plotting-{disk_farm_index}"),
-                }
-            })
-        }));
-
-        let plotting_scheduler_options = PlottingSchedulerOptions {
-            public_key_hash: public_key.hash(),
-            sectors_indices_left_to_plot,
-            target_sector_count,
-            last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
-            min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
-            node_client: node_client.clone(),
-            handlers: Arc::clone(&handlers),
-            sectors_metadata: Arc::clone(&sectors_metadata),
-            sectors_to_plot_sender,
-            initial_plotting_finished: farming_delay_sender,
-            new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
-        };
-        tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
-
-        let (slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
-
-        tasks.push(Box::pin({
-            let node_client = node_client.clone();
-
-            async move {
-                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
-                    .await
-                    .map_err(BackgroundTaskError::Farming)
-            }
-        }));
-
-        let farming_join_handle = tokio::task::spawn_blocking({
-            let erasure_coding = erasure_coding.clone();
-            let handlers = Arc::clone(&handlers);
-            let modifying_sector_index = Arc::clone(&modifying_sector_index);
-            let sectors_metadata = Arc::clone(&sectors_metadata);
-            let mut start_receiver = start_sender.subscribe();
-            let mut stop_receiver = stop_sender.subscribe();
-            let node_client = node_client.clone();
-            let span = span.clone();
-
-            move || {
-                let _span_guard = span.enter();
-                let thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("farming-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(farming_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(FarmingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(
-                                    %error,
-                                    "Farming failed to send error to background task",
-                                );
-                            }
-                        }
-                        return;
-                    }
-                };
-
-                let farming_fut = async move {
-                    if start_receiver.recv().await.is_err() {
-                        // Dropped before starting
-                        return Ok(());
-                    }
-
-                    if let Some(farming_delay) = delay_farmer_receiver {
-                        if farming_delay.await.is_err() {
-                            // Dropped before resolving
-                            return Ok(());
-                        }
-                    }
-
-                    let plot = thread_pool.install(|| {
-                        #[cfg(windows)]
-                        {
-                            RayonFiles::open_with(
-                                &directory.join(Self::PLOT_FILE),
-                                UnbufferedIoFileWindows::open,
-                            )
-                        }
-                        #[cfg(not(windows))]
-                        {
-                            RayonFiles::open(&directory.join(Self::PLOT_FILE))
-                        }
-                    })?;
-                    let plot_audit = PlotAudit::new(&plot);
-
-                    let farming_options = FarmingOptions {
-                        public_key,
-                        reward_address,
-                        node_client,
-                        plot_audit,
-                        sectors_metadata,
-                        kzg,
-                        erasure_coding,
-                        handlers,
-                        modifying_sector_index,
-                        slot_info_notifications: slot_info_forwarder_receiver,
-                        thread_pool,
-                    };
-                    farming::<PosTable, _, _>(farming_options).await
-                };
-
-                Handle::current().block_on(async {
-                    select! {
-                        farming_result = farming_fut.fuse() => {
-                            if let Err(error) = farming_result
-                                && let Some(error_sender) = error_sender.lock().take()
-                                && let Err(error) = error_sender.send(error.into())
-                            {
-                                error!(
-                                    %error,
-                                    "Farming failed to send error to background task",
-                                );
-                            }
-                        }
-                        _ = stop_receiver.recv().fuse() => {
-                            // Nothing, just exit
-                        }
-                    }
-                });
-            }
-        });
-        let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);
-
-        tasks.push(Box::pin(async move {
-            // Panic will already be printed by now
-            farming_join_handle.await.map_err(|_error| {
-                BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("farming-{disk_farm_index}"),
-                }
-            })
-        }));
-
-        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
-            public_key,
-            pieces_in_sector,
-            plot_file,
-            Arc::clone(&sectors_metadata),
-            erasure_coding,
-            modifying_sector_index,
-        );
-
-        let reading_join_handle = tokio::task::spawn_blocking({
-            let mut stop_receiver = stop_sender.subscribe();
-            let reading_fut = reading_fut.instrument(span.clone());
-
-            move || {
-                Handle::current().block_on(async {
-                    select! {
-                        _ = reading_fut.fuse() => {
-                            // Nothing, just exit
-                        }
-                        _ = stop_receiver.recv().fuse() => {
-                            // Nothing, just exit
-                        }
-                    }
-                });
-            }
-        });
-        let reading_join_handle = AsyncJoinOnDrop::new(reading_join_handle, false);
-
-        tasks.push(Box::pin(async move {
-            // Panic will already be printed by now
-            reading_join_handle.await.map_err(|_error| {
-                BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("reading-{disk_farm_index}"),
-                }
-            })
-        }));
-
-        tasks.push(Box::pin(async move {
-            match reward_signing(node_client, identity).await {
-                Ok(reward_signing_fut) => {
-                    reward_signing_fut.await;
-                }
-                Err(error) => {
-                    return Err(BackgroundTaskError::RewardSigning(
-                        format!("Failed to subscribe to reward signing notifications: {error}")
-                            .into(),
-                    ));
-                }
-            }
-
-            Ok(())
-        }));
-
-        drop(span_guard);
-
-        let farm = Self {
-            farmer_protocol_info: farmer_app_info.protocol_info,
+        Ok(SingleDiskFarmInit {
+            identity,
             single_disk_farm_info,
+            single_disk_farm_info_lock,
+            plot_file,
+            metadata_file,
+            metadata_header,
+            target_sector_count,
             sectors_metadata,
-            pieces_in_sector,
-            total_sectors_count: target_sector_count,
-            span,
-            tasks,
-            handlers,
             piece_cache,
             plot_cache,
-            piece_reader,
-            start_sender: Some(start_sender),
-            stop_sender: Some(stop_sender),
-            _single_disk_farm_info_lock: single_disk_farm_info_lock,
-        };
-
-        Ok(farm)
+        })
     }
 
     /// Collect summary of single disk farm for presentational purposes
@@ -2052,4 +2177,82 @@ fn write_dummy_sector_metadata(
             offset: sector_offset,
             error,
         })
+}
+
+fn faster_read_sector_record_chunks_mode<OP, FP>(
+    original_plot: &OP,
+    farming_plot: &FP,
+    sector_size: usize,
+    mut plotted_sector_count: SectorIndex,
+) -> Result<ReadSectorRecordChunksMode, SingleDiskFarmError>
+where
+    OP: FileExt + Sync,
+    FP: ReadAtSync,
+{
+    info!("Benchmarking faster proving method");
+
+    let mut sector_bytes = vec![0u8; sector_size];
+
+    original_plot.read_exact_at(&mut sector_bytes, 0)?;
+
+    if plotted_sector_count == 0 {
+        thread_rng().fill_bytes(&mut sector_bytes);
+        original_plot.write_all_at(&sector_bytes, 0)?;
+
+        plotted_sector_count = 1;
+    }
+
+    let mut fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+    let mut fastest_time = Duration::MAX;
+
+    for _ in 0..3 {
+        let sector_offset =
+            sector_size as u64 * thread_rng().gen_range(0..plotted_sector_count) as u64;
+        let farming_plot = farming_plot.offset(sector_offset);
+
+        // A lot simplified version of concurrent chunks
+        {
+            let start = Instant::now();
+            (0..Record::NUM_S_BUCKETS)
+                .into_par_iter()
+                .try_for_each(|_| {
+                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                        * Scalar::FULL_BYTES;
+                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+                })?;
+            let elapsed = start.elapsed();
+
+            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
+                debug!(
+                    ?elapsed,
+                    "Proving method with chunks reading is too slow, using whole sector"
+                );
+                return Ok(ReadSectorRecordChunksMode::WholeSector);
+            }
+
+            debug!(?elapsed, "Chunks");
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+                fastest_time = elapsed;
+            }
+        }
+        // Reading the whole sector at once
+        {
+            let start = Instant::now();
+            farming_plot.read_at(&mut sector_bytes, 0)?;
+            let elapsed = start.elapsed();
+
+            debug!(?elapsed, "Whole sector");
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::WholeSector;
+                fastest_time = elapsed;
+            }
+        }
+    }
+
+    info!(?fastest_mode, "Faster proving method found");
+
+    Ok(fastest_mode)
 }

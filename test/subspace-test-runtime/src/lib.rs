@@ -54,8 +54,9 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
+    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OpaqueBundles, OperatorId,
+    OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -273,6 +274,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
     pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
+    pub const BlockSlotCount: u32 = 6;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -292,6 +294,7 @@ impl pallet_subspace::Config for Runtime {
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
+    type BlockSlotCount = BlockSlotCount;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
         OffencesSubspace,
@@ -314,6 +317,7 @@ impl pallet_timestamp::Config for Runtime {
 )]
 pub enum HoldIdentifier {
     Domains(DomainsHoldIdentifier),
+    Messenger(MessengerHoldIdentifier),
 }
 
 impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
@@ -329,6 +333,12 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
 
     fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
         Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    }
+}
+
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
     }
 }
 
@@ -562,6 +572,10 @@ impl sp_messenger::StorageKeys for StorageKeys {
     }
 }
 
+parameter_types! {
+    pub const ChannelReserveFee: Balance = SSC;
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -582,6 +596,9 @@ impl pallet_messenger::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
+    type DomainOwner = Domains;
+    type HoldIdentifier = HoldIdentifier;
+    type ChannelReserveFee = ChannelReserveFee;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -635,20 +652,38 @@ parameter_types! {
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 20;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
+    pub const BundleLongevity: u32 = 5;
 }
+
+// `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
+// keep enough block slot for bundle validation
+const_assert!(BlockSlotCount::get() >= 2 && BlockSlotCount::get() > BundleLongevity::get());
+
+// `BlockHashCount` must greater than `BlockSlotCount` because we need to use the block number found
+// with `BlockSlotCount` to get the block hash.
+const_assert!(BlockHashCount::get() > BlockSlotCount::get());
 
 // Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
 const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 
 pub struct BlockSlot;
 
-impl pallet_domains::BlockSlot for BlockSlot {
-    fn current_slot() -> sp_consensus_slots::Slot {
-        Subspace::current_slot()
+impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
+    fn future_slot(block_number: BlockNumber) -> Option<sp_consensus_slots::Slot> {
+        let block_slots = Subspace::block_slots();
+        block_slots
+            .get(&block_number)
+            .map(|slot| *slot + Slot::from(BlockAuthoringDelay::get()))
     }
 
-    fn future_slot() -> sp_consensus_slots::Slot {
-        Subspace::current_slot() + Slot::from(BlockAuthoringDelay::get())
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumber> {
+        let block_slots = Subspace::block_slots();
+        for (block_number, slot) in block_slots.into_iter().rev() {
+            if to_check > slot {
+                return Some(block_number);
+            }
+        }
+        None
     }
 }
 
@@ -671,6 +706,7 @@ impl pallet_domains::Config for Runtime {
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
     type BlockTreePruningDepth = BlockTreePruningDepth;
+    type ConsensusSlotProbability = SlotProbability;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
@@ -682,9 +718,11 @@ impl pallet_domains::Config for Runtime {
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
     type BlockSlot = BlockSlot;
+    type BundleLongevity = BundleLongevity;
     type DomainsTransfersTracker = Transporter;
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
+    type DomainBundleSubmitted = Messenger;
 }
 
 parameter_types! {
@@ -762,7 +800,7 @@ construct_runtime!(
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
-        Messenger: pallet_messenger = 60,
+        Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
@@ -1265,6 +1303,10 @@ impl_runtime_apis! {
             Domains::domain_block_limit(domain_id)
         }
 
+        fn domain_bundle_limit(domain_id: DomainId) -> Option<sp_domains::DomainBundleLimit> {
+            Domains::domain_bundle_limit(domain_id).ok().flatten()
+        }
+
         fn non_empty_er_exists(domain_id: DomainId) -> bool {
             Domains::non_empty_er_exists(domain_id)
         }
@@ -1361,7 +1403,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+    impl sp_messenger::MessengerApi<Block> for Runtime {
         fn is_xdm_valid(
             extrinsic: Vec<u8>,
         ) -> Option<bool> {
@@ -1378,6 +1420,10 @@ impl_runtime_apis! {
 
         fn inbox_response_storage_key(message_key: MessageKey) -> Vec<u8> {
             Messenger::inbox_response_storage_key(message_key)
+        }
+
+        fn domain_chains_allowlist_update(domain_id: DomainId) -> Option<DomainAllowlistUpdates>{
+            Messenger::domain_chains_allowlist_update(domain_id)
         }
     }
 

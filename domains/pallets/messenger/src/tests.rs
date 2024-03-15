@@ -1,13 +1,14 @@
 use crate::mock::chain_a::{
     new_test_ext as new_chain_a_ext, Messenger, Runtime, RuntimeEvent, RuntimeOrigin, System,
+    USER_ACCOUNT,
 };
 use crate::mock::{
     chain_a, chain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
     AccountId, Balance, TestExternalities,
 };
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
-    Outbox, OutboxMessageResult, OutboxResponses, Pallet, U256,
+    ChainAllowlist, Channel, ChannelId, ChannelState, Channels, CloseChannelBy, Error, FeeModel,
+    Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet, U256,
 };
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
@@ -22,14 +23,18 @@ use sp_messenger::messages::{
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::Convert;
 use sp_trie::StorageProof;
+use std::collections::BTreeSet;
 
 fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
     let params = InitiateChannelParams {
         max_outgoing_messages: 100,
         fee_model,
     };
+
+    let list = BTreeSet::from([chain_id]);
+    ChainAllowlist::<chain_a::Runtime>::put(list);
     assert_ok!(Messenger::initiate_channel(
-        RuntimeOrigin::root(),
+        RuntimeOrigin::signed(USER_ACCOUNT),
         chain_id,
         params,
     ));
@@ -198,7 +203,7 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let res: Result<Channel<Balance>, VerificationError> =
+    let res: Result<Channel<Balance, AccountId>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &H256::zero(),
             storage_proof,
@@ -219,7 +224,7 @@ fn test_storage_proof_verification_missing_value() {
 
     let (state_root, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, U256::one());
-    let res: Result<Channel<Balance>, VerificationError> =
+    let res: Result<Channel<Balance, AccountId>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &state_root,
             storage_proof,
@@ -242,7 +247,7 @@ fn test_storage_proof_verification() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), chain_id, channel_id);
-    let res: Result<Channel<Balance>, VerificationError> =
+    let res: Result<Channel<Balance, AccountId>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &state_root,
             storage_proof,
@@ -483,7 +488,9 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     };
 
     let channel = Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap_or_else(|| {
-        Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params).unwrap();
+        let list = BTreeSet::from([dst_chain_id]);
+        ChainAllowlist::<Runtime>::put(list);
+        Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params, None).unwrap();
         Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap()
     });
 
@@ -496,7 +503,8 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     }
 
     if channel.state == ChannelState::Open {
-        Pallet::<Runtime>::do_close_channel(dst_chain_id, channel_id).unwrap();
+        Pallet::<Runtime>::do_close_channel(dst_chain_id, channel_id, CloseChannelBy::Sudo)
+            .unwrap();
     }
 }
 

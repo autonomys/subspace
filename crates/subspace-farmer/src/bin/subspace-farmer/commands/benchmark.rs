@@ -13,6 +13,7 @@ use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
@@ -153,6 +154,8 @@ fn audit(
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
                         };
 
@@ -189,6 +192,8 @@ fn audit(
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
                         };
 
@@ -222,6 +227,8 @@ fn audit(
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
+                            read_sector_record_chunks_mode:
+                                ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
                         };
 
@@ -304,12 +311,37 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &Mutex::new(PosTable::generator()),
             };
 
             let mut audit_results = plot_audit.audit(options).unwrap();
 
-            group.bench_function("plot/single", |b| {
+            group.bench_function("plot/single/concurrent-chunks", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/single/whole-sector", |b| {
                 b.iter_batched(
                     || {
                         if let Some(result) = audit_results.pop() {
@@ -352,11 +384,37 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &table_generator,
             };
+
             let mut audit_results = plot_audit.audit(options).unwrap();
 
-            group.bench_function("plot/rayon/unbuffered", |b| {
+            group.bench_function("plot/rayon/unbuffered/concurrent-chunks", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/rayon/unbuffered/whole-sector", |b| {
                 b.iter_batched(
                     || {
                         if let Some(result) = audit_results.pop() {
@@ -396,11 +454,37 @@ fn prove(
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
+                read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &table_generator,
             };
+
             let mut audit_results = plot_audit.audit(options).unwrap();
 
-            group.bench_function("plot/rayon/regular", |b| {
+            group.bench_function("plot/rayon/regular/concurrent-chunks", |b| {
+                b.iter_batched(
+                    || {
+                        if let Some(result) = audit_results.pop() {
+                            return result;
+                        }
+
+                        options.slot_info.global_challenge = rand::random();
+                        audit_results = plot_audit.audit(options).unwrap();
+
+                        audit_results.pop().unwrap()
+                    },
+                    |(_sector_index, mut provable_solutions)| {
+                        while black_box(provable_solutions.next()).is_none() {
+                            // Try to create one solution and exit
+                        }
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+
+            options.read_sector_record_chunks_mode = ReadSectorRecordChunksMode::WholeSector;
+            let mut audit_results = plot_audit.audit(options).unwrap();
+
+            group.bench_function("plot/rayon/regular/whole-sector", |b| {
                 b.iter_batched(
                     || {
                         if let Some(result) = audit_results.pop() {

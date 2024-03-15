@@ -31,7 +31,7 @@ use sp_domains::{
     OperatorId, OperatorPublicKey, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, Zero};
+use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
 
 const SEED: u32 = 0;

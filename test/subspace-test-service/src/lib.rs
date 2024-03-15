@@ -21,6 +21,7 @@
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::{xdm_gossip_peers_set_config, GossipWorkerBuilder};
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
+use frame_system::pallet_prelude::BlockNumberFor;
 use futures::channel::mpsc;
 use futures::{Future, StreamExt};
 use jsonrpsee::RpcModule;
@@ -60,7 +61,7 @@ use sp_consensus_subspace::{FarmerPublicKey, PotExtension};
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_core::H256;
+use sp_core::{Get, H256};
 use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -70,11 +71,11 @@ use sp_keyring::Sr25519Keyring;
 use sp_messenger::MessengerApi;
 use sp_messenger_host_functions::{MessengerExtension, MessengerHostFunctionsImpl};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::generic::{BlockId, Digest};
+use sp_runtime::generic::{BlockId, Digest, SignedPayload};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
-use sp_runtime::{DigestItem, OpaqueExtrinsic};
+use sp_runtime::{generic, DigestItem, MultiAddress, OpaqueExtrinsic, SaturatedConversion};
 use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunctionsImpl};
 use sp_timestamp::Timestamp;
 use std::collections::HashMap;
@@ -86,12 +87,16 @@ use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{PotOutput, Solution};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
 use subspace_service::transaction_pool::FullPool;
 use subspace_service::{FullSelectChain, RuntimeExecutor};
 use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_primitives::OnchainStateApi;
-use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
+use subspace_test_runtime::{
+    Runtime, RuntimeApi, RuntimeCall, SignedExtra, UncheckedExtrinsic, SLOT_DURATION,
+};
+use substrate_frame_rpc_system::AccountNonceApi;
+use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 
 type FraudProofFor<Block, DomainBlock> =
     FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header>;
@@ -241,7 +246,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block, NumberFor<Block>>
+        + MessengerApi<Block>
         + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
     CBackend: BackendT<Block> + 'static,
@@ -1020,6 +1025,33 @@ impl MockConsensusNode {
         }
         Ok(())
     }
+
+    /// Get the nonce of the node account
+    pub fn account_nonce(&self) -> u32 {
+        self.client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, self.key.to_account_id())
+            .expect("Fail to get account nonce")
+    }
+
+    /// Construct an extrinsic.
+    pub fn construct_extrinsic(
+        &mut self,
+        nonce: u32,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> UncheckedExtrinsic {
+        construct_extrinsic_generic(&self.client, function, self.key, false, nonce, 0)
+    }
+
+    /// Construct and send extrinsic through rpc
+    pub async fn construct_and_send_extrinsic_with(
+        &mut self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> Result<RpcTransactionOutput, RpcTransactionError> {
+        let nonce = self.account_nonce();
+        let extrinsic = self.construct_extrinsic(nonce, function);
+        self.rpc_handlers.send_transaction(extrinsic.into()).await
+    }
 }
 
 fn log_new_block(block: &Block, used_time_ms: u128) {
@@ -1215,4 +1247,83 @@ macro_rules! produce_blocks_until {
             Ok::<(), Box<dyn std::error::Error>>(())
         }
     };
+}
+
+type BalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
+
+fn construct_extrinsic_raw_payload<Client>(
+    client: impl AsRef<Client>,
+    function: <Runtime as frame_system::Config>::RuntimeCall,
+    immortal: bool,
+    nonce: u32,
+    tip: BalanceOf<Runtime>,
+) -> (
+    SignedPayload<<Runtime as frame_system::Config>::RuntimeCall, SignedExtra>,
+    SignedExtra,
+)
+where
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
+    Client: HeaderBackend<subspace_runtime_primitives::opaque::Block>,
+{
+    let current_block_hash = client.as_ref().info().best_hash;
+    let current_block = client.as_ref().info().best_number.saturated_into();
+    let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount as Get<
+        u32,
+    >>::get())
+    .checked_next_power_of_two()
+    .map(|c| c / 2)
+    .unwrap_or(2);
+    let extra: SignedExtra = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(if immortal {
+            generic::Era::Immortal
+        } else {
+            generic::Era::mortal(period, current_block)
+        }),
+        frame_system::CheckNonce::<Runtime>::from(nonce),
+        frame_system::CheckWeight::<Runtime>::new(),
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+    );
+    (
+        generic::SignedPayload::<
+            <Runtime as frame_system::Config>::RuntimeCall,
+            SignedExtra,
+        >::from_raw(
+            function,
+            extra.clone(),
+            ((), 100, 1, genesis_block, current_block_hash, (), (), ()),
+        ),
+        extra,
+    )
+}
+
+/// Construct an extrinsic that can be applied to the test runtime.
+fn construct_extrinsic_generic<Client>(
+    client: impl AsRef<Client>,
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    caller: Sr25519Keyring,
+    immortal: bool,
+    nonce: u32,
+    tip: BalanceOf<Runtime>,
+) -> UncheckedExtrinsic
+where
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
+    Client: HeaderBackend<subspace_runtime_primitives::opaque::Block>,
+{
+    let function = function.into();
+    let (raw_payload, extra) =
+        construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
+    let signature = raw_payload.using_encoded(|e| caller.sign(e));
+    UncheckedExtrinsic::new_signed(
+        function,
+        MultiAddress::Id(caller.to_account_id()),
+        Signature::Sr25519(signature),
+        extra,
+    )
 }

@@ -35,6 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
+use crate::domain_registry::Error as DomainRegistryError;
 use crate::staking::OperatorStatus;
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
@@ -58,8 +59,9 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
+    OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
@@ -70,10 +72,10 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{Hash, Header, One, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 pub use staking::OperatorConfig;
-use subspace_core_primitives::{BlockHash, SlotNumber, U256};
+use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
 use subspace_runtime_primitives::Balance;
 
 pub(crate) type BalanceOf<T> =
@@ -90,9 +92,12 @@ pub trait HoldIdentifier<T: Config> {
     fn storage_fund_withdrawal(operator_id: OperatorId) -> FungibleHoldId<T>;
 }
 
-pub trait BlockSlot {
-    fn current_slot() -> sp_consensus_slots::Slot;
-    fn future_slot() -> sp_consensus_slots::Slot;
+pub trait BlockSlot<T: frame_system::Config> {
+    // Return the future slot of the given `block_number`
+    fn future_slot(block_number: BlockNumberFor<T>) -> Option<sp_consensus_slots::Slot>;
+
+    // Return the latest block number whose slot is less than the given `to_check` slot
+    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumberFor<T>>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -191,8 +196,9 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, EpochIndex,
-        GenesisDomain, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeType,
+        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
+        OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -269,6 +275,10 @@ mod pallet {
         #[pallet::constant]
         type BlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
 
+        /// Consensus chain slot probability.
+        #[pallet::constant]
+        type ConsensusSlotProbability: Get<(u64, u64)>;
+
         /// The maximum block size limit for all domain.
         #[pallet::constant]
         type MaxDomainBlockSize: Get<u32>;
@@ -343,7 +353,7 @@ mod pallet {
         type StorageFee: StorageFee<BalanceOf<Self>>;
 
         /// The block slot
-        type BlockSlot: BlockSlot;
+        type BlockSlot: BlockSlot<Self>;
 
         /// Transfers tracker.
         type DomainsTransfersTracker: DomainsTransfersTracker<BalanceOf<Self>>;
@@ -353,6 +363,13 @@ mod pallet {
 
         /// Minimum balance for each initial domain account
         type MinInitialDomainAccountBalance: Get<BalanceOf<Self>>;
+
+        /// How many block a bundle should still consider as valid after produced
+        #[pallet::constant]
+        type BundleLongevity: Get<u32>;
+
+        /// Post hook to notify accepted domain bundles in previous block.
+        type DomainBundleSubmitted: DomainBundleSubmitted;
     }
 
     #[pallet::pallet]
@@ -638,6 +655,10 @@ mod pallet {
         SlotInTheFuture,
         /// The bundle is built on a slot in the past
         SlotInThePast,
+        /// Unable to calculate bundle limit
+        UnableToCalculateBundleLimit,
+        /// Bundle weight exceeds the max bundle weight limit
+        BundleTooHeavy,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1420,6 +1441,7 @@ mod pallet {
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+                T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
             }
 
             let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
@@ -1651,6 +1673,69 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_slot_and_proof_of_time(
+        slot_number: u64,
+        proof_of_time: PotOutput,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
+        // NOTE: the `current_block_number` from `frame_system` is initialized during `validate_unsigned` thus
+        // it is the same value in both `validate_unsigned` and `pre_dispatch`
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        // Check if the slot is in future
+        //
+        // NOTE: during `validate_unsigned` this is implicitly checked within `is_proof_of_time_valid` since we
+        // are using quick verification which will return `false` if the `proof-of-time` is not seem by the node
+        // before.
+        if pre_dispatch {
+            if let Some(future_slot) = T::BlockSlot::future_slot(current_block_number) {
+                ensure!(slot_number <= *future_slot, BundleError::SlotInTheFuture)
+            }
+        }
+
+        // Check if the bundle is built too long time ago and beyond `T::BundleLongevity` number of consensus blocks.
+        let produced_after_block_number =
+            match T::BlockSlot::slot_produced_after(slot_number.into()) {
+                Some(n) => n,
+                None => {
+                    // There is no slot for the genesis block, if the current block is less than `BundleLongevity`
+                    // than we assume the slot is produced after the genesis block.
+                    if current_block_number > T::BundleLongevity::get().into() {
+                        return Err(BundleError::SlotInThePast);
+                    } else {
+                        Zero::zero()
+                    }
+                }
+            };
+        let produced_after_block_hash = if produced_after_block_number == current_block_number {
+            // The hash of the current block is only available in the next block thus use the parent hash here
+            frame_system::Pallet::<T>::parent_hash()
+        } else {
+            frame_system::Pallet::<T>::block_hash(produced_after_block_number)
+        };
+        if let Some(last_eligible_block) =
+            current_block_number.checked_sub(&T::BundleLongevity::get().into())
+        {
+            ensure!(
+                produced_after_block_number >= last_eligible_block,
+                BundleError::SlotInThePast
+            );
+        }
+
+        if !is_proof_of_time_valid(
+            BlockHash::try_from(produced_after_block_hash.as_ref())
+                .expect("Must be able to convert to block hash type"),
+            SlotNumber::from(slot_number),
+            WrappedPotOutput::from(proof_of_time),
+            // Quick verification when entering transaction pool, but not when constructing the block
+            !pre_dispatch,
+        ) {
+            return Err(BundleError::InvalidProofOfTime);
+        }
+
+        Ok(())
+    }
+
     fn validate_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
@@ -1680,46 +1765,33 @@ impl<T: Config> Pallet<T> {
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
 
-        // TODO: check bundle weight with `domain_config.max_block_weight`
+        let domain_bundle_limit = domain_config
+            .calculate_bundle_limit::<T>()
+            .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
 
         ensure!(
-            opaque_bundle.size() <= domain_config.max_block_size,
+            opaque_bundle.size() <= domain_bundle_limit.max_bundle_size,
             BundleError::BundleTooLarge
+        );
+
+        ensure!(
+            opaque_bundle
+                .estimated_weight()
+                .all_lte(domain_bundle_limit.max_bundle_weight),
+            BundleError::BundleTooHeavy
         );
 
         Self::check_extrinsics_root(opaque_bundle)?;
 
         let proof_of_election = &sealed_header.header.proof_of_election;
-        let slot_number = proof_of_election.slot_number;
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
-        // Check if the bundle is built with slot and valid proof-of-time that produced between the parent block
-        // and the current block
-        //
-        // NOTE: during `validate_unsigned` `current_slot` is query from the parent block and during `pre_dispatch`
-        // the `future_slot` is query from the current block.
-        if pre_dispatch {
-            ensure!(
-                slot_number <= *T::BlockSlot::future_slot(),
-                BundleError::SlotInTheFuture
-            )
-        } else {
-            ensure!(
-                slot_number > *T::BlockSlot::current_slot(),
-                BundleError::SlotInThePast
-            );
-        }
-        if !is_proof_of_time_valid(
-            BlockHash::try_from(frame_system::Pallet::<T>::parent_hash().as_ref())
-                .expect("Must be able to convert to block hash type"),
-            SlotNumber::from(slot_number),
-            WrappedPotOutput::from(proof_of_election.proof_of_time),
-            // Quick verification when entering transaction pool, but not when constructing the block
-            !pre_dispatch,
-        ) {
-            return Err(BundleError::InvalidProofOfTime);
-        }
+        Self::check_slot_and_proof_of_time(
+            proof_of_election.slot_number,
+            proof_of_election.proof_of_time,
+            pre_dispatch,
+        )?;
 
         sp_domains::bundle_producer_election::check_proof_of_election(
             &operator.signing_key,
@@ -2059,6 +2131,20 @@ impl<T: Config> Pallet<T> {
         })
     }
 
+    /// Returns the domain bundle limit of the given domain
+    pub fn domain_bundle_limit(
+        domain_id: DomainId,
+    ) -> Result<Option<DomainBundleLimit>, DomainRegistryError> {
+        let domain_config = match DomainRegistry::<T>::get(domain_id) {
+            None => return Ok(None),
+            Some(domain_obj) => domain_obj.domain_config,
+        };
+
+        let bundle_limit = domain_config.calculate_bundle_limit::<T>()?;
+
+        Ok(Some(bundle_limit))
+    }
+
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
     /// Note that Genesis ER is also considered special and hence non empty
     pub fn non_empty_er_exists(domain_id: DomainId) -> bool {
@@ -2180,6 +2266,16 @@ impl<T: Config> Pallet<T> {
             .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
                 finalized_operator_count,
             ))
+    }
+}
+
+impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
+    fn is_domain_owner(domain_id: DomainId, acc: T::AccountId) -> bool {
+        if let Some(domain_obj) = DomainRegistry::<T>::get(domain_id) {
+            domain_obj.owner_account_id == acc
+        } else {
+            false
+        }
     }
 }
 

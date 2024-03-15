@@ -6,7 +6,7 @@ use crate::single_disk_farm::{
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use crate::{node_client, NodeClient};
-use async_lock::RwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -156,12 +156,12 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     pub(super) metadata_file: File,
     #[cfg(windows)]
     pub(super) metadata_file: UnbufferedIoFileWindows,
-    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) piece_getter: &'a PG,
     pub(super) kzg: &'a Kzg,
     pub(super) erasure_coding: &'a ErasureCoding,
     pub(super) handlers: Arc<Handlers>,
-    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
@@ -169,6 +169,7 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     pub(crate) record_encoding_concurrency: NonZeroUsize,
     pub(super) plotting_thread_pool_manager: PlottingThreadPoolManager,
     pub(super) stop_receiver: broadcast::Receiver<()>,
+    pub(super) global_mutex: &'a AsyncMutex<()>,
 }
 
 /// Starts plotting process.
@@ -203,6 +204,7 @@ where
         record_encoding_concurrency,
         plotting_thread_pool_manager,
         mut stop_receiver,
+        global_mutex,
     } = plotting_options;
 
     let abort_early = Arc::new(AtomicBool::new(false));
@@ -291,6 +293,9 @@ where
 
             break farmer_app_info;
         };
+
+        // Take mutex briefly to make sure plotting is allowed right now
+        global_mutex.lock().await;
 
         let (_downloading_permit, downloaded_sector) =
             if let Some(downloaded_sector_fut) = maybe_next_downloaded_sector_fut.take() {
@@ -404,6 +409,7 @@ where
                             sector_metadata_output: &mut sector_metadata,
                             table_generators: &mut table_generators,
                             abort_early: &abort_early,
+                            global_mutex,
                         },
                     )?;
 
@@ -442,6 +448,9 @@ where
         modifying_sector_index.write().await.replace(sector_index);
 
         {
+            // Take mutex briefly to make sure writing is allowed right now
+            global_mutex.lock().await;
+
             handlers.sector_update.call_simple(&(
                 sector_index,
                 SectorUpdate::Plotting(SectorPlottingDetails::Writing),
@@ -538,7 +547,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) min_sector_lifetime: HistorySize,
     pub(super) node_client: NC,
     pub(super) handlers: Arc<Handlers>,
-    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
     pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
     // Delay between segment header being acknowledged by farmer and potentially triggering
@@ -672,7 +681,7 @@ async fn send_plotting_notifications<NC>(
     min_sector_lifetime: HistorySize,
     node_client: &NC,
     handlers: &Handlers,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
