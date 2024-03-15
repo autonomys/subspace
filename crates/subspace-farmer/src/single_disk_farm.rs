@@ -2207,13 +2207,11 @@ where
         // A lot simplified version of concurrent chunks
         {
             let start = Instant::now();
-            (0..Record::NUM_S_BUCKETS)
-                .into_par_iter()
-                .try_for_each(|_| {
-                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
-                        * Scalar::FULL_BYTES;
-                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
-                })?;
+            (0..Record::NUM_CHUNKS).into_par_iter().try_for_each(|_| {
+                let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                    * Scalar::FULL_BYTES;
+                farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+            })?;
             let elapsed = start.elapsed();
 
             if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
