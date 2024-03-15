@@ -52,37 +52,9 @@ impl FileExt for UnbufferedIoFileWindows {
         Ok(())
     }
 
-    fn read_exact_at(&self, buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         let mut buffer = self.buffer.lock();
-
-        // Read from disk in at most 1M chunks to avoid too high memory usage, account for offset
-        // that would cause extra bytes to be read from disk
-        for buf in buf.chunks_mut(MAX_READ_SIZE - (offset % mem::size_of::<u8>() as u64) as usize) {
-            // Make scratch buffer of a size that is necessary to read aligned memory, accounting
-            // for extra bytes at the beginning and the end that will be thrown away
-            let bytes_to_read = buf.len();
-            let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
-            let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
-            if buffer.len() < desired_buffer_size {
-                buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
-            }
-
-            // While buffer above is allocated with granularity of `MAX_DISK_SECTOR_SIZE`, reads are
-            // done with granularity of physical sector size
-            let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
-            self.read_file.read_at(
-                &mut buffer.flatten_mut()[..(bytes_to_read + offset_in_buffer)
-                    .div_ceil(self.physical_sector_size)
-                    * self.physical_sector_size],
-                offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
-            )?;
-
-            buf.copy_from_slice(&buffer.flatten()[offset_in_buffer..][..bytes_to_read]);
-
-            offset += buf.len() as u64;
-        }
-
-        Ok(())
+        self.read_exact_at_internal(&mut buffer, buf, offset)
     }
 
     fn write_all_at(&self, buf: &[u8], offset: u64) -> io::Result<()> {
@@ -127,6 +99,42 @@ impl UnbufferedIoFileWindows {
     /// Truncates or extends the underlying file, updating the size of this file to become `size`.
     pub fn set_len(&self, size: u64) -> io::Result<()> {
         self.write_file.set_len(size)
+    }
+
+    pub fn read_exact_at_internal(
+        &self,
+        buffer: &mut Vec<[u8; DISK_SECTOR_SIZE]>,
+        buf: &mut [u8],
+        mut offset: u64,
+    ) -> io::Result<()> {
+        // Read from disk in at most 1M chunks to avoid too high memory usage, account for offset
+        // that would cause extra bytes to be read from disk
+        for buf in buf.chunks_mut(MAX_READ_SIZE - (offset % mem::size_of::<u8>() as u64) as usize) {
+            // Make scratch buffer of a size that is necessary to read aligned memory, accounting
+            // for extra bytes at the beginning and the end that will be thrown away
+            let bytes_to_read = buf.len();
+            let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
+            let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
+            if buffer.len() < desired_buffer_size {
+                buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
+            }
+
+            // While buffer above is allocated with granularity of `MAX_DISK_SECTOR_SIZE`, reads are
+            // done with granularity of physical sector size
+            let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
+            self.read_file.read_at(
+                &mut buffer.flatten_mut()[..(bytes_to_read + offset_in_buffer)
+                    .div_ceil(self.physical_sector_size)
+                    * self.physical_sector_size],
+                offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
+            )?;
+
+            buf.copy_from_slice(&buffer.flatten()[offset_in_buffer..][..bytes_to_read]);
+
+            offset += buf.len() as u64;
+        }
+
+        Ok(())
     }
 }
 
