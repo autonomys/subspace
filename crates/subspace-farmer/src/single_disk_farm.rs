@@ -2217,7 +2217,7 @@ where
             let elapsed = start.elapsed();
 
             if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
-                debug!(
+                info!(
                     ?elapsed,
                     "Proving method with chunks reading is too slow, using whole sector"
                 );
