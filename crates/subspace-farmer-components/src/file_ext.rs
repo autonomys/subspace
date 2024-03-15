@@ -105,10 +105,6 @@ impl FileExt for File {
     }
 
     fn preallocate(&mut self, len: u64) -> Result<()> {
-        // TODO: Hack due to bugs on Windows: https://github.com/al8n/fs4-rs/issues/13
-        if self.size()? == len {
-            return Ok(());
-        }
         fs2::FileExt::allocate(self, len)
     }
 

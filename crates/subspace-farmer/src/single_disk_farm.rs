@@ -1344,12 +1344,6 @@ impl SingleDiskFarm {
                 .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
             // Truncating file (if necessary)
             plot_file.set_len(plot_file_size)?;
-
-            // TODO: Hack due to Windows bugs:
-            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
-            if cfg!(windows) {
-                warn!("Farm was resized, farmer restart is needed for optimal performance!")
-            }
         }
 
         let plot_file = Arc::new(plot_file);
