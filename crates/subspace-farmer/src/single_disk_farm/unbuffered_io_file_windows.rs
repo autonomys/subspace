@@ -239,7 +239,7 @@ mod tests {
     fn basic() {
         let tempdir = tempdir().unwrap();
         let file_path = tempdir.as_ref().join("file.bin");
-        let mut data = vec![0u8; MAX_READ_SIZE * 3];
+        let mut data = vec![0u8; MAX_READ_SIZE * 5];
         thread_rng().fill(data.as_mut_slice());
         fs::write(&file_path, &data).unwrap();
 
@@ -252,13 +252,27 @@ mod tests {
 
             let mut buffer = Vec::new();
             for (offset, size) in [
+                (0_usize, 512_usize),
                 (0_usize, 4096_usize),
+                (0, 500),
                 (0, 4000),
                 (5, 50),
-                (5, 4091),
-                (4091, 5),
+                (12, 500),
+                (96, 4000),
+                (4000, 96),
                 (10000, 5),
+                (0, MAX_READ_SIZE),
+                (0, MAX_READ_SIZE * 2),
+                (5, MAX_READ_SIZE - 5),
+                (5, MAX_READ_SIZE * 2 - 5),
+                (5, MAX_READ_SIZE),
                 (5, MAX_READ_SIZE * 2),
+                (MAX_READ_SIZE + 0, MAX_READ_SIZE),
+                (MAX_READ_SIZE + 0, MAX_READ_SIZE * 2),
+                (MAX_READ_SIZE + 5, MAX_READ_SIZE - 5),
+                (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2 - 5),
+                (MAX_READ_SIZE + 5, MAX_READ_SIZE),
+                (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2),
             ] {
                 let data = &mut data[offset..][..size];
                 buffer.resize(size, 0);
