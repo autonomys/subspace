@@ -8,10 +8,7 @@ use frame_system::RawOrigin;
 use crate::Pallet as Executive;
 
 fn get_runtime_code() -> Vec<u8> {
-    include_bytes!(
-        "../../../../crates/pallet-domains/res/evm_domain_test_runtime.compact.compressed.wasm"
-    )
-    .to_vec()
+    include_bytes!("../res/evm_domain_test_runtime.compact.compressed.wasm").to_vec()
 }
 
 #[benchmarks]

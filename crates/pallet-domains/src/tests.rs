@@ -181,7 +181,7 @@ parameter_types! {
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
-    pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxPendingStakingOperation: u32 = 512;
     pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;

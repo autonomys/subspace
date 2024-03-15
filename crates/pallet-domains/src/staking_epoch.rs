@@ -32,31 +32,48 @@ pub enum Error {
     SlashOperator(TransitionError),
 }
 
+pub(crate) struct EpochTransitionResult {
+    pub rewarded_operator_count: u32,
+    pub slashed_nominator_count: u32,
+    pub finalized_operator_count: u32,
+    pub completed_epoch_index: EpochIndex,
+}
+
 /// Finalizes the domain's current epoch and begins the next epoch.
-/// Returns true of the epoch indeed was finished.
+/// Returns true of the epoch indeed was finished and the number of operator processed.
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
-) -> Result<EpochIndex, Error> {
+) -> Result<EpochTransitionResult, Error> {
     // Reset pending staking operation count to 0
     PendingStakingOperationCount::<T>::set(domain_id, 0);
 
     // re stake operator's tax from the rewards
-    operator_take_reward_tax_and_stake::<T>(domain_id)?;
+    let rewarded_operator_count = operator_take_reward_tax_and_stake::<T>(domain_id)?;
 
     // slash the operators
-    do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
+    let slashed_nominator_count =
+        do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
     // finalize any operator switches
     do_finalize_switch_operator_domain::<T>(domain_id)?;
 
     // finalize any withdrawals and then deposits
-    do_finalize_domain_epoch_staking::<T>(domain_id)
+    let (completed_epoch_index, finalized_operator_count) =
+        do_finalize_domain_epoch_staking::<T>(domain_id)?;
+
+    Ok(EpochTransitionResult {
+        rewarded_operator_count,
+        slashed_nominator_count,
+        finalized_operator_count,
+        completed_epoch_index,
+    })
 }
 
 /// Operator takes `NominationTax` of the current epoch rewards and stake them.
 pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
     domain_id: DomainId,
-) -> Result<(), Error> {
+) -> Result<u32, Error> {
+    let mut rewarded_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
@@ -126,13 +143,17 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     .checked_add(&rewards)
                     .ok_or(TransitionError::BalanceOverflow)?;
 
+                rewarded_operator_count += 1;
+
                 Ok(())
             })?;
         }
 
         Ok(())
     })
-    .map_err(Error::OperatorRewardStaking)
+    .map_err(Error::OperatorRewardStaking)?;
+
+    Ok(rewarded_operator_count)
 }
 
 /// Add all the switched operators to new domain as next operators.
@@ -188,7 +209,8 @@ fn switch_operator<T: Config>(
 
 pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
     domain_id: DomainId,
-) -> Result<EpochIndex, Error> {
+) -> Result<(EpochIndex, u32), Error> {
+    let mut finalized_operator_count = 0;
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
@@ -210,7 +232,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 continue;
             }
 
-            let operator_stake = do_finalize_operator_epoch_staking::<T>(
+            let (operator_stake, stake_changed) = do_finalize_operator_epoch_staking::<T>(
                 domain_id,
                 *next_operator_id,
                 previous_epoch,
@@ -221,6 +243,10 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
                 .ok_or(TransitionError::BalanceOverflow)?;
             current_operators.insert(*next_operator_id, operator_stake);
             next_operators.insert(*next_operator_id);
+
+            if stake_changed {
+                finalized_operator_count += 1;
+            }
         }
 
         let election_verification_params = ElectionVerificationParams {
@@ -236,90 +262,95 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         stake_summary.current_operators = current_operators;
         stake_summary.next_operators = next_operators;
 
-        Ok(previous_epoch)
+        Ok((previous_epoch, finalized_operator_count))
     })
     .map_err(Error::FinalizeDomainEpochStaking)
 }
 
+/// Finalize the epoch for the operator
+///
+/// Return the new total stake of the operator and a bool indicate if its total stake
+/// is changed due to deposit/withdraw/reward happened in the previous epoch
 pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     domain_id: DomainId,
     operator_id: OperatorId,
     previous_epoch: EpochIndex,
-) -> Result<BalanceOf<T>, TransitionError> {
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator
-            .as_mut()
-            .ok_or(TransitionError::UnknownOperator)?;
+) -> Result<(BalanceOf<T>, bool), TransitionError> {
+    let mut operator = match Operators::<T>::get(operator_id) {
+        Some(op) => op,
+        None => return Err(TransitionError::UnknownOperator),
+    };
 
-        if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
-            return Err(TransitionError::OperatorNotRegistered);
-        }
+    if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
+        return Err(TransitionError::OperatorNotRegistered);
+    }
 
-        // if there are no deposits, withdrawls, and epoch rewards for this operator
-        // then short-circuit and return early.
-        if operator.deposits_in_epoch.is_zero()
-            && operator.withdrawals_in_epoch.is_zero()
-            && operator.current_epoch_rewards.is_zero()
-        {
-            return Ok(operator.current_total_stake);
-        }
+    // if there are no deposits, withdrawls, and epoch rewards for this operator
+    // then short-circuit and return early.
+    if operator.deposits_in_epoch.is_zero()
+        && operator.withdrawals_in_epoch.is_zero()
+        && operator.current_epoch_rewards.is_zero()
+    {
+        return Ok((operator.current_total_stake, false));
+    }
 
-        let total_stake = operator
-            .current_total_stake
-            .checked_add(&operator.current_epoch_rewards)
+    let total_stake = operator
+        .current_total_stake
+        .checked_add(&operator.current_epoch_rewards)
+        .ok_or(TransitionError::BalanceOverflow)?;
+
+    let total_shares = operator.current_total_shares;
+
+    let share_price = SharePrice::new::<T>(total_shares, total_stake);
+
+    // calculate and subtract total withdrew shares from previous epoch
+    let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
+        let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
+        let total_stake = total_stake
+            .checked_sub(&withdraw_stake)
+            .ok_or(TransitionError::BalanceUnderflow)?;
+        let total_shares = total_shares
+            .checked_sub(&operator.withdrawals_in_epoch)
+            .ok_or(TransitionError::ShareUnderflow)?;
+
+        operator.withdrawals_in_epoch = Zero::zero();
+        (total_stake, total_shares)
+    } else {
+        (total_stake, total_shares)
+    };
+
+    // calculate and add total deposits from the previous epoch
+    let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
+        let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
+        let total_stake = total_stake
+            .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;
+        let total_shares = total_shares
+            .checked_add(&deposited_shares)
+            .ok_or(TransitionError::ShareOverflow)?;
+        operator.deposits_in_epoch = Zero::zero();
+        (total_stake, total_shares)
+    } else {
+        (total_stake, total_shares)
+    };
 
-        let total_shares = operator.current_total_shares;
+    // update operator pool epoch share price
+    // TODO: once we have reference counting, we do not need to
+    //  store this for every epoch for every operator but instead
+    //  store only those share prices of operators which has either a deposit or withdraw
+    OperatorEpochSharePrice::<T>::insert(
+        operator_id,
+        DomainEpoch::from((domain_id, previous_epoch)),
+        share_price,
+    );
 
-        let share_price = SharePrice::new::<T>(total_shares, total_stake);
+    // update operator state
+    operator.current_total_shares = total_shares;
+    operator.current_total_stake = total_stake;
+    operator.current_epoch_rewards = Zero::zero();
+    Operators::<T>::set(operator_id, Some(operator));
 
-        // calculate and subtract total withdrew shares from previous epoch
-        let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
-            let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
-            let total_stake = total_stake
-                .checked_sub(&withdraw_stake)
-                .ok_or(TransitionError::BalanceUnderflow)?;
-            let total_shares = total_shares
-                .checked_sub(&operator.withdrawals_in_epoch)
-                .ok_or(TransitionError::ShareUnderflow)?;
-
-            operator.withdrawals_in_epoch = Zero::zero();
-            (total_stake, total_shares)
-        } else {
-            (total_stake, total_shares)
-        };
-
-        // calculate and add total deposits from the previous epoch
-        let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
-            let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
-            let total_stake = total_stake
-                .checked_add(&operator.deposits_in_epoch)
-                .ok_or(TransitionError::BalanceOverflow)?;
-            let total_shares = total_shares
-                .checked_add(&deposited_shares)
-                .ok_or(TransitionError::ShareOverflow)?;
-            operator.deposits_in_epoch = Zero::zero();
-            (total_stake, total_shares)
-        } else {
-            (total_stake, total_shares)
-        };
-
-        // update operator pool epoch share price
-        // TODO: once we have reference counting, we do not need to
-        //  store this for every epoch for every operator but instead
-        //  store only those share prices of operators which has either a deposit or withdraw
-        OperatorEpochSharePrice::<T>::insert(
-            operator_id,
-            DomainEpoch::from((domain_id, previous_epoch)),
-            share_price,
-        );
-
-        // update operator state
-        operator.current_total_shares = total_shares;
-        operator.current_total_stake = total_stake;
-        operator.current_epoch_rewards = Zero::zero();
-        Ok(total_stake)
-    })
+    Ok((total_stake, true))
 }
 
 pub(crate) fn mint_funds<T: Config>(
@@ -336,7 +367,8 @@ pub(crate) fn mint_funds<T: Config>(
 
 pub(crate) fn do_finalize_slashed_operators<T: Config>(
     domain_id: DomainId,
-) -> Result<(), TransitionError> {
+) -> Result<u32, TransitionError> {
+    let mut slashed_nominator_count = 0;
     for operator_id in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
         Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
             // take the operator so this operator info is removed once we slash the operator.
@@ -468,6 +500,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     )
                     .map_err(|_| TransitionError::RemoveLock)?;
 
+                    slashed_nominator_count += 1;
+
                     Ok(())
                 },
             )?;
@@ -483,7 +517,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
         })?;
     }
 
-    Ok(())
+    Ok(slashed_nominator_count)
 }
 
 #[cfg(test)]
