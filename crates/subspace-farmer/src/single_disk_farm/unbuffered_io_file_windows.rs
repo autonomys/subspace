@@ -2,7 +2,6 @@ use parking_lot::Mutex;
 use static_assertions::const_assert_eq;
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::io::{Seek, SeekFrom};
 use std::path::Path;
 use subspace_farmer_components::file_ext::FileExt;
 #[cfg(windows)]
@@ -38,11 +37,11 @@ impl ReadAtSync for &UnbufferedIoFileWindows {
 }
 
 impl FileExt for UnbufferedIoFileWindows {
-    fn size(&mut self) -> io::Result<u64> {
-        self.file.seek(SeekFrom::End(0))
+    fn size(&self) -> io::Result<u64> {
+        Ok(self.file.metadata()?.len())
     }
 
-    fn preallocate(&mut self, len: u64) -> io::Result<()> {
+    fn preallocate(&self, len: u64) -> io::Result<()> {
         self.file.preallocate(len)
     }
 

@@ -1220,7 +1220,7 @@ impl SingleDiskFarm {
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1231,7 +1231,7 @@ impl SingleDiskFarm {
         metadata_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+        let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
         let expected_metadata_size =
@@ -1323,7 +1323,7 @@ impl SingleDiskFarm {
         };
 
         #[cfg(not(windows))]
-        let mut plot_file = OpenOptions::new()
+        let plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1334,7 +1334,7 @@ impl SingleDiskFarm {
         plot_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1393,13 +1393,12 @@ impl SingleDiskFarm {
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
         #[cfg(windows)]
-        let mut metadata_file =
-            UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -1665,7 +1664,7 @@ impl SingleDiskFarm {
         let (metadata_file, mut metadata_header) = {
             info!(path = %metadata_file_path.display(), "Checking metadata file");
 
-            let mut metadata_file = match OpenOptions::new()
+            let metadata_file = match OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&metadata_file_path)
@@ -1766,7 +1765,7 @@ impl SingleDiskFarm {
             let plot_file_path = directory.join(Self::PLOT_FILE);
             info!(path = %plot_file_path.display(), "Checking plot file");
 
-            let mut plot_file = match OpenOptions::new()
+            let plot_file = match OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&plot_file_path)
@@ -2042,7 +2041,7 @@ impl SingleDiskFarm {
             let file = directory.join(DiskPieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
-            let mut cache_file = match OpenOptions::new().read(true).write(true).open(&file) {
+            let cache_file = match OpenOptions::new().read(true).write(true).open(&file) {
                 Ok(plot_file) => plot_file,
                 Err(error) => {
                     return Err(if error.kind() == io::ErrorKind::NotFound {

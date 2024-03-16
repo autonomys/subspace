@@ -1,7 +1,7 @@
 //! File extension trait
 
 use std::fs::{File, OpenOptions};
-use std::io::{Result, Seek, SeekFrom};
+use std::io::Result;
 
 /// Extension convenience trait that allows setting some file opening options in cross-platform way
 pub trait OpenOptionsExt {
@@ -79,10 +79,10 @@ impl OpenOptionsExt for OpenOptions {
 /// and doing cross-platform exact reads/writes
 pub trait FileExt {
     /// Get file size
-    fn size(&mut self) -> Result<u64>;
+    fn size(&self) -> Result<u64>;
 
     /// Make sure file has specified number of bytes allocated for it
-    fn preallocate(&mut self, len: u64) -> Result<()>;
+    fn preallocate(&self, len: u64) -> Result<()>;
 
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
@@ -100,11 +100,11 @@ pub trait FileExt {
 }
 
 impl FileExt for File {
-    fn size(&mut self) -> Result<u64> {
-        self.seek(SeekFrom::End(0))
+    fn size(&self) -> Result<u64> {
+        Ok(self.metadata()?.len())
     }
 
-    fn preallocate(&mut self, len: u64) -> Result<()> {
+    fn preallocate(&self, len: u64) -> Result<()> {
         fs2::FileExt::allocate(self, len)
     }
 
