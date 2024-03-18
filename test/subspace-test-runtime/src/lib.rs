@@ -41,6 +41,7 @@ use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
+pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
@@ -726,15 +727,18 @@ impl pallet_domains::Config for Runtime {
 }
 
 parameter_types! {
-    pub const BlockReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
-    pub const VoteReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
+    pub const AvgBlockspaceUsageNumBlocks: BlockNumber = 100;
+    pub const ProposerTaxOnVotes: (u32, u32) = (1, 10);
 }
 
 impl pallet_rewards::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
-    type BlockReward = BlockReward;
-    type VoteReward = VoteReward;
+    type AvgBlockspaceUsageNumBlocks = AvgBlockspaceUsageNumBlocks;
+    type TransactionByteFee = TransactionByteFee;
+    type MaxRewardPoints = ConstU32<20>;
+    type ProposerTaxOnVotes = ProposerTaxOnVotes;
+    type RewardsEnabled = Subspace;
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();

@@ -454,7 +454,7 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type EnableRewardsBelowSolutionRange<T: Config> = StorageValue<_, u64>;
 
-    /// Temporary value (cleared at block finalization) with block author information.
+    /// Block author information
     #[pallet::storage]
     pub(super) type CurrentBlockAuthorInfo<T: Config> = StorageValue<
         _,
@@ -479,7 +479,7 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    /// Temporary value (cleared at block finalization) with voters in the current block thus far.
+    /// Voters in the current block thus far
     #[pallet::storage]
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
@@ -803,6 +803,8 @@ impl<T: Config> Pallet<T> {
         });
 
         {
+            // Remove old value
+            CurrentBlockAuthorInfo::<T>::take();
             let farmer_public_key = pre_digest.solution().public_key.clone();
 
             // Optional restriction for block authoring to the root user
@@ -994,14 +996,16 @@ impl<T: Config> Pallet<T> {
         }
 
         if let Some((public_key, sector_index, piece_offset, scalar, slot, _reward_address)) =
-            CurrentBlockAuthorInfo::<T>::take()
+            CurrentBlockAuthorInfo::<T>::get()
         {
             ParentBlockAuthorInfo::<T>::put((public_key, sector_index, piece_offset, scalar, slot));
+        } else {
+            ParentBlockAuthorInfo::<T>::take();
         }
 
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
 
-        ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::take().unwrap_or_default());
+        ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::get().unwrap_or_default());
 
         DidProcessSegmentHeaders::<T>::take();
     }
@@ -1742,6 +1746,16 @@ fn check_segment_headers<T: Config>(
     }
 
     Ok(())
+}
+
+impl<T: Config> subspace_runtime_primitives::RewardsEnabled for Pallet<T> {
+    fn rewards_enabled() -> bool {
+        if let Some(height) = EnableRewards::<T>::get() {
+            frame_system::Pallet::<T>::current_block_number() >= height
+        } else {
+            false
+        }
+    }
 }
 
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {

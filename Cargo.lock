@@ -7421,10 +7421,17 @@ dependencies = [
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "log",
+ "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
  "subspace-runtime-primitives",
 ]
 
