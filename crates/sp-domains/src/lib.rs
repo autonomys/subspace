@@ -443,8 +443,13 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
         self.sealed_header.header.receipt
     }
 
-    /// Return the bundle body size in bytes
+    /// Return the bundle size (include header and body) in bytes
     pub fn size(&self) -> u32 {
+        self.encoded_size() as u32
+    }
+
+    /// Return the bundle body size in bytes
+    pub fn body_size(&self) -> u32 {
         self.extrinsics
             .iter()
             .map(|tx| tx.encoded_size() as u32)
