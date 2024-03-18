@@ -2193,8 +2193,6 @@ where
 
     let mut sector_bytes = vec![0u8; sector_size];
 
-    original_plot.read_exact_at(&mut sector_bytes, 0)?;
-
     if plotted_sector_count == 0 {
         thread_rng().fill_bytes(&mut sector_bytes);
         original_plot.write_all_at(&sector_bytes, 0)?;
