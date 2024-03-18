@@ -25,12 +25,12 @@ use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::farm::Farm;
+use subspace_farmer::farm::{
+    Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
+};
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
-    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
-    SingleDiskFarmError, SingleDiskFarmOptions,
+    SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;

@@ -7,9 +7,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
 use subspace_core_primitives::SectorIndex;
-use subspace_farmer::farm::FarmId;
-use subspace_farmer::single_disk_farm::farming::ProvingResult;
-use subspace_farmer::single_disk_farm::FarmingError;
+use subspace_farmer::farm::{FarmId, FarmingError, ProvingResult};
 
 #[derive(Debug, Copy, Clone)]
 pub(super) enum SectorState {

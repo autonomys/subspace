@@ -1,17 +1,17 @@
 pub mod rayon_files;
 
-use crate::node_client;
+use crate::farm::{
+    AuditingDetails, FarmingError, FarmingNotification, ProvingDetails, ProvingResult,
+};
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::mpsc;
 use futures::StreamExt;
-use parity_scale_codec::{Decode, Encode, Error, Input, Output};
 use parking_lot::Mutex;
 use rayon::ThreadPool;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use std::{fmt, io};
+use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
@@ -22,151 +22,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
-use thiserror::Error;
 use tracing::{debug, error, info, trace, warn, Span};
-
-/// Auditing details
-#[derive(Debug, Copy, Clone, Encode, Decode)]
-pub struct AuditingDetails {
-    /// Number of sectors that were audited
-    pub sectors_count: SectorIndex,
-    /// Audit duration
-    pub time: Duration,
-}
-
-/// Result of the proving
-#[derive(Debug, Copy, Clone, Encode, Decode)]
-pub enum ProvingResult {
-    /// Proved successfully and accepted by the node
-    Success,
-    /// Proving took too long
-    Timeout,
-    /// Managed to prove within time limit, but node rejected solution, likely due to timeout on its
-    /// end
-    Rejected,
-}
-
-impl fmt::Display for ProvingResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            ProvingResult::Success => "Success",
-            ProvingResult::Timeout => "Timeout",
-            ProvingResult::Rejected => "Rejected",
-        })
-    }
-}
-
-/// Proving details
-#[derive(Debug, Copy, Clone, Encode, Decode)]
-pub struct ProvingDetails {
-    /// Whether proving ended up being successful
-    pub result: ProvingResult,
-    /// Audit duration
-    pub time: Duration,
-}
-
-/// Various farming notifications
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum FarmingNotification {
-    /// Auditing
-    Auditing(AuditingDetails),
-    /// Proving
-    Proving(ProvingDetails),
-    /// Non-fatal farming error
-    NonFatalError(Arc<FarmingError>),
-}
-
-/// Special decoded farming error
-#[derive(Debug, Encode, Decode)]
-pub struct DecodedFarmingError {
-    /// String representation of an error
-    error: String,
-    /// Whether error is fatal
-    is_fatal: bool,
-}
-
-impl fmt::Display for DecodedFarmingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.error.fmt(f)
-    }
-}
-
-/// Errors that happen during farming
-#[derive(Debug, Error)]
-pub enum FarmingError {
-    /// Failed to subscribe to slot info notifications
-    #[error("Failed to subscribe to slot info notifications: {error}")]
-    FailedToSubscribeSlotInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Failed to retrieve farmer info
-    #[error("Failed to retrieve farmer info: {error}")]
-    FailedToGetFarmerInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Slot info notification stream ended
-    #[error("Slot info notification stream ended")]
-    SlotNotificationStreamEnded,
-    /// Low-level auditing error
-    #[error("Low-level auditing error: {0}")]
-    LowLevelAuditing(#[from] AuditingError),
-    /// Low-level proving error
-    #[error("Low-level proving error: {0}")]
-    LowLevelProving(#[from] ProvingError),
-    /// I/O error occurred
-    #[error("Farming I/O error: {0}")]
-    Io(#[from] io::Error),
-    /// Decoded farming error
-    #[error("Decoded farming error {0}")]
-    Decoded(DecodedFarmingError),
-}
-
-impl Encode for FarmingError {
-    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
-        let error = DecodedFarmingError {
-            error: self.to_string(),
-            is_fatal: self.is_fatal(),
-        };
-
-        error.encode_to(dest)
-    }
-}
-
-impl Decode for FarmingError {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
-        DecodedFarmingError::decode(input).map(FarmingError::Decoded)
-    }
-}
-
-impl FarmingError {
-    /// String variant of the error, primarily for monitoring purposes
-    pub fn str_variant(&self) -> &str {
-        match self {
-            FarmingError::FailedToSubscribeSlotInfo { .. } => "FailedToSubscribeSlotInfo",
-            FarmingError::FailedToGetFarmerInfo { .. } => "FailedToGetFarmerInfo",
-            FarmingError::LowLevelAuditing(_) => "LowLevelAuditing",
-            FarmingError::LowLevelProving(_) => "LowLevelProving",
-            FarmingError::Io(_) => "Io",
-            FarmingError::Decoded(_) => "Decoded",
-            FarmingError::SlotNotificationStreamEnded => "SlotNotificationStreamEnded",
-        }
-    }
-
-    /// Whether this error is fatal and makes farm unusable
-    pub fn is_fatal(&self) -> bool {
-        match self {
-            FarmingError::FailedToSubscribeSlotInfo { .. } => true,
-            FarmingError::FailedToGetFarmerInfo { .. } => true,
-            FarmingError::LowLevelAuditing(_) => true,
-            FarmingError::LowLevelProving(error) => error.is_fatal(),
-            FarmingError::Io(_) => true,
-            FarmingError::Decoded(error) => error.is_fatal,
-            FarmingError::SlotNotificationStreamEnded => true,
-        }
-    }
-}
 
 pub(super) async fn slot_notification_forwarder<NC>(
     node_client: &NC,

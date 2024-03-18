@@ -5,23 +5,23 @@ pub mod plot_cache;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmError, FarmId, HandlerFn, PieceCache, PieceReader, PlotCache};
+use crate::farm::{
+    Farm, FarmError, FarmId, HandlerFn, PieceCache, PieceReader, PlotCache, SectorUpdate,
+};
+pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
+pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
-};
-pub use crate::single_disk_farm::plotting::{
-    PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
@@ -153,7 +153,7 @@ impl SingleDiskFarmInfo {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
+    /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
         fs::write(
             directory.join(Self::FILE_NAME),
@@ -541,15 +541,6 @@ pub enum BackgroundTaskError {
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
 
 type Handler<A> = Bag<HandlerFn<A>, A>;
-
-/// Various sector updates
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorUpdate {
-    /// Sector is being plotted
-    Plotting(SectorPlottingDetails),
-    /// Sector expiration information updated
-    Expiration(SectorExpirationDetails),
-}
 
 #[derive(Default, Debug)]
 struct Handlers {

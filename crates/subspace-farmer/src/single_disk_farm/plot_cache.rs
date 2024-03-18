@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod tests;
 
-use crate::farm::{FarmError, PlotCache};
+use crate::farm::{FarmError, MaybePieceStoredResult, PlotCache};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
-use parity_scale_codec::{Decode, Encode};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(not(windows))]
@@ -35,16 +34,6 @@ pub enum DiskPlotCacheError {
     /// Checksum mismatch
     #[error("Checksum mismatch")]
     ChecksumMismatch,
-}
-
-#[derive(Debug, Copy, Clone, Encode, Decode)]
-pub enum MaybePieceStoredResult {
-    /// Definitely not stored
-    No,
-    /// Maybe has vacant slot to store
-    Vacant,
-    /// Maybe still stored
-    Yes,
 }
 
 #[derive(Debug)]

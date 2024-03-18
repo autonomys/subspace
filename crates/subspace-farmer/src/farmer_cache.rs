@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::farm::{PieceCache, PieceCacheOffset, PlotCache};
+use crate::farm::{MaybePieceStoredResult, PieceCache, PieceCacheOffset, PlotCache};
 use crate::node_client::NodeClient;
-use crate::single_disk_farm::plot_cache::MaybePieceStoredResult;
 use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};

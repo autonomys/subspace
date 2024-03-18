@@ -1,4 +1,5 @@
-use crate::single_disk_farm::plot_cache::{DiskPlotCache, MaybePieceStoredResult};
+use crate::farm::MaybePieceStoredResult;
+use crate::single_disk_farm::plot_cache::DiskPlotCache;
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;

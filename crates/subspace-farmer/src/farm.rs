@@ -1,19 +1,21 @@
-use crate::single_disk_farm::farming::FarmingNotification;
-use crate::single_disk_farm::plot_cache::MaybePieceStoredResult;
-use crate::single_disk_farm::SectorUpdate;
+use crate::node_client;
 use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::Stream;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, Input, Output};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
+use std::time::Duration;
+use std::{fmt, io};
+use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex, SegmentIndex};
+use subspace_farmer_components::auditing::AuditingError;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::proving::ProvingError;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_rpc_primitives::SolutionResponse;
+use thiserror::Error;
 use ulid::Ulid;
 
 /// Erased error type
@@ -70,6 +72,16 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError>;
 }
 
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub enum MaybePieceStoredResult {
+    /// Definitely not stored
+    No,
+    /// Maybe has vacant slot to store
+    Vacant,
+    /// Maybe still stored
+    Yes,
+}
+
 /// Abstract plot cache implementation
 #[async_trait]
 pub trait PlotCache: Send + Sync + fmt::Debug {
@@ -91,6 +103,207 @@ pub trait PlotCache: Send + Sync + fmt::Debug {
     ///
     /// Returns `None` if not cached.
     async fn read_piece(&self, key: &RecordKey) -> Result<Option<Piece>, FarmError>;
+}
+
+/// Auditing details
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub struct AuditingDetails {
+    /// Number of sectors that were audited
+    pub sectors_count: SectorIndex,
+    /// Audit duration
+    pub time: Duration,
+}
+
+/// Result of the proving
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub enum ProvingResult {
+    /// Proved successfully and accepted by the node
+    Success,
+    /// Proving took too long
+    Timeout,
+    /// Managed to prove within time limit, but node rejected solution, likely due to timeout on its
+    /// end
+    Rejected,
+}
+
+impl fmt::Display for ProvingResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ProvingResult::Success => "Success",
+            ProvingResult::Timeout => "Timeout",
+            ProvingResult::Rejected => "Rejected",
+        })
+    }
+}
+
+/// Proving details
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub struct ProvingDetails {
+    /// Whether proving ended up being successful
+    pub result: ProvingResult,
+    /// Audit duration
+    pub time: Duration,
+}
+
+/// Special decoded farming error
+#[derive(Debug, Encode, Decode)]
+pub struct DecodedFarmingError {
+    /// String representation of an error
+    error: String,
+    /// Whether error is fatal
+    is_fatal: bool,
+}
+
+impl fmt::Display for DecodedFarmingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+/// Errors that happen during farming
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    /// Failed to subscribe to slot info notifications
+    #[error("Failed to subscribe to slot info notifications: {error}")]
+    FailedToSubscribeSlotInfo {
+        /// Lower-level error
+        error: node_client::Error,
+    },
+    /// Failed to retrieve farmer info
+    #[error("Failed to retrieve farmer info: {error}")]
+    FailedToGetFarmerInfo {
+        /// Lower-level error
+        error: node_client::Error,
+    },
+    /// Slot info notification stream ended
+    #[error("Slot info notification stream ended")]
+    SlotNotificationStreamEnded,
+    /// Low-level auditing error
+    #[error("Low-level auditing error: {0}")]
+    LowLevelAuditing(#[from] AuditingError),
+    /// Low-level proving error
+    #[error("Low-level proving error: {0}")]
+    LowLevelProving(#[from] ProvingError),
+    /// I/O error occurred
+    #[error("Farming I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Decoded farming error
+    #[error("Decoded farming error {0}")]
+    Decoded(DecodedFarmingError),
+}
+
+impl Encode for FarmingError {
+    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
+        let error = DecodedFarmingError {
+            error: self.to_string(),
+            is_fatal: self.is_fatal(),
+        };
+
+        error.encode_to(dest)
+    }
+}
+
+impl Decode for FarmingError {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        DecodedFarmingError::decode(input).map(FarmingError::Decoded)
+    }
+}
+
+impl FarmingError {
+    /// String variant of the error, primarily for monitoring purposes
+    pub fn str_variant(&self) -> &str {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => "FailedToSubscribeSlotInfo",
+            FarmingError::FailedToGetFarmerInfo { .. } => "FailedToGetFarmerInfo",
+            FarmingError::LowLevelAuditing(_) => "LowLevelAuditing",
+            FarmingError::LowLevelProving(_) => "LowLevelProving",
+            FarmingError::Io(_) => "Io",
+            FarmingError::Decoded(_) => "Decoded",
+            FarmingError::SlotNotificationStreamEnded => "SlotNotificationStreamEnded",
+        }
+    }
+
+    /// Whether this error is fatal and makes farm unusable
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => true,
+            FarmingError::FailedToGetFarmerInfo { .. } => true,
+            FarmingError::LowLevelAuditing(_) => true,
+            FarmingError::LowLevelProving(error) => error.is_fatal(),
+            FarmingError::Io(_) => true,
+            FarmingError::Decoded(error) => error.is_fatal,
+            FarmingError::SlotNotificationStreamEnded => true,
+        }
+    }
+}
+
+/// Various farming notifications
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum FarmingNotification {
+    /// Auditing
+    Auditing(AuditingDetails),
+    /// Proving
+    Proving(ProvingDetails),
+    /// Non-fatal farming error
+    NonFatalError(Arc<FarmingError>),
+}
+
+/// Details about sector currently being plotted
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorPlottingDetails {
+    /// Starting plotting of a sector
+    Starting {
+        /// Progress so far in % (not including this sector)
+        progress: f32,
+        /// Whether sector is being replotted
+        replotting: bool,
+        /// Whether this is the last sector queued so far
+        last_queued: bool,
+    },
+    /// Downloading sector pieces
+    Downloading,
+    /// Downloaded sector pieces
+    Downloaded(Duration),
+    /// Encoding sector pieces
+    Encoding,
+    /// Encoded sector pieces
+    Encoded(Duration),
+    /// Writing sector
+    Writing,
+    /// Written sector
+    Written(Duration),
+    /// Finished plotting
+    Finished {
+        /// Information about plotted sector
+        plotted_sector: PlottedSector,
+        /// Information about old plotted sector that was replaced
+        old_plotted_sector: Option<PlottedSector>,
+        /// How much time it took to plot a sector
+        time: Duration,
+    },
+}
+
+/// Details about sector expiration
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorExpirationDetails {
+    /// Sector expiration became known
+    Determined {
+        /// Segment index at which sector expires
+        expires_at: SegmentIndex,
+    },
+    /// Sector will expire at the next segment index and should be replotted
+    AboutToExpire,
+    /// Sector already expired
+    Expired,
+}
+
+/// Various sector updates
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorUpdate {
+    /// Sector is being plotted
+    Plotting(SectorPlottingDetails),
+    /// Sector expiration information updated
+    Expiration(SectorExpirationDetails),
 }
 
 /// Abstract piece reader implementation
