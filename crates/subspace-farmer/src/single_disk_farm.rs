@@ -683,7 +683,7 @@ impl SingleDiskFarm {
     /// Create new single disk farm instance
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
-        disk_farm_index: usize,
+        farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
@@ -772,7 +772,7 @@ impl SingleDiskFarm {
         };
 
         let farming_thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .thread_name(move |thread_index| format!("farming-{farm_index}.{thread_index}"))
             .num_threads(farming_thread_pool_size)
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
@@ -909,7 +909,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             plotting_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("plotting-{disk_farm_index}"),
+                    task: format!("plotting-{farm_index}"),
                 }
             })
         }));
@@ -1014,7 +1014,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             farming_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("farming-{disk_farm_index}"),
+                    task: format!("farming-{farm_index}"),
                 }
             })
         }));
@@ -1053,7 +1053,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             reading_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("reading-{disk_farm_index}"),
+                    task: format!("reading-{farm_index}"),
                 }
             })
         }));

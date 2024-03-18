@@ -10,7 +10,7 @@ use tracing::{trace, warn};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct PieceDetails {
-    disk_farm_index: u8,
+    farm_index: u8,
     sector_index: SectorIndex,
     piece_offset: PieceOffset,
 }
@@ -57,7 +57,7 @@ impl PlottedPieces {
                 return None;
             }
         };
-        let reader = match self.readers.get(usize::from(piece_details.disk_farm_index)) {
+        let reader = match self.readers.get(usize::from(piece_details.farm_index)) {
             Some(reader) => reader.clone(),
             None => {
                 warn!(?piece_index, ?piece_details, "Plot offset is invalid");
@@ -73,7 +73,7 @@ impl PlottedPieces {
                     warn!(
                         %error,
                         %piece_index,
-                        disk_farm_index = piece_details.disk_farm_index,
+                        farm_index = piece_details.farm_index,
                         sector_index = piece_details.sector_index,
                         "Failed to retrieve piece"
                     );
@@ -83,12 +83,12 @@ impl PlottedPieces {
     }
 
     /// Add new sector to collect plotted pieces
-    pub fn add_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
+    pub fn add_sector(&mut self, farm_index: u8, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
             let piece_details = PieceDetails {
-                disk_farm_index,
+                farm_index,
                 sector_index: plotted_sector.sector_index,
                 piece_offset,
             };
@@ -105,12 +105,12 @@ impl PlottedPieces {
     }
 
     /// Add old sector from plotted pieces (happens on replotting)
-    pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
+    pub fn delete_sector(&mut self, farm_index: u8, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
             let searching_piece_details = PieceDetails {
-                disk_farm_index,
+                farm_index,
                 sector_index: plotted_sector.sector_index,
                 piece_offset,
             };

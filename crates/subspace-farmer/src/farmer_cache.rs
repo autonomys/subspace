@@ -168,7 +168,7 @@ where
             WorkerCommand::ForgetKey { key } => {
                 let mut caches = self.caches.write().await;
 
-                for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
+                for (farm_index, cache) in caches.iter_mut().enumerate() {
                     let Some(offset) = cache.stored_pieces.remove(&key) else {
                         // Not this disk farm
                         continue;
@@ -182,7 +182,7 @@ where
                         }
                         Ok(None) => {
                             warn!(
-                                %disk_farm_index,
+                                %farm_index,
                                 %offset,
                                 "Piece index out of range, this is likely an implementation bug, \
                                 not freeing heap element"
@@ -191,7 +191,7 @@ where
                         Err(error) => {
                             error!(
                                 %error,
-                                %disk_farm_index,
+                                %farm_index,
                                 ?key,
                                 %offset,
                                 "Error while reading piece from cache, might be a disk corruption"
@@ -435,7 +435,7 @@ where
             // populated first
             sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
             if !stream::iter(sorted_caches)
-                .any(|(disk_farm_index, cache)| async move {
+                .any(|(farm_index, cache)| async move {
                     let Some(offset) = cache.free_offsets.pop_front() else {
                         return false;
                     };
@@ -444,7 +444,7 @@ where
                     {
                         error!(
                             %error,
-                            %disk_farm_index,
+                            %farm_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
@@ -674,7 +674,7 @@ where
         match worker_state.heap.insert(heap_key) {
             // Entry is already occupied, we need to find and replace old piece with new one
             Some(KeyWrapper(old_piece_index)) => {
-                for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
+                for (farm_index, cache) in caches.iter_mut().enumerate() {
                     let old_record_key = RecordKey::from(old_piece_index.to_multihash());
                     let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
                         // Not this disk farm
@@ -685,14 +685,14 @@ where
                     {
                         error!(
                             %error,
-                            %disk_farm_index,
+                            %farm_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
                         );
                     } else {
                         trace!(
-                            %disk_farm_index,
+                            %farm_index,
                             %old_piece_index,
                             %piece_index,
                             %offset,
@@ -716,7 +716,7 @@ where
                 // Sort piece caches by number of stored pieces to fill those that are less
                 // populated first
                 sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
-                for (disk_farm_index, cache) in sorted_caches {
+                for (farm_index, cache) in sorted_caches {
                     let Some(offset) = cache.free_offsets.pop_front() else {
                         // Not this disk farm
                         continue;
@@ -726,14 +726,14 @@ where
                     {
                         error!(
                             %error,
-                            %disk_farm_index,
+                            %farm_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
                         );
                     } else {
                         trace!(
-                            %disk_farm_index,
+                            %farm_index,
                             %piece_index,
                             %offset,
                             "Successfully stored piece in cache"
@@ -802,7 +802,7 @@ impl FarmerCache {
 
     /// Get piece from cache
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
-        for (disk_farm_index, cache) in self.piece_caches.read().await.iter().enumerate() {
+        for (farm_index, cache) in self.piece_caches.read().await.iter().enumerate() {
             let Some(&offset) = cache.stored_pieces.get(&key) else {
                 continue;
             };
@@ -813,7 +813,7 @@ impl FarmerCache {
                 Err(error) => {
                     error!(
                         %error,
-                        %disk_farm_index,
+                        %farm_index,
                         ?key,
                         %offset,
                         "Error while reading piece from cache, might be a disk corruption"
@@ -853,7 +853,7 @@ impl FarmerCache {
         }
 
         let mut should_store = false;
-        for (disk_farm_index, cache) in self.plot_caches.read().await.iter().enumerate() {
+        for (farm_index, cache) in self.plot_caches.read().await.iter().enumerate() {
             match cache.is_piece_maybe_stored(&key).await {
                 Ok(MaybePieceStoredResult::No) => {
                     // Try another one if there is any
@@ -868,7 +868,7 @@ impl FarmerCache {
                 }
                 Err(error) => {
                     warn!(
-                        %disk_farm_index,
+                        %farm_index,
                         %piece_index,
                         %error,
                         "Failed to check piece stored in cache"
