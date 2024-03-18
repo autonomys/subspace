@@ -1772,7 +1772,7 @@ impl<T: Config> Pallet<T> {
             .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
 
         ensure!(
-            opaque_bundle.size() <= domain_bundle_limit.max_bundle_size,
+            opaque_bundle.body_size() <= domain_bundle_limit.max_bundle_size,
             BundleError::BundleTooLarge
         );
 

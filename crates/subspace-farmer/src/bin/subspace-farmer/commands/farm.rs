@@ -767,8 +767,17 @@ where
 
                 error!(%error, "Single disk creation failed");
             }
-            single_disk_farms.push(single_disk_farm?);
+            single_disk_farms.push((disk_farm_index, single_disk_farm?));
         }
+
+        // Restore order after unordered initialization
+        single_disk_farms
+            .sort_unstable_by_key(|(disk_farm_index, _single_disk_farm)| *disk_farm_index);
+
+        let single_disk_farms = single_disk_farms
+            .into_iter()
+            .map(|(_disk_farm_index, single_disk_farm)| single_disk_farm)
+            .collect::<Vec<_>>();
 
         (single_disk_farms, plotting_delay_senders)
     };
