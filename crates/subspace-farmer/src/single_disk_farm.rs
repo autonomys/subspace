@@ -1220,7 +1220,7 @@ impl SingleDiskFarm {
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1231,7 +1231,7 @@ impl SingleDiskFarm {
         metadata_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+        let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
         let expected_metadata_size =
@@ -1323,7 +1323,7 @@ impl SingleDiskFarm {
         };
 
         #[cfg(not(windows))]
-        let mut plot_file = OpenOptions::new()
+        let plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1334,7 +1334,7 @@ impl SingleDiskFarm {
         plot_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1344,12 +1344,6 @@ impl SingleDiskFarm {
                 .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
             // Truncating file (if necessary)
             plot_file.set_len(plot_file_size)?;
-
-            // TODO: Hack due to Windows bugs:
-            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
-            if cfg!(windows) {
-                warn!("Farm was resized, farmer restart is needed for optimal performance!")
-            }
         }
 
         let plot_file = Arc::new(plot_file);
@@ -1399,13 +1393,12 @@ impl SingleDiskFarm {
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
         #[cfg(windows)]
-        let mut metadata_file =
-            UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -1671,7 +1664,7 @@ impl SingleDiskFarm {
         let (metadata_file, mut metadata_header) = {
             info!(path = %metadata_file_path.display(), "Checking metadata file");
 
-            let mut metadata_file = match OpenOptions::new()
+            let metadata_file = match OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&metadata_file_path)
@@ -1772,7 +1765,7 @@ impl SingleDiskFarm {
             let plot_file_path = directory.join(Self::PLOT_FILE);
             info!(path = %plot_file_path.display(), "Checking plot file");
 
-            let mut plot_file = match OpenOptions::new()
+            let plot_file = match OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&plot_file_path)
@@ -2048,7 +2041,7 @@ impl SingleDiskFarm {
             let file = directory.join(DiskPieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
-            let mut cache_file = match OpenOptions::new().read(true).write(true).open(&file) {
+            let cache_file = match OpenOptions::new().read(true).write(true).open(&file) {
                 Ok(plot_file) => plot_file,
                 Err(error) => {
                     return Err(if error.kind() == io::ErrorKind::NotFound {
@@ -2211,17 +2204,15 @@ where
         // A lot simplified version of concurrent chunks
         {
             let start = Instant::now();
-            (0..Record::NUM_S_BUCKETS)
-                .into_par_iter()
-                .try_for_each(|_| {
-                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
-                        * Scalar::FULL_BYTES;
-                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
-                })?;
+            (0..Record::NUM_CHUNKS).into_par_iter().try_for_each(|_| {
+                let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                    * Scalar::FULL_BYTES;
+                farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+            })?;
             let elapsed = start.elapsed();
 
             if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
-                debug!(
+                info!(
                     ?elapsed,
                     "Proving method with chunks reading is too slow, using whole sector"
                 );

@@ -73,7 +73,7 @@ impl DiskPieceCache {
         }
 
         #[cfg(not(windows))]
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -84,7 +84,7 @@ impl DiskPieceCache {
         file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
+        let file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
         // Align plot file size for disk sector size

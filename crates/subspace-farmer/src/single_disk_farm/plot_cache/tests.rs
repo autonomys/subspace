@@ -31,7 +31,7 @@ fn basic() {
 
     let tempdir = tempdir().unwrap();
     #[cfg(not(windows))]
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
@@ -40,7 +40,7 @@ fn basic() {
         .unwrap();
 
     #[cfg(windows)]
-    let mut file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
+    let file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
 
     // Align plot file size for disk sector size
     file.preallocate(
