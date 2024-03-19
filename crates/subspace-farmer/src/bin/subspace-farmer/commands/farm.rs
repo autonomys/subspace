@@ -11,7 +11,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -25,11 +25,12 @@ use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::farm::{
+    Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
+};
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::single_disk_farm::farming::FarmingNotification;
 use subspace_farmer::single_disk_farm::{
-    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate, SingleDiskFarm,
-    SingleDiskFarmError, SingleDiskFarmOptions,
+    SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
@@ -649,7 +650,7 @@ where
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
 
-    let (single_disk_farms, plotting_delay_senders) = {
+    let (farms, plotting_delay_senders) = {
         let node_rpc_url = &node_rpc_url;
         let global_mutex = Arc::default();
         let info_mutex = &AsyncMutex::new(());
@@ -660,12 +661,12 @@ where
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
-        let mut single_disk_farms_stream = disk_farms
+        let mut farms = Vec::with_capacity(disk_farms.len());
+        let mut farms_stream = disk_farms
             .into_iter()
             .zip(plotting_delay_receivers)
             .enumerate()
-            .map(|(disk_farm_index, (disk_farm, plotting_delay_receiver))| {
+            .map(|(farm_index, (disk_farm, plotting_delay_receiver))| {
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
@@ -683,11 +684,11 @@ where
                     let node_client = match NodeRpcClient::new(node_rpc_url).await {
                         Ok(node_client) => node_client,
                         Err(error) => {
-                            return (disk_farm_index, Err(error.into()));
+                            return (farm_index, Err(error.into()));
                         }
                     };
 
-                    let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
+                    let farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
                             farmer_app_info,
@@ -710,17 +711,17 @@ where
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
                         },
-                        disk_farm_index,
+                        farm_index,
                     );
 
-                    let single_disk_farm = match single_disk_farm_fut.await {
-                        Ok(single_disk_farm) => single_disk_farm,
+                    let farm = match farm_fut.await {
+                        Ok(farm) => farm,
                         Err(SingleDiskFarmError::InsufficientAllocatedSpace {
                             min_space,
                             allocated_space,
                         }) => {
                             return (
-                                disk_farm_index,
+                                farm_index,
                                 Err(anyhow::anyhow!(
                                     "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
                                     {} bytes to be exact)",
@@ -733,15 +734,15 @@ where
                             );
                         }
                         Err(error) => {
-                            return (disk_farm_index, Err(error.into()));
+                            return (farm_index, Err(error.into()));
                         }
                     };
 
                     if !no_info {
                         let _info_guard = info_mutex.lock().await;
 
-                        let info = single_disk_farm.info();
-                        info!("Single disk farm {disk_farm_index}:");
+                        let info = farm.info();
+                        info!("Farm {farm_index}:");
                         info!("  ID: {}", info.id());
                         info!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
                         info!("  Public key: 0x{}", hex::encode(info.public_key()));
@@ -753,33 +754,31 @@ where
                         info!("  Directory: {}", disk_farm.directory.display());
                     }
 
-                    (disk_farm_index, Ok(single_disk_farm))
+                    (farm_index, Ok(Box::new(farm) as Box<dyn Farm>))
                 }
-                .instrument(info_span!("", %disk_farm_index))
+                .instrument(info_span!("", %farm_index))
             })
             .collect::<FuturesUnordered<_>>();
 
-        while let Some((disk_farm_index, single_disk_farm)) = single_disk_farms_stream.next().await
-        {
-            if let Err(error) = &single_disk_farm {
-                let span = info_span!("", %disk_farm_index);
+        while let Some((farm_index, farm)) = farms_stream.next().await {
+            if let Err(error) = &farm {
+                let span = info_span!("", %farm_index);
                 let _span_guard = span.enter();
 
-                error!(%error, "Single disk creation failed");
+                error!(%error, "Farm creation failed");
             }
-            single_disk_farms.push((disk_farm_index, single_disk_farm?));
+            farms.push((farm_index, farm?));
         }
 
         // Restore order after unordered initialization
-        single_disk_farms
-            .sort_unstable_by_key(|(disk_farm_index, _single_disk_farm)| *disk_farm_index);
+        farms.sort_unstable_by_key(|(farm_index, _farm)| *farm_index);
 
-        let single_disk_farms = single_disk_farms
+        let farms = farms
             .into_iter()
-            .map(|(_disk_farm_index, single_disk_farm)| single_disk_farm)
+            .map(|(_farm_index, farm)| farm)
             .collect::<Vec<_>>();
 
-        (single_disk_farms, plotting_delay_senders)
+        (farms, plotting_delay_senders)
     };
 
     {
@@ -805,15 +804,9 @@ where
     }
     farmer_cache
         .replace_backing_caches(
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.piece_cache())
-                .collect(),
+            farms.iter().map(|farm| farm.piece_cache()).collect(),
             if plot_cache {
-                single_disk_farms
-                    .iter()
-                    .map(|single_disk_farm| single_disk_farm.plot_cache())
-                    .collect()
+                farms.iter().map(|farm| farm.plot_cache()).collect()
             } else {
                 Vec::new()
             },
@@ -822,9 +815,9 @@ where
     drop(farmer_cache);
 
     // Store piece readers so we can reference them later
-    let piece_readers = single_disk_farms
+    let piece_readers = farms
         .iter()
-        .map(|single_disk_farm| single_disk_farm.piece_reader())
+        .map(|farm| farm.piece_reader())
         .collect::<Vec<_>>();
 
     info!("Collecting already plotted pieces (this will take some time)...");
@@ -833,31 +826,33 @@ where
     {
         let mut future_plotted_pieces = PlottedPieces::new(piece_readers);
 
-        for (disk_farm_index, single_disk_farm) in single_disk_farms.iter().enumerate() {
-            let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
+        for (farm_index, farm) in farms.iter().enumerate() {
+            let farm_index = farm_index.try_into().map_err(|_error| {
                 anyhow!(
                     "More than 256 plots are not supported, consider running multiple farmer \
                     instances"
                 )
             })?;
 
-            (0 as SectorIndex..)
-                .zip(single_disk_farm.plotted_sectors().await)
-                .for_each(
-                    |(sector_index, plotted_sector_result)| match plotted_sector_result {
+            for (sector_index, mut plotted_sectors) in
+                (0 as SectorIndex..).zip(farm.plotted_sectors().await)
+            {
+                while let Some(plotted_sector_result) = plotted_sectors.next().await {
+                    match plotted_sector_result {
                         Ok(plotted_sector) => {
-                            future_plotted_pieces.add_sector(disk_farm_index, &plotted_sector);
+                            future_plotted_pieces.add_sector(farm_index, &plotted_sector);
                         }
                         Err(error) => {
                             error!(
                                 %error,
-                                %disk_farm_index,
+                                %farm_index,
                                 %sector_index,
                                 "Failed reading plotted sector on startup, skipping"
                             );
                         }
-                    },
-                );
+                    }
+                }
+            }
         }
 
         plotted_pieces.lock().replace(future_plotted_pieces);
@@ -865,28 +860,30 @@ where
 
     info!("Finished collecting already plotted pieces successfully");
 
-    let total_and_plotted_sectors = single_disk_farms
+    let total_and_plotted_sectors = farms
         .iter()
-        .map(|single_disk_farm| async {
-            let total_sector_count = single_disk_farm.total_sectors_count();
-            let plotted_sectors_count = single_disk_farm.plotted_sectors_count().await;
+        .enumerate()
+        .map(|(farm_index, farm)| async move {
+            let total_sector_count = farm.total_sectors_count();
+            let plotted_sectors_count = farm.plotted_sectors_count().await.map_err(|error| {
+                anyhow!(
+                    "Failed to get plotted sectors count from from index {farm_index}: \
+                            {error}"
+                )
+            })?;
 
-            (total_sector_count, plotted_sectors_count)
+            anyhow::Ok((total_sector_count, plotted_sectors_count))
         })
         .collect::<FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+        .try_collect::<Vec<_>>()
+        .await?;
 
-    let mut single_disk_farms_stream = single_disk_farms
-        .into_iter()
-        .enumerate()
+    let mut farms_stream = (0u8..)
+        .zip(farms)
         .zip(total_and_plotted_sectors)
-        .map(|((disk_farm_index, single_disk_farm), sector_counts)| {
-            let disk_farm_index = disk_farm_index.try_into().expect(
-                "More than 256 plots are not supported, this is checked above already; qed",
-            );
+        .map(|((farm_index, farm), sector_counts)| {
             let plotted_pieces = Arc::clone(&plotted_pieces);
-            let span = info_span!("", %disk_farm_index);
+            let span = info_span!("", %farm_index);
 
             // Collect newly plotted pieces
             let on_plotted_sector_callback =
@@ -901,111 +898,98 @@ where
                             .expect("Initial value was populated above; qed");
 
                         if let Some(old_plotted_sector) = &maybe_old_plotted_sector {
-                            plotted_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                            plotted_pieces.delete_sector(farm_index, old_plotted_sector);
                         }
-                        plotted_pieces.add_sector(disk_farm_index, plotted_sector);
+                        plotted_pieces.add_sector(farm_index, plotted_sector);
                     }
                 };
 
             let (total_sector_count, plotted_sectors_count) = sector_counts;
             farmer_metrics.update_sectors_total(
-                single_disk_farm.id(),
+                farm.id(),
                 total_sector_count - plotted_sectors_count,
                 SectorState::NotPlotted,
             );
             farmer_metrics.update_sectors_total(
-                single_disk_farm.id(),
+                farm.id(),
                 plotted_sectors_count,
                 SectorState::Plotted,
             );
-            single_disk_farm
-                .on_sector_update(Arc::new({
-                    let single_disk_farm_id = *single_disk_farm.id();
-                    let farmer_metrics = farmer_metrics.clone();
+            farm.on_sector_update(Arc::new({
+                let farm_id = *farm.id();
+                let farmer_metrics = farmer_metrics.clone();
 
-                    move |(_sector_index, sector_state)| match sector_state {
-                        SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
-                            farmer_metrics.sector_plotting.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
-                            farmer_metrics.sector_downloading.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
-                            farmer_metrics
-                                .observe_sector_downloading_time(&single_disk_farm_id, time);
-                            farmer_metrics.sector_downloaded.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
-                            farmer_metrics.sector_encoding.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
-                            farmer_metrics.observe_sector_encoding_time(&single_disk_farm_id, time);
-                            farmer_metrics.sector_encoded.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
-                            farmer_metrics.sector_writing.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
-                            farmer_metrics.observe_sector_writing_time(&single_disk_farm_id, time);
-                            farmer_metrics.sector_written.inc();
-                        }
-                        SectorUpdate::Plotting(SectorPlottingDetails::Finished {
-                            plotted_sector,
-                            old_plotted_sector,
-                            time,
-                        }) => {
-                            on_plotted_sector_callback(plotted_sector, old_plotted_sector);
-                            farmer_metrics.observe_sector_plotting_time(&single_disk_farm_id, time);
-                            farmer_metrics.sector_plotted.inc();
-                            farmer_metrics
-                                .update_sector_state(&single_disk_farm_id, SectorState::Plotted);
-                        }
-                        SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
-                            farmer_metrics.update_sector_state(
-                                &single_disk_farm_id,
-                                SectorState::AboutToExpire,
-                            );
-                        }
-                        SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
-                            farmer_metrics
-                                .update_sector_state(&single_disk_farm_id, SectorState::Expired);
-                        }
-                        SectorUpdate::Expiration(SectorExpirationDetails::Determined {
-                            ..
-                        }) => {
-                            // Not interested in here
-                        }
+                move |(_sector_index, sector_state)| match sector_state {
+                    SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
+                        farmer_metrics.sector_plotting.inc();
                     }
-                }))
-                .detach();
-
-            single_disk_farm
-                .on_farming_notification(Arc::new({
-                    let single_disk_farm_id = *single_disk_farm.id();
-                    let farmer_metrics = farmer_metrics.clone();
-
-                    move |farming_notification| match farming_notification {
-                        FarmingNotification::Auditing(auditing_details) => {
-                            farmer_metrics.observe_auditing_time(
-                                &single_disk_farm_id,
-                                &auditing_details.time,
-                            );
-                        }
-                        FarmingNotification::Proving(proving_details) => {
-                            farmer_metrics.observe_proving_time(
-                                &single_disk_farm_id,
-                                &proving_details.time,
-                                proving_details.result,
-                            );
-                        }
-                        FarmingNotification::NonFatalError(error) => {
-                            farmer_metrics.note_farming_error(&single_disk_farm_id, error);
-                        }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
+                        farmer_metrics.sector_downloading.inc();
                     }
-                }))
-                .detach();
+                    SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
+                        farmer_metrics.observe_sector_downloading_time(&farm_id, time);
+                        farmer_metrics.sector_downloaded.inc();
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
+                        farmer_metrics.sector_encoding.inc();
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
+                        farmer_metrics.observe_sector_encoding_time(&farm_id, time);
+                        farmer_metrics.sector_encoded.inc();
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
+                        farmer_metrics.sector_writing.inc();
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
+                        farmer_metrics.observe_sector_writing_time(&farm_id, time);
+                        farmer_metrics.sector_written.inc();
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Finished {
+                        plotted_sector,
+                        old_plotted_sector,
+                        time,
+                    }) => {
+                        on_plotted_sector_callback(plotted_sector, old_plotted_sector);
+                        farmer_metrics.observe_sector_plotting_time(&farm_id, time);
+                        farmer_metrics.sector_plotted.inc();
+                        farmer_metrics.update_sector_state(&farm_id, SectorState::Plotted);
+                    }
+                    SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
+                        farmer_metrics.update_sector_state(&farm_id, SectorState::AboutToExpire);
+                    }
+                    SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
+                        farmer_metrics.update_sector_state(&farm_id, SectorState::Expired);
+                    }
+                    SectorUpdate::Expiration(SectorExpirationDetails::Determined { .. }) => {
+                        // Not interested in here
+                    }
+                }
+            }))
+            .detach();
 
-            single_disk_farm.run()
+            farm.on_farming_notification(Arc::new({
+                let farm_id = *farm.id();
+                let farmer_metrics = farmer_metrics.clone();
+
+                move |farming_notification| match farming_notification {
+                    FarmingNotification::Auditing(auditing_details) => {
+                        farmer_metrics.observe_auditing_time(&farm_id, &auditing_details.time);
+                    }
+                    FarmingNotification::Proving(proving_details) => {
+                        farmer_metrics.observe_proving_time(
+                            &farm_id,
+                            &proving_details.time,
+                            proving_details.result,
+                        );
+                    }
+                    FarmingNotification::NonFatalError(error) => {
+                        farmer_metrics.note_farming_error(&farm_id, error);
+                    }
+                }
+            }))
+            .detach();
+
+            farm.run()
         })
         .collect::<FuturesUnordered<_>>();
 
@@ -1015,7 +999,7 @@ where
 
     let farm_fut = run_future_in_dedicated_thread(
         move || async move {
-            while let Some(result) = single_disk_farms_stream.next().await {
+            while let Some(result) = farms_stream.next().await {
                 let id = result?;
 
                 info!(%id, "Farm exited successfully");

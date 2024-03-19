@@ -5,22 +5,23 @@ pub mod plot_cache;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
+use crate::farm::{
+    Farm, FarmError, FarmId, HandlerFn, PieceCache, PieceReader, PlotCache, SectorUpdate,
+};
+pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
-use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
+pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
-};
-pub use crate::single_disk_farm::plotting::{
-    PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
@@ -29,11 +30,11 @@ use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
-use derive_more::{Display, From};
+use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rand::prelude::*;
@@ -72,7 +73,6 @@ use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Barrier, Semaphore};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
-use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -88,24 +88,6 @@ const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 /// 4 seconds is proving time, hence 3 seconds for reads.
 const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// An identifier for single disk farm, can be used for in logs, thread names, etc.
-#[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
-)]
-#[serde(untagged)]
-pub enum SingleDiskFarmId {
-    /// Farm ID
-    Ulid(Ulid),
-}
-
-#[allow(clippy::new_without_default)]
-impl SingleDiskFarmId {
-    /// Creates new ID
-    pub fn new() -> Self {
-        Self::Ulid(Ulid::new())
-    }
-}
-
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
 #[must_use = "Lock file must be kept around or as long as farm is used"]
 pub struct SingleDiskFarmInfoLock {
@@ -120,7 +102,7 @@ pub enum SingleDiskFarmInfo {
     #[serde(rename_all = "camelCase")]
     V0 {
         /// ID of the farm
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Genesis hash of the chain used for farm creation
         #[serde(with = "hex::serde")]
         genesis_hash: [u8; 32],
@@ -137,7 +119,7 @@ impl SingleDiskFarmInfo {
     const FILE_NAME: &'static str = "single_disk_farm.json";
 
     pub fn new(
-        id: SingleDiskFarmId,
+        id: FarmId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         pieces_in_sector: u16,
@@ -171,7 +153,7 @@ impl SingleDiskFarmInfo {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
+    /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
         fs::write(
             directory.join(Self::FILE_NAME),
@@ -189,7 +171,7 @@ impl SingleDiskFarmInfo {
     }
 
     // ID of the farm
-    pub fn id(&self) -> &SingleDiskFarmId {
+    pub fn id(&self) -> &FarmId {
         let Self::V0 { id, .. } = self;
         id
     }
@@ -346,7 +328,7 @@ pub enum SingleDiskFarmError {
     )]
     WrongChain {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Hex-encoded genesis hash during farm creation
         // TODO: Wrapper type with `Display` impl for genesis hash
         correct_chain: String,
@@ -360,7 +342,7 @@ pub enum SingleDiskFarmError {
     )]
     IdentityMismatch {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Public key used during farm creation
         correct_public_key: PublicKey,
         /// Current public key
@@ -373,7 +355,7 @@ pub enum SingleDiskFarmError {
     )]
     InvalidPiecesInSector {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Max supported pieces in sector
         max_supported: u16,
         /// Number of pieces in sector farm is initialized with
@@ -558,17 +540,7 @@ pub enum BackgroundTaskError {
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
 
-type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
-
-/// Various sector updates
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorUpdate {
-    /// Sector is being plotted
-    Plotting(SectorPlottingDetails),
-    /// Sector expiration information updated
-    Expiration(SectorExpirationDetails),
-}
 
 #[derive(Default, Debug)]
 struct Handlers {
@@ -613,7 +585,7 @@ pub struct SingleDiskFarm {
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
     plot_cache: DiskPlotCache,
-    piece_reader: PieceReader,
+    piece_reader: DiskPieceReader,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
@@ -631,6 +603,69 @@ impl Drop for SingleDiskFarm {
     }
 }
 
+#[async_trait(?Send)]
+impl Farm for SingleDiskFarm {
+    fn id(&self) -> &FarmId {
+        self.id()
+    }
+
+    fn total_sectors_count(&self) -> SectorIndex {
+        self.total_sectors_count
+    }
+
+    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError> {
+        Ok(self.plotted_sectors_count().await)
+    }
+
+    async fn plotted_sectors(
+        &self,
+    ) -> Result<Box<dyn Stream<Item = Result<PlottedSector, FarmError>> + Unpin + '_>, FarmError>
+    {
+        Ok(Box::new(stream::iter(
+            self.plotted_sectors()
+                .await
+                .map(|result| result.map_err(Into::into)),
+        )))
+    }
+
+    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
+        Arc::new(self.piece_cache())
+    }
+
+    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
+        Arc::new(self.plot_cache())
+    }
+
+    fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
+        Arc::new(self.piece_reader())
+    }
+
+    fn on_sector_update(
+        &self,
+        callback: HandlerFn<(SectorIndex, SectorUpdate)>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_sector_update(callback))
+    }
+
+    fn on_farming_notification(
+        &self,
+        callback: HandlerFn<FarmingNotification>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_farming_notification(callback))
+    }
+
+    fn on_solution(
+        &self,
+        callback: HandlerFn<SolutionResponse>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_solution(callback))
+    }
+
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<FarmId>> + Send>> {
+        Box::pin((*self).run())
+    }
+}
+
 impl SingleDiskFarm {
     pub const PLOT_FILE: &'static str = "plot.bin";
     pub const METADATA_FILE: &'static str = "metadata.bin";
@@ -639,7 +674,7 @@ impl SingleDiskFarm {
     /// Create new single disk farm instance
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
-        disk_farm_index: usize,
+        farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
@@ -728,7 +763,7 @@ impl SingleDiskFarm {
         };
 
         let farming_thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .thread_name(move |thread_index| format!("farming-{farm_index}.{thread_index}"))
             .num_threads(farming_thread_pool_size)
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
@@ -865,7 +900,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             plotting_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("plotting-{disk_farm_index}"),
+                    task: format!("plotting-{farm_index}"),
                 }
             })
         }));
@@ -970,12 +1005,12 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             farming_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("farming-{disk_farm_index}"),
+                    task: format!("farming-{farm_index}"),
                 }
             })
         }));
 
-        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+        let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
             plot_file,
@@ -1009,7 +1044,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             reading_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("reading-{disk_farm_index}"),
+                    task: format!("reading-{farm_index}"),
                 }
             })
         }));
@@ -1130,7 +1165,7 @@ impl SingleDiskFarm {
             }
             None => {
                 let single_disk_farm_info = SingleDiskFarmInfo::new(
-                    SingleDiskFarmId::new(),
+                    FarmId::new(),
                     farmer_app_info.genesis_hash,
                     public_key,
                     max_pieces_in_sector,
@@ -1447,7 +1482,7 @@ impl SingleDiskFarm {
     }
 
     /// ID of this farm
-    pub fn id(&self) -> &SingleDiskFarmId {
+    pub fn id(&self) -> &FarmId {
         self.single_disk_farm_info.id()
     }
 
@@ -1517,7 +1552,7 @@ impl SingleDiskFarm {
     }
 
     /// Get piece reader to read plotted pieces later
-    pub fn piece_reader(&self) -> PieceReader {
+    pub fn piece_reader(&self) -> DiskPieceReader {
         self.piece_reader.clone()
     }
 
@@ -1537,7 +1572,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<SingleDiskFarmId> {
+    pub async fn run(mut self) -> anyhow::Result<FarmId> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());

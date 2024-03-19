@@ -37,6 +37,7 @@
 //! are `target ± ½ * solution range` (while also handing overflow/underflow) when interpreted as
 //! 64-bit unsigned integers.
 
+pub mod farm;
 pub mod farmer_cache;
 pub(crate) mod identity;
 pub mod node_client;

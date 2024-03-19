@@ -9,7 +9,7 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
-/// To become error type agnostic
+/// Erased error type
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Abstraction of the Node Client

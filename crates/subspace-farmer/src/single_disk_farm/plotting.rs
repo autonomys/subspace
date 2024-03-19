@@ -1,7 +1,8 @@
+use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
-    BackgroundTaskError, Handlers, PlotMetadataHeader, SectorUpdate, RESERVED_PLOT_METADATA,
+    BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -11,7 +12,7 @@ use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Encode;
 use std::collections::HashMap;
 #[cfg(not(windows))]
 use std::fs::File;
@@ -43,55 +44,6 @@ use tracing::{debug, info, trace, warn, Instrument};
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
-
-/// Details about sector currently being plotted
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorPlottingDetails {
-    /// Starting plotting of a sector
-    Starting {
-        /// Progress so far in % (not including this sector)
-        progress: f32,
-        /// Whether sector is being replotted
-        replotting: bool,
-        /// Whether this is the last sector queued so far
-        last_queued: bool,
-    },
-    /// Downloading sector pieces
-    Downloading,
-    /// Downloaded sector pieces
-    Downloaded(Duration),
-    /// Encoding sector pieces
-    Encoding,
-    /// Encoded sector pieces
-    Encoded(Duration),
-    /// Writing sector
-    Writing,
-    /// Written sector
-    Written(Duration),
-    /// Finished plotting
-    Finished {
-        /// Information about plotted sector
-        plotted_sector: PlottedSector,
-        /// Information about old plotted sector that was replaced
-        old_plotted_sector: Option<PlottedSector>,
-        /// How much time it took to plot a sector
-        time: Duration,
-    },
-}
-
-/// Details about sector expiration
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorExpirationDetails {
-    /// Sector expiration became known
-    Determined {
-        /// Segment index at which sector expires
-        expires_at: SegmentIndex,
-    },
-    /// Sector will expire at the next segment index and should be replotted
-    AboutToExpire,
-    /// Sector already expired
-    Expired,
-}
 
 pub(super) struct SectorToPlot {
     sector_index: SectorIndex,

@@ -2,6 +2,7 @@ use crate::farmer_cache::FarmerCache;
 use crate::node_client::Error;
 use crate::single_disk_farm::piece_cache::DiskPieceCache;
 use crate::NodeClient;
+use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
@@ -33,7 +34,7 @@ struct MockNodeClient {
     acknowledge_archived_segment_header_sender: mpsc::Sender<SegmentIndex>,
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl NodeClient for MockNodeClient {
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
         // Most of these values make no sense, but they are not used by piece cache anyway
@@ -136,7 +137,7 @@ struct MockPieceGetter {
     pieces: Arc<Mutex<HashMap<PieceIndex, Piece>>>,
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl PieceGetter for MockPieceGetter {
     async fn get_piece(
         &self,
@@ -207,8 +208,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
-                    DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
                 ],
                 vec![],
             )
@@ -407,8 +408,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    DiskPieceCache::open(path1.as_ref(), 1).unwrap(),
-                    DiskPieceCache::open(path2.as_ref(), 1).unwrap(),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
                 ],
                 vec![],
             )

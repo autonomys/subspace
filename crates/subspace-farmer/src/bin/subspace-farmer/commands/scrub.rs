@@ -7,8 +7,8 @@ pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool) {
     disk_farms
         .into_par_iter()
         .enumerate()
-        .for_each(|(disk_farm_index, directory)| {
-            let span = info_span!("", %disk_farm_index);
+        .for_each(|(farm_index, directory)| {
+            let span = info_span!("", %farm_index);
             let _span_guard = span.enter();
             info!(
                 path = %directory.display(),
