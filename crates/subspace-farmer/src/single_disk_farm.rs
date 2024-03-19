@@ -86,7 +86,7 @@ const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 /// Limit for reads in internal benchmark.
 ///
 /// 4 seconds is proving time, hence 3 seconds for reads.
-const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_secs(3);
+const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_millis(3500);
 
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
 #[must_use = "Lock file must be kept around or as long as farm is used"]
@@ -2233,6 +2233,30 @@ where
             sector_size as u64 * thread_rng().gen_range(0..plotted_sector_count) as u64;
         let farming_plot = farming_plot.offset(sector_offset);
 
+        // Reading the whole sector at once
+        {
+            let start = Instant::now();
+            farming_plot.read_at(&mut sector_bytes, 0)?;
+            let elapsed = start.elapsed();
+
+            debug!(?elapsed, "Whole sector");
+
+            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
+                debug!(
+                    ?elapsed,
+                    "Reading whole sector is too slow, using chunks instead"
+                );
+
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+                break;
+            }
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::WholeSector;
+                fastest_time = elapsed;
+            }
+        }
+
         // A lot simplified version of concurrent chunks
         {
             let start = Instant::now();
@@ -2243,31 +2267,10 @@ where
             })?;
             let elapsed = start.elapsed();
 
-            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
-                info!(
-                    ?elapsed,
-                    "Proving method with chunks reading is too slow, using whole sector"
-                );
-                return Ok(ReadSectorRecordChunksMode::WholeSector);
-            }
-
             debug!(?elapsed, "Chunks");
 
             if fastest_time > elapsed {
                 fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
-                fastest_time = elapsed;
-            }
-        }
-        // Reading the whole sector at once
-        {
-            let start = Instant::now();
-            farming_plot.read_at(&mut sector_bytes, 0)?;
-            let elapsed = start.elapsed();
-
-            debug!(?elapsed, "Whole sector");
-
-            if fastest_time > elapsed {
-                fastest_mode = ReadSectorRecordChunksMode::WholeSector;
                 fastest_time = elapsed;
             }
         }
