@@ -47,12 +47,6 @@ enum Command {
         /// Multiaddr to listen on for subspace networking, multiple are supported
         #[arg(long, default_values_t = [
             Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-                .with(Protocol::Udp(0))
-                .with(Protocol::QuicV1),
-            Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-                .with(Protocol::Udp(0))
-                .with(Protocol::QuicV1),
-            Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
                 .with(Protocol::Tcp(0)),
             Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
                 .with(Protocol::Tcp(0))

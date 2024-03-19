@@ -64,7 +64,6 @@ features = [
     "noise",
     "ping",
     "plaintext",
-    "quic",
     "request-response",
     "serde",
     "tcp",

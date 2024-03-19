@@ -4,8 +4,8 @@ mod commands;
 mod utils;
 
 use clap::Parser;
+use std::fs;
 use std::path::PathBuf;
-use std::{env, fs};
 use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
@@ -61,11 +61,6 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // TODO: This is a hack to work around https://github.com/quinn-rs/quinn/issues/1750, should be
-    //  removed once fixed upstream
-    if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "info,quinn_udp=error");
-    }
     tracing_subscriber::registry()
         .with(
             fmt::layer()

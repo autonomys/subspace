@@ -1,12 +1,9 @@
 use crate::constructor::temporary_bans::TemporaryBans;
-use futures::future::Either;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
 use libp2p::dns::tokio::Transport as TokioTransport;
-use libp2p::quic::tokio::Transport as QuicTransport;
-use libp2p::quic::Config as QuicConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::yamux::Config as YamuxConfig;
@@ -49,25 +46,7 @@ pub(super) fn build_transport(
             .boxed()
     };
 
-    let mut quic_config = QuicConfig::new(keypair);
-    if cfg!(windows) {
-        quic_config = quic_config.disable_path_mtu_discovery();
-    }
-
-    let quic = QuicTransport::new(quic_config)
-        .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)));
-
-    let wrapped_quic =
-        CustomTransportWrapper::new(quic, allow_non_global_addresses_in_dht, temporary_bans);
-
-    let quic_tcp = wrapped_quic
-        .or_transport(tcp_upgraded)
-        .map(|either, _| match either {
-            Either::Left((peer_id, muxer)) => (peer_id, muxer),
-            Either::Right((peer_id, muxer)) => (peer_id, muxer),
-        });
-
-    Ok(TokioTransport::system(quic_tcp)?.boxed())
+    Ok(TokioTransport::system(tcp_upgraded)?.boxed())
 }
 
 #[derive(Debug, Clone)]
