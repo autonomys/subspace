@@ -1931,12 +1931,8 @@ impl SingleDiskFarm {
                                 %offset,
                                 "Failed to read piece bytes"
                             );
-                            return Err(SingleDiskFarmScrubError::FailedToReadBytes {
-                                file: plot_file_path.clone(),
-                                size: piece.len() as u64,
-                                offset,
-                                error,
-                            });
+
+                            continue;
                         }
 
                         hasher.update(piece.as_ref());
@@ -1949,12 +1945,13 @@ impl SingleDiskFarm {
                             + u64::from(pieces_in_sector) * Piece::SIZE as u64;
                         if let Err(error) = plot_file.read_exact_at(&mut expected_checksum, offset)
                         {
-                            return Err(SingleDiskFarmScrubError::FailedToReadBytes {
-                                file: plot_file_path.clone(),
-                                size: expected_checksum.len() as u64,
-                                offset,
-                                error,
-                            });
+                            warn!(
+                                path = %plot_file_path.display(),
+                                %error,
+                                %sector_index,
+                                %offset,
+                                "Failed to read checksum bytes"
+                            );
                         }
                     }
 
