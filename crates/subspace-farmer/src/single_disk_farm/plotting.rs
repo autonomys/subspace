@@ -374,7 +374,7 @@ where
                 })
             };
 
-            let thread_pools = plotting_thread_pool_manager.get_thread_pools();
+            let thread_pools = plotting_thread_pool_manager.get_thread_pools().await;
             let thread_pool = if replotting {
                 &thread_pools.replotting
             } else {
