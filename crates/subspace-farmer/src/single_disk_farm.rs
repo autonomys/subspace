@@ -1992,7 +1992,7 @@ impl SingleDiskFarm {
 
                     // Verify checksum
                     if actual_checksum != expected_checksum {
-                        debug!(
+                        warn!(
                             path = %plot_file_path.display(),
                             %sector_index,
                             actual_checksum = %hex::encode(actual_checksum),
