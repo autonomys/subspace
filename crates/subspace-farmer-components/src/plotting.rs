@@ -460,6 +460,7 @@ where
     // * sector contents map
     // * record chunks as s-buckets
     // * record metadata
+    // * checksum
     {
         let (sector_contents_map_region, remaining_bytes) =
             sector_output.split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
