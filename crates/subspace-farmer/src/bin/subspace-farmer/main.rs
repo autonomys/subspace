@@ -45,6 +45,9 @@ enum Command {
         /// Disable farm locking, for example if file system doesn't support it
         #[arg(long)]
         disable_farm_locking: bool,
+        /// Check for errors, but do not attempt to correct them
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Wipes the farm
     Wipe {
@@ -101,11 +104,12 @@ async fn main() -> anyhow::Result<()> {
         Command::Scrub {
             disk_farms,
             disable_farm_locking,
+            dry_run,
         } => {
             if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
-                commands::scrub(&disk_farms, disable_farm_locking);
+                commands::scrub(&disk_farms, disable_farm_locking, dry_run);
             }
         }
         Command::Wipe { disk_farms } => {
