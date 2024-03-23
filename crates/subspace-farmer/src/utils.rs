@@ -305,8 +305,14 @@ pub fn thread_pool_core_indices(
         .expect("Not empty according to function description; qed")
         .topology;
 
+    // In case number of thread pools is not specified, but user did customize thread pool size,
+    // default to auto-detected number of thread pools
+    let thread_pools = thread_pools
+        .map(|thread_pools| thread_pools.get())
+        .or_else(|| thread_pool_size.map(|_| all_numa_nodes.len()));
+
     if let Some(thread_pools) = thread_pools {
-        let mut thread_pool_core_indices = Vec::<CpuCoreSet>::with_capacity(thread_pools.get());
+        let mut thread_pool_core_indices = Vec::<CpuCoreSet>::with_capacity(thread_pools);
 
         let total_cpu_cores = all_numa_nodes
             .iter()
@@ -317,7 +323,7 @@ pub fn thread_pool_core_indices(
             // If thread pool size is fixed, loop over all CPU cores as many times as necessary and
             // assign contiguous ranges of CPU cores to corresponding thread pools
 
-            for _ in 0..thread_pools.get() {
+            for _ in 0..thread_pools {
                 let cpu_cores_range = if let Some(last_cpu_index) = thread_pool_core_indices
                     .last()
                     .and_then(|thread_indices| thread_indices.cpu_cores().last())
