@@ -46,7 +46,7 @@ enum Command {
         #[arg(long)]
         disable_farm_locking: bool,
         /// Check for errors, but do not attempt to correct them
-        #[arg(long)]
+        #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
         dry_run: bool,
     },
     /// Wipes the farm
