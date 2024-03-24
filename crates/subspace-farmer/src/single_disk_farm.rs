@@ -1647,7 +1647,7 @@ impl SingleDiskFarm {
     ) -> Result<(), SingleDiskFarmScrubError> {
         let span = Span::current();
 
-        if !dry_run {
+        if dry_run {
             info!("Dry run is used, no changes will be written to disk");
         }
 
