@@ -660,7 +660,7 @@ impl Farm for SingleDiskFarm {
         Box::new(self.on_solution(callback))
     }
 
-    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<FarmId>> + Send>> {
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
         Box::pin((*self).run())
     }
 }
@@ -1571,7 +1571,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<FarmId> {
+    pub async fn run(mut self) -> anyhow::Result<()> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());
@@ -1581,7 +1581,7 @@ impl SingleDiskFarm {
             result?;
         }
 
-        Ok(*self.id())
+        Ok(())
     }
 
     /// Wipe everything that belongs to this single disk farm
