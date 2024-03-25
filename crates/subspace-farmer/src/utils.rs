@@ -11,10 +11,9 @@ use futures::channel::oneshot::Canceled;
 use futures::future::Either;
 use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
-use std::num::{NonZeroUsize, ParseIntError};
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::{pin, Pin};
-use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::{io, thread};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
@@ -273,16 +272,32 @@ pub fn all_cpu_cores() -> Vec<CpuCoreSet> {
 
 /// Parse space-separated set of groups of CPU cores (individual cores are coma-separated) into
 /// vector of CPU core sets that can be used for creation of plotting/replotting thread pools.
-pub fn parse_cpu_cores_sets(s: &str) -> Result<Vec<CpuCoreSet>, ParseIntError> {
+pub fn parse_cpu_cores_sets(
+    s: &str,
+) -> Result<Vec<CpuCoreSet>, Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(feature = "numa")]
     let topology = hwlocality::Topology::new().map(std::sync::Arc::new).ok();
 
     s.split(' ')
         .map(|s| {
-            let cores = s
-                .split(',')
-                .map(usize::from_str)
-                .collect::<Result<Vec<usize>, _>>()?;
+            let mut cores = Vec::new();
+            for s in s.split(',') {
+                let mut parts = s.split('-');
+                let range_start = parts
+                    .next()
+                    .ok_or(
+                        "Bad string format, must be comma separated list of CPU cores or ranges",
+                    )?
+                    .parse()?;
+
+                if let Some(range_end) = parts.next() {
+                    let range_end = range_end.parse()?;
+
+                    cores.extend(range_start..=range_end);
+                } else {
+                    cores.push(range_start);
+                }
+            }
 
             Ok(CpuCoreSet {
                 cores,
