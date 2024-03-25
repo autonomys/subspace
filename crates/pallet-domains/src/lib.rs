@@ -1549,7 +1549,7 @@ mod pallet {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
                         log::warn!(
                             target: "runtime::domains",
-                            "Bad fraud proof {:?}, error: {e:?}", fraud_proof.domain_id(),
+                            "Bad fraud proof {fraud_proof}, error: {e:?}",
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }

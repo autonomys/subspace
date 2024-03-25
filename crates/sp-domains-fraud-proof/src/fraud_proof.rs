@@ -5,6 +5,7 @@ use crate::verification::InvalidBundleEquivocationError;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
+use core::fmt;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
@@ -547,6 +548,53 @@ where
 {
     pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
         HeaderHashingFor::<DomainHeader>::hash(&self.encode())
+    }
+}
+
+impl<Number, Hash, DomainHeader: HeaderT> fmt::Display for FraudProof<Number, Hash, DomainHeader> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let domain_id = self.domain_id();
+        let bad_receipt_hash = self.targeted_bad_receipt_hash();
+        let bad_operator = self.targeted_bad_operator_and_slot_for_bundle_equivocation();
+        f.write_str(
+            match self {
+                Self::InvalidStateTransition(_) => {
+                    format!("InvalidStateTransition({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::InvalidTransaction(_) => {
+                    format!("InvalidTransaction({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::ImproperTransactionSortition(_) => {
+                    format!("ImproperTransactionSortition({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::BundleEquivocation(_) => {
+                    format!("BundleEquivocation({domain_id:?}#{bad_operator:?}) fraud proof")
+                }
+                Self::InvalidExtrinsicsRoot(_) => {
+                    format!("InvalidExtrinsicsRoot({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::InvalidBlockFees(_) => {
+                    format!("InvalidBlockFees({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::ValidBundle(_) => {
+                    format!("ValidBundle({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::InvalidBundles(_) => {
+                    format!("InvalidBundles({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::InvalidDomainBlockHash(_) => {
+                    format!("InvalidDomainBlockHash({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                Self::InvalidTransfers(_) => {
+                    format!("InvalidTransfers({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+                #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+                Self::Dummy { .. } => {
+                    format!("Dummy({domain_id:?}#{bad_receipt_hash:?}) fraud proof")
+                }
+            }
+            .as_str(),
+        )
     }
 }
 
