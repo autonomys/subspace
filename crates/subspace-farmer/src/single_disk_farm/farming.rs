@@ -24,6 +24,9 @@ use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use tracing::{debug, error, info, trace, warn, Span};
 
+/// How many non-fatal errors should happen in a row before farm is considered non-operational
+const NON_FATAL_ERROR_LIMIT: usize = 10;
+
 pub(super) async fn slot_notification_forwarder<NC>(
     node_client: &NC,
     mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
@@ -230,6 +233,8 @@ where
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
     let span = Span::current();
 
+    let mut non_fatal_errors = 0;
+
     while let Some(slot_info) = slot_info_notifications.next().await {
         let slot = slot_info.slot_number;
 
@@ -360,16 +365,24 @@ where
         if let Err(error) = result {
             if error.is_fatal() {
                 return Err(error);
-            } else {
-                warn!(
-                    %error,
-                    "Non-fatal farming error"
-                );
-
-                handlers
-                    .farming_notification
-                    .call_simple(&FarmingNotification::NonFatalError(Arc::new(error)));
             }
+
+            non_fatal_errors += 1;
+
+            if non_fatal_errors >= NON_FATAL_ERROR_LIMIT {
+                return Err(error);
+            }
+
+            warn!(
+                %error,
+                "Non-fatal farming error"
+            );
+
+            handlers
+                .farming_notification
+                .call_simple(&FarmingNotification::NonFatalError(Arc::new(error)));
+        } else {
+            non_fatal_errors = 0;
         }
     }
 
