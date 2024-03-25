@@ -24,7 +24,8 @@ subspace-runtime-primitives = { version = "0.1.0", default-features = false, pat
 x509-parser = { version = "0.16.0", default-features = false}
 
 [dev-dependencies]
-pallet-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+pem = "3.0.3"
+ring = "0.17.8"
 sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 
 [features]

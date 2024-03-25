@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
-mod host_functions;
+pub mod host_functions;
 mod runtime_interface;
 
 #[cfg(not(feature = "std"))]

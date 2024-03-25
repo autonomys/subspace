@@ -15,7 +15,6 @@ sp_externalities::decl_extension! {
 
 impl HostFunctionExtension {
     /// Create a new instance of [`HostFunctionExtension`].
-    #[allow(dead_code)]
     pub fn new(inner: Arc<dyn HostFunctions>) -> Self {
         Self(inner)
     }

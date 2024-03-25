@@ -8,7 +8,6 @@ use sp_runtime_interface::runtime_interface;
 /// Signature verification runtime interface.
 #[runtime_interface]
 pub trait SignatureVerificationRuntimeInterface {
-    #[allow(dead_code)]
     fn verify_signature(&mut self, req: SignatureVerificationRequest) -> Option<()> {
         self.extension::<HostFunctionExtension>()
             .expect(
