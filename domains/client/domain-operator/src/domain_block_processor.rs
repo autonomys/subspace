@@ -760,7 +760,7 @@ where
         if let Some(mismatched_receipts) = self.find_mismatch_receipt(consensus_block_hash)? {
             let fraud_proof = self.generate_fraud_proof(mismatched_receipts)?;
 
-            tracing::info!("Submit fraud proof: {fraud_proof}");
+            tracing::info!("Submit fraud proof: {fraud_proof:?}");
             let consensus_best_hash = self.consensus_client.info().best_hash;
             let mut runtime_api = self.consensus_client.runtime_api();
             runtime_api.register_extension(
