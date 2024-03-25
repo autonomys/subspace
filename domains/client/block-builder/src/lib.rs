@@ -158,6 +158,7 @@ where
         backend: &'a B,
         mut extrinsics: VecDeque<Block::Extrinsic>,
         maybe_inherent_data: Option<sp_inherents::InherentData>,
+        is_gemini_3h: bool,
     ) -> Result<Self, Error> {
         let header = <<Block as BlockT>::Header as HeaderT>::new(
             parent_number + One::one(),
@@ -182,11 +183,13 @@ where
 
             // TODO: This is used to keep compatible with gemini-3h, remove before next network
             //
-            // HACK: in gemini-3h, the domain inherent extrinsic order is changed in the ER that derived
-            // from the consensus block #168431, we have to follow this change in the client side to ensure
-            // every domain node that sync from genesis will produce the same ER and hence can successfully
-            // submit ER to exend the previous ER.
-            let maintain_runtime_inherent_extrinsic_order = parent_number >= 168430u32.into();
+            // HACK: ideally, any network should maintain the inherent extrinsic order to keep consistency
+            // with the order in the fraud proof verifiaction side, but in gemini-3h, the domain inherent
+            // extrinsic order is changed in the ER that derived from the consensus block #168431, we have
+            // to follow this change in the client side to ensure every domain node that sync from genesis
+            // will produce the same ER and hence can successfully submit ER to exend the previous ER.
+            let maintain_runtime_inherent_extrinsic_order =
+                !is_gemini_3h || parent_number >= 168430u32.into();
 
             if maintain_runtime_inherent_extrinsic_order {
                 // reverse and push the inherents so that order is maintained
