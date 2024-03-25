@@ -26,6 +26,10 @@ use tokio::runtime::Handle;
 use tokio::task;
 use tracing::{debug, info, warn};
 
+/// How many pieces should be skipped before stopping to check the rest of contents, this allows to
+/// not miss most of the pieces after one or two corrupted pieces
+const CONTENTS_READ_SKIP_LIMIT: usize = 3;
+
 /// Disk piece cache open error
 #[derive(Debug, Error)]
 pub enum DiskPieceCacheError {
@@ -180,25 +184,29 @@ impl DiskPieceCache {
         &self,
     ) -> impl ExactSizeIterator<Item = (PieceCacheOffset, Option<PieceIndex>)> + '_ {
         let mut element = vec![0; Self::element_size() as usize];
-        let mut early_exit = false;
+        let mut current_skip = 0;
 
         // TODO: Parallelize or read in larger batches
         (0..self.inner.num_elements).map(move |offset| {
-            if early_exit {
+            if current_skip > CONTENTS_READ_SKIP_LIMIT {
                 return (PieceCacheOffset(offset), None);
             }
 
             match self.read_piece_internal(offset, &mut element) {
                 Ok(maybe_piece_index) => {
                     if maybe_piece_index.is_none() {
-                        // End of stored pieces, no need to read further
-                        early_exit = true;
+                        current_skip += 1;
+                    } else {
+                        current_skip = 0;
                     }
 
                     (PieceCacheOffset(offset), maybe_piece_index)
                 }
                 Err(error) => {
                     warn!(%error, %offset, "Failed to read cache element");
+
+                    current_skip += 1;
+
                     (PieceCacheOffset(offset), None)
                 }
             }
