@@ -752,6 +752,80 @@ where
     }
 }
 
+#[derive(Debug)]
+struct PlotCaches {
+    /// Additional piece caches
+    caches: AsyncRwLock<Vec<Arc<dyn PlotCache>>>,
+    /// Next plot cache to use for storing pieces
+    next_plot_cache: AtomicUsize,
+}
+
+impl PlotCaches {
+    /// Try to store a piece in additional downloaded pieces, if there is space for them
+    async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
+        let key = RecordKey::from(piece_index.to_multihash());
+
+        let mut should_store = false;
+        for (farm_index, cache) in self.caches.read().await.iter().enumerate() {
+            match cache.is_piece_maybe_stored(&key).await {
+                Ok(MaybePieceStoredResult::No) => {
+                    // Try another one if there is any
+                }
+                Ok(MaybePieceStoredResult::Vacant) => {
+                    should_store = true;
+                    break;
+                }
+                Ok(MaybePieceStoredResult::Yes) => {
+                    // Already stored, nothing else left to do
+                    return;
+                }
+                Err(error) => {
+                    warn!(
+                        %farm_index,
+                        %piece_index,
+                        %error,
+                        "Failed to check piece stored in cache"
+                    );
+                }
+            }
+        }
+
+        if !should_store {
+            return;
+        }
+
+        let plot_caches = self.caches.read().await;
+        let plot_caches_len = plot_caches.len();
+
+        // Store pieces in plots using round-robin distribution
+        for _ in 0..plot_caches_len {
+            let plot_cache_index =
+                self.next_plot_cache.fetch_add(1, Ordering::Relaxed) % plot_caches_len;
+
+            match plot_caches[plot_cache_index]
+                .try_store_piece(piece_index, piece)
+                .await
+            {
+                Ok(true) => {
+                    return;
+                }
+                Ok(false) => {
+                    continue;
+                }
+                Err(error) => {
+                    error!(
+                        %error,
+                        %piece_index,
+                        %plot_cache_index,
+                        "Failed to store additional piece in cache"
+                    );
+                    continue;
+                }
+            }
+        }
+    }
+}
+
 /// Farmer cache that aggregates different kinds of caches of multiple disks
 #[derive(Debug, Clone)]
 pub struct FarmerCache {
@@ -759,9 +833,7 @@ pub struct FarmerCache {
     /// Individual dedicated piece caches
     piece_caches: Arc<AsyncRwLock<Vec<PieceCacheState>>>,
     /// Additional piece caches
-    plot_caches: Arc<AsyncRwLock<Vec<Arc<dyn PlotCache>>>>,
-    /// Next plot cache to use for storing pieces
-    next_plot_cache: Arc<AtomicUsize>,
+    plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
     worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
@@ -780,11 +852,15 @@ impl FarmerCache {
         let (worker_sender, worker_receiver) = mpsc::channel(WORKER_CHANNEL_CAPACITY);
         let handlers = Arc::new(Handlers::default());
 
+        let plot_caches = Arc::new(PlotCaches {
+            caches: AsyncRwLock::default(),
+            next_plot_cache: AtomicUsize::new(0),
+        });
+
         let instance = Self {
             peer_id,
             piece_caches: Arc::clone(&caches),
-            plot_caches: Arc::default(),
-            next_plot_cache: Arc::new(AtomicUsize::new(0)),
+            plot_caches,
             handlers: Arc::clone(&handlers),
             worker_sender: Arc::new(worker_sender),
         };
@@ -831,7 +907,7 @@ impl FarmerCache {
             }
         }
 
-        for cache in self.plot_caches.read().await.iter() {
+        for cache in self.plot_caches.caches.read().await.iter() {
             if let Ok(Some(piece)) = cache.read_piece(&key).await {
                 return Some(piece);
             }
@@ -842,66 +918,9 @@ impl FarmerCache {
 
     /// Try to store a piece in additional downloaded pieces, if there is space for them
     pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
-        let key = RecordKey::from(piece_index.to_multihash());
-
-        let mut should_store = false;
-        for (farm_index, cache) in self.plot_caches.read().await.iter().enumerate() {
-            match cache.is_piece_maybe_stored(&key).await {
-                Ok(MaybePieceStoredResult::No) => {
-                    // Try another one if there is any
-                }
-                Ok(MaybePieceStoredResult::Vacant) => {
-                    should_store = true;
-                    break;
-                }
-                Ok(MaybePieceStoredResult::Yes) => {
-                    // Already stored, nothing else left to do
-                    return;
-                }
-                Err(error) => {
-                    warn!(
-                        %farm_index,
-                        %piece_index,
-                        %error,
-                        "Failed to check piece stored in cache"
-                    );
-                }
-            }
-        }
-
-        if !should_store {
-            return;
-        }
-
-        let plot_caches = self.plot_caches.read().await;
-        let plot_caches_len = plot_caches.len();
-
-        // Store pieces in plots using round-robin distribution
-        for _ in 0..plot_caches_len {
-            let plot_cache_index =
-                self.next_plot_cache.fetch_add(1, Ordering::Relaxed) % plot_caches_len;
-
-            match plot_caches[plot_cache_index]
-                .try_store_piece(piece_index, piece)
-                .await
-            {
-                Ok(true) => {
-                    return;
-                }
-                Ok(false) => {
-                    continue;
-                }
-                Err(error) => {
-                    error!(
-                        %error,
-                        %piece_index,
-                        %plot_cache_index,
-                        "Failed to store additional piece in cache"
-                    );
-                    continue;
-                }
-            }
-        }
+        self.plot_caches
+            .maybe_store_additional_piece(piece_index, piece)
+            .await
     }
 
     /// Initialize replacement of backing caches
@@ -918,7 +937,7 @@ impl FarmerCache {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
 
-        *self.plot_caches.write().await = new_plot_caches;
+        *self.plot_caches.caches.write().await = new_plot_caches;
     }
 
     /// Subscribe to cache sync notifications
@@ -945,6 +964,7 @@ impl LocalRecordProvider for FarmerCache {
 
         let found_fut = self
             .plot_caches
+            .caches
             .try_read()?
             .iter()
             .map(|plot_cache| {
