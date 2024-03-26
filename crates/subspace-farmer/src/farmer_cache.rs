@@ -844,13 +844,6 @@ impl FarmerCache {
     pub async fn maybe_store_additional_piece(&self, piece_index: PieceIndex, piece: &Piece) {
         let key = RecordKey::from(piece_index.to_multihash());
 
-        for cache in self.piece_caches.read().await.iter() {
-            if cache.stored_pieces.contains_key(&key) {
-                // Already stored in normal piece cache, no need to store it again
-                return;
-            }
-        }
-
         let mut should_store = false;
         for (farm_index, cache) in self.plot_caches.read().await.iter().enumerate() {
             match cache.is_piece_maybe_stored(&key).await {
