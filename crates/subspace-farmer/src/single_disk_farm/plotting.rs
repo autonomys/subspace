@@ -8,7 +8,6 @@ use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use crate::{node_client, NodeClient};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
-use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
@@ -37,7 +36,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::{plotting, PieceGetter};
 use subspace_proof_of_space::Table;
 use thiserror::Error;
-use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{broadcast, watch, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, info, trace, warn, Instrument};
 
@@ -530,26 +529,22 @@ where
     // Create a proxy channel with atomically updatable last archived segment that
     // allows to not buffer messages from RPC subscription, but also access the most
     // recent value at any time
-    let last_archived_segment = Atomic::new(
-        node_client
-            .segment_headers(vec![last_archived_segment_index])
-            .await
-            .map_err(|error| PlottingError::FailedToGetSegmentHeader { error })?
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or(PlottingError::MissingArchivedSegmentHeader {
-                segment_index: last_archived_segment_index,
-            })?,
-    );
-    let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(0);
-    archived_segments_sender
-        .try_send(())
-        .expect("No messages were sent yet, there is capacity for one message; qed");
+    let last_archived_segment = node_client
+        .segment_headers(vec![last_archived_segment_index])
+        .await
+        .map_err(|error| PlottingError::FailedToGetSegmentHeader { error })?
+        .into_iter()
+        .next()
+        .flatten()
+        .ok_or(PlottingError::MissingArchivedSegmentHeader {
+            segment_index: last_archived_segment_index,
+        })?;
+
+    let (archived_segments_sender, archived_segments_receiver) =
+        watch::channel(last_archived_segment);
 
     let read_archived_segments_notifications_fut = read_archived_segments_notifications(
         &node_client,
-        &last_archived_segment,
         archived_segments_sender,
         new_segment_processing_delay,
     );
@@ -562,7 +557,6 @@ where
         &node_client,
         &handlers,
         sectors_metadata,
-        &last_archived_segment,
         archived_segments_receiver,
         sectors_to_plot_sender,
         initial_plotting_finished,
@@ -580,8 +574,7 @@ where
 
 async fn read_archived_segments_notifications<NC>(
     node_client: &NC,
-    last_archived_segment: &Atomic<SegmentHeader>,
-    mut archived_segments_sender: mpsc::Sender<()>,
+    archived_segments_sender: watch::Sender<SegmentHeader>,
     new_segment_processing_delay: Duration,
 ) -> Result<(), BackgroundTaskError>
 where
@@ -607,13 +600,8 @@ where
         // newly archived pieces to be both cached locally and on other farmers on the network
         tokio::time::sleep(new_segment_processing_delay).await;
 
-        last_archived_segment.store(segment_header, Ordering::SeqCst);
-        // Just a notification such that receiving side can read updated
-        // `last_archived_segment` (whatever it happens to be right now)
-        if let Err(error) = archived_segments_sender.try_send(()) {
-            if error.is_disconnected() {
-                return Ok(());
-            }
+        if archived_segments_sender.send(segment_header).is_err() {
+            break;
         }
     }
 
@@ -634,8 +622,7 @@ async fn send_plotting_notifications<NC>(
     node_client: &NC,
     handlers: &Handlers,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
-    last_archived_segment: &Atomic<SegmentHeader>,
-    mut archived_segments_receiver: mpsc::Receiver<()>,
+    mut archived_segments_receiver: watch::Receiver<SegmentHeader>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
     initial_plotting_finished: Option<oneshot::Sender<()>>,
 ) -> Result<(), BackgroundTaskError>
@@ -676,8 +663,8 @@ where
     let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
     let mut archived_segment_commitments_cache = LruCache::new(ARCHIVED_SEGMENTS_CACHE_SIZE);
 
-    while let Some(()) = archived_segments_receiver.next().await {
-        let archived_segment_header = last_archived_segment.load(Ordering::SeqCst);
+    loop {
+        let archived_segment_header = *archived_segments_receiver.borrow_and_update();
         trace!(
             segment_index = %archived_segment_header.segment_index(),
             "New archived segment received",
@@ -860,6 +847,10 @@ where
             let _ = acknowledgement_receiver.await;
 
             sectors_expire_at.remove(&sector_index);
+        }
+
+        if archived_segments_receiver.changed().await.is_err() {
+            break;
         }
     }
 
