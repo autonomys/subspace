@@ -35,6 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
+use crate::bundle_storage_fund::storage_fund_account;
 use crate::domain_registry::Error as DomainRegistryError;
 use crate::staking::OperatorStatus;
 use crate::staking_epoch::EpochTransitionResult;
@@ -48,6 +49,7 @@ use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
+use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
@@ -2266,6 +2268,11 @@ impl<T: Config> Pallet<T> {
             .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
                 finalized_operator_count,
             ))
+    }
+
+    pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
+        let storage_fund_acc = storage_fund_account::<T>(operator_id);
+        T::Currency::reducible_balance(&storage_fund_acc, Preservation::Preserve, Fortitude::Polite)
     }
 }
 

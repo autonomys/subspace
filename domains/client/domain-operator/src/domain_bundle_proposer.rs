@@ -9,7 +9,7 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     BundleHeader, DomainBundleLimit, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor,
-    ProofOfElection,
+    OperatorId, ProofOfElection,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::Percent;
@@ -117,6 +117,34 @@ where
         }
     }
 
+    pub(crate) fn fetch_storage_fund_balance_and_fee(
+        &self,
+        operator_id: OperatorId,
+    ) -> sp_blockchain::Result<(Balance, Balance)> {
+        let best_hash = self.consensus_client.info().best_hash;
+        let consensus_runtime_api = self.consensus_client.runtime_api();
+        let api_version = consensus_runtime_api
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(best_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("DomainsApi not found at: {:?}", best_hash).into(),
+                ))
+            })?;
+
+        let transaction_byte_fee = consensus_runtime_api.consensus_chain_byte_fee(best_hash)?;
+
+        // TODO: This is used to keep compatible with gemini-3h, remove before next network
+        if api_version >= 3 {
+            let storage_fund_balance =
+                consensus_runtime_api.storage_fund_account_balance(best_hash, operator_id)?;
+
+            Ok((storage_fund_balance, transaction_byte_fee))
+        } else {
+            Ok((Balance::MAX, transaction_byte_fee))
+        }
+    }
+
     pub(crate) fn fetch_domain_bundle_limit(&self) -> sp_blockchain::Result<DomainBundleLimit> {
         let best_hash = self.consensus_client.info().best_hash;
         let consensus_runtime_api = self.consensus_client.runtime_api();
@@ -163,6 +191,7 @@ where
         &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
         tx_range: U256,
+        operator_id: OperatorId,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
         let parent_number = self.client.info().best_number;
         let parent_hash = self.client.info().best_hash;
@@ -188,9 +217,22 @@ where
         self.previous_bundled_tx
             .maybe_clear(self.consensus_client.info().best_hash);
 
+        let receipt = self.load_bundle_receipt(parent_number)?;
+
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
 
         let domain_bundle_limit = self.fetch_domain_bundle_limit()?;
+
+        let (storage_fund_balance, transaction_byte_fee) =
+            self.fetch_storage_fund_balance_and_fee(operator_id)?;
+
+        let header_size = receipt.encoded_size()
+            + proof_of_election.encoded_size()
+            + domain_bundle_limit.max_bundle_weight.encoded_size()
+            // Extrinsics root size
+            + 32
+            // Header signature size
+            + 64;
 
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
@@ -261,8 +303,16 @@ where
                     }
                 }
 
-                // TODO: stop including more tx once the operator's available storage fund less than
-                // `next_bundle_size * consensus_transaction_byte_fee`
+                let next_bundle_storage_fee =
+                    (header_size as u32 + next_bundle_size) as u128 * transaction_byte_fee;
+                if next_bundle_storage_fee > storage_fund_balance {
+                    tracing::warn!(
+                        ?next_bundle_storage_fee,
+                        ?storage_fund_balance,
+                        "Insufficient storage fund balance to pay for the bundle storage fee"
+                    );
+                    break;
+                }
 
                 // Double check the transaction validity, because the tx pool are re-validate the transaction
                 // in pool asynchronously so there is race condition that the operator imported a domain block
@@ -305,8 +355,6 @@ where
             extrinsics.iter().map(|xt| xt.encode()).collect(),
             sp_core::storage::StateVersion::V1,
         );
-
-        let receipt = self.load_bundle_receipt(parent_number)?;
 
         let header = BundleHeader {
             proof_of_election,
