@@ -135,7 +135,7 @@ where
         let transaction_byte_fee = consensus_runtime_api.consensus_chain_byte_fee(best_hash)?;
 
         // TODO: This is used to keep compatible with gemini-3h, remove before next network
-        if api_version >= 2 {
+        if api_version >= 3 {
             let storage_fund_balance =
                 consensus_runtime_api.storage_fund_account_balance(best_hash, operator_id)?;
 

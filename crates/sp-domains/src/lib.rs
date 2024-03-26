@@ -1242,7 +1242,7 @@ pub struct DomainAllowlistUpdates {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(2)]
+    #[api_version(3)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
