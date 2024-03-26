@@ -1,4 +1,4 @@
-use crate::utils::run_future_in_dedicated_thread;
+use crate::utils::{parse_cpu_cores_sets, run_future_in_dedicated_thread};
 use std::future;
 use tokio::sync::oneshot;
 
@@ -45,4 +45,36 @@ fn run_future_in_dedicated_thread_tokio_on_drop() {
             "tokio_on_drop".to_string(),
         ));
     });
+}
+
+#[test]
+fn test_parse_cpu_cores_sets() {
+    {
+        let cores = parse_cpu_cores_sets("0").unwrap();
+        assert_eq!(cores.len(), 1);
+        assert_eq!(cores[0].cores, vec![0]);
+    }
+    {
+        let cores = parse_cpu_cores_sets("0,1,2").unwrap();
+        assert_eq!(cores.len(), 1);
+        assert_eq!(cores[0].cores, vec![0, 1, 2]);
+    }
+    {
+        let cores = parse_cpu_cores_sets("0,1,2 4,5,6").unwrap();
+        assert_eq!(cores.len(), 2);
+        assert_eq!(cores[0].cores, vec![0, 1, 2]);
+        assert_eq!(cores[1].cores, vec![4, 5, 6]);
+    }
+    {
+        let cores = parse_cpu_cores_sets("0-2 4-6,7").unwrap();
+        assert_eq!(cores.len(), 2);
+        assert_eq!(cores[0].cores, vec![0, 1, 2]);
+        assert_eq!(cores[1].cores, vec![4, 5, 6, 7]);
+    }
+
+    assert!(parse_cpu_cores_sets("").is_err());
+    assert!(parse_cpu_cores_sets("a").is_err());
+    assert!(parse_cpu_cores_sets("0,").is_err());
+    assert!(parse_cpu_cores_sets("0,a").is_err());
+    assert!(parse_cpu_cores_sets("0 a").is_err());
 }
