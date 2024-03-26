@@ -390,5 +390,5 @@ pub trait Farm {
     fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn HandlerId>;
 
     /// Run and wait for background threads to exit or return an error
-    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<FarmId>> + Send>>;
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 }

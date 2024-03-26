@@ -63,6 +63,7 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 /// NOTE: for large gaps between the plotted part and the end of the file plot cache will result in
 /// very long period of writing zeroes on Windows, see https://stackoverflow.com/q/78058306/3806795
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
+const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 
 fn should_farm_during_initial_plotting() -> bool {
     let total_cpu_cores = all_cpu_cores()
@@ -259,6 +260,11 @@ pub(crate) struct FarmingArgs {
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
     disable_farm_locking: bool,
+    /// Exit on farm error.
+    ///
+    /// By default, farmer will continue running if the are still other working farms.
+    #[arg(long)]
+    exit_on_farm_error: bool,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -412,6 +418,7 @@ where
         plotting_thread_priority,
         plot_cache,
         disable_farm_locking,
+        exit_on_farm_error,
     } = farming_args;
 
     let plot_cache = plot_cache.unwrap_or_else(|| {
@@ -989,7 +996,7 @@ where
             }))
             .detach();
 
-            farm.run()
+            farm.run().map(move |result| (farm_index, result))
         })
         .collect::<FuturesUnordered<_>>();
 
@@ -997,12 +1004,38 @@ where
     // event handlers
     drop(plotted_pieces);
 
+    let mut farm_errors = Vec::new();
+
     let farm_fut = run_future_in_dedicated_thread(
         move || async move {
-            while let Some(result) = farms_stream.next().await {
-                let id = result?;
+            while let Some((farm_index, result)) = farms_stream.next().await {
+                match result {
+                    Ok(()) => {
+                        info!(%farm_index, "Farm exited successfully");
+                    }
+                    Err(error) => {
+                        error!(%farm_index, %error, "Farm exited with error");
 
-                info!(%id, "Farm exited successfully");
+                        if farms_stream.is_empty() || exit_on_farm_error {
+                            return Err(error);
+                        } else {
+                            farm_errors.push(AsyncJoinOnDrop::new(
+                                tokio::spawn(async move {
+                                    loop {
+                                        tokio::time::sleep(FARM_ERROR_PRINT_INTERVAL).await;
+
+                                        error!(
+                                            %farm_index,
+                                            %error,
+                                            "Farm errored and stopped"
+                                        );
+                                    }
+                                }),
+                                true,
+                            ))
+                        }
+                    }
+                }
             }
             anyhow::Ok(())
         },
