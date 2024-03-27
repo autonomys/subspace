@@ -684,9 +684,9 @@ impl SingleDiskFarm {
 
         let single_disk_farm_init_fut = tokio::task::spawn_blocking({
             let span = span.clone();
-            let _span_guard = span.enter();
 
             move || {
+                let _span_guard = span.enter();
                 Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
             }
         });
