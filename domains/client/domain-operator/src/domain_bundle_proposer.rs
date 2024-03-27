@@ -286,6 +286,7 @@ where
                         ) < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
+                        continue;
                     } else {
                         break;
                     }
@@ -298,6 +299,7 @@ where
                             < BUNDLE_UTILIZATION_THRESHOLD
                     {
                         skipped += 1;
+                        continue;
                     } else {
                         break;
                     }
