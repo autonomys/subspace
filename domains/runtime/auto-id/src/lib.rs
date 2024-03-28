@@ -251,6 +251,11 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+impl pallet_auto_id::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Time = Timestamp;
+}
+
 pub struct ExtrinsicStorageFees;
 
 impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
@@ -429,6 +434,9 @@ construct_runtime!(
         // monetary stuff
         Balances: pallet_balances = 20,
         TransactionPayment: pallet_transaction_payment = 21,
+
+        // AutoId
+        AutoId: pallet_auto_id = 40,
 
         // messenger stuff
         // Note: Indexes should match with indexes on other chains and domains
