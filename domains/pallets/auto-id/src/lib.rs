@@ -92,15 +92,17 @@ impl TryFrom<x509_parser::prelude::Validity> for Validity {
     }
 }
 
-/// Root X509 Certificate.
+/// X509 certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct X509CertificateRoot {
+pub struct X509Certificate {
+    /// Issuer identifier of this certificate.
+    pub issuer_id: Option<Identifier>,
     /// Serial number for this certificate
     pub serial: U256,
     /// Der encoded certificate's subject.
     pub subject: DerVec,
     /// Der encoded certificate's subject's public key info
-    pub subject_pki: DerVec,
+    pub subject_public_key_info: DerVec,
     /// Validity of the certificate
     pub validity: Validity,
     /// Der encoded full X509 certificate.
@@ -112,34 +114,6 @@ pub struct X509CertificateRoot {
     pub revoked: bool,
 }
 
-/// Leaf X509 certificate issued by a different issuer.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct X509CertificateLeaf {
-    /// Issuer identifier of this certificate.
-    pub issuer_id: Identifier,
-    /// Serial number for this certificate
-    pub serial: U256,
-    /// Der encoded certificate's subject.
-    pub subject: DerVec,
-    /// Der encoded certificate's subject's public key info
-    pub subject_pki: DerVec,
-    /// Validity of the certificate
-    pub validity: Validity,
-    /// Der encoded full X509 certificate.
-    pub raw: DerVec,
-    /// Signifies if the certificate is revoked.
-    pub revoked: bool,
-}
-
-/// An X509 certificate.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum X509Certificate {
-    /// A root X509 certificate.
-    Root(X509CertificateRoot),
-    /// A leaf certificate issued by a root certificate
-    Leaf(X509CertificateLeaf),
-}
-
 /// Certificate associated with AutoId.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum Certificate {
@@ -147,68 +121,42 @@ pub enum Certificate {
 }
 
 impl Certificate {
-    /// Returns the public key info of a given root certificate.
-    fn root_issuer_pki(&self) -> Option<DerVec> {
-        match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => Some(cert.subject_pki.clone()),
-                X509Certificate::Leaf(_) => None,
-            },
-        }
-    }
-
     /// Returns the subject public key info.
-    fn subject_pki(&self) -> DerVec {
+    fn subject_public_key_info(&self) -> DerVec {
         match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => cert.subject_pki.clone(),
-                X509Certificate::Leaf(cert) => cert.subject_pki.clone(),
-            },
+            Certificate::X509(cert) => cert.subject_public_key_info.clone(),
         }
     }
 
     fn issue_certificate_serial<T: Config>(&mut self, serial: U256) -> DispatchResult {
         match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => {
-                    ensure!(
-                        !cert.issued_serials.contains(&serial),
-                        Error::<T>::CertificateSerialAlreadyIssued
-                    );
-                    cert.issued_serials.insert(serial);
-                    Ok(())
-                }
-                // leaf cannot issue certs, return invalid
-                X509Certificate::Leaf(_) => Err(Error::<T>::IssuerNotRoot.into()),
-            },
+            Certificate::X509(cert) => {
+                ensure!(
+                    !cert.issued_serials.contains(&serial),
+                    Error::<T>::CertificateSerialAlreadyIssued
+                );
+                cert.issued_serials.insert(serial);
+                Ok(())
+            }
         }
     }
 
     /// Checks if the certificate is valid at this time.
     pub(crate) fn is_valid_at(&self, time: Moment) -> bool {
         match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => cert.validity.is_valid_at(time),
-                X509Certificate::Leaf(cert) => cert.validity.is_valid_at(time),
-            },
+            Certificate::X509(cert) => cert.validity.is_valid_at(time),
         }
     }
 
     fn revoke(&mut self) {
         match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => cert.revoked = true,
-                X509Certificate::Leaf(cert) => cert.revoked = true,
-            },
+            Certificate::X509(cert) => cert.revoked = true,
         }
     }
 
     fn is_revoked(&self) -> bool {
         match self {
-            Certificate::X509(cert) => match cert {
-                X509Certificate::Root(cert) => cert.revoked,
-                X509Certificate::Leaf(cert) => cert.revoked,
-            },
+            Certificate::X509(cert) => cert.revoked,
         }
     }
 }
@@ -280,8 +228,6 @@ mod pallet {
     pub enum Error<T> {
         /// Issuer auto id does not exist.
         UnknownIssuer,
-        /// Issuer is not a root certificate.
-        IssuerNotRoot,
         /// Certificate is invalid,
         InvalidCertificate,
         /// Invalid certificate validity.
@@ -380,15 +326,16 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::InvalidValidity(ValidityError::Expired)
                     );
 
-                    Certificate::X509(X509Certificate::Root(X509CertificateRoot {
+                    Certificate::X509(X509Certificate {
+                        issuer_id: None,
                         serial,
                         subject: tbs_certificate.subject.as_raw().to_vec().into(),
-                        subject_pki: tbs_certificate.subject_pki.raw.to_vec().into(),
+                        subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
                         validity,
                         raw: certificate,
                         issued_serials: BTreeSet::from([serial]),
                         revoked: false,
-                    }))
+                    })
                 }
                 RegisterAutoIdX509::Leaf {
                     issuer_id,
@@ -398,10 +345,7 @@ impl<T: Config> Pallet<T> {
                 } => {
                     let mut issuer_auto_id =
                         AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?;
-                    let issuer_pki = issuer_auto_id
-                        .certificate
-                        .root_issuer_pki()
-                        .ok_or(Error::<T>::IssuerNotRoot)?;
+                    let issuer_pki = issuer_auto_id.certificate.subject_public_key_info();
 
                     ensure!(
                         issuer_auto_id.certificate.is_valid_at(current_time),
@@ -437,15 +381,16 @@ impl<T: Config> Pallet<T> {
 
                     AutoIds::<T>::insert(issuer_id, issuer_auto_id);
 
-                    Certificate::X509(X509Certificate::Leaf(X509CertificateLeaf {
-                        issuer_id,
+                    Certificate::X509(X509Certificate {
+                        issuer_id: Some(issuer_id),
                         serial,
                         subject: tbs_certificate.subject.as_raw().to_vec().into(),
-                        subject_pki: tbs_certificate.subject_pki.raw.to_vec().into(),
+                        subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
                         validity,
                         raw: certificate,
+                        issued_serials: BTreeSet::from([serial]),
                         revoked: false,
-                    }))
+                    })
                 }
             },
         };
@@ -473,7 +418,7 @@ impl<T: Config> Pallet<T> {
             value: signature,
         } = signature;
         let req = SignatureVerificationRequest {
-            public_key_info: auto_id.certificate.subject_pki(),
+            public_key_info: auto_id.certificate.subject_public_key_info(),
             signature_algorithm,
             // uses auto_id identifier as the message to sign
             data: auto_id.identifier.encode(),
