@@ -1,4 +1,5 @@
-use crate::single_disk_farm::plot_cache::{DiskPlotCache, MaybePieceStoredResult};
+use crate::farm::MaybePieceStoredResult;
+use crate::single_disk_farm::plot_cache::DiskPlotCache;
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
@@ -20,8 +21,8 @@ use tempfile::tempdir;
 const FAKE_SECTOR_SIZE: usize = 2 * 1024 * 1024;
 const TARGET_SECTOR_COUNT: SectorIndex = 5;
 
-#[test]
-fn basic() {
+#[tokio::test]
+async fn basic() {
     let dummy_sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
         sector_index: 0,
         pieces_in_sector: 0,
@@ -31,7 +32,7 @@ fn basic() {
 
     let tempdir = tempdir().unwrap();
     #[cfg(not(windows))]
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
@@ -40,7 +41,7 @@ fn basic() {
         .unwrap();
 
     #[cfg(windows)]
-    let mut file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
+    let file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
 
     // Align plot file size for disk sector size
     file.preallocate(
@@ -84,7 +85,7 @@ fn basic() {
     );
 
     // Initially empty
-    assert_matches!(disk_plot_cache.read_piece(&record_key_0), None);
+    assert_matches!(disk_plot_cache.read_piece(&record_key_0).await, None);
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_0),
         MaybePieceStoredResult::Vacant
@@ -97,6 +98,7 @@ fn basic() {
     );
     assert!(!disk_plot_cache
         .try_store_piece(piece_index_0, &piece_0)
+        .await
         .unwrap());
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_0),
@@ -115,12 +117,13 @@ fn basic() {
     // Successfully stores piece if not all sectors are plotted
     assert!(disk_plot_cache
         .try_store_piece(piece_index_0, &piece_0)
+        .await
         .unwrap());
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_0),
         MaybePieceStoredResult::Yes
     );
-    assert!(disk_plot_cache.read_piece(&record_key_0).unwrap() == piece_0);
+    assert!(disk_plot_cache.read_piece(&record_key_0).await.unwrap() == piece_0);
 
     // Store two more pieces and make sure they can be read
     assert_matches!(
@@ -129,12 +132,13 @@ fn basic() {
     );
     assert!(disk_plot_cache
         .try_store_piece(piece_index_1, &piece_1)
+        .await
         .unwrap());
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_1),
         MaybePieceStoredResult::Yes
     );
-    assert!(disk_plot_cache.read_piece(&record_key_1).unwrap() == piece_1);
+    assert!(disk_plot_cache.read_piece(&record_key_1).await.unwrap() == piece_1);
 
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
@@ -142,12 +146,13 @@ fn basic() {
     );
     assert!(disk_plot_cache
         .try_store_piece(piece_index_2, &piece_2)
+        .await
         .unwrap());
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
         MaybePieceStoredResult::Yes
     );
-    assert!(disk_plot_cache.read_piece(&record_key_2).unwrap() == piece_2);
+    assert!(disk_plot_cache.read_piece(&record_key_2).await.unwrap() == piece_2);
 
     // Write almost all sectors even without updating metadata, this will result in internal piece
     // read error due to checksum mismatch and eviction of the piece from cache
@@ -160,7 +165,7 @@ fn basic() {
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
         MaybePieceStoredResult::Yes
     );
-    assert_matches!(disk_plot_cache.read_piece(&record_key_2), None);
+    assert_matches!(disk_plot_cache.read_piece(&record_key_2).await, None);
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_2),
         MaybePieceStoredResult::Vacant
@@ -180,7 +185,7 @@ fn basic() {
     );
 
     // Closing file will render cache unusable
-    assert!(disk_plot_cache.read_piece(&record_key_0).unwrap() == piece_0);
+    assert!(disk_plot_cache.read_piece(&record_key_0).await.unwrap() == piece_0);
     drop(file);
-    assert_matches!(disk_plot_cache.read_piece(&record_key_0), None);
+    assert_matches!(disk_plot_cache.read_piece(&record_key_0).await, None);
 }

@@ -3,19 +3,19 @@ use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use tracing::{error, info, info_span};
 
-pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool) {
+pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool, dry_run: bool) {
     disk_farms
         .into_par_iter()
         .enumerate()
-        .for_each(|(disk_farm_index, directory)| {
-            let span = info_span!("", %disk_farm_index);
+        .for_each(|(farm_index, directory)| {
+            let span = info_span!("", %farm_index);
             let _span_guard = span.enter();
             info!(
                 path = %directory.display(),
                 "Start scrubbing farm"
             );
 
-            match SingleDiskFarm::scrub(directory, disable_farm_locking) {
+            match SingleDiskFarm::scrub(directory, disable_farm_locking, dry_run) {
                 Ok(()) => {
                     info!(
                         path = %directory.display(),

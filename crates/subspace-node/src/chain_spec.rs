@@ -38,8 +38,8 @@ use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
-    MaxDomainBlockWeight, RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig,
-    SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig,
+    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -102,6 +102,7 @@ struct GenesisParams {
     enable_balance_transfers: bool,
     enable_non_root_calls: bool,
     confirmation_depth_k: u32,
+    rewards_config: RewardsConfig,
 }
 
 struct GenesisDomainParams {
@@ -181,7 +182,14 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
                     enable_non_root_calls: false,
-                    confirmation_depth_k: 100, // TODO: Proper value here
+                    // TODO: Proper value here
+                    confirmation_depth_k: 100,
+                    // TODO: Proper value here
+                    rewards_config: RewardsConfig {
+                        remaining_issuance: 1_000_000_000 * SSC,
+                        proposer_subsidy_points: Default::default(),
+                        voter_subsidy_points: Default::default(),
+                    },
                 },
                 GenesisDomainParams {
                     domain_name: "nova".to_owned(),
@@ -295,7 +303,14 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
                     enable_non_root_calls: false,
-                    confirmation_depth_k: 100, // TODO: Proper value here
+                    // TODO: Proper value here
+                    confirmation_depth_k: 100,
+                    // TODO: Proper value here
+                    rewards_config: RewardsConfig {
+                        remaining_issuance: 1_000_000_000 * SSC,
+                        proposer_subsidy_points: Default::default(),
+                        voter_subsidy_points: Default::default(),
+                    },
                 },
                 GenesisDomainParams {
                     domain_name: "evm-domain".to_owned(),
@@ -368,6 +383,11 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     enable_balance_transfers: true,
                     enable_non_root_calls: true,
                     confirmation_depth_k: 5,
+                    rewards_config: RewardsConfig {
+                        remaining_issuance: 1_000_000 * SSC,
+                        proposer_subsidy_points: Default::default(),
+                        voter_subsidy_points: Default::default(),
+                    },
                 },
                 GenesisDomainParams {
                     domain_name: "evm-domain".to_owned(),
@@ -421,6 +441,7 @@ fn subspace_genesis_config(
         enable_balance_transfers,
         enable_non_root_calls,
         confirmation_depth_k,
+        rewards_config,
     } = genesis_params;
 
     let raw_genesis_storage = {
@@ -456,6 +477,7 @@ fn subspace_genesis_config(
             pot_slot_iterations,
             phantom: PhantomData,
         },
+        rewards: rewards_config,
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,

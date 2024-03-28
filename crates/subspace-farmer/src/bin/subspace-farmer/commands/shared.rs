@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 
-pub(crate) fn print_disk_farm_info(directory: PathBuf, disk_farm_index: usize) {
-    println!("Single disk farm {disk_farm_index}:");
+pub(crate) fn print_disk_farm_info(directory: PathBuf, farm_index: usize) {
+    println!("Single disk farm {farm_index}:");
     match SingleDiskFarm::collect_summary(directory) {
         SingleDiskFarmSummary::Found { info, directory } => {
             println!("  ID: {}", info.id());

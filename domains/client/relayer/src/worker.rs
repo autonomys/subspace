@@ -2,7 +2,7 @@ use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, L
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_state_db::PruningMode;
-use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
@@ -137,6 +137,20 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
                 .hash(consensus_block_number)?
                 .ok_or(ApiError::UnknownBlock(format!("Missing Hash for block number: {consensus_block_number:?}")))?;
             let api = consensus_chain_client.runtime_api();
+
+            // TODO: This is used to keep compatible with gemini-3h, remove before next network
+            let api_version = api
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_hash_to_process)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("DomainsApi not found at: {:?}", consensus_hash_to_process).into(),
+                ))
+            })?;
+            if api_version < 2 {
+                return Ok(None)
+            }
+
             let confirmed_domain_block =
                 api.latest_confirmed_domain_block(consensus_hash_to_process, domain_id)?;
 

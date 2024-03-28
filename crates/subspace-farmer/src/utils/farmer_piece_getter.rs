@@ -213,7 +213,7 @@ where
             .plotted_pieces
             .lock()
             .as_ref()
-            .and_then(|plotted_pieces| plotted_pieces.read_piece(&piece_index));
+            .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {

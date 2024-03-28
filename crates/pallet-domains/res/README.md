@@ -2,4 +2,6 @@ This runtime is used for benchmarking the `register_domain_runtime` and `upgrade
 
 **Don't use them in production environments!**
 
-To update the just copy the new runtime from `target/release/wbuild/evm-domain-test-runtime/evm_domain_test_runtime.compact.compressed.wasm` to here.
+To update:
+1. Build the `subspace-node` binary
+2. Run `subspace-node domain build-genesis-storage --chain dev > evm-domain-genesis-storage`

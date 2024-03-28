@@ -3088,6 +3088,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-listener"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b5fb89194fa3cad959b833185b3063ba881dbfc7030680b314250779fb4cc91"
+dependencies = [
+ "concurrent-queue",
+ "parking",
+ "pin-project-lite 0.2.13",
+]
+
+[[package]]
 name = "event-listener-primitives"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7421,10 +7432,17 @@ dependencies = [
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "log",
+ "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
  "subspace-runtime-primitives",
 ]
 
@@ -11600,7 +11618,6 @@ dependencies = [
  "anyhow",
  "async-lock 3.3.0",
  "async-trait",
- "atomic",
  "backoff",
  "base58",
  "blake2 0.10.6",
@@ -11609,6 +11626,7 @@ dependencies = [
  "clap",
  "criterion",
  "derive_more",
+ "event-listener 5.2.0",
  "event-listener-primitives",
  "fdlimit",
  "fs4 0.8.0",

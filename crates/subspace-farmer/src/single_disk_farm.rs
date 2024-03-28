@@ -5,22 +5,23 @@ pub mod plot_cache;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
+use crate::farm::{
+    Farm, FarmError, FarmId, HandlerFn, PieceCache, PieceReader, PlotCache, SectorUpdate,
+};
+pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingNotification, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
-use crate::single_disk_farm::piece_reader::PieceReader;
+use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
+pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
-};
-pub use crate::single_disk_farm::plotting::{
-    PlottingError, SectorExpirationDetails, SectorPlottingDetails,
 };
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
@@ -29,11 +30,11 @@ use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
-use derive_more::{Display, From};
+use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rand::prelude::*;
@@ -54,8 +55,7 @@ use std::{fs, io, mem};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
-    Blake3Hash, HistorySize, Piece, PieceOffset, PublicKey, Record, SectorId, SectorIndex,
-    SegmentIndex,
+    Blake3Hash, HistorySize, PieceOffset, PublicKey, Record, SectorId, SectorIndex, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
@@ -72,7 +72,6 @@ use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Barrier, Semaphore};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
-use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -86,25 +85,7 @@ const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 /// Limit for reads in internal benchmark.
 ///
 /// 4 seconds is proving time, hence 3 seconds for reads.
-const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_secs(3);
-
-/// An identifier for single disk farm, can be used for in logs, thread names, etc.
-#[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
-)]
-#[serde(untagged)]
-pub enum SingleDiskFarmId {
-    /// Farm ID
-    Ulid(Ulid),
-}
-
-#[allow(clippy::new_without_default)]
-impl SingleDiskFarmId {
-    /// Creates new ID
-    pub fn new() -> Self {
-        Self::Ulid(Ulid::new())
-    }
-}
+const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_millis(3500);
 
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
 #[must_use = "Lock file must be kept around or as long as farm is used"]
@@ -120,7 +101,7 @@ pub enum SingleDiskFarmInfo {
     #[serde(rename_all = "camelCase")]
     V0 {
         /// ID of the farm
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Genesis hash of the chain used for farm creation
         #[serde(with = "hex::serde")]
         genesis_hash: [u8; 32],
@@ -137,7 +118,7 @@ impl SingleDiskFarmInfo {
     const FILE_NAME: &'static str = "single_disk_farm.json";
 
     pub fn new(
-        id: SingleDiskFarmId,
+        id: FarmId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         pieces_in_sector: u16,
@@ -171,7 +152,7 @@ impl SingleDiskFarmInfo {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
+    /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
         fs::write(
             directory.join(Self::FILE_NAME),
@@ -189,7 +170,7 @@ impl SingleDiskFarmInfo {
     }
 
     // ID of the farm
-    pub fn id(&self) -> &SingleDiskFarmId {
+    pub fn id(&self) -> &FarmId {
         let Self::V0 { id, .. } = self;
         id
     }
@@ -346,7 +327,7 @@ pub enum SingleDiskFarmError {
     )]
     WrongChain {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Hex-encoded genesis hash during farm creation
         // TODO: Wrapper type with `Display` impl for genesis hash
         correct_chain: String,
@@ -360,7 +341,7 @@ pub enum SingleDiskFarmError {
     )]
     IdentityMismatch {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Public key used during farm creation
         correct_public_key: PublicKey,
         /// Current public key
@@ -373,7 +354,7 @@ pub enum SingleDiskFarmError {
     )]
     InvalidPiecesInSector {
         /// Farm ID
-        id: SingleDiskFarmId,
+        id: FarmId,
         /// Max supported pieces in sector
         max_supported: u16,
         /// Number of pieces in sector farm is initialized with
@@ -558,17 +539,7 @@ pub enum BackgroundTaskError {
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
 
-type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
-
-/// Various sector updates
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum SectorUpdate {
-    /// Sector is being plotted
-    Plotting(SectorPlottingDetails),
-    /// Sector expiration information updated
-    Expiration(SectorExpirationDetails),
-}
 
 #[derive(Default, Debug)]
 struct Handlers {
@@ -613,7 +584,7 @@ pub struct SingleDiskFarm {
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
     plot_cache: DiskPlotCache,
-    piece_reader: PieceReader,
+    piece_reader: DiskPieceReader,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
@@ -631,6 +602,69 @@ impl Drop for SingleDiskFarm {
     }
 }
 
+#[async_trait(?Send)]
+impl Farm for SingleDiskFarm {
+    fn id(&self) -> &FarmId {
+        self.id()
+    }
+
+    fn total_sectors_count(&self) -> SectorIndex {
+        self.total_sectors_count
+    }
+
+    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError> {
+        Ok(self.plotted_sectors_count().await)
+    }
+
+    async fn plotted_sectors(
+        &self,
+    ) -> Result<Box<dyn Stream<Item = Result<PlottedSector, FarmError>> + Unpin + '_>, FarmError>
+    {
+        Ok(Box::new(stream::iter(
+            self.plotted_sectors()
+                .await
+                .map(|result| result.map_err(Into::into)),
+        )))
+    }
+
+    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
+        Arc::new(self.piece_cache())
+    }
+
+    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
+        Arc::new(self.plot_cache())
+    }
+
+    fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
+        Arc::new(self.piece_reader())
+    }
+
+    fn on_sector_update(
+        &self,
+        callback: HandlerFn<(SectorIndex, SectorUpdate)>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_sector_update(callback))
+    }
+
+    fn on_farming_notification(
+        &self,
+        callback: HandlerFn<FarmingNotification>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_farming_notification(callback))
+    }
+
+    fn on_solution(
+        &self,
+        callback: HandlerFn<SolutionResponse>,
+    ) -> Box<dyn crate::farm::HandlerId> {
+        Box::new(self.on_solution(callback))
+    }
+
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
+        Box::pin((*self).run())
+    }
+}
+
 impl SingleDiskFarm {
     pub const PLOT_FILE: &'static str = "plot.bin";
     pub const METADATA_FILE: &'static str = "metadata.bin";
@@ -639,7 +673,7 @@ impl SingleDiskFarm {
     /// Create new single disk farm instance
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
-        disk_farm_index: usize,
+        farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
@@ -650,9 +684,9 @@ impl SingleDiskFarm {
 
         let single_disk_farm_init_fut = tokio::task::spawn_blocking({
             let span = span.clone();
-            let _span_guard = span.enter();
 
             move || {
+                let _span_guard = span.enter();
                 Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
             }
         });
@@ -728,7 +762,7 @@ impl SingleDiskFarm {
         };
 
         let farming_thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+            .thread_name(move |thread_index| format!("farming-{farm_index}.{thread_index}"))
             .num_threads(farming_thread_pool_size)
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
@@ -865,7 +899,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             plotting_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("plotting-{disk_farm_index}"),
+                    task: format!("plotting-{farm_index}"),
                 }
             })
         }));
@@ -970,12 +1004,12 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             farming_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("farming-{disk_farm_index}"),
+                    task: format!("farming-{farm_index}"),
                 }
             })
         }));
 
-        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+        let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
             plot_file,
@@ -1009,7 +1043,7 @@ impl SingleDiskFarm {
             // Panic will already be printed by now
             reading_join_handle.await.map_err(|_error| {
                 BackgroundTaskError::BackgroundTaskPanicked {
-                    task: format!("reading-{disk_farm_index}"),
+                    task: format!("reading-{farm_index}"),
                 }
             })
         }));
@@ -1130,7 +1164,7 @@ impl SingleDiskFarm {
             }
             None => {
                 let single_disk_farm_info = SingleDiskFarmInfo::new(
-                    SingleDiskFarmId::new(),
+                    FarmId::new(),
                     farmer_app_info.genesis_hash,
                     public_key,
                     max_pieces_in_sector,
@@ -1220,7 +1254,7 @@ impl SingleDiskFarm {
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1231,7 +1265,7 @@ impl SingleDiskFarm {
         metadata_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+        let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
         let expected_metadata_size =
@@ -1323,7 +1357,7 @@ impl SingleDiskFarm {
         };
 
         #[cfg(not(windows))]
-        let mut plot_file = OpenOptions::new()
+        let plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -1334,7 +1368,7 @@ impl SingleDiskFarm {
         plot_file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1344,12 +1378,6 @@ impl SingleDiskFarm {
                 .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
             // Truncating file (if necessary)
             plot_file.set_len(plot_file_size)?;
-
-            // TODO: Hack due to Windows bugs:
-            //  https://learn.microsoft.com/en-us/answers/questions/1608540/getfileinformationbyhandle-followed-by-read-with-f
-            if cfg!(windows) {
-                warn!("Farm was resized, farmer restart is needed for optimal performance!")
-            }
         }
 
         let plot_file = Arc::new(plot_file);
@@ -1399,13 +1427,12 @@ impl SingleDiskFarm {
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
         #[cfg(not(windows))]
-        let mut metadata_file = OpenOptions::new()
+        let metadata_file = OpenOptions::new()
             .read(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
         #[cfg(windows)]
-        let mut metadata_file =
-            UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -1454,7 +1481,7 @@ impl SingleDiskFarm {
     }
 
     /// ID of this farm
-    pub fn id(&self) -> &SingleDiskFarmId {
+    pub fn id(&self) -> &FarmId {
         self.single_disk_farm_info.id()
     }
 
@@ -1524,7 +1551,7 @@ impl SingleDiskFarm {
     }
 
     /// Get piece reader to read plotted pieces later
-    pub fn piece_reader(&self) -> PieceReader {
+    pub fn piece_reader(&self) -> DiskPieceReader {
         self.piece_reader.clone()
     }
 
@@ -1544,7 +1571,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<SingleDiskFarmId> {
+    pub async fn run(mut self) -> anyhow::Result<()> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());
@@ -1554,7 +1581,7 @@ impl SingleDiskFarm {
             result?;
         }
 
-        Ok(*self.id())
+        Ok(())
     }
 
     /// Wipe everything that belongs to this single disk farm
@@ -1616,8 +1643,13 @@ impl SingleDiskFarm {
     pub fn scrub(
         directory: &Path,
         disable_farm_locking: bool,
+        dry_run: bool,
     ) -> Result<(), SingleDiskFarmScrubError> {
         let span = Span::current();
+
+        if dry_run {
+            info!("Dry run is used, no changes will be written to disk");
+        }
 
         let info = {
             let file = directory.join(SingleDiskFarmInfo::FILE_NAME);
@@ -1671,9 +1703,9 @@ impl SingleDiskFarm {
         let (metadata_file, mut metadata_header) = {
             info!(path = %metadata_file_path.display(), "Checking metadata file");
 
-            let mut metadata_file = match OpenOptions::new()
+            let metadata_file = match OpenOptions::new()
                 .read(true)
-                .write(true)
+                .write(!dry_run)
                 .open(&metadata_file_path)
             {
                 Ok(metadata_file) => metadata_file,
@@ -1751,13 +1783,16 @@ impl SingleDiskFarm {
                     / sector_metadata_size as u64)
                     as SectorIndex;
                 let metadata_header_bytes = metadata_header.encode();
-                if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
-                    return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                        file: metadata_file_path,
-                        size: metadata_header_bytes.len() as u64,
-                        offset: 0,
-                        error,
-                    });
+
+                if !dry_run {
+                    if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: metadata_file_path,
+                            size: metadata_header_bytes.len() as u64,
+                            offset: 0,
+                            error,
+                        });
+                    }
                 }
             }
 
@@ -1772,9 +1807,9 @@ impl SingleDiskFarm {
             let plot_file_path = directory.join(Self::PLOT_FILE);
             info!(path = %plot_file_path.display(), "Checking plot file");
 
-            let mut plot_file = match OpenOptions::new()
+            let plot_file = match OpenOptions::new()
                 .read(true)
-                .write(true)
+                .write(!dry_run)
                 .open(&plot_file_path)
             {
                 Ok(plot_file) => plot_file,
@@ -1817,55 +1852,60 @@ impl SingleDiskFarm {
 
                 metadata_header.plotted_sector_count = (plot_size / sector_size) as SectorIndex;
                 let metadata_header_bytes = metadata_header.encode();
-                if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
-                    return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                        file: plot_file_path,
-                        size: metadata_header_bytes.len() as u64,
-                        offset: 0,
-                        error,
-                    });
+
+                if !dry_run {
+                    if let Err(error) = metadata_file.write_all_at(&metadata_header_bytes, 0) {
+                        return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                            file: plot_file_path,
+                            size: metadata_header_bytes.len() as u64,
+                            offset: 0,
+                            error,
+                        });
+                    }
                 }
             }
 
             plot_file
         };
 
+        let sector_bytes_range = 0..(sector_size as usize - mem::size_of::<Blake3Hash>());
+
         info!("Checking sectors and corresponding metadata");
         (0..metadata_header.plotted_sector_count)
             .into_par_iter()
             .map_init(
-                || {
-                    let sector_metadata_bytes = vec![0; sector_metadata_size];
-                    let piece = Piece::default();
-
-                    (sector_metadata_bytes, piece)
-                },
-                |(sector_metadata_bytes, piece), sector_index| {
+                || vec![0u8; Record::SIZE],
+                |scratch_buffer, sector_index| {
                     let _span_guard = span.enter();
 
                     let offset = RESERVED_PLOT_METADATA
                         + u64::from(sector_index) * sector_metadata_size as u64;
-                    if let Err(error) = metadata_file.read_exact_at(sector_metadata_bytes, offset) {
+                    if let Err(error) = metadata_file
+                        .read_exact_at(&mut scratch_buffer[..sector_metadata_size], offset)
+                    {
                         warn!(
                             path = %metadata_file_path.display(),
                             %error,
-                            %sector_index,
                             %offset,
+                            size = %sector_metadata_size,
+                            %sector_index,
                             "Failed to read sector metadata, replacing with dummy expired sector \
                             metadata"
                         );
 
-                        write_dummy_sector_metadata(
-                            &metadata_file,
-                            &metadata_file_path,
-                            sector_index,
-                            pieces_in_sector,
-                        )?;
+                        if !dry_run {
+                            write_dummy_sector_metadata(
+                                &metadata_file,
+                                &metadata_file_path,
+                                sector_index,
+                                pieces_in_sector,
+                            )?;
+                        }
                         return Ok(());
                     }
 
                     let sector_metadata = match SectorMetadataChecksummed::decode(
-                        &mut sector_metadata_bytes.as_slice(),
+                        &mut &scratch_buffer[..sector_metadata_size],
                     ) {
                         Ok(sector_metadata) => sector_metadata,
                         Err(error) => {
@@ -1877,12 +1917,14 @@ impl SingleDiskFarm {
                                 sector metadata"
                             );
 
-                            write_dummy_sector_metadata(
-                                &metadata_file,
-                                &metadata_file_path,
-                                sector_index,
-                                pieces_in_sector,
-                            )?;
+                            if !dry_run {
+                                write_dummy_sector_metadata(
+                                    &metadata_file,
+                                    &metadata_file_path,
+                                    sector_index,
+                                    pieces_in_sector,
+                                )?;
+                            }
                             return Ok(());
                         }
                     };
@@ -1895,12 +1937,14 @@ impl SingleDiskFarm {
                             "Sector index mismatch, replacing with dummy expired sector metadata"
                         );
 
-                        write_dummy_sector_metadata(
-                            &metadata_file,
-                            &metadata_file_path,
-                            sector_index,
-                            pieces_in_sector,
-                        )?;
+                        if !dry_run {
+                            write_dummy_sector_metadata(
+                                &metadata_file,
+                                &metadata_file_path,
+                                sector_index,
+                                pieces_in_sector,
+                            )?;
+                        }
                         return Ok(());
                     }
 
@@ -1914,60 +1958,66 @@ impl SingleDiskFarm {
                             metadata"
                         );
 
-                        write_dummy_sector_metadata(
-                            &metadata_file,
-                            &metadata_file_path,
-                            sector_index,
-                            pieces_in_sector,
-                        )?;
+                        if !dry_run {
+                            write_dummy_sector_metadata(
+                                &metadata_file,
+                                &metadata_file_path,
+                                sector_index,
+                                pieces_in_sector,
+                            )?;
+                        }
                         return Ok(());
                     }
 
                     let mut hasher = blake3::Hasher::new();
-                    for piece_offset in 0..pieces_in_sector {
-                        let offset = u64::from(sector_index) * sector_size
-                            + u64::from(piece_offset) * Piece::SIZE as u64;
+                    // Read sector bytes and compute checksum
+                    for offset_in_sector in sector_bytes_range.clone().step_by(scratch_buffer.len())
+                    {
+                        let offset =
+                            u64::from(sector_index) * sector_size + offset_in_sector as u64;
+                        let bytes_to_read = (offset_in_sector + scratch_buffer.len())
+                            .min(sector_bytes_range.end)
+                            - offset_in_sector;
 
-                        if let Err(error) = plot_file.read_exact_at(piece.as_mut(), offset) {
+                        let bytes = &mut scratch_buffer[..bytes_to_read];
+
+                        if let Err(error) = plot_file.read_exact_at(bytes, offset) {
                             warn!(
                                 path = %plot_file_path.display(),
                                 %error,
                                 %sector_index,
-                                %piece_offset,
-                                size = %piece.len() as u64,
                                 %offset,
-                                "Failed to read piece bytes"
+                                size = %bytes.len() as u64,
+                                "Failed to read sector bytes"
                             );
-                            return Err(SingleDiskFarmScrubError::FailedToReadBytes {
-                                file: plot_file_path.clone(),
-                                size: piece.len() as u64,
-                                offset,
-                                error,
-                            });
+
+                            continue;
                         }
 
-                        hasher.update(piece.as_ref());
+                        hasher.update(bytes);
                     }
 
                     let actual_checksum = *hasher.finalize().as_bytes();
                     let mut expected_checksum = [0; mem::size_of::<Blake3Hash>()];
                     {
-                        let offset = u64::from(sector_index) * sector_size
-                            + u64::from(pieces_in_sector) * Piece::SIZE as u64;
+                        let offset =
+                            u64::from(sector_index) * sector_size + sector_bytes_range.end as u64;
                         if let Err(error) = plot_file.read_exact_at(&mut expected_checksum, offset)
                         {
-                            return Err(SingleDiskFarmScrubError::FailedToReadBytes {
-                                file: plot_file_path.clone(),
-                                size: expected_checksum.len() as u64,
-                                offset,
-                                error,
-                            });
+                            warn!(
+                                path = %plot_file_path.display(),
+                                %error,
+                                %sector_index,
+                                %offset,
+                                size = %expected_checksum.len() as u64,
+                                "Failed to read sector checksum bytes"
+                            );
                         }
                     }
 
                     // Verify checksum
                     if actual_checksum != expected_checksum {
-                        debug!(
+                        warn!(
                             path = %plot_file_path.display(),
                             %sector_index,
                             actual_checksum = %hex::encode(actual_checksum),
@@ -1975,46 +2025,57 @@ impl SingleDiskFarm {
                             "Plotted sector checksum mismatch, replacing with dummy expired sector"
                         );
 
-                        write_dummy_sector_metadata(
-                            &metadata_file,
-                            &metadata_file_path,
-                            sector_index,
-                            pieces_in_sector,
-                        )?;
-
-                        *piece = Piece::default();
-
-                        // Write dummy pieces
-                        let mut hasher = blake3::Hasher::new();
-                        for piece_offset in 0..pieces_in_sector {
-                            let offset = u64::from(sector_index) * sector_size
-                                + u64::from(piece_offset) * Piece::SIZE as u64;
-
-                            if let Err(error) = plot_file.write_all_at(piece.as_ref(), offset) {
-                                return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                    file: plot_file_path.clone(),
-                                    size: piece.len() as u64,
-                                    offset,
-                                    error,
-                                });
-                            }
-
-                            hasher.update(piece.as_ref());
+                        if !dry_run {
+                            write_dummy_sector_metadata(
+                                &metadata_file,
+                                &metadata_file_path,
+                                sector_index,
+                                pieces_in_sector,
+                            )?;
                         }
 
-                        let offset = u64::from(sector_index) * sector_size
-                            + u64::from(pieces_in_sector) * Piece::SIZE as u64;
+                        scratch_buffer.fill(0);
 
-                        // Write checksum
-                        if let Err(error) =
-                            plot_file.write_all_at(hasher.finalize().as_bytes(), offset)
+                        hasher.reset();
+                        // Fill sector with zeroes and compute checksum
+                        for offset_in_sector in
+                            sector_bytes_range.clone().step_by(scratch_buffer.len())
                         {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: plot_file_path.clone(),
-                                size: hasher.finalize().as_bytes().len() as u64,
-                                offset,
-                                error,
-                            });
+                            let offset =
+                                u64::from(sector_index) * sector_size + offset_in_sector as u64;
+                            let bytes_to_write = (offset_in_sector + scratch_buffer.len())
+                                .min(sector_bytes_range.end)
+                                - offset_in_sector;
+                            let bytes = &mut scratch_buffer[..bytes_to_write];
+
+                            if !dry_run {
+                                if let Err(error) = plot_file.write_all_at(bytes, offset) {
+                                    return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                        file: plot_file_path.clone(),
+                                        size: scratch_buffer.len() as u64,
+                                        offset,
+                                        error,
+                                    });
+                                }
+                            }
+
+                            hasher.update(bytes);
+                        }
+                        // Write checksum
+                        {
+                            let checksum = *hasher.finalize().as_bytes();
+                            let offset = u64::from(sector_index) * sector_size
+                                + sector_bytes_range.end as u64;
+                            if !dry_run {
+                                if let Err(error) = plot_file.write_all_at(&checksum, offset) {
+                                    return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                        file: plot_file_path.clone(),
+                                        size: checksum.len() as u64,
+                                        offset,
+                                        error,
+                                    });
+                                }
+                            }
                         }
 
                         return Ok(());
@@ -2048,7 +2109,7 @@ impl SingleDiskFarm {
             let file = directory.join(DiskPieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
-            let mut cache_file = match OpenOptions::new().read(true).write(true).open(&file) {
+            let cache_file = match OpenOptions::new().read(true).write(!dry_run).open(&file) {
                 Ok(plot_file) => plot_file,
                 Err(error) => {
                     return Err(if error.kind() == io::ErrorKind::NotFound {
@@ -2091,13 +2152,15 @@ impl SingleDiskFarm {
                             "Failed to read cached piece, replacing with dummy element"
                         );
 
-                        if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: file.clone(),
-                                size: u64::from(element_size),
-                                offset,
-                                error,
-                            });
+                        if !dry_run {
+                            if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
+                                return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                    file: file.clone(),
+                                    size: u64::from(element_size),
+                                    offset,
+                                    error,
+                                });
+                            }
                         }
 
                         return Ok(());
@@ -2114,13 +2177,15 @@ impl SingleDiskFarm {
                             "Cached piece checksum mismatch, replacing with dummy element"
                         );
 
-                        if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
-                            return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
-                                file: file.clone(),
-                                size: u64::from(element_size),
-                                offset,
-                                error,
-                            });
+                        if !dry_run {
+                            if let Err(error) = cache_file.write_all_at(&dummy_element, offset) {
+                                return Err(SingleDiskFarmScrubError::FailedToWriteBytes {
+                                    file: file.clone(),
+                                    size: u64::from(element_size),
+                                    offset,
+                                    error,
+                                });
+                            }
                         }
 
                         return Ok(());
@@ -2193,8 +2258,6 @@ where
 
     let mut sector_bytes = vec![0u8; sector_size];
 
-    original_plot.read_exact_at(&mut sector_bytes, 0)?;
-
     if plotted_sector_count == 0 {
         thread_rng().fill_bytes(&mut sector_bytes);
         original_plot.write_all_at(&sector_bytes, 0)?;
@@ -2210,33 +2273,6 @@ where
             sector_size as u64 * thread_rng().gen_range(0..plotted_sector_count) as u64;
         let farming_plot = farming_plot.offset(sector_offset);
 
-        // A lot simplified version of concurrent chunks
-        {
-            let start = Instant::now();
-            (0..Record::NUM_S_BUCKETS)
-                .into_par_iter()
-                .try_for_each(|_| {
-                    let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
-                        * Scalar::FULL_BYTES;
-                    farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
-                })?;
-            let elapsed = start.elapsed();
-
-            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
-                debug!(
-                    ?elapsed,
-                    "Proving method with chunks reading is too slow, using whole sector"
-                );
-                return Ok(ReadSectorRecordChunksMode::WholeSector);
-            }
-
-            debug!(?elapsed, "Chunks");
-
-            if fastest_time > elapsed {
-                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
-                fastest_time = elapsed;
-            }
-        }
         // Reading the whole sector at once
         {
             let start = Instant::now();
@@ -2245,8 +2281,36 @@ where
 
             debug!(?elapsed, "Whole sector");
 
+            if elapsed >= INTERNAL_BENCHMARK_READ_TIMEOUT {
+                debug!(
+                    ?elapsed,
+                    "Reading whole sector is too slow, using chunks instead"
+                );
+
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
+                break;
+            }
+
             if fastest_time > elapsed {
                 fastest_mode = ReadSectorRecordChunksMode::WholeSector;
+                fastest_time = elapsed;
+            }
+        }
+
+        // A lot simplified version of concurrent chunks
+        {
+            let start = Instant::now();
+            (0..Record::NUM_CHUNKS).into_par_iter().try_for_each(|_| {
+                let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
+                    * Scalar::FULL_BYTES;
+                farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+            })?;
+            let elapsed = start.elapsed();
+
+            debug!(?elapsed, "Chunks");
+
+            if fastest_time > elapsed {
+                fastest_mode = ReadSectorRecordChunksMode::ConcurrentChunks;
                 fastest_time = elapsed;
             }
         }

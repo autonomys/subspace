@@ -7,8 +7,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
 use subspace_core_primitives::SectorIndex;
-use subspace_farmer::single_disk_farm::farming::ProvingResult;
-use subspace_farmer::single_disk_farm::{FarmingError, SingleDiskFarmId};
+use subspace_farmer::farm::{FarmId, FarmingError, ProvingResult};
 
 #[derive(Debug, Copy, Clone)]
 pub(super) enum SectorState {
@@ -228,41 +227,30 @@ impl FarmerMetrics {
         }
     }
 
-    pub(super) fn observe_auditing_time(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_auditing_time(&self, farm_id: &FarmId, time: &Duration) {
         self.auditing_time
-            .get_or_create(&vec![(
-                "farm_id".to_string(),
-                single_disk_farm_id.to_string(),
-            )])
+            .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
     pub(super) fn observe_proving_time(
         &self,
-        single_disk_farm_id: &SingleDiskFarmId,
+        farm_id: &FarmId,
         time: &Duration,
         result: ProvingResult,
     ) {
         self.proving_time
             .get_or_create(&vec![
-                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("farm_id".to_string(), farm_id.to_string()),
                 ("result".to_string(), result.to_string()),
             ])
             .observe(time.as_secs_f64());
     }
 
-    pub(super) fn note_farming_error(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        error: &FarmingError,
-    ) {
+    pub(super) fn note_farming_error(&self, farm_id: &FarmId, error: &FarmingError) {
         self.farming_errors
             .get_or_create(&vec![
-                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("farm_id".to_string(), farm_id.to_string()),
                 ("error".to_string(), error.str_variant().to_string()),
             ])
             .inc();
@@ -270,26 +258,22 @@ impl FarmerMetrics {
 
     pub(super) fn update_sectors_total(
         &self,
-        single_disk_farm_id: &SingleDiskFarmId,
+        farm_id: &FarmId,
         sectors: SectorIndex,
         state: SectorState,
     ) {
         self.sectors_total
             .get_or_create(&vec![
-                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("farm_id".to_string(), farm_id.to_string()),
                 ("state".to_string(), state.to_string()),
             ])
             .set(i64::from(sectors));
     }
 
-    pub(super) fn update_sector_state(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        state: SectorState,
-    ) {
+    pub(super) fn update_sector_state(&self, farm_id: &FarmId, state: SectorState) {
         self.sectors_total
             .get_or_create(&vec![
-                ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                ("farm_id".to_string(), farm_id.to_string()),
                 ("state".to_string(), state.to_string()),
             ])
             .inc();
@@ -302,7 +286,7 @@ impl FarmerMetrics {
                 // in deadlock otherwise
                 {
                     let not_plotted_sectors = self.sectors_total.get_or_create(&vec![
-                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("farm_id".to_string(), farm_id.to_string()),
                         ("state".to_string(), SectorState::NotPlotted.to_string()),
                     ]);
                     if not_plotted_sectors.get() > 0 {
@@ -313,7 +297,7 @@ impl FarmerMetrics {
                 }
                 {
                     let expired_sectors = self.sectors_total.get_or_create(&vec![
-                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("farm_id".to_string(), farm_id.to_string()),
                         ("state".to_string(), SectorState::Expired.to_string()),
                     ]);
                     if expired_sectors.get() > 0 {
@@ -325,7 +309,7 @@ impl FarmerMetrics {
                 // Replaced about to expire sector
                 self.sectors_total
                     .get_or_create(&vec![
-                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("farm_id".to_string(), farm_id.to_string()),
                         ("state".to_string(), SectorState::AboutToExpire.to_string()),
                     ])
                     .dec();
@@ -333,7 +317,7 @@ impl FarmerMetrics {
             SectorState::AboutToExpire | SectorState::Expired => {
                 self.sectors_total
                     .get_or_create(&vec![
-                        ("farm_id".to_string(), single_disk_farm_id.to_string()),
+                        ("farm_id".to_string(), farm_id.to_string()),
                         ("state".to_string(), SectorState::Plotted.to_string()),
                     ])
                     .dec();
@@ -341,55 +325,27 @@ impl FarmerMetrics {
         }
     }
 
-    pub(super) fn observe_sector_downloading_time(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_sector_downloading_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_downloading_time
-            .get_or_create(&vec![(
-                "farm_id".to_string(),
-                single_disk_farm_id.to_string(),
-            )])
+            .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(super) fn observe_sector_encoding_time(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_sector_encoding_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_encoding_time
-            .get_or_create(&vec![(
-                "farm_id".to_string(),
-                single_disk_farm_id.to_string(),
-            )])
+            .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(super) fn observe_sector_writing_time(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_sector_writing_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_writing_time
-            .get_or_create(&vec![(
-                "farm_id".to_string(),
-                single_disk_farm_id.to_string(),
-            )])
+            .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(super) fn observe_sector_plotting_time(
-        &self,
-        single_disk_farm_id: &SingleDiskFarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_sector_plotting_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_plotting_time
-            .get_or_create(&vec![(
-                "farm_id".to_string(),
-                single_disk_farm_id.to_string(),
-            )])
+            .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 }

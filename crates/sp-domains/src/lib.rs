@@ -443,8 +443,13 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
         self.sealed_header.header.receipt
     }
 
-    /// Return the bundle body size in bytes
+    /// Return the bundle size (include header and body) in bytes
     pub fn size(&self) -> u32 {
+        self.encoded_size() as u32
+    }
+
+    /// Return the bundle body size in bytes
+    pub fn body_size(&self) -> u32 {
         self.extrinsics
             .iter()
             .map(|tx| tx.encoded_size() as u32)
@@ -1237,7 +1242,7 @@ pub struct DomainAllowlistUpdates {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(2)]
+    #[api_version(3)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1320,6 +1325,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return if the receipt is exist and pending to prune
         fn is_bad_er_pending_to_prune(domain_id: DomainId, receipt_hash: HeaderHashFor<DomainHeader>) -> bool;
+
+        /// Return the balance of the storage fund account
+        fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

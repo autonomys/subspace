@@ -1,4 +1,4 @@
-//! Benchmarking for `pallet-subspace`.
+//! Benchmarking for `pallet-runtime-configs`.
 
 use frame_benchmarking::v2::*;
 

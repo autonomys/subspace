@@ -71,5 +71,6 @@ runtime-benchmarks = [
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
     "sp-domains/runtime-benchmarks",
+    "sp-domains-fraud-proof/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
 ]

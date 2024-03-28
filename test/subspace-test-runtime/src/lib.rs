@@ -41,6 +41,7 @@ use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
+pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
@@ -646,7 +647,7 @@ parameter_types! {
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
-    pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxPendingStakingOperation: u32 = 512;
     pub const MaxNominators: u32 = 100;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
@@ -726,15 +727,18 @@ impl pallet_domains::Config for Runtime {
 }
 
 parameter_types! {
-    pub const BlockReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
-    pub const VoteReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
+    pub const AvgBlockspaceUsageNumBlocks: BlockNumber = 100;
+    pub const ProposerTaxOnVotes: (u32, u32) = (1, 10);
 }
 
 impl pallet_rewards::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
-    type BlockReward = BlockReward;
-    type VoteReward = VoteReward;
+    type AvgBlockspaceUsageNumBlocks = AvgBlockspaceUsageNumBlocks;
+    type TransactionByteFee = TransactionByteFee;
+    type MaxRewardPoints = ConstU32<20>;
+    type ProposerTaxOnVotes = ProposerTaxOnVotes;
+    type RewardsEnabled = Subspace;
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
@@ -1351,6 +1355,10 @@ impl_runtime_apis! {
                 |er| Domains::is_bad_er_pending_to_prune(domain_id, er.domain_block_number)
             )
             .unwrap_or(false)
+        }
+
+        fn storage_fund_account_balance(operator_id: OperatorId) -> Balance {
+            Domains::storage_fund_account_balance(operator_id)
         }
     }
 

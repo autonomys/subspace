@@ -1,0 +1,394 @@
+use crate::node_client;
+use async_trait::async_trait;
+use derive_more::{Display, From};
+use futures::Stream;
+use parity_scale_codec::{Decode, Encode, Input, Output};
+use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+use std::{fmt, io};
+use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex, SegmentIndex};
+use subspace_farmer_components::auditing::AuditingError;
+use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::proving::ProvingError;
+use subspace_networking::libp2p::kad::RecordKey;
+use subspace_rpc_primitives::SolutionResponse;
+use thiserror::Error;
+use ulid::Ulid;
+
+/// Erased error type
+pub type FarmError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+
+/// Offset wrapper for pieces in [`PieceCache`]
+#[derive(Debug, Display, Copy, Clone, Encode, Decode)]
+#[repr(transparent)]
+pub struct PieceCacheOffset(pub(crate) u32);
+
+/// Abstract piece cache implementation
+#[async_trait]
+pub trait PieceCache: Send + Sync + fmt::Debug {
+    /// Max number of elements in this cache
+    fn max_num_elements(&self) -> usize;
+
+    /// Contents of this piece cache.
+    ///
+    /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
+    /// doesn't happen for the same piece being accessed!
+    async fn contents(
+        &self,
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_>;
+
+    /// Store piece in cache at specified offset, replacing existing piece if there is any.
+    ///
+    /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
+    /// doesn't happen for the same piece being accessed!
+    async fn write_piece(
+        &self,
+        offset: PieceCacheOffset,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> Result<(), FarmError>;
+
+    /// Read piece index from cache at specified offset.
+    ///
+    /// Returns `None` if offset is out of range.
+    ///
+    /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
+    /// doesn't happen for the same piece being accessed!
+    async fn read_piece_index(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<PieceIndex>, FarmError>;
+
+    /// Read piece from cache at specified offset.
+    ///
+    /// Returns `None` if offset is out of range.
+    ///
+    /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
+    /// doesn't happen for the same piece being accessed!
+    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError>;
+}
+
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub enum MaybePieceStoredResult {
+    /// Definitely not stored
+    No,
+    /// Maybe has vacant slot to store
+    Vacant,
+    /// Maybe still stored
+    Yes,
+}
+
+/// Abstract plot cache implementation
+#[async_trait]
+pub trait PlotCache: Send + Sync + fmt::Debug {
+    /// Check if piece is potentially stored in this cache (not guaranteed to be because it might be
+    /// overridden with sector any time)
+    async fn is_piece_maybe_stored(
+        &self,
+        key: &RecordKey,
+    ) -> Result<MaybePieceStoredResult, FarmError>;
+
+    /// Store piece in cache if there is free space, otherwise `Ok(false)` is returned
+    async fn try_store_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> Result<bool, FarmError>;
+
+    /// Read piece from cache.
+    ///
+    /// Returns `None` if not cached.
+    async fn read_piece(&self, key: &RecordKey) -> Result<Option<Piece>, FarmError>;
+}
+
+/// Auditing details
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub struct AuditingDetails {
+    /// Number of sectors that were audited
+    pub sectors_count: SectorIndex,
+    /// Audit duration
+    pub time: Duration,
+}
+
+/// Result of the proving
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub enum ProvingResult {
+    /// Proved successfully and accepted by the node
+    Success,
+    /// Proving took too long
+    Timeout,
+    /// Managed to prove within time limit, but node rejected solution, likely due to timeout on its
+    /// end
+    Rejected,
+}
+
+impl fmt::Display for ProvingResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ProvingResult::Success => "Success",
+            ProvingResult::Timeout => "Timeout",
+            ProvingResult::Rejected => "Rejected",
+        })
+    }
+}
+
+/// Proving details
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub struct ProvingDetails {
+    /// Whether proving ended up being successful
+    pub result: ProvingResult,
+    /// Audit duration
+    pub time: Duration,
+}
+
+/// Special decoded farming error
+#[derive(Debug, Encode, Decode)]
+pub struct DecodedFarmingError {
+    /// String representation of an error
+    error: String,
+    /// Whether error is fatal
+    is_fatal: bool,
+}
+
+impl fmt::Display for DecodedFarmingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+/// Errors that happen during farming
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    /// Failed to subscribe to slot info notifications
+    #[error("Failed to subscribe to slot info notifications: {error}")]
+    FailedToSubscribeSlotInfo {
+        /// Lower-level error
+        error: node_client::Error,
+    },
+    /// Failed to retrieve farmer info
+    #[error("Failed to retrieve farmer info: {error}")]
+    FailedToGetFarmerInfo {
+        /// Lower-level error
+        error: node_client::Error,
+    },
+    /// Slot info notification stream ended
+    #[error("Slot info notification stream ended")]
+    SlotNotificationStreamEnded,
+    /// Low-level auditing error
+    #[error("Low-level auditing error: {0}")]
+    LowLevelAuditing(#[from] AuditingError),
+    /// Low-level proving error
+    #[error("Low-level proving error: {0}")]
+    LowLevelProving(#[from] ProvingError),
+    /// I/O error occurred
+    #[error("Farming I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Decoded farming error
+    #[error("Decoded farming error {0}")]
+    Decoded(DecodedFarmingError),
+}
+
+impl Encode for FarmingError {
+    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
+        let error = DecodedFarmingError {
+            error: self.to_string(),
+            is_fatal: self.is_fatal(),
+        };
+
+        error.encode_to(dest)
+    }
+}
+
+impl Decode for FarmingError {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        DecodedFarmingError::decode(input).map(FarmingError::Decoded)
+    }
+}
+
+impl FarmingError {
+    /// String variant of the error, primarily for monitoring purposes
+    pub fn str_variant(&self) -> &str {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => "FailedToSubscribeSlotInfo",
+            FarmingError::FailedToGetFarmerInfo { .. } => "FailedToGetFarmerInfo",
+            FarmingError::LowLevelAuditing(_) => "LowLevelAuditing",
+            FarmingError::LowLevelProving(_) => "LowLevelProving",
+            FarmingError::Io(_) => "Io",
+            FarmingError::Decoded(_) => "Decoded",
+            FarmingError::SlotNotificationStreamEnded => "SlotNotificationStreamEnded",
+        }
+    }
+
+    /// Whether this error is fatal and makes farm unusable
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            FarmingError::FailedToSubscribeSlotInfo { .. } => true,
+            FarmingError::FailedToGetFarmerInfo { .. } => true,
+            FarmingError::LowLevelAuditing(_) => true,
+            FarmingError::LowLevelProving(error) => error.is_fatal(),
+            FarmingError::Io(_) => true,
+            FarmingError::Decoded(error) => error.is_fatal,
+            FarmingError::SlotNotificationStreamEnded => true,
+        }
+    }
+}
+
+/// Various farming notifications
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum FarmingNotification {
+    /// Auditing
+    Auditing(AuditingDetails),
+    /// Proving
+    Proving(ProvingDetails),
+    /// Non-fatal farming error
+    NonFatalError(Arc<FarmingError>),
+}
+
+/// Details about sector currently being plotted
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorPlottingDetails {
+    /// Starting plotting of a sector
+    Starting {
+        /// Progress so far in % (not including this sector)
+        progress: f32,
+        /// Whether sector is being replotted
+        replotting: bool,
+        /// Whether this is the last sector queued so far
+        last_queued: bool,
+    },
+    /// Downloading sector pieces
+    Downloading,
+    /// Downloaded sector pieces
+    Downloaded(Duration),
+    /// Encoding sector pieces
+    Encoding,
+    /// Encoded sector pieces
+    Encoded(Duration),
+    /// Writing sector
+    Writing,
+    /// Written sector
+    Written(Duration),
+    /// Finished plotting
+    Finished {
+        /// Information about plotted sector
+        plotted_sector: PlottedSector,
+        /// Information about old plotted sector that was replaced
+        old_plotted_sector: Option<PlottedSector>,
+        /// How much time it took to plot a sector
+        time: Duration,
+    },
+}
+
+/// Details about sector expiration
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorExpirationDetails {
+    /// Sector expiration became known
+    Determined {
+        /// Segment index at which sector expires
+        expires_at: SegmentIndex,
+    },
+    /// Sector will expire at the next segment index and should be replotted
+    AboutToExpire,
+    /// Sector already expired
+    Expired,
+}
+
+/// Various sector updates
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum SectorUpdate {
+    /// Sector is being plotted
+    Plotting(SectorPlottingDetails),
+    /// Sector expiration information updated
+    Expiration(SectorExpirationDetails),
+}
+
+/// Abstract piece reader implementation
+#[async_trait]
+pub trait PieceReader: Send + Sync + fmt::Debug {
+    /// Read piece from sector by offset, `None` means input parameters are incorrect or piece
+    /// reader was shut down
+    async fn read_piece(
+        &self,
+        sector_index: SectorIndex,
+        piece_offset: PieceOffset,
+    ) -> Result<Option<Piece>, FarmError>;
+}
+
+/// Opaque handler ID for event handlers, once dropped handler will be removed automatically
+pub trait HandlerId: Send + fmt::Debug {
+    /// Consumes [`HandlerId`] and prevents handler from being removed automatically.
+    fn detach(&self);
+}
+
+impl HandlerId for event_listener_primitives::HandlerId {
+    fn detach(&self) {
+        self.detach();
+    }
+}
+
+/// An identifier for a farm, can be used for in logs, thread names, etc.
+#[derive(
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
+)]
+#[serde(untagged)]
+pub enum FarmId {
+    /// Farm ID
+    Ulid(Ulid),
+}
+
+#[allow(clippy::new_without_default)]
+impl FarmId {
+    /// Creates new ID
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
+
+/// Abstract farm implementation
+#[async_trait(?Send)]
+pub trait Farm {
+    /// ID of this farm
+    fn id(&self) -> &FarmId;
+
+    /// Number of sectors in this farm
+    fn total_sectors_count(&self) -> SectorIndex;
+
+    /// Number of sectors successfully plotted so far
+    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError>;
+
+    /// Read information about sectors plotted so far
+    async fn plotted_sectors(
+        &self,
+    ) -> Result<Box<dyn Stream<Item = Result<PlottedSector, FarmError>> + Unpin + '_>, FarmError>;
+
+    /// Get piece cache instance
+    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static>;
+
+    /// Get plot cache instance
+    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static>;
+
+    /// Get piece reader to read plotted pieces later
+    fn piece_reader(&self) -> Arc<dyn PieceReader + 'static>;
+
+    /// Subscribe to sector updates
+    fn on_sector_update(
+        &self,
+        callback: HandlerFn<(SectorIndex, SectorUpdate)>,
+    ) -> Box<dyn HandlerId>;
+
+    /// Subscribe to farming notifications
+    fn on_farming_notification(
+        &self,
+        callback: HandlerFn<FarmingNotification>,
+    ) -> Box<dyn HandlerId>;
+
+    /// Subscribe to new solution notification
+    fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn HandlerId>;
+
+    /// Run and wait for background threads to exit or return an error
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
+}

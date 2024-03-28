@@ -1,14 +1,20 @@
 #[cfg(test)]
 mod tests;
 
+use crate::farm::{FarmError, PieceCache, PieceCacheOffset};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
-use derive_more::Display;
+use crate::utils::AsyncJoinOnDrop;
+use async_trait::async_trait;
+use futures::channel::mpsc;
+use futures::{stream, SinkExt, Stream, StreamExt};
+use parking_lot::Mutex;
 #[cfg(not(windows))]
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
+use std::task::Poll;
 use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash_list;
 use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
@@ -16,7 +22,13 @@ use subspace_farmer_components::file_ext::FileExt;
 #[cfg(not(windows))]
 use subspace_farmer_components::file_ext::OpenOptionsExt;
 use thiserror::Error;
+use tokio::runtime::Handle;
+use tokio::task;
 use tracing::{debug, info, warn};
+
+/// How many pieces should be skipped before stopping to check the rest of contents, this allows to
+/// not miss most of the pieces after one or two corrupted pieces
+const CONTENTS_READ_SKIP_LIMIT: usize = 3;
 
 /// Disk piece cache open error
 #[derive(Debug, Error)]
@@ -43,11 +55,6 @@ pub enum DiskPieceCacheError {
     ChecksumMismatch,
 }
 
-/// Offset wrapper for pieces in [`DiskPieceCache`]
-#[derive(Debug, Display, Copy, Clone)]
-#[repr(transparent)]
-pub struct Offset(u32);
-
 #[derive(Debug)]
 struct Inner {
     #[cfg(not(windows))]
@@ -64,6 +71,64 @@ pub struct DiskPieceCache {
     inner: Arc<Inner>,
 }
 
+#[async_trait]
+impl PieceCache for DiskPieceCache {
+    fn max_num_elements(&self) -> usize {
+        self.inner.num_elements as usize
+    }
+
+    async fn contents(
+        &self,
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_> {
+        let this = self.clone();
+        let (mut sender, receiver) = mpsc::channel(1);
+        let read_contents = task::spawn_blocking(move || {
+            let contents = this.contents();
+            for (piece_cache_offset, maybe_piece) in contents {
+                if let Err(error) =
+                    Handle::current().block_on(sender.send((piece_cache_offset, maybe_piece)))
+                {
+                    debug!(%error, "Aborting contents iteration due to receiver dropping");
+                    break;
+                }
+            }
+        });
+        let read_contents = Mutex::new(Some(AsyncJoinOnDrop::new(read_contents, false)));
+        // Change order such that in closure below `receiver` is dropped before `read_contents`
+        let mut receiver = receiver;
+
+        Box::new(stream::poll_fn(move |ctx| {
+            let poll_result = receiver.poll_next_unpin(ctx);
+
+            if matches!(poll_result, Poll::Ready(None)) {
+                read_contents.lock().take();
+            }
+
+            poll_result
+        }))
+    }
+
+    async fn write_piece(
+        &self,
+        offset: PieceCacheOffset,
+        piece_index: PieceIndex,
+        piece: &Piece,
+    ) -> Result<(), FarmError> {
+        Ok(self.write_piece(offset, piece_index, piece)?)
+    }
+
+    async fn read_piece_index(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<PieceIndex>, FarmError> {
+        Ok(self.read_piece_index(offset)?)
+    }
+
+    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
+        Ok(self.read_piece(offset)?)
+    }
+}
+
 impl DiskPieceCache {
     pub(crate) const FILE_NAME: &'static str = "piece_cache.bin";
 
@@ -73,7 +138,7 @@ impl DiskPieceCache {
         }
 
         #[cfg(not(windows))]
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -84,7 +149,7 @@ impl DiskPieceCache {
         file.advise_random_access()?;
 
         #[cfg(windows)]
-        let mut file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
+        let file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
         // Align plot file size for disk sector size
@@ -111,34 +176,38 @@ impl DiskPieceCache {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }
 
-    /// Contents of this disk cache
+    /// Contents of this disk piece cache
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
     pub(crate) fn contents(
         &self,
-    ) -> impl ExactSizeIterator<Item = (Offset, Option<PieceIndex>)> + '_ {
+    ) -> impl ExactSizeIterator<Item = (PieceCacheOffset, Option<PieceIndex>)> + '_ {
         let mut element = vec![0; Self::element_size() as usize];
-        let mut early_exit = false;
+        let mut current_skip = 0;
 
         // TODO: Parallelize or read in larger batches
         (0..self.inner.num_elements).map(move |offset| {
-            if early_exit {
-                return (Offset(offset), None);
+            if current_skip > CONTENTS_READ_SKIP_LIMIT {
+                return (PieceCacheOffset(offset), None);
             }
 
             match self.read_piece_internal(offset, &mut element) {
                 Ok(maybe_piece_index) => {
                     if maybe_piece_index.is_none() {
-                        // End of stored pieces, no need to read further
-                        early_exit = true;
+                        current_skip += 1;
+                    } else {
+                        current_skip = 0;
                     }
 
-                    (Offset(offset), maybe_piece_index)
+                    (PieceCacheOffset(offset), maybe_piece_index)
                 }
                 Err(error) => {
                     warn!(%error, %offset, "Failed to read cache element");
-                    (Offset(offset), None)
+
+                    current_skip += 1;
+
+                    (PieceCacheOffset(offset), None)
                 }
             }
         })
@@ -150,11 +219,11 @@ impl DiskPieceCache {
     /// doesn't happen for the same piece being accessed!
     pub(crate) fn write_piece(
         &self,
-        offset: Offset,
+        offset: PieceCacheOffset,
         piece_index: PieceIndex,
         piece: &Piece,
     ) -> Result<(), DiskPieceCacheError> {
-        let Offset(offset) = offset;
+        let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
             return Err(DiskPieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
@@ -187,9 +256,9 @@ impl DiskPieceCache {
     /// doesn't happen for the same piece being accessed!
     pub(crate) fn read_piece_index(
         &self,
-        offset: Offset,
+        offset: PieceCacheOffset,
     ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
-        let Offset(offset) = offset;
+        let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return Err(DiskPieceCacheError::OffsetOutsideOfRange {
@@ -207,8 +276,11 @@ impl DiskPieceCache {
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
-    pub(crate) fn read_piece(&self, offset: Offset) -> Result<Option<Piece>, DiskPieceCacheError> {
-        let Offset(offset) = offset;
+    pub(crate) fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<Piece>, DiskPieceCacheError> {
+        let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return Err(DiskPieceCacheError::OffsetOutsideOfRange {

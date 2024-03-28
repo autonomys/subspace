@@ -639,6 +639,7 @@ mod tests {
                     receipt,
                 );
                 let bundle_header_hash = bundle.sealed_header.pre_hash();
+                let bundle_size = bundle.size();
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
@@ -649,7 +650,7 @@ mod tests {
                     vec![BundleDigest {
                         header_hash: bundle_header_hash,
                         extrinsics_root: bundle_extrinsics_root,
-                        size: 0,
+                        size: bundle_size,
                     }]
                 );
                 assert!(InboxedBundleAuthor::<Test>::contains_key(

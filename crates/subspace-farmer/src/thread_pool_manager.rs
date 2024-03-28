@@ -1,4 +1,5 @@
-use parking_lot::{Condvar, Mutex};
+use event_listener::Event;
+use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuildError};
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -19,8 +20,9 @@ struct Inner {
 /// Wrapper around [`PlottingThreadPoolPair`] that on `Drop` will return thread pool back into corresponding
 /// [`PlottingThreadPoolManager`].
 #[derive(Debug)]
+#[must_use]
 pub struct PlottingThreadPoolsGuard {
-    inner: Arc<(Mutex<Inner>, Condvar)>,
+    inner: Arc<(Mutex<Inner>, Event)>,
     thread_pool_pair: Option<PlottingThreadPoolPair>,
 }
 
@@ -36,14 +38,13 @@ impl Deref for PlottingThreadPoolsGuard {
 
 impl Drop for PlottingThreadPoolsGuard {
     fn drop(&mut self) {
-        let (mutex, cvar) = &*self.inner;
-        let mut inner = mutex.lock();
-        inner.thread_pool_pairs.push(
+        let (mutex, event) = &*self.inner;
+        mutex.lock().thread_pool_pairs.push(
             self.thread_pool_pair
                 .take()
                 .expect("Happens only once in `Drop`; qed"),
         );
-        cvar.notify_one();
+        event.notify_additional(1);
     }
 }
 
@@ -61,7 +62,7 @@ impl Drop for PlottingThreadPoolsGuard {
 /// thread pool.
 #[derive(Debug, Clone)]
 pub struct PlottingThreadPoolManager {
-    inner: Arc<(Mutex<Inner>, Condvar)>,
+    inner: Arc<(Mutex<Inner>, Event)>,
 }
 
 impl PlottingThreadPoolManager {
@@ -83,23 +84,29 @@ impl PlottingThreadPoolManager {
         };
 
         Ok(Self {
-            inner: Arc::new((Mutex::new(inner), Condvar::new())),
+            inner: Arc::new((Mutex::new(inner), Event::new())),
         })
     }
 
-    /// Get one of inner thread pool pairs, will block until one is available if needed
-    #[must_use]
-    pub fn get_thread_pools(&self) -> PlottingThreadPoolsGuard {
-        let (mutex, cvar) = &*self.inner;
-        let mut inner = mutex.lock();
+    /// Get one of inner thread pool pairs, will wait until one is available if needed
+    pub async fn get_thread_pools(&self) -> PlottingThreadPoolsGuard {
+        let (mutex, event) = &*self.inner;
 
-        let thread_pool_pair = inner.thread_pool_pairs.pop().unwrap_or_else(|| {
-            cvar.wait(&mut inner);
+        let thread_pool_pair = loop {
+            let listener = event.listen();
 
-            inner.thread_pool_pairs.pop().expect(
-                "Guaranteed by parking_lot's API to happen when thread pool is inserted; qed",
-            )
-        });
+            if let Some(thread_pool_pair) = mutex.lock().thread_pool_pairs.pop() {
+                drop(listener);
+                // It is possible that we got here because there was the last free pair available
+                // and in the meantime listener received notification. Just in case that was the
+                // case, notify one more listener (if there is any) to make sure all available
+                // thread pools are utilized when there is demand for them.
+                event.notify(1);
+                break thread_pool_pair;
+            }
+
+            listener.await;
+        };
 
         PlottingThreadPoolsGuard {
             inner: Arc::clone(&self.inner),
