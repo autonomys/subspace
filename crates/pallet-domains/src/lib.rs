@@ -75,6 +75,7 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, Header, One, Zero};
+use sp_runtime::transaction_validity::TransactionPriority;
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
@@ -122,6 +123,12 @@ pub type OpaqueBundleOf<T> = OpaqueBundle<
 pub(crate) struct ElectionVerificationParams<Balance> {
     operators: BTreeMap<OperatorId, Balance>,
     total_domain_stake: Balance,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub(crate) enum FraudProofTag {
+    BadER(DomainId),
+    BundleEquivocation(OperatorId),
 }
 
 pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Number;
@@ -1457,17 +1464,6 @@ mod pallet {
         }
     }
 
-    /// Constructs a `TransactionValidity` with pallet-executor specific defaults.
-    fn unsigned_validity(prefix: &'static str, tag: impl Encode) -> TransactionValidity {
-        ValidTransaction::with_tag_prefix(prefix)
-            .priority(TransactionPriority::MAX)
-            .and_provides(tag)
-            .longevity(TransactionLongevity::MAX)
-            // We need this extrinsic to be propagated to the farmer nodes.
-            .propagate(true)
-            .build()
-    }
-
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -1483,6 +1479,7 @@ mod pallet {
                         .map_err(|_| InvalidTransaction::Call.into())
                     }),
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
+                    .map(|_| ())
                     .map_err(|_| InvalidTransaction::Call.into()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
@@ -1539,7 +1536,9 @@ mod pallet {
                     }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
+                        // Bundle have a bit higher priority than normal extrinsic but must less than
+                        // fraud proof
+                        .priority(1)
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
@@ -1548,16 +1547,24 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
-                        log::warn!(
-                            target: "runtime::domains",
-                            "Bad fraud proof {fraud_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
+                    let (tag, priority) = match Self::validate_fraud_proof(fraud_proof) {
+                        Err(e) => {
+                            log::warn!(
+                                target: "runtime::domains",
+                                "Bad fraud proof {fraud_proof:?}, error: {e:?}",
+                            );
+                            return InvalidTransactionCode::FraudProof.into();
+                        }
+                        Ok(tp) => tp,
+                    };
 
-                    // TODO: proper tag value.
-                    unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitFraudProof")
+                        .priority(priority)
+                        .and_provides(tag)
+                        .longevity(TransactionLongevity::MAX)
+                        // We need this extrinsic to be propagated to the farmer nodes.
+                        .propagate(true)
+                        .build()
                 }
 
                 _ => InvalidTransaction::Call.into(),
@@ -1811,11 +1818,14 @@ impl<T: Config> Pallet<T> {
 
     fn validate_fraud_proof(
         fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
-    ) -> Result<(), FraudProofError> {
-        if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
+    ) -> Result<(FraudProofTag, TransactionPriority), FraudProofError> {
+        let tag_and_priority = if let Some(bad_receipt_hash) =
+            fraud_proof.targeted_bad_receipt_hash()
+        {
             let bad_receipt = BlockTreeNodes::<T>::get(bad_receipt_hash)
                 .ok_or(FraudProofError::BadReceiptNotFound)?
                 .execution_receipt;
+            let domain_block_number = bad_receipt.domain_block_number;
 
             ensure!(
                 !bad_receipt.domain_block_number.is_zero(),
@@ -1956,6 +1966,20 @@ impl<T: Config> Pallet<T> {
                 })?,
                 _ => return Err(FraudProofError::UnexpectedFraudProof),
             }
+
+            // The priority of fraud proof is determined by how many blocks left before the bad ER
+            // is confirmed, the less the more emergency it is, thus give a higher priority.
+            let block_before_bad_er_confirm = domain_block_number.saturating_sub(
+                Self::latest_confirmed_domain_block_number(fraud_proof.domain_id()),
+            );
+            let priority =
+                TransactionPriority::MAX - block_before_bad_er_confirm.saturated_into::<u64>();
+
+            // Use the domain id as tag thus the consensus node only accept one fraud proof for a
+            // specific domain at a time
+            let tag = FraudProofTag::BadER(fraud_proof.domain_id());
+
+            (tag, priority)
         } else if let Some((bad_operator_id, _)) =
             fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
         {
@@ -1980,9 +2004,23 @@ impl<T: Config> Pallet<T> {
 
                 _ => return Err(FraudProofError::UnexpectedFraudProof),
             }
-        }
 
-        Ok(())
+            // Bundle equivacotion fraud proof doesn't target bad ER thus we give it the lowest priority
+            // compared to other fraud proofs
+            let priority = TransactionPriority::MAX
+                - T::BlockTreePruningDepth::get().saturated_into::<u64>()
+                - 1;
+
+            // Use the operator id as tag thus the consensus node only accept one bundle equivacotion fraud proof
+            // for a specific operator at a time
+            let tag = FraudProofTag::BundleEquivocation(bad_operator_id);
+
+            (tag, priority)
+        } else {
+            return Err(FraudProofError::UnexpectedFraudProof);
+        };
+
+        Ok(tag_and_priority)
     }
 
     /// Return operators specific election verification params for Proof of Election verification.

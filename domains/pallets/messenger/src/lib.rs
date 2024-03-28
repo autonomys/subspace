@@ -436,7 +436,9 @@ mod pallet {
                         ));
                     };
                     valid_tx_builder
-                        .priority(TransactionPriority::MAX)
+                        // XDM have a bit higher priority than normal extrinsic but must less than
+                        // fraud proof
+                        .priority(1)
                         .longevity(TransactionLongevity::MAX)
                         .and_provides((msg.dst_chain_id, msg.channel_id, msg.nonce))
                         .propagate(true)
@@ -456,7 +458,9 @@ mod pallet {
                         ));
                     };
                     valid_tx_builder
-                        .priority(TransactionPriority::MAX)
+                        // XDM have a bit higher priority than normal extrinsic but must less than
+                        // fraud proof
+                        .priority(1)
                         .longevity(TransactionLongevity::MAX)
                         .and_provides((msg.dst_chain_id, msg.channel_id, msg.nonce))
                         .propagate(true)

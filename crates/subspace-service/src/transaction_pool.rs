@@ -161,6 +161,10 @@ where
         let slot_probability = self.chain_constants.slot_probability();
         let fraud_proof_submit_sink = self.fraud_proof_submit_sink.clone();
         async move {
+            // TODO: after https://github.com/paritytech/polkadot-sdk/issues/3705 is resolved, check if
+            // there is already a fraud proof with the same tag and higher priority in the tx pool, if so
+            // drop the incoming fraud proof before validating it.
+
             let uxt_validity = chain_api
                 .validate_transaction(at, source, uxt.clone())
                 .await?;
