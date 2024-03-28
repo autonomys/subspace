@@ -1,12 +1,12 @@
 [package]
-name = "sp-certificate-registry"
+name = "sp-auto-id"
 version = "0.1.0"
 authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Primitives for X509 Cerificate verification"
+description = "Primitives for AutoId"
 include = [
     "/src",
     "/Cargo.toml",

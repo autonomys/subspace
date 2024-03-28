@@ -8,7 +8,7 @@ use frame_support::traits::{ConstU16, ConstU32, ConstU64, Time};
 use pem::parse;
 use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;
-use sp_certificate_registry::DerVec;
+use sp_auto_id::DerVec;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
@@ -75,11 +75,9 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
 
     let mut ext: sp_io::TestExternalities = t.into();
-    ext.register_extension(
-        sp_certificate_registry::host_functions::HostFunctionExtension::new(Arc::new(
-            sp_certificate_registry::host_functions::HostFunctionsImpl,
-        )),
-    );
+    ext.register_extension(sp_auto_id::host_functions::HostFunctionExtension::new(
+        Arc::new(sp_auto_id::host_functions::HostFunctionsImpl),
+    ));
     ext
 }
 

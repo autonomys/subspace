@@ -17,7 +17,7 @@ codec = { package = "parity-scale-codec", version = "3.6.5", default-features = 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-certificate-registry = { version = "0.1.0", default-features = false, path = "../../primitives/certificate-registry" }
+sp-auto-id = { version = "0.1.0", default-features = false, path = "../../primitives/auto-id" }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-runtime-primitives" }
@@ -35,7 +35,7 @@ std = [
   "frame-support/std",
   "frame-system/std",
   "scale-info/std",
-  "sp-certificate-registry/std",
+  "sp-auto-id/std",
   "sp-core/std",
   "sp-runtime/std",
   "subspace-runtime-primitives/std",

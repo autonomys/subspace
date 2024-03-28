@@ -30,8 +30,8 @@ use frame_support::traits::Time;
 use frame_support::{ensure, PalletError};
 pub use pallet::*;
 use scale_info::TypeInfo;
-use sp_certificate_registry::signature_verification_runtime_interface::verify_signature;
-use sp_certificate_registry::{DerVec, SignatureVerificationRequest};
+use sp_auto_id::signature_verification_runtime_interface::verify_signature;
+use sp_auto_id::{DerVec, SignatureVerificationRequest};
 use sp_core::U256;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;

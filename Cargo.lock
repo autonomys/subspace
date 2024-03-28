@@ -7220,7 +7220,7 @@ dependencies = [
  "pem 3.0.3",
  "ring 0.17.8",
  "scale-info",
- "sp-certificate-registry",
+ "sp-auto-id",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -10656,6 +10656,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-auto-id"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-externalities",
+ "sp-runtime-interface",
+ "x509-parser 0.16.0",
+]
+
+[[package]]
 name = "sp-block-builder"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=d6b500960579d73c43fc4ef550b703acfa61c4c8#d6b500960579d73c43fc4ef550b703acfa61c4c8"
@@ -10693,17 +10704,6 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "thiserror",
-]
-
-[[package]]
-name = "sp-certificate-registry"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-externalities",
- "sp-runtime-interface",
- "x509-parser 0.16.0",
 ]
 
 [[package]]
