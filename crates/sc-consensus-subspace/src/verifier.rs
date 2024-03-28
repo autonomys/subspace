@@ -483,6 +483,21 @@ where
             "Verifying",
         );
 
+        let best_number = self.client.info().best_number;
+        if *block.header.number() + self.chain_constants.confirmation_depth_k().into() < best_number
+        {
+            debug!(
+                header = ?block.header,
+                %best_number,
+                "Rejecting block below archiving point"
+            );
+
+            return Err(format!(
+                "Rejecting block #{} below archiving point",
+                block.header.number()
+            ));
+        }
+
         let hash = block.header.hash();
 
         debug!(
