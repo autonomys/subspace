@@ -144,11 +144,20 @@ impl<Block: BlockT> SubspaceLink<Block> {
 
     /// Get blocks that are expected to be included at specified block number.
     pub fn segment_headers_for_block(&self, block_number: NumberFor<Block>) -> Vec<SegmentHeader> {
-        self.segment_headers
+        println!("From within segment_headers_for_block: {:?}", block_number);
+        let result = self
+            .segment_headers
             .lock()
             .peek(&block_number)
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        println!(
+            "From within segment_headers_for_block: {:?}   {:?}",
+            block_number, result
+        );
+
+        result
     }
 
     /// Subspace chain constants.

@@ -590,19 +590,21 @@ where
                     inherent_data,
                 )?;
 
-                if !inherent_res.ok() {
-                    for (i, e) in inherent_res.into_errors() {
-                        match create_inherent_data_providers
-                            .try_handle_error(&i, &e)
-                            .await
-                        {
-                            Some(res) => res.map_err(Error::CheckInherents)?,
-                            None => return Err(Error::CheckInherentsUnhandled(i)),
-                        }
-                    }
-                }
+                // if !inherent_res.ok() {
+                //     for (i, e) in inherent_res.into_errors() {
+                //         match create_inherent_data_providers
+                //             .try_handle_error(&i, &e)
+                //             .await
+                //         {
+                //             Some(res) => res.map_err(Error::CheckInherents)?,
+                //             None => return Err(Error::CheckInherentsUnhandled(i)),
+                //         }
+                //     }
+                // }
             }
         }
+
+        println!("Here 2 hash = {:?}", block_hash);
 
         Ok(())
     }
