@@ -12,18 +12,18 @@ description = "Common primitives of subspace domain runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "7627e61d80275a4cf24d06f27491f6c31eadb7b7" }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "6fc6fb81b921ed0833fc9de3315e1be188c43f13" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
 parity-scale-codec = { version = "3.6.9", default-features = false, features = ["derive"] }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.195", default-features = false, features = ["alloc", "derive"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives", default-features = false }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
-sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "906f52036bf37b81a1089191fdfdee2c92d87807" }
 
 [features]
 default = ["std"]
