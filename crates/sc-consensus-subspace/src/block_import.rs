@@ -49,16 +49,18 @@ use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
+use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, SectorId, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
-use tracing::warn;
+use tracing::{debug, error, trace, warn};
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that can be used to pause block production if desired.
@@ -69,11 +71,20 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
+
     /// Sender for pausing the block import when operator is not fast enough to process
     /// the consensus block.
     pub acknowledgement_sender: mpsc::Sender<()>,
 }
 use subspace_verification::Error as VerificationPrimitiveError;
+
+/// Contains required data for archiver initialization with existing state
+#[derive(Debug, Clone)]
+pub struct ArchiverInitilizationData<Block> {
+    // TODO: convert to separate fields?
+    /// Requied fields for archiver initialization: Segment header, SignedBlock and BlockObjectMapping
+    pub last_archived_block: (SegmentHeader, SignedBlock<Block>, BlockObjectMapping),
+}
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
@@ -358,6 +369,13 @@ where
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
 
+        trace!(
+            ?block_hash,
+            ?parent_hash,
+            %block_number,
+            "Block import verification."
+        );
+
         let pre_digest = &subspace_digest_items.pre_digest;
         if let Some(root_plot_public_key) = root_plot_public_key {
             if &pre_digest.solution().public_key != root_plot_public_key {
@@ -622,6 +640,8 @@ where
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
+
+        debug!(%block_number, ?block_hash, origin=?block.origin, "Subspace block import.");
 
         // Early exit if block already in chain
         match self.client.status(block_hash)? {
