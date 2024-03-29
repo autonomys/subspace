@@ -15,12 +15,12 @@ include = [
 futures = "0.3.29"
 parity-scale-codec = { version = "3.6.9", features = ["derive"] }
 parking_lot = "0.12.1"
-sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sc-network-gossip = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sc-network-gossip = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
-sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 tracing = "0.1.40"

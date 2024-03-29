@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 blake2 = { version = "0.10.6", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 hash-db = { version = "0.16.0", default-features = false }
 memory-db = { version = "0.32.0", default-features = false }
 hexlit = "0.5.5"
@@ -24,16 +24,16 @@ rand_chacha = { version = "0.3.1", default-features = false }
 rs_merkle = { version = "1.4.2", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.195", default-features = false, features = ["alloc", "derive"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-application-crypto = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-trie = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-application-crypto = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-trie = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 trie-db = { version = "0.28.0", default-features = false }

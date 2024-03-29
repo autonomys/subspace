@@ -19,17 +19,17 @@ serde = { version = "1.0.195", optional = true }
 
 # Substrate Dependencies
 
-frame-support = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-sp-consensus-grandpa = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-sp-std = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
+frame-support = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
+frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
+sp-consensus-grandpa = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
+sp-std = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7", default-features = false }
 
 [dev-dependencies]
 ed25519-dalek = { version = "2.1.0", default-features = false }
-sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
-sp-application-crypto = { git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
+sp-application-crypto = { git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 
 [features]
 default = ["std"]

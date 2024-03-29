@@ -15,7 +15,7 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
-sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "756241c2d64021e8fded2b5c33c39de84fd603d7" }
 
 [features]
 default = ["std"]
