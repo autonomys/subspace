@@ -539,24 +539,10 @@ where
 
             let addr_string = addr.to_string();
             // Listen on random port if specified is already occupied
-            match addr.pop() {
-                Some(Protocol::Tcp(_port)) => {
-                    info!(
-                        "Failed to listen on {addr_string} ({error}), falling back to random port"
-                    );
-                    addr.push(Protocol::Tcp(0));
-                    swarm.listen_on(addr)?;
-                }
-                Some(Protocol::Udp(_port)) => {
-                    info!(
-                        "Failed to listen on {addr_string} ({error}), falling back to random port"
-                    );
-                    addr.push(Protocol::Udp(0));
-                    swarm.listen_on(addr)?;
-                }
-                _ => {
-                    // Do not care about other protocols
-                }
+            if let Some(Protocol::Tcp(_port)) = addr.pop() {
+                info!("Failed to listen on {addr_string} ({error}), falling back to random port");
+                addr.push(Protocol::Tcp(0));
+                swarm.listen_on(addr)?;
             }
         }
     }
