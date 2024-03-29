@@ -1,0 +1,28 @@
+[package]
+name = "subspace-cluster-networking"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+description = "Networking functionality for cluster applications"
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+async-trait = "0.1.77"
+backoff = { version = "0.4.0", features = ["tokio"] }
+event-listener-primitives = "2.0.1"
+futures = "0.3.29"
+libp2p = { version = "0.53.2", features = ["dns", "macros", "metrics", "noise", "request-response", "tcp", "tokio", "yamux"] }
+parity-scale-codec = { version = "3.6.9", features = ["derive"] }
+parking_lot = "0.12.1"
+thiserror = "1.0.56"
+tokio = { version = "1.35.1", features = ["macros", "parking_lot", "rt-multi-thread"] }
+tracing = "0.1.40"
+
+[dev-dependencies]
+futures_ringbuf = "0.4.0"
