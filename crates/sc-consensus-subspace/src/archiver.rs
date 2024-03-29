@@ -58,7 +58,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender, TryRecvError};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -495,29 +495,12 @@ where
             )
             .expect("Incorrect parameters for archiver");
 
-            if last_segment_header.segment_index() == SegmentIndex::ZERO {
-                // Due to sync from DSN it is possible that the very first segment header is known
-                // even though only genesis block exists, in this case there is nothing else left to
-                // archive and we need to insert segment header to be included in the block 1
-                // explicitly here or else it'll be missing and block import will fail.
-                //
-                // Checking for segment index instead of best block number ensures we support
-                // hypothetical reorgs of the early blocks within confirmation depth distance from
-                // genesis.
-                subspace_link
-                    .segment_headers
-                    .lock()
-                    .put(One::one(), vec![last_segment_header]);
-            } else {
-                // Otherwise segment header is expected to be included in
-                // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
-                // processing block `+ confirmation_depth_k` and corresponding segment header will
-                // be included in the next block after that
-                subspace_link.segment_headers.lock().put(
-                    (last_archived_block_number + confirmation_depth_k + 1).into(),
-                    vec![last_segment_header],
-                );
-            }
+            update_segment_headers_for_archived_block(
+                subspace_link.clone(),
+                last_segment_header,
+                last_archived_block_number.into(),
+                confirmation_depth_k,
+            );
 
             archiver
         } else {
@@ -653,6 +636,37 @@ where
     })
 }
 
+pub(crate) fn update_segment_headers_for_archived_block<Block: BlockT>(
+    subspace_link: SubspaceLink<Block>,
+    last_segment_header: SegmentHeader,
+    last_archived_block_number: NumberFor<Block>,
+    confirmation_depth_k: BlockNumber,
+) {
+    if last_segment_header.segment_index() == SegmentIndex::ZERO {
+        // Due to sync from DSN it is possible that the very first segment header is known
+        // even though only genesis block exists, in this case there is nothing else left to
+        // archive and we need to insert segment header to be included in the block 1
+        // explicitly here or else it'll be missing and block import will fail.
+        //
+        // Checking for segment index instead of best block number ensures we support
+        // hypothetical reorgs of the early blocks within confirmation depth distance from
+        // genesis.
+        subspace_link
+            .segment_headers
+            .lock()
+            .put(One::one(), vec![last_segment_header]);
+    } else {
+        // Otherwise segment header is expected to be included in
+        // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
+        // processing block `+ confirmation_depth_k` and corresponding segment header will
+        // be included in the next block after that
+        subspace_link.segment_headers.lock().put(
+            last_archived_block_number + (confirmation_depth_k + 1).into(),
+            vec![last_segment_header],
+        );
+    }
+}
+
 fn finalize_block<Block, Backend, Client>(
     client: &Client,
     telemetry: Option<TelemetryHandle>,
@@ -683,7 +697,7 @@ fn finalize_block<Block, Backend, Client>(
                 error
             })?;
 
-        debug!("Finalizing blocks up to ({:?}, {})", number, hash);
+        info!("Finalizing blocks up to ({:?}, {})", number, hash);
 
         telemetry!(
             telemetry;
@@ -755,147 +769,186 @@ where
     let archived_segment_notification_sender =
         subspace_link.archived_segment_notification_sender.clone();
     let segment_headers = Arc::clone(&subspace_link.segment_headers);
+    let mut archiver_notification_stream = subspace_link.archiver_notification_stream.subscribe();
 
-    Ok(async move {
-        // Farmers may have not received all previous segments, send them now.
-        for archived_segment in older_archived_segments {
-            send_archived_segment_notification(
-                &archived_segment_notification_sender,
-                archived_segment,
-            )
-            .await;
-        }
-
-        while let Some(BlockImportingNotification {
-            block_number,
-            // Just to be very explicit that block import shouldn't continue until archiving
-            // is over
-            acknowledgement_sender: _acknowledgement_sender,
-            ..
-        }) = block_importing_notification_stream.next().await
-        {
-            let block_number_to_archive =
-                match block_number.checked_sub(&confirmation_depth_k.into()) {
-                    Some(block_number_to_archive) => block_number_to_archive,
-                    None => {
-                        continue;
-                    }
-                };
-
-            if best_archived_block_number >= block_number_to_archive {
-                // This block was already archived, skip
-                continue;
-            }
-
-            best_archived_block_number = block_number_to_archive;
-
-            let block = client
-                .block(
-                    client
-                        .hash(block_number_to_archive)?
-                        .expect("Older block by number must always exist"),
-                )?
-                .expect("Older block by number must always exist");
-
-            let parent_block_hash = *block.block.header().parent_hash();
-            let block_hash_to_archive = block.block.hash();
-
-            debug!(
-                "Archiving block {:?} ({})",
-                block_number_to_archive, block_hash_to_archive
-            );
-
-            if parent_block_hash != best_archived_block_hash {
-                let error = format!(
-                    "Attempt to switch to a different fork beyond archiving depth, \
-                    can't do it: parent block hash {}, best archived block hash {}",
-                    parent_block_hash, best_archived_block_hash
-                );
-                return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
-                    error.into(),
-                )));
-            }
-
-            best_archived_block_hash = block_hash_to_archive;
-
-            let block_object_mappings = client
-                .runtime_api()
-                .validated_object_call_hashes(block_hash_to_archive)
-                .and_then(|calls| {
-                    client.runtime_api().extract_block_object_mapping(
-                        parent_block_hash,
-                        block.block.clone(),
-                        calls,
-                    )
-                })
-                .map_err(|error| {
-                    sp_blockchain::Error::Application(
-                        format!("Failed to retrieve block object mappings: {error}").into(),
-                    )
-                })?;
-
-            let encoded_block = encode_block(block);
-            debug!(
-                "Encoded block {} has size of {:.2} kiB",
-                block_number_to_archive,
-                encoded_block.len() as f32 / 1024.0
-            );
-
-            let mut new_segment_headers = Vec::new();
-            for archived_segment in archiver.add_block(
-                encoded_block,
-                block_object_mappings,
-                !sync_oracle.is_major_syncing(),
-            ) {
-                let segment_header = archived_segment.segment_header;
-
-                segment_headers_store.add_segment_headers(slice::from_ref(&segment_header))?;
-
+    Ok({
+        let subspace_link = subspace_link.clone();
+        async move {
+            // Farmers may have not received all previous segments, send them now.
+            for archived_segment in older_archived_segments {
                 send_archived_segment_notification(
                     &archived_segment_notification_sender,
                     archived_segment,
                 )
                 .await;
-
-                new_segment_headers.push(segment_header);
             }
 
-            if !new_segment_headers.is_empty() {
-                segment_headers
-                    .lock()
-                    .put(block_number + One::one(), new_segment_headers);
+            while let Some(BlockImportingNotification {
+                block_number,
+                // Just to be very explicit that block import shouldn't continue until archiving
+                // is over
+                acknowledgement_sender: _acknowledgement_sender,
+            }) = block_importing_notification_stream.next().await
+            {
+                match archiver_notification_stream.try_recv() {
+                    Ok(data) => {
+                        debug!(?data, "Archiver notification event received.");
+                        let last_archived_block = data.last_archived_block;
 
-                let maybe_block_number_to_finalize = segment_headers_store
-                    .max_segment_index()
-                    // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
-                    .and_then(|max_segment_index| {
-                        max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
-                    })
-                    .and_then(|segment_index| {
-                        segment_headers_store.get_segment_header(segment_index)
-                    })
-                    .map(|segment_header| segment_header.last_archived_block().number)
-                    // Make sure not to finalize block number that does not yet exist (segment
-                    // headers store may contain future blocks during initial sync)
-                    .map(|block_number| best_archived_block_number.min(block_number.into()))
-                    // Do not finalize blocks twice
-                    .filter(|block_number| *block_number > client.info().finalized_number);
+                        let last_archived_segment = last_archived_block.0;
+                        best_archived_block_number =
+                            last_archived_block.0.last_archived_block().number.into();
+                        best_archived_block_hash = last_archived_block.1.block.header().hash();
 
-                if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
-                    let block_hash_to_finalize = client
-                        .hash(block_number_to_finalize)?
-                        .expect("Block about to be finalized must always exist");
-                    finalize_block(
-                        client.as_ref(),
-                        telemetry.clone(),
-                        block_hash_to_finalize,
-                        block_number_to_finalize,
+                        let last_archived_block_encoded = encode_block(last_archived_block.1);
+                        archiver = Archiver::with_initial_state(
+                        archiver.kzg(),
+                        last_archived_segment,
+                        &last_archived_block_encoded,
+                        last_archived_block.2,
+                    ).expect("Invalid initial archival state should stop the application to prevent further losses.");
+
+                        update_segment_headers_for_archived_block(
+                            subspace_link.clone(),
+                            last_archived_segment,
+                            best_archived_block_number,
+                            confirmation_depth_k,
+                        );
+                    }
+                    Err(TryRecvError::Empty) => {
+                        // Expected behavior
+                    }
+                    Err(TryRecvError::Closed) => {
+                        return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
+                            "Unexpected closed archiver-notification-stream.".into(),
+                        )));
+                    }
+                };
+
+                let block_number_to_archive =
+                    match block_number.checked_sub(&confirmation_depth_k.into()) {
+                        Some(block_number_to_archive) => block_number_to_archive,
+                        None => {
+                            continue;
+                        }
+                    };
+
+                if best_archived_block_number >= block_number_to_archive {
+                    debug!(%block_number, "Skipped archiving imported block: already archived.");
+                    // This block was already archived, skip
+                    continue;
+                }
+
+                best_archived_block_number = block_number_to_archive;
+
+                let block = client
+                    .block(
+                        client
+                            .hash(block_number_to_archive)?
+                            .expect("Older block by number must always exist"),
+                    )?
+                    .expect("Older block by number must always exist");
+
+                let parent_block_hash = *block.block.header().parent_hash();
+                let block_hash_to_archive = block.block.hash();
+
+                debug!(
+                    "Archiving block {:?} ({})",
+                    block_number_to_archive, block_hash_to_archive
+                );
+
+                if parent_block_hash != best_archived_block_hash {
+                    let error = format!(
+                        "Attempt to switch to a different fork beyond archiving depth, \
+                    can't do it: parent block hash {}, best archived block hash {}",
+                        parent_block_hash, best_archived_block_hash
                     );
+                    return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
+                        error.into(),
+                    )));
+                }
+
+                best_archived_block_hash = block_hash_to_archive;
+
+                let block_object_mappings = client
+                    .runtime_api()
+                    .validated_object_call_hashes(block_hash_to_archive)
+                    .and_then(|calls| {
+                        client.runtime_api().extract_block_object_mapping(
+                            parent_block_hash,
+                            block.block.clone(),
+                            calls,
+                        )
+                    })
+                    .map_err(|error| {
+                        sp_blockchain::Error::Application(
+                            format!("Failed to retrieve block object mappings: {error}").into(),
+                        )
+                    })?;
+
+                let encoded_block = encode_block(block);
+                debug!(
+                    "Encoded block {} has size of {:.2} kiB",
+                    block_number_to_archive,
+                    encoded_block.len() as f32 / 1024.0
+                );
+
+                let mut new_segment_headers = Vec::new();
+                for archived_segment in archiver.add_block(
+                    encoded_block,
+                    block_object_mappings,
+                    !sync_oracle.is_major_syncing(),
+                ) {
+                    let segment_header = archived_segment.segment_header;
+
+                    segment_headers_store.add_segment_headers(slice::from_ref(&segment_header))?;
+
+                    send_archived_segment_notification(
+                        &archived_segment_notification_sender,
+                        archived_segment,
+                    )
+                    .await;
+
+                    new_segment_headers.push(segment_header);
+                }
+
+                if !new_segment_headers.is_empty() {
+                    segment_headers
+                        .lock()
+                        .put(block_number + One::one(), new_segment_headers);
+
+                    let maybe_block_number_to_finalize = segment_headers_store
+                        .max_segment_index()
+                        // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
+                        .and_then(|max_segment_index| {
+                            max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
+                        })
+                        .and_then(|segment_index| {
+                            segment_headers_store.get_segment_header(segment_index)
+                        })
+                        .map(|segment_header| segment_header.last_archived_block().number)
+                        // Make sure not to finalize block number that does not yet exist (segment
+                        // headers store may contain future blocks during initial sync)
+                        .map(|block_number| best_archived_block_number.min(block_number.into()))
+                        // Do not finalize blocks twice
+                        .filter(|block_number| *block_number > client.info().finalized_number);
+
+                    if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
+                        let block_hash_to_finalize = client
+                            .hash(block_number_to_finalize)?
+                            .expect("Block about to be finalized must always exist");
+                        finalize_block(
+                            client.as_ref(),
+                            telemetry.clone(),
+                            block_hash_to_finalize,
+                            block_number_to_finalize,
+                        );
+                    }
                 }
             }
-        }
 
-        Ok(())
+            Ok(())
+        }
     })
 }
 
@@ -917,7 +970,7 @@ async fn send_archived_segment_notification(
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
     while acknowledgement_receiver.next().await.is_some() {
-        debug!(
+        info!(
             "Archived segment notification acknowledged: {}",
             segment_index
         );
