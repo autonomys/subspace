@@ -58,7 +58,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender, TryRecvError};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -683,7 +683,7 @@ fn finalize_block<Block, Backend, Client>(
                 error
             })?;
 
-        debug!("Finalizing blocks up to ({:?}, {})", number, hash);
+        info!("Finalizing blocks up to ({:?}, {})", number, hash);
 
         telemetry!(
             telemetry;
@@ -755,6 +755,7 @@ where
     let archived_segment_notification_sender =
         subspace_link.archived_segment_notification_sender.clone();
     let segment_headers = Arc::clone(&subspace_link.segment_headers);
+    let mut archiver_notification_stream = subspace_link.archiver_notification_stream.subscribe();
 
     Ok(async move {
         // Farmers may have not received all previous segments, send them now.
@@ -771,9 +772,35 @@ where
             // Just to be very explicit that block import shouldn't continue until archiving
             // is over
             acknowledgement_sender: _acknowledgement_sender,
-            ..
         }) = block_importing_notification_stream.next().await
         {
+            match archiver_notification_stream.try_recv() {
+                Ok(data) => {
+                    info!(?data, "Archiver notification event received."); // TODO: change to debug
+                    let last_archived_block = data.last_archived_block;
+
+                    best_archived_block_number =
+                        last_archived_block.0.last_archived_block().number.into();
+                    best_archived_block_hash = last_archived_block.1.block.header().hash();
+
+                    let last_archived_block_encoded = encode_block(last_archived_block.1);
+                    archiver = Archiver::with_initial_state(
+                        archiver.kzg(),
+                        last_archived_block.0,
+                        &last_archived_block_encoded,
+                        last_archived_block.2,
+                    ).expect("Invalid initial archival state should stop the application to prevent further losses.");
+                }
+                Err(TryRecvError::Empty) => {
+                    // Expected behavior
+                }
+                Err(TryRecvError::Closed) => {
+                    return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
+                        "Unexpected closed archiver-notification-stream.".into(),
+                    )));
+                }
+            };
+
             let block_number_to_archive =
                 match block_number.checked_sub(&confirmation_depth_k.into()) {
                     Some(block_number_to_archive) => block_number_to_archive,
@@ -783,6 +810,7 @@ where
                 };
 
             if best_archived_block_number >= block_number_to_archive {
+                info!(%block_number, "Skipped archiving imported block: already archived.");
                 // This block was already archived, skip
                 continue;
             }
@@ -800,7 +828,7 @@ where
             let parent_block_hash = *block.block.header().parent_hash();
             let block_hash_to_archive = block.block.hash();
 
-            debug!(
+            info!(
                 "Archiving block {:?} ({})",
                 block_number_to_archive, block_hash_to_archive
             );
@@ -917,7 +945,7 @@ async fn send_archived_segment_notification(
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
     while acknowledgement_receiver.next().await.is_some() {
-        debug!(
+        info!(
             "Archived segment notification acknowledged: {}",
             segment_index
         );

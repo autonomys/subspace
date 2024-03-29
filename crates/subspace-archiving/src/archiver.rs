@@ -840,6 +840,10 @@ impl Archiver {
             object_mapping,
         }
     }
+
+    pub fn kzg(&self) -> Kzg {
+        self.kzg.clone()
+    }
 }
 
 /// Validate witness embedded within a piece produced by archiver

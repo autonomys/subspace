@@ -36,7 +36,7 @@ mod tests;
 pub mod verifier;
 
 use crate::archiver::{ArchivedSegmentNotification, FINALIZATION_DEPTH_IN_SEGMENTS};
-use crate::block_import::BlockImportingNotification;
+use crate::block_import::{ArchiverInitilizationData, BlockImportingNotification};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use lru::LruCache;
@@ -57,6 +57,8 @@ pub struct SubspaceLink<Block: BlockT> {
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
+    archiver_notification_sender: SubspaceNotificationSender<ArchiverInitilizationData<Block>>,
+    archiver_notification_stream: SubspaceNotificationStream<ArchiverInitilizationData<Block>>,
     block_importing_notification_sender:
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     block_importing_notification_stream:
@@ -79,6 +81,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
             notification::channel("subspace_archived_segment_notification_stream");
         let (block_importing_notification_sender, block_importing_notification_stream) =
             notification::channel("subspace_block_importing_notification_stream");
+        let (archiver_notification_sender, archiver_notification_stream) =
+            notification::channel("subspace_archiver_notification_stream");
 
         Self {
             new_slot_notification_sender,
@@ -89,6 +93,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
             archived_segment_notification_stream,
             block_importing_notification_sender,
             block_importing_notification_stream,
+            archiver_notification_sender,
+            archiver_notification_stream,
             segment_headers: Arc::new(Mutex::new(LruCache::new(
                 NonZeroUsize::new(u64::from(FINALIZATION_DEPTH_IN_SEGMENTS) as usize + 1)
                     .expect("Not zero; qed"),
@@ -127,6 +133,13 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self,
     ) -> SubspaceNotificationStream<BlockImportingNotification<Block>> {
         self.block_importing_notification_stream.clone()
+    }
+
+    /// Notifies the archiver about the new initialisation request
+    pub fn archiver_notification_sender(
+        &self,
+    ) -> SubspaceNotificationSender<ArchiverInitilizationData<Block>> {
+        self.archiver_notification_sender.clone()
     }
 
     /// Get blocks that are expected to be included at specified block number.

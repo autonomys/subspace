@@ -29,7 +29,7 @@ type SharedNotificationSenders<T> = Arc<Mutex<Vec<TracingUnboundedSender<T>>>>;
 
 /// The sending half of the Subspace notification channel(s).
 #[derive(Clone)]
-pub(crate) struct SubspaceNotificationSender<T: Clone + Send + Sync + fmt::Debug + 'static> {
+pub struct SubspaceNotificationSender<T: Clone + Send + Sync + fmt::Debug + 'static> {
     subscribers: SharedNotificationSenders<T>,
 }
 
@@ -40,7 +40,7 @@ impl<T: Clone + Send + Sync + fmt::Debug + 'static> SubspaceNotificationSender<T
     }
 
     /// Send out a notification to all subscribers.
-    pub(crate) fn notify<F>(&self, get_value: F)
+    pub fn notify<F>(&self, get_value: F)
     where
         F: FnOnce() -> T,
     {
