@@ -1,5 +1,5 @@
 use crate::dsn::DsnConfig;
-use crate::sync_from_dsn::DsnSyncPieceGetter;
+use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
@@ -269,6 +269,8 @@ pub struct SubspaceConfiguration {
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
     pub timekeeper_cpu_cores: HashSet<usize>,
+    /// Enables state-only sync using DSN.
+    pub fast_sync_enabled: bool,
 }
 
 impl Deref for SubspaceConfiguration {

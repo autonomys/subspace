@@ -210,6 +210,7 @@ fn main() -> Result<(), Error> {
                 sync_from_dsn: true,
                 is_timekeeper: false,
                 timekeeper_cpu_cores: Default::default(),
+                fast_sync_enabled: false,
             };
 
             let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
