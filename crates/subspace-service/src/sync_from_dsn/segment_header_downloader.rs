@@ -95,7 +95,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
     /// minimum initial size of [`SEGMENT_HEADER_CONSENSUS_INITIAL_NODES`] peers.
     ///
     /// `Ok(None)` is returned when no peers were found.
-    async fn get_last_segment_header(
+    pub async fn get_last_segment_header(
         &self,
     ) -> Result<Option<(SegmentHeader, Vec<PeerId>)>, Box<dyn Error>> {
         let mut peer_segment_headers = HashMap::<PeerId, Vec<SegmentHeader>>::default();
