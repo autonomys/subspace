@@ -172,6 +172,8 @@ enum StatePruningMode {
     Archive,
     /// Keep only the data of finalized blocks.
     ArchiveCanonical,
+    /// Keep the data of the last number of finalized blocks.
+    Number(u32),
 }
 
 impl FromStr for StatePruningMode {
@@ -181,17 +183,21 @@ impl FromStr for StatePruningMode {
         match input {
             "archive" => Ok(Self::Archive),
             "archive-canonical" => Ok(Self::ArchiveCanonical),
-            _ => Err("Invalid state pruning mode specified".to_string()),
+            n => n
+                .parse()
+                .map_err(|_| "Invalid block pruning mode specified".to_string())
+                .map(Self::Number),
         }
     }
 }
 
 impl fmt::Display for StatePruningMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Archive => "archive",
-            Self::ArchiveCanonical => "archive-canonical",
-        })
+        match self {
+            Self::Archive => f.write_str("archive"),
+            Self::ArchiveCanonical => f.write_str("archive-canonical"),
+            Self::Number(n) => f.write_str(n.to_string().as_str()),
+        }
     }
 }
 
@@ -266,6 +272,7 @@ impl PruningOptions {
         match self.state_pruning {
             StatePruningMode::Archive => PruningMode::ArchiveAll,
             StatePruningMode::ArchiveCanonical => PruningMode::ArchiveCanonical,
+            StatePruningMode::Number(num) => PruningMode::blocks_pruning(num),
         }
     }
 
@@ -407,6 +414,10 @@ pub(super) struct ConsensusChainOptions {
 
     #[clap(flatten)]
     timekeeper_options: TimekeeperOptions,
+
+    /// Experimental support of state-only sync using DSN.
+    #[arg(long, default_value_t = false)]
+    fast_sync: bool,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -450,6 +461,7 @@ pub(super) fn create_consensus_chain_configuration(
         sync_from_dsn,
         storage_monitor,
         mut timekeeper_options,
+        mut fast_sync,
     } = consensus_node_options;
 
     let transaction_pool;
@@ -467,6 +479,7 @@ pub(super) fn create_consensus_chain_configuration(
             network_options.allow_private_ips = true;
             dsn_options.dsn_disable_bootstrap_on_start = true;
             timekeeper_options.timekeeper = true;
+            fast_sync = false; // Experimental state
         }
 
         transaction_pool = pool_config.transaction_pool(dev);
@@ -660,6 +673,7 @@ pub(super) fn create_consensus_chain_configuration(
             sync_from_dsn,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
+            fast_sync_enabled: fast_sync,
         },
         dev,
         pot_external_entropy,

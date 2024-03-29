@@ -1,5 +1,5 @@
 use crate::dsn::DsnConfig;
-use crate::sync_from_dsn::DsnSyncPieceGetter;
+use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
@@ -137,7 +137,11 @@ impl From<SubstrateConfiguration> for Configuration {
                 // Substrate's default
                 max_blocks_per_request: 64,
                 // Substrate's default, full mode
-                sync_mode: SyncMode::Full,
+                sync_mode: SyncMode::LightState {
+                    skip_proofs: true,
+                    storage_chain_mode: false,
+                },
+                //  sync_mode: SyncMode::Full, // TODO: add configurable default sync-state
                 pause_sync: Arc::new(AtomicBool::new(false)),
                 // Substrate's default
                 enable_dht_random_walk: true,
@@ -248,6 +252,8 @@ pub struct SubspaceConfiguration {
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
     pub timekeeper_cpu_cores: HashSet<usize>,
+    /// Enables state-only sync using DSN.
+    pub fast_sync_enabled: bool,
 }
 
 impl Deref for SubspaceConfiguration {
