@@ -119,12 +119,6 @@ struct DsnOptions {
     // TODO: Add more DSN-related parameters
     #[arg(long, default_values_t = [
         Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-            .with(Protocol::Udp(30433))
-            .with(Protocol::QuicV1),
-        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-            .with(Protocol::Udp(30433))
-            .with(Protocol::QuicV1),
-        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(30433)),
         Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
             .with(Protocol::Tcp(30433))

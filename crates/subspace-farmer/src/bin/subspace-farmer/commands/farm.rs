@@ -286,16 +286,10 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-    Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-    .with(Protocol::Udp(30533))
-    .with(Protocol::QuicV1),
-    Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-    .with(Protocol::Udp(30533))
-    .with(Protocol::QuicV1),
-    Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-    .with(Protocol::Tcp(30533)),
-    Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-    .with(Protocol::Tcp(30533))
+        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533)),
+        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+            .with(Protocol::Tcp(30533))
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in

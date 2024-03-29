@@ -25,11 +25,11 @@ Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your br
 The address of your account will be necessary at the last step.
 
 ## Required ports
-Currently, TCP and UDP ports `30333`, `30433` and `30533` need to be exposed for node and farmer to work properly.
+Currently, TCP ports `30333`, `30433` and `30533` need to be exposed for node and farmer to work properly.
 
-If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP and UDP ports `30333`, `30433` and `30533` for incoming connections.
+If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP ports `30333`, `30433` and `30533` for incoming connections.
 
-On the desktop side if you have a router in front of your computer, you'll need to forward TCP and UDP ports `30333`, `30433` and `30533` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
+On the desktop side if you have a router in front of your computer, you'll need to forward TCP ports `30333`, `30433` and `30533` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
 If you're connected directly without any router, then again nothing needs to be done in such case.
 
 ## 🖼️ Windows Instructions
@@ -204,9 +204,7 @@ services:
     ports:
 # If port 30333 or 30433 is already occupied by another Substrate-based node, replace all
 # occurrences of `30333` or `30433` in this file with another value
-      - "0.0.0.0:30333:30333/udp"
       - "0.0.0.0:30333:30333/tcp"
-      - "0.0.0.0:30433:30433/udp"
       - "0.0.0.0:30433:30433/tcp"
     restart: unless-stopped
     command: [
@@ -214,7 +212,6 @@ services:
       "--chain", "gemini-3h",
       "--base-path", "/var/subspace",
       "--listen-on", "/ip4/0.0.0.0/tcp/30333",
-      "--dsn-listen-on", "/ip4/0.0.0.0/udp/30433/quic-v1",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
       "--rpc-listen-on", "0.0.0.0:9944",
       "--rpc-cors", "all",
@@ -245,13 +242,11 @@ services:
     ports:
 # If port 30533 is already occupied by something else, replace all
 # occurrences of `30533` in this file with another value
-      - "0.0.0.0:30533:30533/udp"
       - "0.0.0.0:30533:30533/tcp"
     restart: unless-stopped
     command: [
       "farm",
       "--node-rpc-url", "ws://node:9944",
-      "--listen-on", "/ip4/0.0.0.0/udp/30533/quic-v1",
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",

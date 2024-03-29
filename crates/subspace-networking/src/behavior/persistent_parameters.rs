@@ -500,7 +500,7 @@ impl KnownPeersManager {
 
     fn single_peer_encoded_address_size() -> usize {
         let multiaddr = Multiaddr::from_str(
-            "/ip4/127.0.0.1/udp/1234/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+            "/ip4/127.0.0.1/tcp/1234/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
         )
         .expect("Valid multiaddr; qed");
         // Use multiaddr size that is 3x larger than typical, should be enough for most practical

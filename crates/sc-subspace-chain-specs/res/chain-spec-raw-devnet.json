@@ -17,7 +17,7 @@
   "properties": {
     "domainsBootstrapNodes": {},
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.devnet.subspace.network/udp/30533/quic-v1/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
+      "/dns/bootstrap-0.devnet.subspace.network/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
     ],
     "potExternalEntropy": null,
     "ss58Format": 2254,

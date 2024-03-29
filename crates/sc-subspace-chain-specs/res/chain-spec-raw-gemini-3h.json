@@ -28,8 +28,6 @@
       ]
     },
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.gemini-3h.subspace.network/udp/30533/quic-v1/p2p/12D3KooWK7NuL4S6aEdy5gELnvhCGo6EyrWVARnBy7W4AJTVkaF1",
-      "/dns/bootstrap-1.gemini-3h.subspace.network/udp/30533/quic-v1/p2p/12D3KooWQK33n2raSXzjH8JyqbFtczBmbwZiK9Tpicdw3rveJesj",
       "/dns/bootstrap-0.gemini-3h.subspace.network/tcp/30533/p2p/12D3KooWK7NuL4S6aEdy5gELnvhCGo6EyrWVARnBy7W4AJTVkaF1",
       "/dns/bootstrap-1.gemini-3h.subspace.network/tcp/30533/p2p/12D3KooWQK33n2raSXzjH8JyqbFtczBmbwZiK9Tpicdw3rveJesj"
     ],

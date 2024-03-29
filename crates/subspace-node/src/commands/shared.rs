@@ -6,7 +6,6 @@ use sp_core::sr25519::Pair;
 use sp_core::Pair as PairT;
 use sp_domains::KEY_TYPE;
 use sp_keystore::Keystore;
-use std::env;
 use std::path::PathBuf;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
@@ -59,11 +58,6 @@ pub(super) struct InitLoggerResult {
 }
 
 pub(super) fn init_logger() -> InitLoggerResult {
-    // TODO: This is a hack to work around https://github.com/quinn-rs/quinn/issues/1750, should be
-    //  removed once fixed upstream
-    if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "info,quinn_udp=error");
-    }
     // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
     //  Windows terminal doesn't support the same colors as bash does
     let enable_color = if cfg!(windows) {
