@@ -29,8 +29,10 @@ pub use crate::runtime_interface::signature_verification_runtime_interface;
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_core::U256;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
+use subspace_runtime_primitives::Moment;
 
 /// Signature verification request.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -49,9 +51,71 @@ impl PassBy for SignatureVerificationRequest {
     type PassBy = pass_by::Codec<Self>;
 }
 
+/// Validity of a given certificate.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct Validity {
+    /// Not valid before the time since UNIX_EPOCH
+    pub not_before: Moment,
+    /// Not valid after the time since UNIX_EPOCH
+    pub not_after: Moment,
+}
+
+impl Validity {
+    /// Checks if the certificate is valid at this time.
+    pub fn is_valid_at(&self, time: Moment) -> bool {
+        time >= self.not_before && time <= self.not_after
+    }
+}
+
+/// Validity conversion error.
+#[cfg(feature = "std")]
+#[derive(TypeInfo, Encode, Decode, Debug, PartialEq)]
+pub enum ValidityError {
+    Overflow,
+}
+
+#[cfg(feature = "std")]
+impl TryFrom<x509_parser::prelude::Validity> for Validity {
+    type Error = ValidityError;
+
+    fn try_from(value: x509_parser::certificate::Validity) -> Result<Self, Self::Error> {
+        Ok(Validity {
+            not_before: (value.not_before.timestamp() as u64)
+                .checked_mul(1000)
+                .and_then(|secs| {
+                    secs.checked_add(value.not_before.to_datetime().millisecond() as u64)
+                })
+                .ok_or(Self::Error::Overflow)?,
+            not_after: (value.not_after.timestamp() as u64)
+                .checked_mul(1000)
+                .and_then(|secs| {
+                    secs.checked_add(value.not_after.to_datetime().millisecond() as u64)
+                })
+                .ok_or(Self::Error::Overflow)?,
+        })
+    }
+}
+
+/// Decoded Tbs certificate.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct TbsCertificate {
+    /// Certificate serial number.
+    pub serial: U256,
+    /// Certificate subject.
+    pub subject: DerVec,
+    /// Certificate subject public key info.
+    pub subject_public_key_info: DerVec,
+    /// Certificate validity.
+    pub validity: Validity,
+}
+
 /// DER encoded bytes
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DerVec(pub Vec<u8>);
+
+impl PassBy for DerVec {
+    type PassBy = pass_by::Codec<Self>;
+}
 
 impl AsRef<[u8]> for DerVec {
     fn as_ref(&self) -> &[u8] {

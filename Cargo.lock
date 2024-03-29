@@ -10661,8 +10661,10 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
  "sp-externalities",
  "sp-runtime-interface",
+ "subspace-runtime-primitives",
  "x509-parser 0.16.0",
 ]
 

@@ -24,73 +24,25 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::dispatch::DispatchResult;
+use frame_support::ensure;
 use frame_support::traits::Time;
-use frame_support::{ensure, PalletError};
 pub use pallet::*;
 use scale_info::TypeInfo;
-use sp_auto_id::signature_verification_runtime_interface::verify_signature;
-use sp_auto_id::{DerVec, SignatureVerificationRequest};
+use sp_auto_id::signature_verification_runtime_interface::{
+    decode_tbs_certificate, verify_signature,
+};
+use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};
 use sp_core::U256;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::Moment;
-use x509_parser::certificate::TbsCertificate;
-use x509_parser::prelude::FromDer;
 
 /// Unique AutoId identifier.
 pub type Identifier = U256;
-
-/// Validity of a given certificate.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct Validity {
-    /// Not valid before the time since UNIX_EPOCH
-    pub not_before: Moment,
-    /// Not valid after the time since UNIX_EPOCH
-    pub not_after: Moment,
-}
-
-impl Validity {
-    /// Checks if the certificate is valid at this time.
-    pub fn is_valid_at(&self, time: Moment) -> bool {
-        time >= self.not_before && time <= self.not_after
-    }
-}
-
-/// Validity conversion error.
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
-pub enum ValidityError {
-    Overflow,
-    Expired,
-}
-
-impl<T: Config> From<ValidityError> for Error<T> {
-    fn from(value: ValidityError) -> Self {
-        Error::<T>::InvalidValidity(value)
-    }
-}
-
-impl TryFrom<x509_parser::prelude::Validity> for Validity {
-    type Error = ValidityError;
-
-    fn try_from(value: x509_parser::certificate::Validity) -> Result<Self, Self::Error> {
-        Ok(Validity {
-            not_before: (value.not_before.timestamp() as u64)
-                .checked_mul(1000)
-                .and_then(|secs| {
-                    secs.checked_add(value.not_before.to_datetime().millisecond() as u64)
-                })
-                .ok_or(Self::Error::Overflow)?,
-            not_after: (value.not_after.timestamp() as u64)
-                .checked_mul(1000)
-                .and_then(|secs| {
-                    secs.checked_add(value.not_after.to_datetime().millisecond() as u64)
-                })
-                .ok_or(Self::Error::Overflow)?,
-        })
-    }
-}
 
 /// X509 certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -201,7 +153,7 @@ pub enum RegisterAutoId {
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{AutoId, Identifier, RegisterAutoId, Signature, ValidityError};
+    use crate::{AutoId, Identifier, RegisterAutoId, Signature};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Time;
     use frame_system::pallet_prelude::*;
@@ -230,8 +182,6 @@ mod pallet {
         UnknownIssuer,
         /// Certificate is invalid,
         InvalidCertificate,
-        /// Invalid certificate validity.
-        InvalidValidity(ValidityError),
         /// Invalid signature.
         InvalidSignature,
         /// AutoId identifier overflow.
@@ -307,33 +257,30 @@ impl<T: Config> Pallet<T> {
                     signature_algorithm,
                     signature,
                 } => {
-                    let (_, tbs_certificate) = TbsCertificate::from_der(certificate.as_ref())
-                        .map_err(|_| Error::<T>::InvalidCertificate)?;
+                    let tbs_certificate = decode_tbs_certificate(certificate.clone())
+                        .ok_or(Error::<T>::InvalidCertificate)?;
 
                     let req = SignatureVerificationRequest {
-                        public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
+                        public_key_info: tbs_certificate.subject_public_key_info.clone(),
                         signature_algorithm,
                         data: certificate.0.clone(),
                         signature,
                     };
                     verify_signature(req).ok_or(Error::<T>::InvalidSignature)?;
 
-                    let serial = U256::from_big_endian(&tbs_certificate.serial.to_bytes_be());
-                    let validity = Validity::try_from(tbs_certificate.validity)
-                        .map_err(Error::<T>::InvalidValidity)?;
                     ensure!(
-                        validity.is_valid_at(current_time),
-                        Error::<T>::InvalidValidity(ValidityError::Expired)
+                        tbs_certificate.validity.is_valid_at(current_time),
+                        Error::<T>::ExpiredCertificate
                     );
 
                     Certificate::X509(X509Certificate {
                         issuer_id: None,
-                        serial,
-                        subject: tbs_certificate.subject.as_raw().to_vec().into(),
-                        subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
-                        validity,
+                        serial: tbs_certificate.serial,
+                        subject: tbs_certificate.subject,
+                        subject_public_key_info: tbs_certificate.subject_public_key_info,
+                        validity: tbs_certificate.validity,
                         raw: certificate,
-                        issued_serials: BTreeSet::from([serial]),
+                        issued_serials: BTreeSet::from([tbs_certificate.serial]),
                         revoked: false,
                     })
                 }
@@ -345,7 +292,8 @@ impl<T: Config> Pallet<T> {
                 } => {
                     let mut issuer_auto_id =
                         AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?;
-                    let issuer_pki = issuer_auto_id.certificate.subject_public_key_info();
+                    let issuer_public_key_info =
+                        issuer_auto_id.certificate.subject_public_key_info();
 
                     ensure!(
                         issuer_auto_id.certificate.is_valid_at(current_time),
@@ -357,38 +305,35 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::CertificateRevoked
                     );
 
-                    let (_, tbs_certificate) = TbsCertificate::from_der(certificate.as_ref())
-                        .map_err(|_| Error::<T>::InvalidCertificate)?;
+                    let tbs_certificate = decode_tbs_certificate(certificate.clone())
+                        .ok_or(Error::<T>::InvalidCertificate)?;
 
                     let req = SignatureVerificationRequest {
-                        public_key_info: issuer_pki,
+                        public_key_info: issuer_public_key_info,
                         signature_algorithm,
                         data: certificate.0.clone(),
                         signature,
                     };
                     verify_signature(req).ok_or(Error::<T>::InvalidSignature)?;
-                    let validity = Validity::try_from(tbs_certificate.validity)
-                        .map_err(Error::<T>::InvalidValidity)?;
                     ensure!(
-                        validity.is_valid_at(current_time),
-                        Error::<T>::InvalidValidity(ValidityError::Expired)
+                        tbs_certificate.validity.is_valid_at(current_time),
+                        Error::<T>::ExpiredCertificate
                     );
 
-                    let serial = U256::from_big_endian(&tbs_certificate.serial.to_bytes_be());
                     issuer_auto_id
                         .certificate
-                        .issue_certificate_serial::<T>(serial)?;
+                        .issue_certificate_serial::<T>(tbs_certificate.serial)?;
 
                     AutoIds::<T>::insert(issuer_id, issuer_auto_id);
 
                     Certificate::X509(X509Certificate {
                         issuer_id: Some(issuer_id),
-                        serial,
-                        subject: tbs_certificate.subject.as_raw().to_vec().into(),
-                        subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
-                        validity,
+                        serial: tbs_certificate.serial,
+                        subject: tbs_certificate.subject,
+                        subject_public_key_info: tbs_certificate.subject_public_key_info,
+                        validity: tbs_certificate.validity,
                         raw: certificate,
-                        issued_serials: BTreeSet::from([serial]),
+                        issued_serials: BTreeSet::from([tbs_certificate.serial]),
                         revoked: false,
                     })
                 }
