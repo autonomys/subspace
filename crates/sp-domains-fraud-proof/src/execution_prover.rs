@@ -9,8 +9,7 @@ use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend::Backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -85,40 +84,6 @@ where
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
         }
-    }
-
-    /// Runs the execution using the partial state constructed from the given storage proof and
-    /// returns the execution result.
-    ///
-    /// The execution result contains the information of state root after applying the execution
-    /// so that it can be used to compare with the one specified in the fraud proof.
-    pub fn check_execution_proof(
-        &self,
-        at: Block::Hash,
-        execution_phase: &ExecutionPhase,
-        call_data: &[u8],
-        pre_execution_root: H256,
-        proof: StorageProof,
-    ) -> sp_blockchain::Result<Vec<u8>> {
-        let state = self.backend.state_at(at)?;
-
-        let trie_backend = state.as_trie_backend();
-
-        let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
-        let runtime_code = state_runtime_code
-            .runtime_code()
-            .map_err(sp_blockchain::Error::RuntimeCode)?;
-
-        sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
-            pre_execution_root,
-            proof,
-            &mut Default::default(),
-            &*self.executor,
-            execution_phase.execution_method(),
-            call_data,
-            &runtime_code,
-        )
-        .map_err(Into::into)
     }
 }
 

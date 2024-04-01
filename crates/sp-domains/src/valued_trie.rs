@@ -251,15 +251,18 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::proof_provider_and_verifier::{StorageProofProvider, StorageProofVerifier};
+    use crate::proof_provider_and_verifier::{
+        StorageProofProvider, StorageProofVerifier, VerificationError,
+    };
     use crate::valued_trie::valued_ordered_trie_root;
+    use frame_support::assert_err;
     use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use sp_core::storage::StorageKey;
     use sp_core::H256;
     use sp_runtime::traits::{BlakeTwo256, Hash};
-    use sp_trie::LayoutV1;
+    use sp_trie::{LayoutV1, StorageProof};
     use trie_db::node::Value;
 
     #[test]
@@ -333,7 +336,7 @@ mod test {
             );
 
             // there is a possibility that wrong key ends up being a different leaf in the merkle tree
-            // but the data that key holds is neither valid extrinsic nor the the one we expect.
+            // but the data that key holds is neither valid extrinsic nor the one we expect.
             if let Ok(data) = result {
                 assert_ne!(data, ext.clone())
             }
@@ -345,6 +348,51 @@ mod test {
                 &exts, 100,
             )
             .is_none()
+        );
+    }
+
+    fn craft_valid_storage_proof_with_multiple_keys() -> (sp_core::H256, StorageProof) {
+        use sp_state_machine::backend::Backend;
+        use sp_state_machine::{prove_read, InMemoryBackend};
+
+        let state_version = sp_runtime::StateVersion::V1;
+
+        // construct storage proof
+        let backend = <InMemoryBackend<sp_core::Blake2Hasher>>::from((
+            vec![
+                (None, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))]),
+                (None, vec![(b"key2".to_vec(), Some(b"value2".to_vec()))]),
+                (None, vec![(b"key3".to_vec(), Some(b"value3".to_vec()))]),
+                (
+                    None,
+                    vec![(b"key4".to_vec(), Some((42u64, 42u32, 42u16, 42u8).encode()))],
+                ),
+                // Value is too big to fit in a branch node
+                (None, vec![(b"key11".to_vec(), Some(vec![0u8; 32]))]),
+            ],
+            state_version,
+        ));
+        let root = backend.storage_root(std::iter::empty(), state_version).0;
+        let proof = prove_read(
+            backend,
+            &[&b"key1"[..], &b"key2"[..], &b"key4"[..], &b"key22"[..]],
+        )
+        .unwrap();
+
+        (root, proof)
+    }
+
+    #[test]
+    fn test_storage_proof_with_unused_nodes() {
+        let (root, storage_proof) = craft_valid_storage_proof_with_multiple_keys();
+        // Verifying the proof with unused nodes should fail
+        assert_err!(
+            StorageProofVerifier::<BlakeTwo256>::get_bare_value(
+                &root,
+                storage_proof,
+                StorageKey(b"key2".to_vec()),
+            ),
+            VerificationError::UnusedNodesInTheProof
         );
     }
 }

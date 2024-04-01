@@ -2,6 +2,8 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use frame_support::PalletError;
 use hash_db::Hasher;
@@ -18,6 +20,8 @@ use sp_std::fmt::Debug;
 use sp_std::marker::PhantomData;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 #[cfg(feature = "std")]
+use std::collections::BTreeSet;
+#[cfg(feature = "std")]
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
@@ -29,6 +33,8 @@ pub enum VerificationError {
     MissingValue,
     /// Failed to decode value.
     FailedToDecode,
+    /// Storage proof contains unused nodes after reading the necessary keys.
+    UnusedNodesInTheProof,
 }
 
 /// Type that provides utilities to verify the storage proof.
@@ -48,15 +54,35 @@ impl<H: Hasher> StorageProofVerifier<H> {
     }
 
     /// Returns the value against a given key.
+    /// Note: Storage proof should contain nodes that are expected else this function errors out.
     pub fn get_bare_value(
         state_root: &H::Out,
         proof: StorageProof,
         key: StorageKey,
     ) -> Result<Vec<u8>, VerificationError> {
+        let expected_nodes_to_be_read = proof.iter_nodes().count();
+        let mut recorder = sp_trie::Recorder::<LayoutV1<H>>::new();
         let db = proof.into_memory_db::<H>();
-        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref(), None, None)
-            .map_err(|_| VerificationError::InvalidProof)?
-            .ok_or(VerificationError::MissingValue)?;
+        let val = read_trie_value::<LayoutV1<H>, _>(
+            &db,
+            state_root,
+            key.as_ref(),
+            Some(&mut recorder),
+            None,
+        )
+        .map_err(|_| VerificationError::InvalidProof)?
+        .ok_or(VerificationError::MissingValue)?;
+
+        // check if the storage proof has any extra nodes that are not read.
+        let visited_nodes = recorder
+            .drain()
+            .into_iter()
+            .map(|record| record.data)
+            .collect::<BTreeSet<_>>();
+
+        if expected_nodes_to_be_read != visited_nodes.len() {
+            return Err(VerificationError::UnusedNodesInTheProof);
+        }
 
         Ok(val)
     }
