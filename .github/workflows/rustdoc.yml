@@ -2,8 +2,8 @@ name: rustdoc
 
 on:
   push:
-   branches:
-   - main
+    branches:
+      - main
 
 concurrency:
   group: rustdoc-${{ github.workflow }}-${{ github.ref }}
@@ -20,15 +20,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure cache
-        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # @v3.3.2
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: |
             ~/.cargo/registry
@@ -44,7 +44,7 @@ jobs:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
-        uses: JamesIves/github-pages-deploy-action@ba1486788b0490a235422264426c45848eac35c6 # @v4.4.1
+        uses: JamesIves/github-pages-deploy-action@65b5dfd4f5bcd3a7403bbc2959c144256167464e # v4.5.0
         with:
           branch: gh-pages
           folder: target/doc

@@ -7,7 +7,7 @@ name: trivy-security-scan
 
 on:
   repository_dispatch:
-    types: [trivy-scan-dispatch]
+    types: [ trivy-scan-dispatch ]
 
 jobs:
   wait-for-image:
@@ -46,10 +46,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Run Trivy vulnerability scanner on image
-        uses: aquasecurity/trivy-action@d43c1f16c00cfd3978dde6c07f4bbcf9eb6993ca # @v0.16.1
+        uses: aquasecurity/trivy-action@d710430a6722f083d3b36b8339ff66b32f22ee55 # @v0.19.0
         with:
           image-ref: ${{ github.event.client_payload.image }}
           format: "sarif"
@@ -68,10 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Run Trivy vulnerability scanner in repo mode
-        uses: aquasecurity/trivy-action@d43c1f16c00cfd3978dde6c07f4bbcf9eb6993ca # @v0.16.1
+        uses: aquasecurity/trivy-action@d710430a6722f083d3b36b8339ff66b32f22ee55 # @v0.19.0
         with:
           scan-type: fs
           ignore-unfixed: true
@@ -80,6 +80,6 @@ jobs:
           severity: CRITICAL
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@4759df8df70c5ebe7042c3029bbace20eee13edd # @v2.23.1
+        uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # v3.24.9
         with:
           sarif_file: trivy-results.sarif
