@@ -5,9 +5,9 @@ use crate::{DerVec, SignatureVerificationRequest, TbsCertificate};
 use sp_externalities::ExternalitiesExt;
 use sp_runtime_interface::runtime_interface;
 
-/// Signature verification runtime interface.
+/// AutoId runtime interface.
 #[runtime_interface]
-pub trait SignatureVerificationRuntimeInterface {
+pub trait AutoIdRuntimeInterface {
     fn verify_signature(&mut self, req: SignatureVerificationRequest) -> Option<()> {
         self.extension::<HostFunctionExtension>()
             .expect(

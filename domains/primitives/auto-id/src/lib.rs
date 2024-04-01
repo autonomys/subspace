@@ -24,7 +24,7 @@ mod runtime_interface;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub use crate::runtime_interface::signature_verification_runtime_interface;
+pub use crate::runtime_interface::auto_id_runtime_interface;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
