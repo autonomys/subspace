@@ -7,13 +7,13 @@ use crate::{
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Decode, Encode};
+use codec::{Codec, Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::{
     BlockNumber, CheckExtrinsicsValidityError, CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
 };
-use hash_db::Hasher;
+use hash_db::{HashDB, Hasher};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
@@ -27,8 +27,8 @@ use sp_externalities::Extensions;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
-use sp_state_machine::{create_proof_check_backend, Error, OverlayedChanges, StateMachine};
-use sp_trie::StorageProof;
+use sp_state_machine::{Error, OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
+use sp_trie::{MemoryDB, StorageProof};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -669,6 +669,47 @@ where
     }
 }
 
+type CreateProofCheckBackedResult<H> =
+    Result<(TrieBackend<MemoryDB<H>, H>, sp_trie::recorder::Recorder<H>), Box<dyn Error>>;
+
+/// Creates a memory db backed with a recorder.
+/// Fork of `sp_state_machine::create_proof_check_backend` with recorder enabled.
+fn create_proof_check_backend_with_recorder<H>(
+    root: H::Out,
+    proof: StorageProof,
+) -> CreateProofCheckBackedResult<H>
+where
+    H: Hasher,
+    H::Out: Codec,
+{
+    let db = proof.into_memory_db();
+    let recorder = sp_trie::recorder::Recorder::<H>::default();
+
+    if db.contains(&root, hash_db::EMPTY_PREFIX) {
+        let backend = TrieBackendBuilder::new(db, root)
+            .with_recorder(recorder.clone())
+            .build();
+        Ok((backend, recorder))
+    } else {
+        Err(Box::new(sp_state_machine::ExecutionError::InvalidProof))
+    }
+}
+
+/// Execution Proof check error.
+#[derive(Debug)]
+pub enum ExecutionProofCheckError {
+    /// Holds the actual execution proof error
+    ExecutionError(Box<dyn sp_state_machine::Error>),
+    /// Error when storage proof contains unused node keys.
+    UnusedNodes,
+}
+
+impl From<Box<dyn sp_state_machine::Error>> for ExecutionProofCheckError {
+    fn from(value: Box<dyn Error>) -> Self {
+        Self::ExecutionError(value)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 /// Executes the given proof using the runtime
 /// The only difference between sp_state_machine::execution_proof_check is Extensions
@@ -681,13 +722,14 @@ pub(crate) fn execution_proof_check<H, Exec>(
     call_data: &[u8],
     runtime_code: &RuntimeCode,
     extensions: &mut Extensions,
-) -> Result<Vec<u8>, Box<dyn Error>>
+) -> Result<Vec<u8>, ExecutionProofCheckError>
 where
     H: Hasher,
     H::Out: Ord + 'static + codec::Codec,
     Exec: CodeExecutor + Clone + 'static,
 {
-    let trie_backend = create_proof_check_backend::<H>(root, proof)?;
+    let expected_nodes_to_be_read = proof.iter_nodes().count();
+    let (trie_backend, recorder) = create_proof_check_backend_with_recorder::<H>(root, proof)?;
     let result = StateMachine::<_, H, Exec>::new(
         &trie_backend,
         overlay,
@@ -698,7 +740,12 @@ where
         runtime_code,
         CallContext::Offchain,
     )
-    .execute();
+    .execute()?;
 
-    result
+    let recorded_proof = recorder.drain_storage_proof();
+    if recorded_proof.iter_nodes().count() != expected_nodes_to_be_read {
+        return Err(ExecutionProofCheckError::UnusedNodes);
+    }
+
+    Ok(result)
 }
