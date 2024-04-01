@@ -1,13 +1,14 @@
 #![allow(missing_debug_implementations)]
 
-use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64};
-use sp_core::H256;
-use sp_runtime::traits::{parameter_types, BlakeTwo256, IdentityLookup};
+use frame_support::derive_impl;
+use frame_support::traits::{ConstU128, ConstU32};
+use sp_runtime::traits::parameter_types;
 use subspace_runtime_primitives::{
     FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,
 };
 
 type Block = frame_system::mocking::MockBlock<Test>;
+type Balance = u128;
 
 frame_support::construct_runtime!(
     pub struct Test {
@@ -17,48 +18,19 @@ frame_support::construct_runtime!(
     }
 );
 
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Test {
-    type BaseCallFilter = frame_support::traits::Everything;
-    type BlockWeights = ();
-    type BlockLength = ();
-    type DbWeight = ();
-    type RuntimeOrigin = RuntimeOrigin;
-    type RuntimeCall = RuntimeCall;
-    type RuntimeTask = RuntimeTask;
-    type Nonce = u64;
-    type Hash = H256;
-    type Hashing = BlakeTwo256;
-    type AccountId = u64;
-    type Lookup = IdentityLookup<Self::AccountId>;
     type Block = Block;
-    type RuntimeEvent = RuntimeEvent;
-    type BlockHashCount = ConstU64<250>;
-    type Version = ();
-    type PalletInfo = PalletInfo;
-    type AccountData = pallet_balances::AccountData<u128>;
-    type OnNewAccount = ();
-    type OnKilledAccount = ();
-    type SystemWeightInfo = ();
-    type SS58Prefix = ConstU16<42>;
-    type OnSetCode = ();
-    type MaxConsumers = ConstU32<16>;
+    type AccountData = pallet_balances::AccountData<Balance>;
 }
 
+#[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]
 impl pallet_balances::Config for Test {
-    type RuntimeFreezeReason = RuntimeFreezeReason;
-    type MaxLocks = ();
-    type MaxReserves = ();
-    type ReserveIdentifier = [u8; 8];
-    type Balance = u128;
-    type DustRemoval = ();
-    type RuntimeEvent = RuntimeEvent;
+    type Balance = Balance;
     type ExistentialDeposit = ConstU128<1>;
     type AccountStore = System;
-    type WeightInfo = ();
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
     type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type DustRemoval = ();
 }
 
 parameter_types! {
