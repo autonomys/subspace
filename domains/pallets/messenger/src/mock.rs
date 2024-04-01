@@ -24,14 +24,12 @@ macro_rules! impl_runtime {
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
         #[cfg(not(feature = "runtime-benchmarks"))]
         use frame_support::pallet_prelude::*;
-        use frame_support::parameter_types;
+        use frame_support::{derive_impl, parameter_types};
         use pallet_balances::AccountData;
         use sp_core::H256;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_messenger::messages::ChainId;
-        use sp_runtime::traits::{
-            BlakeTwo256, ConstU16, ConstU32, ConstU64, Convert, IdentityLookup,
-        };
+        use sp_runtime::traits::Convert;
         use sp_runtime::BuildStorage;
         use crate::HoldIdentifier;
         use sp_domains::ChannelId;
@@ -52,35 +50,10 @@ macro_rules! impl_runtime {
             }
         );
 
+        #[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
         impl frame_system::Config for $runtime {
-            type BaseCallFilter = frame_support::traits::Everything;
-            type BlockWeights = ();
-            type BlockLength = ();
-            type DbWeight = ();
-            type RuntimeOrigin = RuntimeOrigin;
-            type RuntimeCall = RuntimeCall;
-            type RuntimeTask = RuntimeTask;
-            type Nonce = u64;
-            type Hash = H256;
-            type Hashing = BlakeTwo256;
-            type AccountId = u64;
-            type Lookup = IdentityLookup<Self::AccountId>;
             type Block = Block;
-            type RuntimeEvent = RuntimeEvent;
-            type BlockHashCount = ConstU64<250>;
-            type Version = ();
-            type PalletInfo = PalletInfo;
             type AccountData = AccountData<Balance>;
-            type OnNewAccount = ();
-            type OnKilledAccount = ();
-            type SystemWeightInfo = ();
-            type SS58Prefix = ConstU16<42>;
-            type OnSetCode = ();
-            type MaxConsumers = ConstU32<16>;
-        }
-
-        parameter_types! {
-            pub const ExistentialDeposit: u64 = 1;
         }
 
         parameter_types! {
@@ -149,21 +122,15 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub const MaxHolds: u32 = 10;
+            pub const ExistentialDeposit: u64 = 1;
         }
 
+        #[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]
         impl pallet_balances::Config for $runtime {
-            type RuntimeFreezeReason = RuntimeFreezeReason;
             type AccountStore = System;
             type Balance = Balance;
             type DustRemoval = ();
-            type RuntimeEvent = RuntimeEvent;
             type ExistentialDeposit = ExistentialDeposit;
-            type MaxLocks = ();
-            type MaxReserves = ();
-            type ReserveIdentifier = ();
-            type WeightInfo = ();
-            type FreezeIdentifier = ();
-            type MaxFreezes = ();
             type RuntimeHoldReason = MockHoldIdentifer;
             type MaxHolds = MaxHolds;
         }

@@ -21,13 +21,12 @@
 use crate as pallet_offences_subspace;
 use crate::Config;
 use codec::Encode;
-use frame_support::traits::{ConstU32, ConstU64};
+use frame_support::derive_impl;
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::Weight;
 use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use std::cell::RefCell;
 
@@ -59,31 +58,10 @@ frame_support::construct_runtime!(
     }
 );
 
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Runtime {
-    type BaseCallFilter = frame_support::traits::Everything;
-    type BlockWeights = ();
-    type BlockLength = ();
-    type DbWeight = ParityDbWeight;
-    type RuntimeOrigin = RuntimeOrigin;
-    type Nonce = u64;
-    type RuntimeCall = RuntimeCall;
-    type RuntimeTask = RuntimeTask;
-    type Hash = H256;
-    type Hashing = BlakeTwo256;
-    type AccountId = u64;
-    type Lookup = IdentityLookup<Self::AccountId>;
     type Block = Block;
-    type RuntimeEvent = RuntimeEvent;
-    type BlockHashCount = ConstU64<250>;
-    type Version = ();
-    type PalletInfo = PalletInfo;
-    type AccountData = ();
-    type OnNewAccount = ();
-    type OnKilledAccount = ();
-    type SystemWeightInfo = ();
-    type SS58Prefix = ();
-    type OnSetCode = ();
-    type MaxConsumers = ConstU32<16>;
+    type DbWeight = ParityDbWeight;
 }
 
 impl Config for Runtime {

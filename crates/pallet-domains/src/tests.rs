@@ -12,10 +12,10 @@ use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks, VariantCount};
+use frame_support::traits::{ConstU64, Currency, Hooks, VariantCount};
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{IdentityFee, Weight};
-use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
+use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
@@ -76,31 +76,14 @@ type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u128;
 
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Test {
-    type BaseCallFilter = frame_support::traits::Everything;
-    type BlockWeights = ();
-    type BlockLength = ();
-    type DbWeight = ParityDbWeight;
-    type RuntimeOrigin = RuntimeOrigin;
-    type RuntimeCall = RuntimeCall;
-    type RuntimeTask = RuntimeTask;
-    type Nonce = u64;
+    type Block = Block;
     type Hash = Hash;
-    type Hashing = BlakeTwo256;
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
-    type Block = Block;
-    type RuntimeEvent = RuntimeEvent;
-    type BlockHashCount = ConstU64<2>;
-    type Version = ();
-    type PalletInfo = PalletInfo;
     type AccountData = pallet_balances::AccountData<Balance>;
-    type OnNewAccount = ();
-    type OnKilledAccount = ();
-    type SystemWeightInfo = ();
-    type SS58Prefix = ConstU16<42>;
-    type OnSetCode = ();
-    type MaxConsumers = ConstU32<16>;
+    type DbWeight = ParityDbWeight;
 }
 
 parameter_types! {
@@ -157,21 +140,13 @@ parameter_types! {
     pub const ExistentialDeposit: Balance = 1;
 }
 
+#[derive_impl(pallet_balances::config_preludes::TestDefaultConfig as pallet_balances::DefaultConfig)]
 impl pallet_balances::Config for Test {
-    type RuntimeFreezeReason = RuntimeFreezeReason;
-    type MaxLocks = ();
-    type MaxReserves = ();
-    type ReserveIdentifier = [u8; 8];
     type Balance = Balance;
-    type DustRemoval = ();
-    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type WeightInfo = ();
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifier;
-    type MaxHolds = MaxHolds;
+    type DustRemoval = ();
 }
 
 parameter_types! {
