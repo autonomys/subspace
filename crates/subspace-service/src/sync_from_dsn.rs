@@ -63,6 +63,7 @@ pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS>(
     piece_getter: PG,
     subspace_link: SubspaceLink<Block>,
     fast_sync_enabled: bool,
+    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -115,6 +116,7 @@ where
             tx,
             subspace_link,
             fast_sync_enabled,
+            fast_sync_state,
         )
         .await
     };
@@ -251,6 +253,7 @@ async fn create_worker<Block, AS, IQS, Client, PG>(
     mut notifications_sender: mpsc::Sender<NotificationReason>,
     subspace_link: SubspaceLink<Block>,
     fast_sync_enabled: bool,
+    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
@@ -307,6 +310,7 @@ where
                 import_queue_service,
                 network_service.clone(),
                 subspace_link,
+                fast_sync_state,
             );
 
             let fast_sync_result = fast_syncer.sync().await;

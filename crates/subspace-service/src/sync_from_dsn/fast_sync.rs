@@ -47,6 +47,7 @@ where
     import_queue_service: Arc<Mutex<Box<IQS>>>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     subspace_link: SubspaceLink<Block>,
+    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
 }
 
 impl<'a, PG, AS, Block, Client, IQS> FastSyncer<'a, PG, AS, Block, Client, IQS>
@@ -65,6 +66,7 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         segment_headers_store: &'a SegmentHeadersStore<AS>,
         node: &'a Node,
@@ -73,6 +75,7 @@ where
         import_queue_service: Arc<Mutex<Box<IQS>>>,
         network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
         subspace_link: SubspaceLink<Block>,
+        fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
     ) -> Self {
         Self {
             segment_headers_store,
@@ -82,6 +85,7 @@ where
             import_queue_service,
             network_service,
             subspace_link,
+            fast_sync_state,
         }
     }
 
@@ -257,6 +261,13 @@ where
             }
         };
 
+        // Notify PoT verification about the last state block
+        {
+            self.fast_sync_state
+                .lock()
+                .replace(state_block_number.into());
+        }
+
         // 4. Import and execute blocks from the last segment
 
         info!("Started importing blocks from last segment.");
@@ -306,7 +317,6 @@ where
             "Importing the last block #{} from the segment #{last_segment_index}",
             last_block_number
         ); // TODO: debug
-
 
         // Import and execute the last block from the segment and setup the substrate sync
         self.import_deconstructed_block(
