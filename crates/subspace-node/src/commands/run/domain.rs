@@ -9,6 +9,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_service::config::{
     SubstrateConfiguration, SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
 };
+use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::{
     AccountId as AccountId20, RuntimeGenesisConfig as EvmRuntimeGenesisConfig,
@@ -28,7 +29,7 @@ use sc_service::config::KeystoreConfig;
 use sc_service::{Configuration, PruningMode};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_core::crypto::SecretString;
+use sp_core::crypto::{AccountId32, SecretString};
 use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -387,7 +388,7 @@ pub(super) struct DomainStartOptions<CNetwork> {
     pub(super) consensus_state_pruning: PruningMode,
 }
 
-pub(super) async fn run_evm_domain<CNetwork>(
+pub(super) async fn run_domain<CNetwork>(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions<CNetwork>,
@@ -499,6 +500,45 @@ where
                 _,
                 evm_domain_runtime::RuntimeApi,
                 AccountId20,
+                _,
+                _,
+            >(domain_params)
+            .await?;
+
+            domain_node.network_starter.start_network();
+
+            domain_node.task_manager.future().await?;
+
+            Ok(())
+        }
+        RuntimeType::AutoId => {
+            let domain_params = domain_service::DomainParams {
+                domain_id,
+                domain_config,
+                domain_created_at,
+                consensus_client,
+                consensus_offchain_tx_pool_factory,
+                consensus_network,
+                consensus_network_sync_oracle,
+                operator_streams,
+                gossip_message_sink,
+                domain_message_receiver,
+                provider: DefaultProvider,
+                skip_empty_bundle_production: true,
+                skip_out_of_order_slot: false,
+                maybe_operator_id: operator_id,
+                consensus_state_pruning,
+            };
+
+            let mut domain_node = domain_service::new_full::<
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                auto_id_domain_runtime::RuntimeApi,
+                AccountId32,
                 _,
                 _,
             >(domain_params)

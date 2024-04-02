@@ -33,6 +33,7 @@ use std::sync::Arc;
 /// Host functions required for Subspace domain
 #[cfg(not(feature = "runtime-benchmarks"))]
 pub type HostFunctions = (
+    sp_auto_id::auto_id_runtime_interface::HostFunctions,
     sp_io::SubstrateHostFunctions,
     sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
@@ -41,6 +42,7 @@ pub type HostFunctions = (
 /// Host functions required for Subspace domain
 #[cfg(feature = "runtime-benchmarks")]
 pub type HostFunctions = (
+    sp_auto_id::auto_id_runtime_interface::HostFunctions,
     sp_io::SubstrateHostFunctions,
     sp_messenger_host_functions::HostFunctions,
     sp_subspace_mmr::DomainHostFunctions,
@@ -95,6 +97,10 @@ where
                 self.executor.clone(),
             ),
         )));
+
+        exts.register(sp_auto_id::host_functions::HostFunctionExtension::new(
+            Arc::new(sp_auto_id::host_functions::HostFunctionsImpl),
+        ));
 
         exts
     }

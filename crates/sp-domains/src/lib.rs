@@ -833,6 +833,7 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
 pub enum RuntimeType {
     #[default]
     Evm,
+    AutoId,
 }
 
 /// Type representing the runtime ID.

@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::commands::{CreateDomainKeyOptions, InsertDomainKeyOptions};
-use crate::domain::evm_chain_spec;
+use crate::domain::{auto_id_chain_spec, evm_chain_spec};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use parity_scale_codec::Encode;
@@ -84,6 +84,13 @@ pub struct DomainCli {
     /// Use provided operator id to submit bundles.
     #[arg(long)]
     pub operator_id: Option<OperatorId>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SpecId {
+    Dev,
+    Gemini,
+    DevNet,
 }
 
 impl DomainCli {
@@ -167,6 +174,7 @@ impl SubstrateCli for DomainCli {
         let runtime_name = "evm";
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
+            "auto-id" => auto_id_chain_spec::load_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
         }
     }

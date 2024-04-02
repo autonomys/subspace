@@ -19,7 +19,9 @@
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
-use crate::domain::evm_chain_spec::{self, SpecId};
+use crate::domain::auto_id_chain_spec;
+use crate::domain::cli::SpecId;
+use crate::domain::evm_chain_spec::{self};
 use domain_runtime_primitives::MultiAccountId;
 use hex_literal::hex;
 use parity_scale_codec::Encode;
@@ -317,12 +319,12 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     },
                 },
                 GenesisDomainParams {
-                    domain_name: "evm-domain".to_owned(),
+                    domain_name: "auto-id-domain".to_owned(),
                     operator_allow_list: OperatorAllowList::Anyone,
                     operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
                         "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
                     )),
-                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
+                    initial_balances: auto_id_chain_spec::get_testnet_endowed_accounts_by_spec_id(
                         SpecId::DevNet,
                     ),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -397,10 +399,10 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     },
                 },
                 GenesisDomainParams {
-                    domain_name: "evm-domain".to_owned(),
+                    domain_name: "auto-id-domain".to_owned(),
                     operator_allow_list: OperatorAllowList::Anyone,
                     operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
-                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
+                    initial_balances: auto_id_chain_spec::get_testnet_endowed_accounts_by_spec_id(
                         SpecId::Dev,
                     ),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
@@ -454,23 +456,54 @@ fn subspace_genesis_config(
         rewards_config,
     } = genesis_params;
 
-    let raw_genesis_storage = {
-        let domain_chain_spec = match spec_id {
-            SpecId::Dev => evm_chain_spec::development_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
-            SpecId::Gemini => evm_chain_spec::gemini_3h_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
-            SpecId::DevNet => evm_chain_spec::devnet_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
-        };
-        let storage = domain_chain_spec
-            .build_storage()
-            .expect("Failed to build genesis storage from genesis runtime config");
-        let raw_genesis = RawGenesis::from_storage(storage);
-        raw_genesis.encode()
+    let (raw_genesis_storage, runtime_name, runtime_type, runtime_version) = {
+        match spec_id {
+            SpecId::Dev => {
+                let chain_spec = auto_id_chain_spec::development_config(move || {
+                    auto_id_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+                });
+                let storage = chain_spec
+                    .build_storage()
+                    .expect("Failed to build genesis storage from genesis runtime config");
+                let raw_genesis = RawGenesis::from_storage(storage);
+                (
+                    raw_genesis.encode(),
+                    "auto-id".to_owned(),
+                    RuntimeType::AutoId,
+                    auto_id_domain_runtime::VERSION,
+                )
+            }
+            SpecId::Gemini => {
+                let chain_spec = evm_chain_spec::gemini_3h_config(move || {
+                    evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+                });
+                let storage = chain_spec
+                    .build_storage()
+                    .expect("Failed to build genesis storage from genesis runtime config");
+                let raw_genesis = RawGenesis::from_storage(storage);
+                (
+                    raw_genesis.encode(),
+                    "evm".to_owned(),
+                    RuntimeType::Evm,
+                    evm_domain_runtime::VERSION,
+                )
+            }
+            SpecId::DevNet => {
+                let chain_spec = auto_id_chain_spec::devnet_config(move || {
+                    auto_id_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+                });
+                let storage = chain_spec
+                    .build_storage()
+                    .expect("Failed to build genesis storage from genesis runtime config");
+                let raw_genesis = RawGenesis::from_storage(storage);
+                (
+                    raw_genesis.encode(),
+                    "auto-id".to_owned(),
+                    RuntimeType::AutoId,
+                    auto_id_domain_runtime::VERSION,
+                )
+            }
+        }
     };
 
     RuntimeGenesisConfig {
@@ -500,9 +533,9 @@ fn subspace_genesis_config(
             permissioned_action_allowed_by: enable_domains
                 .then_some(genesis_domain_params.permissioned_action_allowed_by),
             genesis_domain: enable_domains.then_some(sp_domains::GenesisDomain {
-                runtime_name: "evm".to_owned(),
-                runtime_type: RuntimeType::Evm,
-                runtime_version: evm_domain_runtime::VERSION,
+                runtime_name,
+                runtime_type,
+                runtime_version,
                 raw_genesis_storage,
 
                 // Domain config, mainly for placeholder the concrete value TBD
