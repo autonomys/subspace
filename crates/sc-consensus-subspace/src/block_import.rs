@@ -60,7 +60,7 @@ use subspace_core_primitives::{
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that can be used to pause block production if desired.
@@ -366,9 +366,15 @@ where
         justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
-        println!("Here 1 hash = {:?}", block_hash);
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
+
+        info!(
+            ?block_hash,
+            ?parent_hash,
+            %block_number,
+            "Block import verification."
+        ); // TODO: debug
 
         let pre_digest = &subspace_digest_items.pre_digest;
         if let Some(root_plot_public_key) = root_plot_public_key {
@@ -590,21 +596,19 @@ where
                     inherent_data,
                 )?;
 
-                // if !inherent_res.ok() {
-                //     for (i, e) in inherent_res.into_errors() {
-                //         match create_inherent_data_providers
-                //             .try_handle_error(&i, &e)
-                //             .await
-                //         {
-                //             Some(res) => res.map_err(Error::CheckInherents)?,
-                //             None => return Err(Error::CheckInherentsUnhandled(i)),
-                //         }
-                //     }
-                // }
+                if !inherent_res.ok() {
+                    for (i, e) in inherent_res.into_errors() {
+                        match create_inherent_data_providers
+                            .try_handle_error(&i, &e)
+                            .await
+                        {
+                            Some(res) => res.map_err(Error::CheckInherents)?,
+                            None => return Err(Error::CheckInherentsUnhandled(i)),
+                        }
+                    }
+                }
             }
         }
-
-        println!("Here 2 hash = {:?}", block_hash);
 
         Ok(())
     }

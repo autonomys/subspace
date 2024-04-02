@@ -495,29 +495,7 @@ where
             )
             .expect("Incorrect parameters for archiver");
 
-            if last_segment_header.segment_index() == SegmentIndex::ZERO {
-                // Due to sync from DSN it is possible that the very first segment header is known
-                // even though only genesis block exists, in this case there is nothing else left to
-                // archive and we need to insert segment header to be included in the block 1
-                // explicitly here or else it'll be missing and block import will fail.
-                //
-                // Checking for segment index instead of best block number ensures we support
-                // hypothetical reorgs of the early blocks within confirmation depth distance from
-                // genesis.
-                subspace_link
-                    .segment_headers
-                    .lock()
-                    .put(One::one(), vec![last_segment_header]);
-            } else {
-                // Otherwise segment header is expected to be included in
-                // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
-                // processing block `+ confirmation_depth_k` and corresponding segment header will
-                // be included in the next block after that
-                subspace_link.segment_headers.lock().put(
-                    (last_archived_block_number + confirmation_depth_k + 1).into(),
-                    vec![last_segment_header],
-                );
-            }
+            update_segment_headers_for_archived_block(subspace_link.clone(), last_segment_header, last_archived_block_number.into(), confirmation_depth_k);
 
             archiver
         } else {
@@ -653,6 +631,32 @@ where
     })
 }
 
+pub(crate) fn update_segment_headers_for_archived_block<Block:BlockT>(subspace_link: SubspaceLink<Block>, last_segment_header: SegmentHeader, last_archived_block_number: NumberFor<Block>, confirmation_depth_k: BlockNumber){
+    if last_segment_header.segment_index() == SegmentIndex::ZERO {
+        // Due to sync from DSN it is possible that the very first segment header is known
+        // even though only genesis block exists, in this case there is nothing else left to
+        // archive and we need to insert segment header to be included in the block 1
+        // explicitly here or else it'll be missing and block import will fail.
+        //
+        // Checking for segment index instead of best block number ensures we support
+        // hypothetical reorgs of the early blocks within confirmation depth distance from
+        // genesis.
+        subspace_link
+            .segment_headers
+            .lock()
+            .put(One::one(), vec![last_segment_header]);
+    } else {
+        // Otherwise segment header is expected to be included in
+        // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
+        // processing block `+ confirmation_depth_k` and corresponding segment header will
+        // be included in the next block after that
+        subspace_link.segment_headers.lock().put(
+            last_archived_block_number + (confirmation_depth_k + 1).into(),
+            vec![last_segment_header],
+        );
+    }
+}
+
 fn finalize_block<Block, Backend, Client>(
     client: &Client,
     telemetry: Option<TelemetryHandle>,
@@ -757,7 +761,9 @@ where
     let segment_headers = Arc::clone(&subspace_link.segment_headers);
     let mut archiver_notification_stream = subspace_link.archiver_notification_stream.subscribe();
 
-    Ok(async move {
+    Ok({
+        let subspace_link = subspace_link.clone();
+        async move {
         // Farmers may have not received all previous segments, send them now.
         for archived_segment in older_archived_segments {
             send_archived_segment_notification(
@@ -779,6 +785,7 @@ where
                     info!(?data, "Archiver notification event received."); // TODO: change to debug
                     let last_archived_block = data.last_archived_block;
 
+                    let last_archived_segment = last_archived_block.0;
                     best_archived_block_number =
                         last_archived_block.0.last_archived_block().number.into();
                     best_archived_block_hash = last_archived_block.1.block.header().hash();
@@ -786,10 +793,12 @@ where
                     let last_archived_block_encoded = encode_block(last_archived_block.1);
                     archiver = Archiver::with_initial_state(
                         archiver.kzg(),
-                        last_archived_block.0,
+                        last_archived_segment,
                         &last_archived_block_encoded,
                         last_archived_block.2,
                     ).expect("Invalid initial archival state should stop the application to prevent further losses.");
+
+                    update_segment_headers_for_archived_block(subspace_link.clone(), last_archived_segment, best_archived_block_number, confirmation_depth_k);
                 }
                 Err(TryRecvError::Empty) => {
                     // Expected behavior
@@ -924,7 +933,7 @@ where
         }
 
         Ok(())
-    })
+    }})
 }
 
 async fn send_archived_segment_notification(
