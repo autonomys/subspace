@@ -28,7 +28,7 @@ use sp_domains::{
     derive_domain_block_hash, DomainBundleLimit, DomainId, DomainsDigestItem,
     DomainsTransfersTracker, OperatorAllowList, RuntimeId, RuntimeType,
 };
-use sp_runtime::traits::{CheckedAdd, IntegerSquareRoot, Zero};
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
@@ -334,19 +334,8 @@ pub(crate) fn calculate_max_bundle_weight_and_size(
                 .checked_mul(consensus_slot_probability.0)?,
         )?;
 
-    // This represents: Ceil[2*Sqrt[bundle_slot_probability/SLOT_PROBABILITY]])
-    let std_of_expected_bundles_per_block = expected_bundles_per_block
-        .integer_sqrt()
-        .checked_mul(2)?
-        .checked_add(1)?;
-
-    // max_bundle_weight = TargetDomainBlockWeight/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
-    let max_bundle_weight = max_domain_block_weight
-        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
-
-    // max_bundle_size = TargetDomainBlockSize/(bundle_slot_probability/SLOT_PROBABILITY+ Ceil[2*Sqrt[ bundle_slot_probability/SLOT_PROBABILITY]])
-    let max_bundle_size = (max_domain_block_size as u64)
-        .checked_div(expected_bundles_per_block.checked_add(std_of_expected_bundles_per_block)?)?;
+    let max_bundle_weight = max_domain_block_weight.checked_div(expected_bundles_per_block)?;
+    let max_bundle_size = (max_domain_block_size as u64).checked_div(expected_bundles_per_block)?;
 
     Some(DomainBundleLimit {
         max_bundle_size: max_bundle_size as u32,
