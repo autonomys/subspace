@@ -84,8 +84,6 @@ const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 const YAMUX_MAX_STREAMS: usize = 256;
 /// 1MB of piece + original value (256 KB)
 const YAMUX_RECEIVING_WINDOW: usize = Piece::SIZE + 256 * 1024;
-/// 1MB of piece + original value (1 MB)
-const YAMUX_BUFFER_SIZE: usize = Piece::SIZE + 1024 * 1024;
 
 /// Max confidence for autonat protocol. Could affect Kademlia mode change.
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
@@ -308,10 +306,10 @@ where
             .set_replication_interval(None);
 
         let mut yamux_config = YamuxConfig::default();
-        yamux_config
-            .set_max_num_streams(YAMUX_MAX_STREAMS)
-            .set_receive_window_size(YAMUX_RECEIVING_WINDOW as u32)
-            .set_max_buffer_size(YAMUX_BUFFER_SIZE);
+        yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
+        // TODO: Replace when new API is available like deprecation message says
+        #[allow(deprecated)]
+        yamux_config.set_receive_window_size(YAMUX_RECEIVING_WINDOW as u32);
 
         let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
             GossipsubConfigBuilder::default()
