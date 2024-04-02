@@ -62,6 +62,8 @@ pub struct X509Certificate {
     pub issued_serials: BTreeSet<U256>,
     /// Signifies if the certificate is revoked.
     pub revoked: bool,
+    /// Certificate action nonce.
+    pub nonce: U256,
 }
 
 /// Certificate associated with AutoId.
@@ -109,13 +111,29 @@ impl Certificate {
             Certificate::X509(cert) => cert.revoked,
         }
     }
+
+    fn nonce(&self) -> U256 {
+        match self {
+            Certificate::X509(cert) => cert.nonce,
+        }
+    }
+
+    fn inc_nonce<T: Config>(&mut self) -> DispatchResult {
+        match self {
+            Certificate::X509(cert) => {
+                cert.nonce = cert
+                    .nonce
+                    .checked_add(U256::one())
+                    .ok_or(Error::<T>::NonceOverflow)?;
+                Ok(())
+            }
+        }
+    }
 }
 
 /// A representation of AutoId
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct AutoId {
-    /// Unique AutoID identifier.
-    pub identifier: Identifier,
     /// Certificate associated with this AutoId.
     pub certificate: Certificate,
 }
@@ -147,6 +165,21 @@ pub struct Signature {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum RegisterAutoId {
     X509(RegisterAutoIdX509),
+}
+
+/// Specific action type taken by the subject of the Certificate.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum CertificateActionType {
+    RevokeCertificate,
+    DeactivateAutoId,
+}
+
+/// Signing data used to verify the certificate action.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct CertificateAction {
+    pub id: Identifier,
+    pub nonce: U256,
+    pub action_type: CertificateActionType,
 }
 
 #[frame_support::pallet]
@@ -190,6 +223,8 @@ mod pallet {
         ExpiredCertificate,
         /// Certificate revoked.
         CertificateRevoked,
+        /// Nonce overflow.
+        NonceOverflow,
     }
 
     #[pallet::event]
@@ -280,6 +315,7 @@ impl<T: Config> Pallet<T> {
                         raw: certificate,
                         issued_serials: BTreeSet::from([tbs_certificate.serial]),
                         revoked: false,
+                        nonce: U256::zero(),
                     })
                 }
                 RegisterAutoIdX509::Leaf {
@@ -333,6 +369,7 @@ impl<T: Config> Pallet<T> {
                         raw: certificate,
                         issued_serials: BTreeSet::from([tbs_certificate.serial]),
                         revoked: false,
+                        nonce: U256::zero(),
                     })
                 }
             },
@@ -344,10 +381,7 @@ impl<T: Config> Pallet<T> {
             .ok_or(Error::<T>::IdentifierOverflow)?;
         NextAutoIdIdentifier::<T>::put(next_auto_id_identifier);
 
-        let auto_id = AutoId {
-            identifier: auto_id_identifier,
-            certificate,
-        };
+        let auto_id = AutoId { certificate };
 
         AutoIds::<T>::insert(auto_id_identifier, auto_id);
 
@@ -355,7 +389,11 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn do_verify_signature(auto_id: &AutoId, signature: Signature) -> DispatchResult {
+    fn do_verify_signature(
+        auto_id: &AutoId,
+        signing_data: CertificateAction,
+        signature: Signature,
+    ) -> DispatchResult {
         let Signature {
             signature_algorithm,
             value: signature,
@@ -363,8 +401,7 @@ impl<T: Config> Pallet<T> {
         let req = SignatureVerificationRequest {
             public_key_info: auto_id.certificate.subject_public_key_info(),
             signature_algorithm,
-            // uses auto_id identifier as the message to sign
-            data: auto_id.identifier.encode(),
+            data: signing_data.encode(),
             signature,
         };
 
@@ -377,13 +414,23 @@ impl<T: Config> Pallet<T> {
         signature: Signature,
     ) -> DispatchResult {
         let mut auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownIssuer)?;
-        Self::do_verify_signature(&auto_id, signature)?;
+        Self::do_verify_signature(
+            &auto_id,
+            CertificateAction {
+                id: auto_id_identifier,
+                nonce: auto_id.certificate.nonce(),
+                action_type: CertificateActionType::RevokeCertificate,
+            },
+            signature,
+        )?;
         ensure!(
             !auto_id.certificate.is_revoked(),
             Error::<T>::CertificateRevoked
         );
 
         auto_id.certificate.revoke();
+        auto_id.certificate.inc_nonce::<T>()?;
+
         // TODO: revoke all the issued leaf certificates if this is an issuer certificate.
         AutoIds::<T>::insert(auto_id_identifier, auto_id);
 
@@ -396,7 +443,15 @@ impl<T: Config> Pallet<T> {
         signature: Signature,
     ) -> DispatchResult {
         let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownIssuer)?;
-        Self::do_verify_signature(&auto_id, signature)?;
+        Self::do_verify_signature(
+            &auto_id,
+            CertificateAction {
+                id: auto_id_identifier,
+                nonce: auto_id.certificate.nonce(),
+                action_type: CertificateActionType::DeactivateAutoId,
+            },
+            signature,
+        )?;
 
         // TODO: remove all the AutoIds registered using leaf certificates if this is the issuer.
         AutoIds::<T>::remove(auto_id_identifier);

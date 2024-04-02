@@ -1,6 +1,7 @@
 use crate::pallet::{AutoIds, NextAutoIdIdentifier};
 use crate::{
-    self as pallet_auto_id, Identifier, Pallet, RegisterAutoId, RegisterAutoIdX509, Signature,
+    self as pallet_auto_id, CertificateAction, CertificateActionType, Identifier, Pallet,
+    RegisterAutoId, RegisterAutoIdX509, Signature,
 };
 use codec::Encode;
 use frame_support::dispatch::RawOrigin;
@@ -9,7 +10,7 @@ use pem::parse;
 use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;
 use sp_auto_id::DerVec;
-use sp_core::H256;
+use sp_core::{H256, U256};
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
 use std::sync::Arc;
@@ -198,7 +199,12 @@ fn test_revoke_certificate() {
         let auto_id_identifier = register_issuer_auto_id();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
         assert!(!auto_id.certificate.is_revoked());
-        let signature = sign_preimage(auto_id_identifier.encode());
+        let signing_data = CertificateAction {
+            id: auto_id_identifier,
+            nonce: auto_id.certificate.nonce(),
+            action_type: CertificateActionType::RevokeCertificate,
+        };
+        let signature = sign_preimage(signing_data.encode());
         Pallet::<Test>::revoke_certificate(
             RawOrigin::Signed(1).into(),
             auto_id_identifier,
@@ -207,6 +213,7 @@ fn test_revoke_certificate() {
         .unwrap();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
         assert!(auto_id.certificate.is_revoked());
+        assert_eq!(auto_id.certificate.nonce(), U256::one());
     })
 }
 
@@ -214,7 +221,13 @@ fn test_revoke_certificate() {
 fn test_deactivate_auto_id() {
     new_test_ext().execute_with(|| {
         let auto_id_identifier = register_issuer_auto_id();
-        let signature = sign_preimage(auto_id_identifier.encode());
+        let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
+        let signing_data = CertificateAction {
+            id: auto_id_identifier,
+            nonce: auto_id.certificate.nonce(),
+            action_type: CertificateActionType::DeactivateAutoId,
+        };
+        let signature = sign_preimage(signing_data.encode());
         Pallet::<Test>::deactivate_auto_id(
             RawOrigin::Signed(1).into(),
             auto_id_identifier,
