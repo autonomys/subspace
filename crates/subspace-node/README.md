@@ -28,13 +28,13 @@ sudo apt-get install llvm clang cmake make protobuf-compiler
 1. Install via Homebrew:
 
 ```bash
-brew install llvm clang cmake make protobuf
+brew install llvm cmake make protobuf
 ```
 
 2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ```
 
 3. Activate the changes:

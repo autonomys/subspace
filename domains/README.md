@@ -8,11 +8,12 @@ Domains are the decoupled execution layer of the [Subspace Network Blockchain](h
 
 The extrinsic of the domain chain is first collected into a bundle by the domain operator, the bundle is then broadcast to the consensus chain network as an extrinsic of the consensus chain.
 
-The domain operator listening to the block import events of the consensus chain, extracts bundles from the imported consensus block and executes the extrinsics of the bundle to build and import a domain block in a deterministically way.
+The domain operator, which listens to the block import events of the consensus chain, extracts bundles from the imported consensus block and executes the extrinsics of the bundle to build and import a domain block in a deterministic manner.
 
-NOTE: currently, the domain chain does not support to syncing from other operator nodes and need to be deterministically derived from the consensus chain block by block.
+NOTE: Currently, the domain chain does not support syncing from other operator nodes. It must be deterministically derived from the consensus chain block by block.
 
 #### Create Operator key:
+
 Operator needs key pair to participate in Bundle production.
 You can create a key using following command:
 ```bash
@@ -37,12 +38,13 @@ target/production/subspace-node domain key insert \
 The above command assumes `{subspace-node-base-path}` as the location of node data. `{domain-id}` is a domain for which to insert the key and `{secret-phrase}` is the secret phrase to use for keypair derivation.
 
 #### Register Operator:
+
 Operator needs to register to a domain they want to operate on using `register_operator`. Registration extrinsic requires Operator Config.
 Once the domain epoch is finished, Operator can produce bundles from the new epoch.
 
 ### Start the domain operator node
 
-The domain operator node is running with an embededded consensus node, thus you need to specify the args for both the consensus node and the domain operator node:
+The domain operator node runs with an embededded consensus node, thus you need to specify the args for both the consensus node and the domain operator node:
 
 ```bash
 subspace-node [consensus-chain-args] -- [domain-args]
@@ -94,4 +96,4 @@ target/production/subspace-node --dev -- --help
 
 ### Build from source
 
-The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
+The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for building it from source.
