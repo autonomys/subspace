@@ -396,8 +396,6 @@ impl pallet_sudo::Config for Runtime {
 }
 
 parameter_types! {
-    pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 1;
     pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
@@ -483,7 +481,6 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
     type OnXDMRewards = OnXDMRewards;
