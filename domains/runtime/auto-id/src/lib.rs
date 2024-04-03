@@ -3,8 +3,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-mod precompiles;
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -16,56 +14,47 @@ extern crate alloc;
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
-pub use domain_runtime_primitives::opaque::Header;
-use domain_runtime_primitives::{
-    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
-};
+use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
-    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
+    block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
+    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
 };
-use fp_account::EthereumSignature;
-use fp_self_contained::{CheckedSignature, SelfContainedCall};
+use domain_runtime_primitives::{
+    AccountId, Address, CheckExtrinsicsValidityError, DecodeExtrinsicError, Signature,
+    SLOT_DURATION,
+};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::pallet_prelude::TypeInfo;
+use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    VariantCount,
+    ConstU16, ConstU32, ConstU64, Everything, Imbalance, OnUnbalanced, VariantCount,
 };
-use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
-use pallet_ethereum::Call::transact;
-use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
-use pallet_evm::{
-    Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
-    IdentityAddressMapping, Runner,
-};
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
+use sp_core::{Get, OpaqueMetadata};
+use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, Keccak256, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Verify, Zero,
+    AccountIdLookup, BlakeTwo256, Block as BlockT, Checkable, Keccak256, One, SignedExtension,
+    ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
-};
+use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, Digest};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -73,18 +62,9 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
 use sp_subspace_mmr::MmrLeaf;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SSC,
+    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
+    SlowAdjustingFeeUpdate, SSC,
 };
-
-/// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
-pub type Signature = EthereumSignature;
-
-/// Some way of identifying an account on the chain. We intentionally make it equivalent
-/// to the public key of our transaction signing scheme.
-pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
-
-/// The address format for describing accounts.
-pub type Address = AccountId;
 
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -94,9 +74,6 @@ pub type SignedBlock = generic::SignedBlock<Block>;
 
 /// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
-
-/// Precompiles we use for EVM
-pub type Precompiles = crate::precompiles::Precompiles<Runtime>;
 
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
@@ -112,11 +89,10 @@ pub type SignedExtra = (
 
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
-    fp_self_contained::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
+    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
 /// Extrinsic type that has already been checked.
-pub type CheckedExtrinsic =
-    fp_self_contained::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra, H160>;
+pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra>;
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = domain_pallet_executive::Executive<
@@ -126,104 +102,19 @@ pub type Executive = domain_pallet_executive::Executive<
     AllPalletsWithSystem,
 >;
 
-impl fp_self_contained::SelfContainedCall for RuntimeCall {
-    type SignedInfo = H160;
-
-    fn is_self_contained(&self) -> bool {
-        match self {
-            RuntimeCall::Ethereum(call) => call.is_self_contained(),
-            _ => false,
-        }
-    }
-
-    fn check_self_contained(&self) -> Option<Result<Self::SignedInfo, TransactionValidityError>> {
-        match self {
-            RuntimeCall::Ethereum(call) => call.check_self_contained(),
-            _ => None,
-        }
-    }
-
-    fn validate_self_contained(
-        &self,
-        info: &Self::SignedInfo,
-        dispatch_info: &DispatchInfoOf<RuntimeCall>,
-        len: usize,
-    ) -> Option<TransactionValidity> {
-        match self {
-            RuntimeCall::Ethereum(call) => {
-                // Ensure the caller can pay the consensus chain storage fee
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
-                let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-                    Runtime,
-                >>::withdraw_fee(info, consensus_storage_fee.into());
-                if withdraw_res.is_err() {
-                    return Some(Err(InvalidTransaction::Payment.into()));
-                }
-
-                call.validate_self_contained(info, dispatch_info, len)
-            }
-            _ => None,
-        }
-    }
-
-    fn pre_dispatch_self_contained(
-        &self,
-        info: &Self::SignedInfo,
-        dispatch_info: &DispatchInfoOf<RuntimeCall>,
-        len: usize,
-    ) -> Option<Result<(), TransactionValidityError>> {
-        match self {
-            RuntimeCall::Ethereum(call) => {
-                // Withdraw the consensus chain storage fee from the caller and record
-                // it in the `BlockFees`
-                let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
-                match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
-                    info,
-                    consensus_storage_fee.into(),
-                ) {
-                    Ok(None) => {}
-                    Ok(Some(paid_consensus_storage_fee)) => {
-                        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
-                    }
-                    Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
-                }
-
-                call.pre_dispatch_self_contained(info, dispatch_info, len)
-            }
-            _ => None,
-        }
-    }
-
-    fn apply_self_contained(
-        self,
-        info: Self::SignedInfo,
-    ) -> Option<sp_runtime::DispatchResultWithInfo<PostDispatchInfoOf<Self>>> {
-        match self {
-            call @ RuntimeCall::Ethereum(pallet_ethereum::Call::transact { .. }) => {
-                Some(call.dispatch(RuntimeOrigin::from(
-                    pallet_ethereum::RawOrigin::EthereumTransaction(info),
-                )))
-            }
-            _ => None,
-        }
-    }
-}
-
 impl_opaque_keys! {
     pub struct SessionKeys {
-        /// Primarily used for adding the operator signing key into the keystore.
+        /// Primarily used for adding the operator signing key into the Keystore.
         pub operator: sp_domains::OperatorKey,
     }
 }
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-evm-domain"),
-    impl_name: create_runtime_str!("subspace-evm-domain"),
+    spec_name: create_runtime_str!("subspace-auto-id-domain"),
+    impl_name: create_runtime_str!("subspace-auto-id-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -234,11 +125,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
-
-    // This part is copied from Substrate's `bin/node/runtime/src/lib.rs`.
-    //  The `RuntimeBlockLength` and `RuntimeBlockWeights` exist here because the
-    // `DeletionWeightLimit` and `DeletionQueueDepth` depend on those to parameterize
-    // the lazy contract deletion.
     pub RuntimeBlockLength: BlockLength = maximum_block_length();
     pub RuntimeBlockWeights: BlockWeights = block_weights();
 }
@@ -251,7 +137,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated `RuntimeTask` type.
     type RuntimeTask = RuntimeTask;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
-    type Lookup = IdentityLookup<AccountId>;
+    type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
     type Nonce = Nonce;
     /// The type for hashing blocks and tries.
@@ -306,6 +192,15 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
+/// `DustRemovalHandler` used to collect all the SSC dust left when the account is reaped.
+pub struct DustRemovalHandler;
+
+impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
+    fn on_nonzero_unbalanced(dusted_amount: Credit<AccountId, Balances>) {
+        BlockFees::note_burned_balance(dusted_amount.peek());
+    }
+}
+
 parameter_types! {
     pub const MaxHolds: u32 = 100;
 }
@@ -317,7 +212,7 @@ impl pallet_balances::Config for Runtime {
     type Balance = Balance;
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
-    type DustRemoval = ();
+    type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
@@ -352,8 +247,13 @@ impl pallet_transaction_payment::Config for Runtime {
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
+}
+
+impl pallet_auto_id::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Time = Timestamp;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -424,28 +324,6 @@ impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
     }
 }
 
-/// Balance hold identifier for this runtime.
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum HoldIdentifier {
-    Messenger(MessengerHoldIdentifier),
-}
-
-impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
-}
-
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
-    }
-}
-
-parameter_types! {
-    pub const ChannelReserveFee: Balance = SSC;
-}
-
 pub struct StorageKeys;
 
 impl sp_messenger::StorageKeys for StorageKeys {
@@ -466,6 +344,28 @@ impl sp_messenger::StorageKeys for StorageKeys {
             message_key,
         })
     }
+}
+
+/// Hold identifier for balances for this runtime.
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum HoldIdentifier {
+    Messenger(MessengerHoldIdentifier),
+}
+
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+    }
+}
+
+parameter_types! {
+    pub const ChannelReserveFee: Balance = 100 * SSC;
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -510,148 +410,8 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
-    type AccountIdConverter = domain_runtime_primitives::AccountId20Converter;
+    type AccountIdConverter = domain_runtime_primitives::AccountIdConverter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
-}
-
-impl pallet_evm_chain_id::Config for Runtime {}
-
-pub struct FindAuthorTruncated;
-
-impl FindAuthor<H160> for FindAuthorTruncated {
-    fn find_author<'a, I>(_digests: I) -> Option<H160>
-    where
-        I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
-    {
-        // TODO: returns the executor reward address once we start collecting them
-        None
-    }
-}
-
-/// Current approximation of the gas/s consumption considering
-/// EVM execution over compiled WASM (on 4.4Ghz CPU).
-pub const GAS_PER_SECOND: u64 = 40_000_000;
-
-/// Approximate ratio of the amount of Weight per Gas.
-/// u64 works for approximations because Weight is a very small unit compared to gas.
-pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
-
-parameter_types! {
-    /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
-    pub BlockGasLimit: U256 = U256::from(
-        MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
-    );
-    pub PrecompilesValue: Precompiles = Precompiles::default();
-    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
-    pub const SuicideQuickClearLimit: u32 = 0;
-}
-
-type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
-
-type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
-
-// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
-// fees from the transaction sender and collect all the fees (including both the base fee and tip) in
-// `pallet_block_fees`
-pub struct EVMCurrencyAdapter;
-
-impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
-    type LiquidityInfo = Option<NegativeImbalance>;
-
-    fn withdraw_fee(
-        who: &H160,
-        fee: U256,
-    ) -> Result<Self::LiquidityInfo, pallet_evm::Error<Runtime>> {
-        InnerEVMCurrencyAdapter::withdraw_fee(who, fee)
-    }
-
-    fn correct_and_deposit_fee(
-        who: &H160,
-        corrected_fee: U256,
-        base_fee: U256,
-        already_withdrawn: Self::LiquidityInfo,
-    ) -> Self::LiquidityInfo {
-        if already_withdrawn.is_some() {
-            // Record the evm actual transaction fee
-            BlockFees::note_domain_execution_fee(corrected_fee.as_u128());
-        }
-
-        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-            Runtime,
-        >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn)
-    }
-
-    fn pay_priority_fee(tip: Self::LiquidityInfo) {
-        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::pay_priority_fee(
-            tip,
-        );
-    }
-}
-
-impl pallet_evm::Config for Runtime {
-    type FeeCalculator = BaseFee;
-    type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
-    type WeightPerGas = WeightPerGas;
-    type BlockHashMapping = pallet_ethereum::EthereumBlockHashMapping<Self>;
-    type CallOrigin = EnsureAddressRoot<AccountId>;
-    type WithdrawOrigin = EnsureAddressNever<AccountId>;
-    type AddressMapping = IdentityAddressMapping;
-    type Currency = Balances;
-    type RuntimeEvent = RuntimeEvent;
-    type PrecompilesType = Precompiles;
-    type PrecompilesValue = PrecompilesValue;
-    type ChainId = EVMChainId;
-    type BlockGasLimit = BlockGasLimit;
-    type Runner = pallet_evm::runner::stack::Runner<Self>;
-    type OnChargeTransaction = EVMCurrencyAdapter;
-    type OnCreate = ();
-    type FindAuthor = FindAuthorTruncated;
-    type Timestamp = Timestamp;
-    type GasLimitPovSizeRatio = ();
-    type SuicideQuickClearLimit = SuicideQuickClearLimit;
-    type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
-}
-
-parameter_types! {
-    pub const PostOnlyBlockHash: PostLogContent = PostLogContent::OnlyBlockHash;
-}
-
-impl pallet_ethereum::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type StateRoot = pallet_ethereum::IntermediateStateRoot<Self>;
-    type PostLogContent = PostOnlyBlockHash;
-    type ExtraDataLength = ConstU32<30>;
-}
-
-parameter_types! {
-    pub BoundDivision: U256 = U256::from(1024);
-}
-
-parameter_types! {
-    pub DefaultBaseFeePerGas: U256 = U256::from(1_000_000_000);
-    // mark it to 5% increments on beyond target weight.
-    pub DefaultElasticity: Permill = Permill::from_parts(50_000);
-}
-
-pub struct BaseFeeThreshold;
-
-impl pallet_base_fee::BaseFeeThreshold for BaseFeeThreshold {
-    fn lower() -> Permill {
-        Permill::zero()
-    }
-    fn ideal() -> Permill {
-        Permill::from_parts(500_000)
-    }
-    fn upper() -> Permill {
-        Permill::from_parts(1_000_000)
-    }
-}
-
-impl pallet_base_fee::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Threshold = BaseFeeThreshold;
-    type DefaultBaseFeePerGas = DefaultBaseFeePerGas;
-    type DefaultElasticity = DefaultElasticity;
 }
 
 impl pallet_domain_id::Config for Runtime {}
@@ -663,6 +423,9 @@ construct_runtime!(
     pub struct Runtime {
         // System support stuff.
         System: frame_system = 0,
+        // Note: Ensure index of the timestamp matches with the index of timestamp on Consensus
+        //  so that consensus can construct encoded extrinsic that matches with Domain encoded
+        //  extrinsic.
         Timestamp: pallet_timestamp = 1,
         ExecutivePallet: domain_pallet_executive = 2,
 
@@ -670,16 +433,13 @@ construct_runtime!(
         Balances: pallet_balances = 20,
         TransactionPayment: pallet_transaction_payment = 21,
 
+        // AutoId
+        AutoId: pallet_auto_id = 40,
+
         // messenger stuff
-        // Note: Indexes should match the indexes of the System domain runtime
+        // Note: Indexes should match with indexes on other chains and domains
         Messenger: pallet_messenger = 60,
         Transporter: pallet_transporter = 61,
-
-        // evm stuff
-        Ethereum: pallet_ethereum = 80,
-        EVM: pallet_evm = 81,
-        EVMChainId: pallet_evm_chain_id = 82,
-        BaseFee: pallet_base_fee = 83,
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
@@ -690,34 +450,9 @@ construct_runtime!(
     }
 );
 
-#[derive(Clone, Default)]
-pub struct TransactionConverter;
-
-impl fp_rpc::ConvertTransaction<UncheckedExtrinsic> for TransactionConverter {
-    fn convert_transaction(&self, transaction: pallet_ethereum::Transaction) -> UncheckedExtrinsic {
-        UncheckedExtrinsic::new_unsigned(
-            pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
-        )
-    }
-}
-
-impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConverter {
-    fn convert_transaction(
-        &self,
-        transaction: pallet_ethereum::Transaction,
-    ) -> opaque::UncheckedExtrinsic {
-        let extrinsic = UncheckedExtrinsic::new_unsigned(
-            pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
-        );
-        let encoded = extrinsic.encode();
-        opaque::UncheckedExtrinsic::decode(&mut &encoded[..])
-            .expect("Encoded extrinsic is always valid")
-    }
-}
-
 fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
     if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        match &ext.0.function {
+        match &ext.function {
             RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
                 Some(Messenger::validate_relay_message(msg).is_ok())
             }
@@ -738,17 +473,9 @@ fn extract_signer_inner<Lookup>(
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
-    if ext.0.function.is_self_contained() {
-        ext.0
-            .function
-            .check_self_contained()
-            .map(|signed_info| signed_info.map(|signer| signer.into()))
-    } else {
-        ext.0
-            .signature
-            .as_ref()
-            .map(|(signed, _, _)| lookup.lookup(*signed).map_err(|e| e.into()))
-    }
+    ext.signature
+        .as_ref()
+        .map(|(signed, _, _)| lookup.lookup(signed.clone()).map_err(|e| e.into()))
 }
 
 pub fn extract_signer(
@@ -769,11 +496,16 @@ pub fn extract_signer(
 }
 
 fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
-    extrinsic
-        .0
-        .signature
-        .as_ref()
-        .map(|(_, _, extra)| extra.4 .0)
+    extrinsic.signature.as_ref().map(|(_, _, extra)| extra.4 .0)
+}
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benches {
+    frame_benchmarking::define_benchmarks!(
+        [frame_benchmarking, BaselineBench::<Runtime>]
+        [frame_system, SystemBench::<Runtime>]
+        [domain_pallet_executive, ExecutivePallet]
+    );
 }
 
 fn check_transaction_and_do_pre_dispatch_inner(
@@ -796,21 +528,24 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.signed {
-        CheckedSignature::Signed(account_id, extra) => extra
+        // signed transaction
+        Some((account_id, extra)) => extra
             .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
             .map(|_| ()),
-        CheckedSignature::Unsigned => {
+        // unsigned transaction
+        None => {
             Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }
-        CheckedSignature::SelfContained(self_contained_signing_info) => xt
-            .function
-            .pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len)
-            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))
-            .map(|_| ()),
     }
 }
+
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_system_benchmarking::Config for Runtime {}
+
+#[cfg(feature = "runtime-benchmarks")]
+impl frame_benchmarking::baseline::Config for Runtime {}
 
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
@@ -936,9 +671,11 @@ impl_runtime_apis! {
             if let Some(signer) = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {
                     account_result.ok().map(|account_id| account_id.encode())
                 }) {
+                // Check if the signer Id hash is within the tx range
                 let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
+                // Unsigned transactions are always in the range.
                 true
             }
         }
@@ -971,14 +708,8 @@ impl_runtime_apis! {
             )
         }
 
-        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
-             UncheckedExtrinsic::new_unsigned(
-                pallet_messenger::Call::update_domain_allowlist{ updates }.into()
-            )
-        }
-
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
-            match &extrinsic.0.function {
+            match &extrinsic.function {
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
                 RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
@@ -986,9 +717,7 @@ impl_runtime_apis! {
             }
         }
 
-        fn check_extrinsics_and_do_pre_dispatch(
-            uxts: Vec<<Block as BlockT>::Extrinsic>,
-            block_number: BlockNumber,
+        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: BlockNumber,
             block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
             System::initialize(
@@ -1045,6 +774,12 @@ impl_runtime_apis! {
             )
         }
 
+        fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> <Block as BlockT>::Extrinsic {
+             UncheckedExtrinsic::new_unsigned(
+                pallet_messenger::Call::update_domain_allowlist{ updates }.into()
+            )
+        }
+
         fn transfers() -> Transfers<Balance> {
             Transporter::chain_transfers()
         }
@@ -1062,6 +797,7 @@ impl_runtime_apis! {
         }
 
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {
+            // invalid call from Domain runtime
             vec![]
         }
 
@@ -1101,199 +837,55 @@ impl_runtime_apis! {
         }
     }
 
-    impl fp_rpc::EthereumRuntimeRPCApi<Block> for Runtime {
-        fn chain_id() -> u64 {
-            <Runtime as pallet_evm::Config>::ChainId::get()
-        }
-
-        fn account_basic(address: H160) -> EVMAccount {
-            let (account, _) = EVM::account_basic(&address);
-            account
-        }
-
-        fn gas_price() -> U256 {
-            let (gas_price, _) = <Runtime as pallet_evm::Config>::FeeCalculator::min_gas_price();
-            gas_price
-        }
-
-        fn account_code_at(address: H160) -> Vec<u8> {
-            pallet_evm::AccountCodes::<Runtime>::get(address)
-        }
-
-        fn author() -> H160 {
-            <pallet_evm::Pallet<Runtime>>::find_author()
-        }
-
-        fn storage_at(address: H160, index: U256) -> H256 {
-            let mut tmp = [0u8; 32];
-            index.to_big_endian(&mut tmp);
-            pallet_evm::AccountStorages::<Runtime>::get(address, H256::from_slice(&tmp[..]))
-        }
-
-        fn call(
-            from: H160,
-            to: H160,
-            data: Vec<u8>,
-            value: U256,
-            gas_limit: U256,
-            max_fee_per_gas: Option<U256>,
-            max_priority_fee_per_gas: Option<U256>,
-            nonce: Option<U256>,
-            estimate: bool,
-            access_list: Option<Vec<(H160, Vec<H256>)>>,
-        ) -> Result<pallet_evm::CallInfo, sp_runtime::DispatchError> {
-            let config = if estimate {
-                let mut config = <Runtime as pallet_evm::Config>::config().clone();
-                config.estimate = true;
-                Some(config)
-            } else {
-                None
-            };
-
-            let is_transactional = false;
-            let validate = true;
-            let weight_limit = None;
-            let proof_size_base_cost = None;
-            let evm_config = config.as_ref().unwrap_or(<Runtime as pallet_evm::Config>::config());
-            <Runtime as pallet_evm::Config>::Runner::call(
-                from,
-                to,
-                data,
-                value,
-                gas_limit.unique_saturated_into(),
-                max_fee_per_gas,
-                max_priority_fee_per_gas,
-                nonce,
-                access_list.unwrap_or_default(),
-                is_transactional,
-                validate,
-                weight_limit,
-                proof_size_base_cost,
-                evm_config,
-            ).map_err(|err| err.error.into())
-        }
-
-        fn create(
-            from: H160,
-            data: Vec<u8>,
-            value: U256,
-            gas_limit: U256,
-            max_fee_per_gas: Option<U256>,
-            max_priority_fee_per_gas: Option<U256>,
-            nonce: Option<U256>,
-            estimate: bool,
-            access_list: Option<Vec<(H160, Vec<H256>)>>,
-        ) -> Result<pallet_evm::CreateInfo, sp_runtime::DispatchError> {
-            let config = if estimate {
-                let mut config = <Runtime as pallet_evm::Config>::config().clone();
-                config.estimate = true;
-                Some(config)
-            } else {
-                None
-            };
-
-            let is_transactional = false;
-            let validate = true;
-            let weight_limit = None;
-            let proof_size_base_cost = None;
-            let evm_config = config.as_ref().unwrap_or(<Runtime as pallet_evm::Config>::config());
-            <Runtime as pallet_evm::Config>::Runner::create(
-                from,
-                data,
-                value,
-                gas_limit.unique_saturated_into(),
-                max_fee_per_gas,
-                max_priority_fee_per_gas,
-                nonce,
-                access_list.unwrap_or_default(),
-                is_transactional,
-                validate,
-                weight_limit,
-                proof_size_base_cost,
-                evm_config,
-            ).map_err(|err| err.error.into())
-        }
-
-        fn current_transaction_statuses() -> Option<Vec<TransactionStatus>> {
-            pallet_ethereum::CurrentTransactionStatuses::<Runtime>::get()
-        }
-
-        fn current_block() -> Option<pallet_ethereum::Block> {
-            pallet_ethereum::CurrentBlock::<Runtime>::get()
-        }
-
-        fn current_receipts() -> Option<Vec<pallet_ethereum::Receipt>> {
-            pallet_ethereum::CurrentReceipts::<Runtime>::get()
-        }
-
-        fn current_all() -> (
-            Option<pallet_ethereum::Block>,
-            Option<Vec<pallet_ethereum::Receipt>>,
-            Option<Vec<TransactionStatus>>
+    #[cfg(feature = "runtime-benchmarks")]
+    impl frame_benchmarking::Benchmark<Block> for Runtime {
+        fn benchmark_metadata(extra: bool) -> (
+            Vec<frame_benchmarking::BenchmarkList>,
+            Vec<frame_support::traits::StorageInfo>,
         ) {
-            (
-                pallet_ethereum::CurrentBlock::<Runtime>::get(),
-                pallet_ethereum::CurrentReceipts::<Runtime>::get(),
-                pallet_ethereum::CurrentTransactionStatuses::<Runtime>::get()
-            )
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
+            use frame_support::traits::StorageInfoTrait;
+            use frame_system_benchmarking::Pallet as SystemBench;
+            use baseline::Pallet as BaselineBench;
+
+            let mut list = Vec::<BenchmarkList>::new();
+
+            list_benchmarks!(list, extra);
+
+            let storage_info = AllPalletsWithSystem::storage_info();
+
+            (list, storage_info)
         }
 
-        fn extrinsic_filter(
-            xts: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<EthereumTransaction> {
-            xts.into_iter().filter_map(|xt| match xt.0.function {
-                RuntimeCall::Ethereum(transact { transaction }) => Some(transaction),
-                _ => None
-            }).collect::<Vec<EthereumTransaction>>()
-        }
+        fn dispatch_benchmark(
+            config: frame_benchmarking::BenchmarkConfig
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use sp_storage::TrackedStorageKey;
+            use frame_system_benchmarking::Pallet as SystemBench;
+            use frame_support::traits::WhitelistedStorageKeys;
+            use baseline::Pallet as BaselineBench;
 
-        fn elasticity() -> Option<Permill> {
-            Some(pallet_base_fee::Elasticity::<Runtime>::get())
-        }
+            let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 
-        fn gas_limit_multiplier_support() {}
+            let mut batches = Vec::<BenchmarkBatch>::new();
+            let params = (&config, &whitelist);
 
-        fn pending_block(
-            xts: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> (Option<pallet_ethereum::Block>, Option<Vec<TransactionStatus>>) {
-            for ext in xts.into_iter() {
-                let _ = Executive::apply_extrinsic(ext);
-            }
+            add_benchmarks!(params, batches);
 
-            Ethereum::on_finalize(System::block_number() + 1);
-
-            (
-                pallet_ethereum::CurrentBlock::<Runtime>::get(),
-                pallet_ethereum::CurrentTransactionStatuses::<Runtime>::get()
-            )
+            if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
+            Ok(batches)
         }
     }
+}
 
-    impl fp_rpc::ConvertTransactionRuntimeApi<Block> for Runtime {
-        fn convert_transaction(transaction: EthereumTransaction) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
-                pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
-            )
-        }
-    }
+#[cfg(test)]
+mod tests {
+    use crate::{Runtime, RuntimeBlockWeights as BlockWeights};
+    use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
 
-    impl domain_test_primitives::TimestampApi<Block> for Runtime {
-        fn timestamp() -> Moment {
-             Timestamp::now()
-        }
-    }
-
-    impl domain_test_primitives::OnchainStateApi<Block, AccountId, Balance> for Runtime {
-        fn free_balance(account_id: AccountId) -> Balance {
-            Balances::free_balance(account_id)
-        }
-
-        fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
-            Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
-        }
-
-        fn consensus_chain_byte_fee() -> Balance {
-            BlockFees::consensus_chain_byte_fee()
-        }
+    #[test]
+    fn multiplier_can_grow_from_zero() {
+        FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
 }

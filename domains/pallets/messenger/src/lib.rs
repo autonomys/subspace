@@ -178,8 +178,6 @@ mod pallet {
         type Currency: Mutate<Self::AccountId>
             + InspectHold<Self::AccountId>
             + MutateHold<Self::AccountId>;
-        /// Confirmation depth for XDM coming from chains.
-        type ConfirmationDepth: Get<BlockNumberFor<Self>>;
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.

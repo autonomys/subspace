@@ -246,7 +246,7 @@ const_assert!(solution_range_to_sectors(sectors_to_solution_range(5)) == 5);
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
-    pub const BlockHashCount: BlockNumber = 2400;
+    pub const BlockHashCount: BlockNumber = 250;
     /// We allow for 2 seconds of compute with a 6 second average block time.
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
@@ -288,7 +288,7 @@ impl frame_system::Config for Runtime {
     /// The ubiquitous origin type.
     type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
-    type BlockHashCount = ConstU32<250>;
+    type BlockHashCount = BlockHashCount;
     /// The weight of database operations that the runtime can invoke.
     type DbWeight = ParityDbWeight;
     /// Version of the runtime.
@@ -480,7 +480,6 @@ impl pallet_sudo::Config for Runtime {
 }
 
 parameter_types! {
-    pub const RelayConfirmationDepth: BlockNumber = 18;
     pub const SelfChainId: ChainId = ChainId::Consensus;
 }
 
@@ -548,7 +547,6 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
     type OnXDMRewards = OnXDMRewards;

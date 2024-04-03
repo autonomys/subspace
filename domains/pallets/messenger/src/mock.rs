@@ -57,11 +57,6 @@ macro_rules! impl_runtime {
         }
 
         parameter_types! {
-            pub const ConfirmedStateRootsBound: u32 = 2;
-            pub const RelayerConfirmationDepth: u64 = 2;
-        }
-
-        parameter_types! {
             pub SelfChainId: ChainId = $chain_id.into();
             pub const ChannelReserveFee: Balance = 10;
         }
@@ -87,7 +82,6 @@ macro_rules! impl_runtime {
             type RuntimeEvent = RuntimeEvent;
             type SelfChainId = SelfChainId;
             type Currency = Balances;
-            type ConfirmationDepth = RelayerConfirmationDepth;
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
             type OnXDMRewards = ();
