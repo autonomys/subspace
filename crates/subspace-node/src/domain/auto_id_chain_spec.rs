@@ -148,7 +148,12 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
             .into_iter()
             .map(|acc| (AccountIdConverter::convert(acc), 1_000_000 * SSC))
             .collect(),
-        SpecId::DevNet | SpecId::Gemini => vec![],
+        SpecId::DevNet => {
+            let accounts = get_dev_accounts();
+            let alice_account = accounts[0].clone();
+            vec![(AccountIdConverter::convert(alice_account), 1_000_000 * SSC)]
+        }
+        SpecId::Gemini => vec![],
     }
 }
 
