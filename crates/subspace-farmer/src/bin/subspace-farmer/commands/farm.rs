@@ -641,6 +641,12 @@ where
         NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).max(1).min(8)).expect("Not zero; qed")
     });
 
+    info!(
+        ?plotting_thread_pool_core_indices,
+        ?replotting_thread_pool_core_indices,
+        "Preparing plotting thread pools"
+    );
+
     let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
         plotting_thread_pool_core_indices
             .into_iter()
