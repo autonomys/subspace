@@ -15,7 +15,7 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
-use std::{io, thread};
+use std::{fmt, io, thread};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::runtime::Handle;
 use tokio::task;
@@ -143,12 +143,55 @@ where
 }
 
 /// Abstraction for CPU core set
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CpuCoreSet {
     /// CPU cores that belong to this set
     cores: Vec<usize>,
     #[cfg(feature = "numa")]
     topology: Option<std::sync::Arc<hwlocality::Topology>>,
+}
+
+impl fmt::Debug for CpuCoreSet {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = f.debug_struct("CpuCoreSet");
+        #[cfg(not(feature = "numa"))]
+        if self.cores.array_windows::<2>().all(|&[a, b]| a + 1 == b) {
+            s.field(
+                "cores",
+                &format!(
+                    "{}-{}",
+                    self.cores.first().expect("List of cores is not empty; qed"),
+                    self.cores.last().expect("List of cores is not empty; qed")
+                ),
+            );
+        } else {
+            s.field(
+                "cores",
+                &self
+                    .cores
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+        }
+        #[cfg(feature = "numa")]
+        {
+            use hwlocality::cpu::cpuset::CpuSet;
+            use hwlocality::ffi::PositiveInt;
+
+            s.field(
+                "cores",
+                &CpuSet::from_iter(
+                    self.cores.iter().map(|&core| {
+                        PositiveInt::try_from(core).expect("Valid CPU core index; qed")
+                    }),
+                ),
+            );
+        }
+        s.finish_non_exhaustive()
+    }
 }
 
 impl CpuCoreSet {
@@ -197,7 +240,7 @@ impl CpuCoreSet {
             let cpu_cores = CpuSet::from_iter(
                 self.cores
                     .iter()
-                    .map(|&core| PositiveInt::try_from(core).expect("Valid CPU core")),
+                    .map(|&core| PositiveInt::try_from(core).expect("Valid CPU core index; qed")),
             );
 
             if let Err(error) =

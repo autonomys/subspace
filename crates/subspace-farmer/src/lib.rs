@@ -1,5 +1,6 @@
 #![feature(
     array_chunks,
+    array_windows,
     assert_matches,
     const_option,
     exact_size_is_empty,
