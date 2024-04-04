@@ -7,7 +7,7 @@ Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subs
 ## To Farm By Yourself (Offline)
 
 1. Download the executables for your operating system
-2. Open your favourite terminal, and go to the folder where you download the executables
+2. Open your favourite terminal, and go to the folder where you downloaded the executables
 
 **Linux/MacOS:**
 

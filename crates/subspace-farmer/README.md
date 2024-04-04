@@ -25,13 +25,13 @@ sudo apt-get install automake libtool pkg-config llvm clang protobuf-compiler
 1. Install via Homebrew:
 
 ```bash
-brew install automake libtool llvm clang protobuf
+brew install automake libtool llvm protobuf
 ```
 
 2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ```
 
 3. Activate the changes:
@@ -55,6 +55,7 @@ target/production/subspace-farmer --version
 ```
 
 ## Usage
+
 Commands here assume you installed native binary, but you can also easily adapt them to using with Docker.
 
 Use `--help` to find out all available commands and their options:
