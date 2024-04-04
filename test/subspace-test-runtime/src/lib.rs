@@ -368,7 +368,6 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifier;
-    type MaxHolds = MaxHolds;
 }
 
 pub struct CreditSupply;
@@ -667,14 +666,14 @@ const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 pub struct BlockSlot;
 
 impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
-    fn future_slot(block_number: BlockNumber) -> Option<sp_consensus_slots::Slot> {
+    fn future_slot(block_number: BlockNumber) -> Option<Slot> {
         let block_slots = Subspace::block_slots();
         block_slots
             .get(&block_number)
             .map(|slot| *slot + Slot::from(BlockAuthoringDelay::get()))
     }
 
-    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumber> {
+    fn slot_produced_after(to_check: Slot) -> Option<BlockNumber> {
         let block_slots = Subspace::block_slots();
         for (block_number, slot) in block_slots.into_iter().rev() {
             if to_check > slot {

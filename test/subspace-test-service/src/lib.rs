@@ -39,8 +39,8 @@ use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
-    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, OffchainWorkerConfig, WasmExecutionMethod,
-    WasmtimeInstantiationStrategy,
+    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, OffchainWorkerConfig,
+    RpcBatchRequestConfig, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, PruningMode, Role, SpawnTasksParams,
@@ -170,9 +170,12 @@ pub fn node_config(
         rpc_id_provider: None,
         rpc_max_subs_per_conn: 0,
         rpc_port: 0,
+        rpc_message_buffer_capacity: 0,
+        rpc_batch_config: RpcBatchRequestConfig::Disabled,
         rpc_max_connections: 0,
         rpc_cors: None,
         rpc_methods: Default::default(),
+        rpc_rate_limit: None,
         prometheus_config: None,
         telemetry_endpoints: None,
         default_heap_pages: None,

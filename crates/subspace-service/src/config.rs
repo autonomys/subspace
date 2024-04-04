@@ -5,7 +5,9 @@ use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
     DEFAULT_KADEMLIA_REPLICATION_FACTOR,
 };
-use sc_service::config::{KeystoreConfig, OffchainWorkerConfig, PrometheusConfig};
+use sc_service::config::{
+    KeystoreConfig, OffchainWorkerConfig, PrometheusConfig, RpcBatchRequestConfig,
+};
 use sc_service::{
     BasePath, BlocksPruning, Configuration, DatabaseSource, PruningMode, RpcMethods,
     TransactionPoolOptions,
@@ -13,7 +15,7 @@ use sc_service::{
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -30,16 +32,24 @@ pub const RPC_DEFAULT_MAX_RESPONSE_SIZE_MB: u32 = 15;
 /// Simplified RPC configuration used in Substrate
 #[derive(Debug)]
 pub struct SubstrateRpcConfiguration {
-    /// IP and port (TCP) on which to listen for RPC requests.
+    /// IP and port (TCP) on which to listen for RPC requests
     pub listen_on: SocketAddr,
-    /// Maximum number of connections for JSON-RPC server.
+    /// Maximum number of connections for JSON-RPC server
     pub max_connections: u32,
-    /// CORS settings for HTTP & WS servers. `None` if all origins are allowed.
+    /// CORS settings for HTTP & WS servers. `None` if all origins are allowed
     pub cors: Option<Vec<String>>,
-    /// RPC methods to expose (by default only a safe subset or all of them).
+    /// RPC methods to expose (by default only a safe subset or all of them)
     pub methods: RpcMethods,
+    /// RPC rate limiting (calls/minute) for each connection
+    pub rate_limit: Option<NonZeroU32>,
     /// Maximum allowed subscriptions per rpc connection
     pub max_subscriptions_per_connection: u32,
+    /// The number of messages the RPC server is allowed to keep in memory
+    pub message_buffer_capacity_per_connection: u32,
+    /// Disable RPC batch requests
+    pub disable_batch_requests: bool,
+    /// Limit the max length per RPC batch request
+    pub max_batch_request_len: Option<u32>,
 }
 
 /// Simplified network used in Substrate
@@ -173,6 +183,17 @@ impl From<SubstrateConfiguration> for Configuration {
             rpc_max_subs_per_conn: configuration.rpc_options.max_subscriptions_per_connection,
             // Doesn't matter since we have specified address above
             rpc_port: 0,
+            rpc_message_buffer_capacity: configuration
+                .rpc_options
+                .message_buffer_capacity_per_connection,
+            rpc_batch_config: if configuration.rpc_options.disable_batch_requests {
+                RpcBatchRequestConfig::Disabled
+            } else if let Some(l) = configuration.rpc_options.max_batch_request_len {
+                RpcBatchRequestConfig::Limit(l)
+            } else {
+                RpcBatchRequestConfig::Unlimited
+            },
+            rpc_rate_limit: configuration.rpc_options.rate_limit,
             prometheus_config: configuration
                 .prometheus_listen_on
                 .map(|prometheus_listen_on| {

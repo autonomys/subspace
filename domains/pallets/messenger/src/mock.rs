@@ -126,7 +126,6 @@ macro_rules! impl_runtime {
             type DustRemoval = ();
             type ExistentialDeposit = ExistentialDeposit;
             type RuntimeHoldReason = MockHoldIdentifer;
-            type MaxHolds = MaxHolds;
         }
 
         parameter_types! {

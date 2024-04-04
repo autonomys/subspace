@@ -567,7 +567,12 @@ pub(super) fn create_consensus_chain_configuration(
                 RpcMethods::Safe => sc_service::RpcMethods::Safe,
                 RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
             },
+            rate_limit: rpc_options.rpc_rate_limit,
             max_subscriptions_per_connection: rpc_options.rpc_max_subscriptions_per_connection,
+            message_buffer_capacity_per_connection: rpc_options
+                .rpc_message_buffer_capacity_per_connection,
+            disable_batch_requests: rpc_options.rpc_disable_batch_requests,
+            max_batch_request_len: rpc_options.rpc_max_batch_request_len,
         },
         prometheus_listen_on,
         telemetry_endpoints: if telemetry_params.no_telemetry {

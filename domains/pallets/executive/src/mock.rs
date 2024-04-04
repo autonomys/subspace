@@ -36,7 +36,6 @@ impl pallet_balances::Config for MockRuntime {
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type MaxHolds = MaxHolds;
 }
 
 pub struct ExtrinsicStorageFees;

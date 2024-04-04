@@ -35,6 +35,7 @@ use sc_domains::HostFunctions as DomainsHostFunctions;
 use sc_service::{Configuration, PartialComponents};
 use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_runtime::traits::HashingFor;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::HostFunctions;
@@ -252,7 +253,7 @@ fn main() -> Result<(), Error> {
                             );
                         }
 
-                        cmd.run::<Block, HostFunctions>(config)
+                        cmd.run::<HashingFor<Block>, HostFunctions>(config)
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
@@ -349,7 +350,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, DomainsHostFunctions>(domain_config)
+                            cmd.run::<HashingFor<DomainBlock>, DomainsHostFunctions>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }
