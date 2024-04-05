@@ -350,10 +350,6 @@ mod pallet {
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
 
-        /// The sudo account id
-        #[pallet::constant]
-        type SudoId: Get<Self::AccountId>;
-
         /// The pallet-domains's pallet id.
         #[pallet::constant]
         type PalletId: Get<frame_support::PalletId>;
@@ -634,6 +630,11 @@ mod pallet {
     pub(super) type LatestSubmittedER<T: Config> =
         StorageMap<_, Identity, (DomainId, OperatorId), DomainBlockNumberFor<T>, ValueQuery>;
 
+    /// Storage for PermissionedActions for domain instantiation and other permissioned calls.
+    #[pallet::storage]
+    pub(super) type PermissionedActionAllowedBy<T: Config> =
+        StorageValue<_, sp_domains::PermissionedActionAllowedBy<T::AccountId>, OptionQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -772,6 +773,8 @@ mod pallet {
         BlockTree(BlockTreeError),
         /// Bundle storage fund specific errors
         BundleStorageFund(BundleStorageFundError),
+        /// Permissioned action is not allowed by the caller.
+        PermissionedActionNotAllowed,
     }
 
     /// Reason for slashing an operator
@@ -1246,9 +1249,13 @@ mod pallet {
             origin: OriginFor<T>,
             domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
         ) -> DispatchResult {
-            ensure_root(origin)?;
-
-            let who = T::SudoId::get();
+            let who = ensure_signed(origin)?;
+            ensure!(
+                PermissionedActionAllowedBy::<T>::get()
+                    .map(|allowed_by| allowed_by.is_allowed(&who))
+                    .unwrap_or_default(),
+                Error::<T>::PermissionedActionNotAllowed
+            );
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
@@ -1376,17 +1383,32 @@ mod pallet {
 
             Ok(Some(actual_weight).into())
         }
+
+        /// Update permissioned action allowed by storage by Sudo.
+        #[pallet::call_index(14)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(0, 1))]
+        pub fn set_permissioned_action_allowed_by(
+            origin: OriginFor<T>,
+            permissioned_action_allowed_by: sp_domains::PermissionedActionAllowedBy<T::AccountId>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            PermissionedActionAllowedBy::<T>::put(permissioned_action_allowed_by);
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub genesis_domain: Option<GenesisDomain<T::AccountId, BalanceOf<T>>>,
+        pub permissioned_action_allowed_by:
+            Option<sp_domains::PermissionedActionAllowedBy<T::AccountId>>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
         fn default() -> Self {
             GenesisConfig {
                 genesis_domain: None,
+                permissioned_action_allowed_by: None,
             }
         }
     }
@@ -1394,6 +1416,11 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
+            if let Some(permissioned_action_allowed_by) =
+                self.permissioned_action_allowed_by.as_ref().cloned()
+            {
+                PermissionedActionAllowedBy::<T>::put(permissioned_action_allowed_by)
+            }
             if let Some(genesis_domain) = self.genesis_domain.as_ref().cloned() {
                 // Register the genesis domain runtime
                 let runtime_id = register_runtime_at_genesis::<T>(

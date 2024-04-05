@@ -527,7 +527,7 @@ mod benchmarks {
 
     #[benchmark]
     fn instantiate_domain() {
-        let creator = T::SudoId::get();
+        let creator = account("domain_creator", 1, SEED);
         T::Currency::set_balance(
             &creator,
             T::DomainInstantiationDeposit::get() + T::MinNominatorStake::get(),
@@ -888,7 +888,7 @@ mod benchmarks {
     }
 
     fn register_domain<T: Config>() -> DomainId {
-        let creator = T::SudoId::get();
+        let creator = account("domain_creator", 1, SEED);
         T::Currency::set_balance(
             &creator,
             T::DomainInstantiationDeposit::get() + T::MinNominatorStake::get(),

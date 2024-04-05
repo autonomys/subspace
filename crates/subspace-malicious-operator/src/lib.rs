@@ -29,6 +29,7 @@ use sc_cli::{
 };
 use sc_service::config::{KeystoreConfig, NetworkConfiguration};
 use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
+use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_domains::DomainId;
 
 /// Subspace Cli.
@@ -43,6 +44,11 @@ pub struct Cli {
     #[clap(flatten)]
     pub run: RunCmd,
 
+    /// Sudo account to use for malicious operator
+    /// If not passed, dev sudo account is used instead.
+    #[arg(long)]
+    pub sudo_account: Option<String>,
+
     /// Domain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded consensus node,
@@ -51,6 +57,17 @@ pub struct Cli {
     /// subspace-node [consensus-chain-args] -- [domain-args]
     #[arg(raw = true)]
     pub domain_args: Vec<String>,
+}
+
+impl Cli {
+    pub fn sudo_account(&self) -> AccountId32 {
+        self.sudo_account
+            .as_ref()
+            .map(|sudo_account| {
+                AccountId32::from_ss58check(sudo_account).expect("Invalid sudo account")
+            })
+            .unwrap_or(crate::chain_spec::consensus_dev_sudo_account())
+    }
 }
 
 impl SubstrateCli for Cli {

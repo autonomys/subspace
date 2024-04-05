@@ -30,7 +30,7 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{OperatorAllowList, OperatorPublicKey, RuntimeType};
+use sp_domains::{OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy, RuntimeType};
 use sp_runtime::{BuildStorage, Percent};
 use std::collections::btree_set::BTreeSet;
 use std::marker::PhantomData;
@@ -110,6 +110,7 @@ struct GenesisDomainParams {
     operator_allow_list: OperatorAllowList<AccountId>,
     operator_signing_key: OperatorPublicKey,
     initial_balances: Vec<(MultiAccountId, Balance)>,
+    permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
 }
 
 pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
@@ -194,7 +195,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                 GenesisDomainParams {
                     domain_name: "nova".to_owned(),
                     operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
-                        sudo_account,
+                        sudo_account.clone(),
                     ])),
                     operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
                         "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
@@ -202,6 +203,9 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
                         SpecId::Gemini,
                     ),
+                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
+                        sudo_account,
+                    ]),
                 },
             )
         },
@@ -292,7 +296,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                 .collect::<Vec<_>>();
             subspace_genesis_config(
                 SpecId::DevNet,
-                sudo_account,
+                sudo_account.clone(),
                 balances,
                 vesting_schedules,
                 GenesisParams {
@@ -321,6 +325,9 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
                         SpecId::DevNet,
                     ),
+                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
+                        sudo_account,
+                    ]),
                 },
             )
         },
@@ -396,6 +403,9 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
                         SpecId::Dev,
                     ),
+                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
+                        get_account_id_from_seed("Alice"),
+                    ]),
                 },
             )
         },
@@ -487,6 +497,8 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
+            permissioned_action_allowed_by: enable_domains
+                .then_some(genesis_domain_params.permissioned_action_allowed_by),
             genesis_domain: enable_domains.then_some(sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,

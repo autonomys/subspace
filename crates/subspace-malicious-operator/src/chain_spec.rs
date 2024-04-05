@@ -7,7 +7,7 @@ use sc_service::{ChainSpec, ChainType, NoExtension};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{OperatorAllowList, OperatorPublicKey, RuntimeType};
+use sp_domains::{OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy, RuntimeType};
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
 use std::marker::PhantomData;
@@ -94,6 +94,10 @@ pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesi
     )
 }
 
+pub(crate) fn consensus_dev_sudo_account() -> AccountId32 {
+    get_account_id_from_seed("Alice")
+}
+
 pub fn create_domain_spec(
     chain_id: &str,
     raw_genesis: RawGenesis,
@@ -151,6 +155,7 @@ struct GenesisDomainParams {
     operator_signing_key: OperatorPublicKey,
     raw_genesis_storage: Vec<u8>,
     initial_balances: Vec<(MultiAccountId, Balance)>,
+    permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
 }
 
 pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
@@ -207,6 +212,7 @@ pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisC
                     operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
                     raw_genesis_storage: raw_genesis_storage.clone(),
                     initial_balances: endowed_accounts(),
+                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Anyone,
                 },
             )
         },
@@ -271,6 +277,9 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
+            permissioned_action_allowed_by: Some(
+                genesis_domain_params.permissioned_action_allowed_by,
+            ),
             genesis_domain: Some(sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,

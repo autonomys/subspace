@@ -647,7 +647,6 @@ parameter_types! {
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 512;
     pub const MaxNominators: u32 = 100;
-    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const MaxInitialDomainAccounts: u32 = 20;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
@@ -712,7 +711,6 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = Subspace;
-    type SudoId = SudoId;
     type MinNominatorStake = MinNominatorStake;
     type PalletId = DomainsPalletId;
     type StorageFee = TransactionFees;
@@ -1330,10 +1328,6 @@ impl_runtime_apis! {
 
         fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId> {
             Domains::operator_signing_key(signing_key)
-        }
-
-        fn sudo_account_id() -> AccountId {
-            SudoId::get()
         }
 
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
