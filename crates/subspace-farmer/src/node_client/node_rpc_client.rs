@@ -1,8 +1,7 @@
 use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
-use jsonrpsee::core::Error as JsonError;
+use jsonrpsee::core::client::{ClientT, Error as JsonError, SubscriptionClientT};
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
@@ -32,7 +31,7 @@ impl NodeRpcClient {
         let client = Arc::new(
             WsClientBuilder::default()
                 .max_concurrent_requests(RPC_MAX_CONCURRENT_REQUESTS)
-                .max_request_body_size(20 * 1024 * 1024)
+                .max_request_size(20 * 1024 * 1024)
                 .build(url)
                 .await?,
         );
