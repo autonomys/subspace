@@ -82,7 +82,7 @@ impl MaliciousOperatorStatus {
 
 pub struct MaliciousBundleProducer<Client, CClient, TransactionPool> {
     domain_id: DomainId,
-    sudo_acccount: AccountId,
+    sudo_account: AccountId,
     consensus_keystore: KeystorePtr,
     operator_keystore: KeystorePtr,
     consensus_client: Arc<CClient>,
@@ -118,6 +118,7 @@ where
         consensus_keystore: KeystorePtr,
         consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
         domain_transaction_pool: Arc<TransactionPool>,
+        sudo_account: AccountId,
     ) -> Self {
         let operator_keystore = KeystoreContainer::new(&KeystoreConfig::InMemory)
             .expect("create in-memory keystore container must succeed")
@@ -146,11 +147,6 @@ where
         let malicious_bundle_tamper =
             MaliciousBundleTamper::new(domain_client, operator_keystore.clone());
 
-        let sudo_acccount = consensus_client
-            .runtime_api()
-            .sudo_account_id(consensus_client.info().best_hash)
-            .expect("Failed to get sudo account");
-
         Self {
             domain_id,
             consensus_client,
@@ -159,7 +155,7 @@ where
             bundle_producer,
             malicious_bundle_tamper,
             malicious_operator_status: MaliciousOperatorStatus::NoStatus,
-            sudo_acccount,
+            sudo_account,
             consensus_offchain_tx_pool_factory,
         }
     }
@@ -317,7 +313,7 @@ where
     fn sudo_acccount_nonce(&self) -> Result<Nonce, Box<dyn Error>> {
         Ok(self.consensus_client.runtime_api().account_nonce(
             self.consensus_client.info().best_hash,
-            self.sudo_acccount.clone(),
+            self.sudo_account.clone(),
         )?)
     }
 
@@ -368,7 +364,7 @@ where
                 &self.consensus_keystore,
                 self.consensus_client.info(),
                 call.clone(),
-                self.sudo_acccount.clone(),
+                self.sudo_account.clone(),
                 nonce,
             )?,
             None => UncheckedExtrinsic::new_unsigned(call.clone()),

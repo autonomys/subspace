@@ -93,6 +93,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 
+    let sudo_account = cli.sudo_account();
     let runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
     runner.run_node_until_exit(|mut consensus_chain_config| async move {
@@ -354,7 +355,9 @@ fn main() -> Result<(), Error> {
                                 return;
                             }
                         };
-                        if let Err(error) = domain_starter.start(bootstrap_result).await {
+                        if let Err(error) =
+                            domain_starter.start(bootstrap_result, sudo_account).await
+                        {
                             log::error!("Domain starter exited with an error {error:?}");
                         }
                     }),

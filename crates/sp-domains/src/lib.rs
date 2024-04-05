@@ -784,6 +784,22 @@ impl<AccountId: Ord> OperatorAllowList<AccountId> {
     }
 }
 
+/// Permissioned actions allowed by either specific accounts or anyone.
+#[derive(TypeInfo, Encode, Decode, Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub enum PermissionedActionAllowedBy<AccountId: Codec + Clone> {
+    Accounts(Vec<AccountId>),
+    Anyone,
+}
+
+impl<AccountId: Codec + PartialEq + Clone> PermissionedActionAllowedBy<AccountId> {
+    pub fn is_allowed(&self, who: &AccountId) -> bool {
+        match self {
+            PermissionedActionAllowedBy::Accounts(accounts) => accounts.contains(who),
+            PermissionedActionAllowedBy::Anyone => true,
+        }
+    }
+}
+
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId: Ord, Balance> {
     // Domain runtime items
@@ -1309,9 +1325,6 @@ sp_api::decl_runtime_apis! {
 
         /// Get operator id by signing key
         fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId>;
-
-        /// Get the consensus chain sudo account id, currently only used in the intentional malicious operator
-        fn sudo_account_id() -> subspace_runtime_primitives::AccountId;
 
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;

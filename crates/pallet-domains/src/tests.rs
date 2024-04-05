@@ -279,7 +279,6 @@ impl pallet_domains::Config for Test {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
-    type SudoId = ();
     type PalletId = DomainsPalletId;
     type StorageFee = DummyStorageFee;
     type BlockSlot = DummyBlockSlot;
@@ -577,6 +576,10 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
 
 pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorId>) -> DomainId {
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
+    assert_ok!(crate::Pallet::<Test>::set_permissioned_action_allowed_by(
+        RawOrigin::Root.into(),
+        sp_domains::PermissionedActionAllowedBy::Anyone
+    ));
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
         "evm".to_owned(),
@@ -591,7 +594,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
             + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
     );
     crate::Pallet::<Test>::instantiate_domain(
-        RawOrigin::Root.into(),
+        RawOrigin::Signed(creator).into(),
         DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,

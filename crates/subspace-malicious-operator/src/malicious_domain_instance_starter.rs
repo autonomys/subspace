@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
+use subspace_runtime_primitives::AccountId;
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
@@ -51,6 +52,7 @@ where
     pub async fn start(
         self,
         bootstrap_result: BootstrapResult<CBlock>,
+        sudo_account: AccountId,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let BootstrapResult {
             domain_instance_data,
@@ -178,6 +180,7 @@ where
                     consensus_keystore,
                     consensus_offchain_tx_pool_factory,
                     domain_node.transaction_pool.clone(),
+                    sudo_account,
                 );
 
                 domain_node
