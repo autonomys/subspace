@@ -30,6 +30,7 @@ macro_rules! impl_runtime {
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_messenger::messages::ChainId;
         use sp_runtime::traits::Convert;
+        use frame_system::DefaultConfig;
         use sp_runtime::BuildStorage;
         use crate::HoldIdentifier;
         use sp_domains::ChannelId;
@@ -50,7 +51,7 @@ macro_rules! impl_runtime {
             }
         );
 
-        #[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+        #[derive_impl(frame_system::config_preludes::TestDefaultConfig )]
         impl frame_system::Config for $runtime {
             type Block = Block;
             type AccountData = AccountData<Balance>;

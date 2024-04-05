@@ -18,6 +18,7 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use frame_system::DefaultConfig;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
@@ -76,7 +77,7 @@ type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u128;
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
     type Hash = Hash;

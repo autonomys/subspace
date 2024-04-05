@@ -4,6 +4,7 @@ use frame_support::dispatch::DispatchInfo;
 use frame_support::weights::IdentityFee;
 use frame_support::{derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
+use frame_system::DefaultConfig;
 use pallet_balances::AccountData;
 use sp_runtime::BuildStorage;
 
@@ -19,7 +20,7 @@ frame_support::construct_runtime!(
     }
 );
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for MockRuntime {
     type Block = Block;
     type AccountData = AccountData<Balance>;

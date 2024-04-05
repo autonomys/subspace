@@ -2,6 +2,7 @@ use crate::feed_processor::{FeedObjectMapping, FeedProcessor, FeedProcessor as F
 use crate::{self as pallet_feeds};
 use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::{derive_impl, parameter_types};
+use frame_system::DefaultConfig;
 use scale_info::TypeInfo;
 use sp_runtime::BuildStorage;
 
@@ -15,7 +16,7 @@ frame_support::construct_runtime!(
     }
 );
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
 }
