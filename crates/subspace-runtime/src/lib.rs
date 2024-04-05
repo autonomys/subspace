@@ -37,6 +37,7 @@ use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     AccountIdConverter, BlockNumber as DomainNumber, Hash as DomainHash,
 };
+use frame_support::genesis_builder_helper::{build_config, create_default_config};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, OnRuntimeUpgrade,
@@ -1398,6 +1399,16 @@ impl_runtime_apis! {
         ) -> Result<(), mmr::Error> {
             let nodes = leaves.into_iter().map(|leaf|mmr::DataOrHash::Data(leaf.into_opaque_leaf())).collect();
             pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(root, nodes, proof)
+        }
+    }
+
+    impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
+        fn create_default_config() -> Vec<u8> {
+            create_default_config::<RuntimeGenesisConfig>()
+        }
+
+        fn build_config(config: Vec<u8>) -> sp_genesis_builder::Result {
+            build_config::<RuntimeGenesisConfig>(config)
         }
     }
 

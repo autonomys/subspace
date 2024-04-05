@@ -10,9 +10,7 @@ use domain_service::config::{
     SubstrateConfiguration, SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
 };
 use domain_service::{FullBackend, FullClient};
-use evm_domain_runtime::{
-    AccountId as AccountId20, RuntimeGenesisConfig as EvmRuntimeGenesisConfig,
-};
+use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
 use sc_chain_spec::{ChainType, GenericChainSpec, Properties};
 use sc_cli::{
@@ -198,86 +196,74 @@ pub(super) fn create_domain_configuration(
         });
     }
 
-    // Derive domain chain spec from consensus chain spec
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    let chain_spec = GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_genesis(
-        // Name
-        &format!(
-            "{} Domain {}",
-            consensus_chain_configuration.chain_spec.name(),
-            domain_id
-        ),
-        // ID
-        &format!(
-            "{}_domain_{}",
-            consensus_chain_configuration.chain_spec.id(),
-            domain_id
-        ),
-        ChainType::Custom("SubspaceDomain".to_string()),
-        // The value of the `EvmRuntimeGenesisConfig` doesn't matter since genesis storage will be
-        // replaced before actually running the domain
-        EvmRuntimeGenesisConfig::default,
-        // Bootnodes
-        consensus_chain_configuration
-            .chain_spec
-            .properties()
-            .get("domainsBootstrapNodes")
-            .map(|d| {
-                serde_json::from_value::<HashMap<DomainId, Vec<MultiaddrWithPeerId>>>(d.clone())
+    // Code doesn't matter, it will be replaced before running just like genesis storage
+    let chain_spec =
+        GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::builder(&[], None)
+            .with_name(&format!(
+                "{} Domain {}",
+                consensus_chain_configuration.chain_spec.name(),
+                domain_id
+            ))
+            .with_id(&format!(
+                "{}_domain_{}",
+                consensus_chain_configuration.chain_spec.id(),
+                domain_id
+            ))
+            .with_chain_type(ChainType::Custom("SubspaceDomain".to_string()))
+            .with_boot_nodes(
+                consensus_chain_configuration
+                    .chain_spec
+                    .properties()
+                    .get("domainsBootstrapNodes")
+                    .map(|d| {
+                        serde_json::from_value::<HashMap<DomainId, Vec<MultiaddrWithPeerId>>>(
+                            d.clone(),
+                        )
+                    })
+                    .transpose()
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to decode Domains bootstrap nodes: {error:?}"
+                        ))
+                    })?
+                    .unwrap_or_default()
+                    .get(&domain_id)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+            .with_protocol_id(&format!(
+                "{}-domain-{}",
+                consensus_chain_configuration.chain_spec.id(),
+                domain_id
+            ))
+            .with_properties({
+                let mut properties = Properties::new();
+
+                if let Some(ss58_format) = consensus_chain_configuration
+                    .chain_spec
+                    .properties()
+                    .get("ss58Format")
+                {
+                    properties.insert("ss58Format".to_string(), ss58_format.clone());
+                }
+                if let Some(decimal_places) = consensus_chain_configuration
+                    .chain_spec
+                    .properties()
+                    .get("tokenDecimals")
+                {
+                    properties.insert("tokenDecimals".to_string(), decimal_places.clone());
+                }
+                if let Some(token_symbol) = consensus_chain_configuration
+                    .chain_spec
+                    .properties()
+                    .get("tokenSymbol")
+                {
+                    properties.insert("tokenSymbol".to_string(), token_symbol.clone());
+                }
+
+                properties
             })
-            .transpose()
-            .map_err(|error| {
-                sc_service::Error::Other(format!(
-                    "Failed to decode Domains bootstrap nodes: {error:?}"
-                ))
-            })?
-            .unwrap_or_default()
-            .get(&domain_id)
-            .cloned()
-            .unwrap_or_default(),
-        // Telemetry
-        None,
-        // Protocol ID
-        Some(&format!(
-            "{}-domain-{}",
-            consensus_chain_configuration.chain_spec.id(),
-            domain_id
-        )),
-        None,
-        // Properties
-        Some({
-            let mut properties = Properties::new();
-
-            if let Some(ss58_format) = consensus_chain_configuration
-                .chain_spec
-                .properties()
-                .get("ss58Format")
-            {
-                properties.insert("ss58Format".to_string(), ss58_format.clone());
-            }
-            if let Some(decimal_places) = consensus_chain_configuration
-                .chain_spec
-                .properties()
-                .get("tokenDecimals")
-            {
-                properties.insert("tokenDecimals".to_string(), decimal_places.clone());
-            }
-            if let Some(token_symbol) = consensus_chain_configuration
-                .chain_spec
-                .properties()
-                .get("tokenSymbol")
-            {
-                properties.insert("tokenSymbol".to_string(), token_symbol.clone());
-            }
-
-            properties
-        }),
-        // Extensions
-        None,
-        // Code doesn't matter, it will be replaced before running
-        &[],
-    );
+            .build();
 
     let base_path = consensus_chain_configuration
         .base_path

@@ -24,7 +24,7 @@ use domain_runtime_primitives::MultiAccountId;
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
-use sc_service::{ChainType, NoExtension};
+use sc_service::ChainType;
 use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, GEMINI_3H_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
@@ -114,57 +114,71 @@ struct GenesisDomainParams {
 }
 
 pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    Ok(GenericChainSpec::from_genesis(
-        // Name
-        "Subspace Gemini 3h",
-        // ID
-        "subspace_gemini_3h",
-        ChainType::Custom("Subspace Gemini 3h".to_string()),
-        || {
-            let sudo_account =
-                AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
-                    .expect("Wrong root account address");
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Gemini".to_string())?,
+        None,
+    )
+    .with_name("Subspace Gemini 3h")
+    // ID
+    .with_id("subspace_gemini_3h")
+    .with_chain_type(ChainType::Custom("Subspace Gemini 3h".to_string()))
+    .with_telemetry_endpoints(
+        TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+            .map_err(|error| error.to_string())?,
+    )
+    .with_protocol_id("subspace-gemini-3h")
+    .with_properties({
+        let mut properties = chain_spec_properties();
+        properties.insert(
+            "potExternalEntropy".to_string(),
+            serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
+        );
+        properties
+    })
+    .with_genesis_config({
+        let sudo_account =
+            AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
+                .expect("Wrong root account address");
 
-            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
-            let vesting_schedules = TOKEN_GRANTS
-                .iter()
-                .flat_map(|&(account_address, amount)| {
-                    let account_id = AccountId::from_ss58check(account_address)
-                        .expect("Wrong vesting account address");
-                    let amount: Balance = amount * SSC;
+        let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+        let vesting_schedules = TOKEN_GRANTS
+            .iter()
+            .flat_map(|&(account_address, amount)| {
+                let account_id = AccountId::from_ss58check(account_address)
+                    .expect("Wrong vesting account address");
+                let amount: Balance = amount * SSC;
 
-                    // TODO: Adjust start block to real value before mainnet launch
-                    let start_block = 100_000_000;
-                    let one_month_in_blocks =
-                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
-                            .expect("One month of blocks always fits in u32; qed");
+                // TODO: Adjust start block to real value before mainnet launch
+                let start_block = 100_000_000;
+                let one_month_in_blocks =
+                    u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
+                        .expect("One month of blocks always fits in u32; qed");
 
-                    // Add balance so it can be locked
-                    balances.push((account_id.clone(), amount));
+                // Add balance so it can be locked
+                balances.push((account_id.clone(), amount));
 
-                    [
-                        // 1/4 of tokens are released after 1 year.
-                        (
-                            account_id.clone(),
-                            start_block,
-                            one_month_in_blocks * 12,
-                            1,
-                            amount / 4,
-                        ),
-                        // 1/48 of tokens are released every month after that for 3 more years.
-                        (
-                            account_id,
-                            start_block + one_month_in_blocks * 12,
-                            one_month_in_blocks,
-                            36,
-                            amount / 48,
-                        ),
-                    ]
-                })
-                .collect::<Vec<_>>();
-            subspace_genesis_config(
+                [
+                    // 1/4 of tokens are released after 1 year.
+                    (
+                        account_id.clone(),
+                        start_block,
+                        one_month_in_blocks * 12,
+                        1,
+                        amount / 4,
+                    ),
+                    // 1/48 of tokens are released every month after that for 3 more years.
+                    (
+                        account_id,
+                        start_block + one_month_in_blocks * 12,
+                        one_month_in_blocks,
+                        36,
+                        amount / 48,
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+        patch_domain_runtime_version(
+            serde_json::to_value(subspace_genesis_config(
                 SpecId::Gemini,
                 sudo_account.clone(),
                 balances,
@@ -207,32 +221,11 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                         sudo_account,
                     ]),
                 },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        Some(
-            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
-                .map_err(|error| error.to_string())?,
-        ),
-        // Protocol ID
-        Some("subspace-gemini-3h"),
-        None,
-        // Properties
-        Some({
-            let mut properties = chain_spec_properties();
-            properties.insert(
-                "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
-            );
-            properties
-        }),
-        // Extensions
-        NoExtension::None,
-        // Code
-        WASM_BINARY.expect("Wasm binary must be built for Gemini"),
-    ))
+            )?)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+        )
+    })
+    .build())
 }
 
 pub fn gemini_3h_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
@@ -244,57 +237,70 @@ pub fn devnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String>
 }
 
 pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    Ok(GenericChainSpec::from_genesis(
-        // Name
-        "Subspace Dev network",
-        // ID
-        "subspace_devnet",
-        ChainType::Custom("Testnet".to_string()),
-        || {
-            let sudo_account =
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                    .expect("Wrong root account address");
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Devnet".to_string())?,
+        None,
+    )
+    .with_name("Subspace Dev network")
+    .with_id("subspace_devnet")
+    .with_chain_type(ChainType::Custom("Testnet".to_string()))
+    .with_telemetry_endpoints(
+        TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+            .map_err(|error| error.to_string())?,
+    )
+    .with_protocol_id("subspace-devnet")
+    .with_properties({
+        let mut properties = chain_spec_properties();
+        properties.insert(
+            "potExternalEntropy".to_string(),
+            serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
+        );
+        properties
+    })
+    .with_genesis_config({
+        let sudo_account =
+            AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                .expect("Wrong root account address");
 
-            let mut balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
-            let vesting_schedules = TOKEN_GRANTS
-                .iter()
-                .flat_map(|&(account_address, amount)| {
-                    let account_id = AccountId::from_ss58check(account_address)
-                        .expect("Wrong vesting account address");
-                    let amount: Balance = amount * SSC;
+        let mut balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
+        let vesting_schedules = TOKEN_GRANTS
+            .iter()
+            .flat_map(|&(account_address, amount)| {
+                let account_id = AccountId::from_ss58check(account_address)
+                    .expect("Wrong vesting account address");
+                let amount: Balance = amount * SSC;
 
-                    // TODO: Adjust start block to real value before mainnet launch
-                    let start_block = 100_000_000;
-                    let one_month_in_blocks =
-                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
-                            .expect("One month of blocks always fits in u32; qed");
+                // TODO: Adjust start block to real value before mainnet launch
+                let start_block = 100_000_000;
+                let one_month_in_blocks =
+                    u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
+                        .expect("One month of blocks always fits in u32; qed");
 
-                    // Add balance so it can be locked
-                    balances.push((account_id.clone(), amount));
+                // Add balance so it can be locked
+                balances.push((account_id.clone(), amount));
 
-                    [
-                        // 1/4 of tokens are released after 1 year.
-                        (
-                            account_id.clone(),
-                            start_block,
-                            one_month_in_blocks * 12,
-                            1,
-                            amount / 4,
-                        ),
-                        // 1/48 of tokens are released every month after that for 3 more years.
-                        (
-                            account_id,
-                            start_block + one_month_in_blocks * 12,
-                            one_month_in_blocks,
-                            36,
-                            amount / 48,
-                        ),
-                    ]
-                })
-                .collect::<Vec<_>>();
-            subspace_genesis_config(
+                [
+                    // 1/4 of tokens are released after 1 year.
+                    (
+                        account_id.clone(),
+                        start_block,
+                        one_month_in_blocks * 12,
+                        1,
+                        amount / 4,
+                    ),
+                    // 1/48 of tokens are released every month after that for 3 more years.
+                    (
+                        account_id,
+                        start_block + one_month_in_blocks * 12,
+                        one_month_in_blocks,
+                        36,
+                        amount / 48,
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+        patch_domain_runtime_version(
+            serde_json::to_value(subspace_genesis_config(
                 SpecId::DevNet,
                 sudo_account.clone(),
                 balances,
@@ -329,47 +335,30 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                         sudo_account,
                     ]),
                 },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        Some(
-            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
-                .map_err(|error| error.to_string())?,
-        ),
-        // Protocol ID
-        Some("subspace-devnet"),
-        None,
-        // Properties
-        Some({
+            )?)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+        )
+    })
+    .build())
+}
+
+pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
+
+    Ok(GenericChainSpec::builder(wasm_binary, None)
+        .with_name("Subspace development")
+        .with_id("subspace_dev")
+        .with_chain_type(ChainType::Development)
+        .with_properties({
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
                 serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
-        }),
-        // Extensions
-        NoExtension::None,
-        // Code
-        WASM_BINARY.expect("Wasm binary must be built for Devnet"),
-    ))
-}
-
-pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
-    let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
-
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    Ok(GenericChainSpec::from_genesis(
-        // Name
-        "Subspace development",
-        // ID
-        "subspace_dev",
-        ChainType::Development,
-        || {
-            subspace_genesis_config(
+        })
+        .with_genesis_config(patch_domain_runtime_version(
+            serde_json::to_value(subspace_genesis_config(
                 SpecId::Dev,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -407,29 +396,10 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                         get_account_id_from_seed("Alice"),
                     ]),
                 },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        None,
-        None,
-        // Properties
-        Some({
-            let mut properties = chain_spec_properties();
-            properties.insert(
-                "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
-            );
-            properties
-        }),
-        // Extensions
-        NoExtension::None,
-        // Code
-        wasm_binary,
-    ))
+            )?)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+        ))
+        .build())
 }
 
 /// Configure initial storage state for FRAME modules.
@@ -441,7 +411,7 @@ fn subspace_genesis_config(
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
-) -> RuntimeGenesisConfig {
+) -> Result<RuntimeGenesisConfig, String> {
     let GenesisParams {
         enable_rewards_at,
         allow_authoring_by,
@@ -456,15 +426,15 @@ fn subspace_genesis_config(
 
     let raw_genesis_storage = {
         let domain_chain_spec = match spec_id {
-            SpecId::Dev => evm_chain_spec::development_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
-            SpecId::Gemini => evm_chain_spec::gemini_3h_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
-            SpecId::DevNet => evm_chain_spec::devnet_config(move || {
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
-            }),
+            SpecId::Dev => evm_chain_spec::development_config(
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
+            )?,
+            SpecId::Gemini => evm_chain_spec::gemini_3h_config(
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
+            )?,
+            SpecId::DevNet => evm_chain_spec::devnet_config(
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
+            )?,
         };
         let storage = domain_chain_spec
             .build_storage()
@@ -473,7 +443,7 @@ fn subspace_genesis_config(
         raw_genesis.encode()
     };
 
-    RuntimeGenesisConfig {
+    Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
@@ -519,5 +489,38 @@ fn subspace_genesis_config(
                 initial_balances: genesis_domain_params.initial_balances,
             }),
         },
+    })
+}
+
+// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
+fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
+    let Some(runtime_version) = genesis_config
+        .get_mut("domains")
+        .and_then(|domains| domains.get_mut("genesisDomain"))
+        .and_then(|genesis_domain| genesis_domain.get_mut("runtime_version"))
+    else {
+        return genesis_config;
+    };
+
+    if let Some(spec_name) = runtime_version.get_mut("specName") {
+        if let Some(spec_name_bytes) = spec_name
+            .as_str()
+            .map(|spec_name| spec_name.as_bytes().to_vec())
+        {
+            *spec_name = serde_json::to_value(spec_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
     }
+
+    if let Some(impl_name) = runtime_version.get_mut("implName") {
+        if let Some(impl_name_bytes) = impl_name
+            .as_str()
+            .map(|impl_name| impl_name.as_bytes().to_vec())
+        {
+            *impl_name = serde_json::to_value(impl_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
+    }
+
+    genesis_config
 }

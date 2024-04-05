@@ -18,9 +18,6 @@ use subspace_test_runtime::{
     SystemConfig, VestingConfig, SSC, WASM_BINARY,
 };
 
-/// The `ChainSpec` parameterized for subspace test runtime.
-pub type TestChainSpec = sc_service::GenericChainSpec<RuntimeGenesisConfig>;
-
 /// Generate a crypto pair from seed.
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
     TPublic::Pair::from_string(&format!("//{seed}"), None)
@@ -36,51 +33,46 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 }
 
 /// Local testnet config (multivalidator Alice + Bob).
-pub fn subspace_local_testnet_config() -> TestChainSpec {
-    let wasm_binary = WASM_BINARY.expect("Development wasm not available");
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    TestChainSpec::from_genesis(
-        "Local Testnet",
-        "local_testnet",
-        ChainType::Local,
-        || {
-            create_genesis_config(
-                // Sudo account
-                get_account_id_from_seed("Alice"),
-                // Pre-funded accounts
-                // Alice also get more funds that are used during the domain instantiation
-                vec![
-                    (
-                        get_account_id_from_seed("Alice"),
-                        (5_000
-                            + crate::domain_chain_spec::endowed_accounts().len() as Balance
-                                * 2_000_000)
-                            * SSC,
-                    ),
-                    (get_account_id_from_seed("Bob"), 1_000 * SSC),
-                    (get_account_id_from_seed("Charlie"), 1_000 * SSC),
-                    (get_account_id_from_seed("Dave"), 1_000 * SSC),
-                    (get_account_id_from_seed("Eve"), 1_000 * SSC),
-                    (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
-                    (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
-                ],
-                vec![],
-            )
-        },
-        vec![],
+pub fn subspace_local_testnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?,
         None,
-        Some("subspace-test"),
-        None,
-        None,
-        Default::default(),
-        wasm_binary,
     )
+    .with_name("Local Testnet")
+    .with_id("local_testnet")
+    .with_chain_type(ChainType::Local)
+    .with_genesis_config(patch_domain_runtime_version(
+        serde_json::to_value(create_genesis_config(
+            // Sudo account
+            get_account_id_from_seed("Alice"),
+            // Pre-funded accounts
+            // Alice also get more funds that are used during the domain instantiation
+            vec![
+                (
+                    get_account_id_from_seed("Alice"),
+                    (5_000
+                        + crate::domain_chain_spec::endowed_accounts().len() as Balance
+                            * 2_000_000)
+                        * SSC,
+                ),
+                (get_account_id_from_seed("Bob"), 1_000 * SSC),
+                (get_account_id_from_seed("Charlie"), 1_000 * SSC),
+                (get_account_id_from_seed("Dave"), 1_000 * SSC),
+                (get_account_id_from_seed("Eve"), 1_000 * SSC),
+                (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
+                (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
+                (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
+                (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
+                (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
+                (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
+                (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
+            ],
+            vec![],
+        )?)
+        .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+    ))
+    .with_protocol_id("subspace-test")
+    .build())
 }
 
 /// Configure initial storage state for FRAME modules.
@@ -89,30 +81,27 @@ fn create_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-) -> RuntimeGenesisConfig {
+) -> Result<RuntimeGenesisConfig, String> {
     let raw_genesis_storage = {
-        // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-        #[allow(deprecated)]
-        let domain_chain_spec = GenericChainSpec::<_, _, ()>::from_genesis(
-            "",
-            "",
-            ChainType::Development,
-            testnet_evm_genesis,
-            Vec::new(),
-            None,
-            None,
-            None,
-            None,
-            None::<()>,
-            evm_domain_test_runtime::WASM_BINARY.expect("Development wasm not available"),
-        );
+        let domain_chain_spec =
+            GenericChainSpec::<evm_domain_test_runtime::RuntimeGenesisConfig>::builder(
+                evm_domain_test_runtime::WASM_BINARY
+                    .ok_or_else(|| "Development wasm not available".to_string())?,
+                None,
+            )
+            .with_chain_type(ChainType::Development)
+            .with_genesis_config(
+                serde_json::to_value(testnet_evm_genesis())
+                    .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+            )
+            .build();
         let storage = domain_chain_spec
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");
         let raw_genesis = RawGenesis::from_storage(storage);
         raw_genesis.encode()
     };
-    RuntimeGenesisConfig {
+    Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
@@ -164,5 +153,38 @@ fn create_genesis_config(
                     .collect(),
             }),
         },
+    })
+}
+
+// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
+fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
+    let Some(runtime_version) = genesis_config
+        .get_mut("domains")
+        .and_then(|domains| domains.get_mut("genesisDomain"))
+        .and_then(|genesis_domain| genesis_domain.get_mut("runtime_version"))
+    else {
+        return genesis_config;
+    };
+
+    if let Some(spec_name) = runtime_version.get_mut("specName") {
+        if let Some(spec_name_bytes) = spec_name
+            .as_str()
+            .map(|spec_name| spec_name.as_bytes().to_vec())
+        {
+            *spec_name = serde_json::to_value(spec_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
     }
+
+    if let Some(impl_name) = runtime_version.get_mut("implName") {
+        if let Some(impl_name_bytes) = impl_name
+            .as_str()
+            .map(|impl_name| impl_name.as_bytes().to_vec())
+        {
+            *impl_name = serde_json::to_value(impl_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
+    }
+
+    genesis_config
 }

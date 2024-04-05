@@ -180,7 +180,7 @@ where
             domain_nodes_exclusive,
             role.clone(),
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
-            chain_spec,
+            Box::new(chain_spec) as Box<_>,
         )
         .expect("could not generate domain node Configuration");
 

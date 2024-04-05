@@ -42,90 +42,67 @@ fn get_dev_accounts() -> Vec<AccountId> {
     ]
 }
 
-pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
-    constructor: F,
-) -> GenericChainSpec<RuntimeGenesisConfig> {
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    GenericChainSpec::from_genesis(
-        // Name
-        "Development",
-        // ID
-        "evm_domain_dev",
-        ChainType::Development,
-        constructor,
-        vec![],
+pub fn development_config(
+    runtime_genesis_config: RuntimeGenesisConfig,
+) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
-        None,
-        None,
-        Some(chain_spec_properties()),
-        None,
-        // Code
-        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
+    .with_name("Development")
+    .with_id("evm_domain_dev")
+    .with_chain_type(ChainType::Development)
+    .with_genesis_config(
+        serde_json::to_value(runtime_genesis_config)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+    )
+    .with_properties(chain_spec_properties())
+    .build())
 }
 
-pub fn gemini_3h_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
-    constructor: F,
-) -> GenericChainSpec<RuntimeGenesisConfig> {
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    GenericChainSpec::from_genesis(
-        // Name
-        "Subspace Gemini 3h EVM Domain",
-        // ID
-        "subspace_gemini_3h_evm_domain",
-        ChainType::Live,
-        constructor,
-        // Bootnodes
-        vec![],
-        // Telemetry
+pub fn gemini_3h_config(
+    runtime_genesis_config: RuntimeGenesisConfig,
+) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
-        // Protocol ID
-        Some("subspace-gemini-3h-evm-domain"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
-        None,
-        // Code
-        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
+    .with_name("Subspace Gemini 3h EVM Domain")
+    .with_id("subspace_gemini_3h_evm_domain")
+    .with_chain_type(ChainType::Live)
+    .with_genesis_config(
+        serde_json::to_value(runtime_genesis_config)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+    )
+    .with_protocol_id("subspace-gemini-3h-evm-domain")
+    .with_properties(chain_spec_properties())
+    .build())
 }
 
-pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
-    constructor: F,
-) -> GenericChainSpec<RuntimeGenesisConfig> {
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    GenericChainSpec::from_genesis(
-        // Name
-        "Subspace Devnet EVM Domain",
-        // ID
-        "subspace_devnet_evm_domain",
-        ChainType::Custom("Testnet".to_string()),
-        constructor,
-        // Bootnodes
-        vec![],
-        // Telemetry
+pub fn devnet_config(
+    runtime_genesis_config: RuntimeGenesisConfig,
+) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+    Ok(GenericChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
-        // Protocol ID
-        Some("subspace-devnet-evm-domain"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
-        None,
-        // Code
-        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
+    .with_name("Subspace Devnet EVM Domain")
+    .with_id("subspace_devnet_evm_domain")
+    .with_chain_type(ChainType::Custom("Testnet".to_string()))
+    .with_genesis_config(
+        serde_json::to_value(runtime_genesis_config)
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+    )
+    .with_protocol_id("subspace-devnet-evm-domain")
+    .with_properties(chain_spec_properties())
+    .build())
 }
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "gemini-3h" => gemini_3h_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
-        "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
-        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
+        "gemini-3h" => gemini_3h_config(get_testnet_genesis_by_spec_id(SpecId::Gemini))?,
+        "devnet" => devnet_config(get_testnet_genesis_by_spec_id(SpecId::DevNet))?,
+        "dev" => development_config(get_testnet_genesis_by_spec_id(SpecId::Dev))?,
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))

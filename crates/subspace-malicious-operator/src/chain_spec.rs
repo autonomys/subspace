@@ -3,7 +3,7 @@ use evm_domain_runtime::{AccountId as AccountId20, EVMChainIdConfig, EVMConfig, 
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_chain_spec::GenericChainSpec;
-use sc_service::{ChainSpec, ChainType, NoExtension};
+use sc_service::{ChainSpec, ChainType};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
@@ -34,64 +34,58 @@ fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
     .collect()
 }
 
-pub fn domain_dev_config() -> GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
+pub fn domain_dev_config(
+) -> Result<GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig>, String> {
     // Alith is sudo account
     let sudo_account = AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"));
 
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    GenericChainSpec::from_genesis(
-        // Name
-        "Development",
-        // ID
-        "evm_domain_dev",
-        ChainType::Development,
-        move || {
-            // This is the simplest bytecode to revert without returning any data.
-            // We will pre-deploy it under all of our precompiles to ensure they can be called from
-            // within contracts.
-            // (PUSH1 0x00 PUSH1 0x00 REVERT)
-            let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
-
-            evm_domain_runtime::RuntimeGenesisConfig {
-                system: evm_domain_runtime::SystemConfig::default(),
-                sudo: evm_domain_runtime::SudoConfig {
-                    key: Some(sudo_account),
-                },
-                balances: evm_domain_runtime::BalancesConfig::default(),
-                // this is set to default and chain_id will be set into genesis during the domain
-                // instantiation on Consensus runtime.
-                evm_chain_id: EVMChainIdConfig::default(),
-                evm: EVMConfig {
-                    // We need _some_ code inserted at the precompile address so that
-                    // the evm will actually call the address.
-                    accounts: Precompiles::used_addresses()
-                        .into_iter()
-                        .map(|addr| {
-                            (
-                                addr,
-                                fp_evm::GenesisAccount {
-                                    nonce: Default::default(),
-                                    balance: Default::default(),
-                                    storage: Default::default(),
-                                    code: revert_bytecode.clone(),
-                                },
-                            )
-                        })
-                        .collect(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        },
-        vec![],
-        None,
-        None,
-        None,
-        None,
-        None,
+    Ok(GenericChainSpec::builder(
         evm_domain_runtime::WASM_BINARY.expect("WASM binary was not build, please build it!"),
+        None,
     )
+    .with_name("Development")
+    .with_id("evm_domain_dev")
+    .with_chain_type(ChainType::Development)
+    .with_genesis_config({
+        // This is the simplest bytecode to revert without returning any data.
+        // We will pre-deploy it under all of our precompiles to ensure they can be called from
+        // within contracts.
+        // (PUSH1 0x00 PUSH1 0x00 REVERT)
+        let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
+
+        serde_json::to_value(evm_domain_runtime::RuntimeGenesisConfig {
+            system: evm_domain_runtime::SystemConfig::default(),
+            sudo: evm_domain_runtime::SudoConfig {
+                key: Some(sudo_account),
+            },
+            balances: evm_domain_runtime::BalancesConfig::default(),
+            // this is set to default and chain_id will be set into genesis during the domain
+            // instantiation on Consensus runtime.
+            evm_chain_id: EVMChainIdConfig::default(),
+            evm: EVMConfig {
+                // We need _some_ code inserted at the precompile address so that
+                // the evm will actually call the address.
+                accounts: Precompiles::used_addresses()
+                    .into_iter()
+                    .map(|addr| {
+                        (
+                            addr,
+                            fp_evm::GenesisAccount {
+                                nonce: Default::default(),
+                                balance: Default::default(),
+                                storage: Default::default(),
+                                code: revert_bytecode.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
+    })
+    .build())
 }
 
 pub(crate) fn consensus_dev_sudo_account() -> AccountId32 {
@@ -103,7 +97,7 @@ pub fn create_domain_spec(
     raw_genesis: RawGenesis,
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let mut chain_spec = match chain_id {
-        "dev" => domain_dev_config(),
+        "dev" => domain_dev_config()?,
         path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
@@ -114,7 +108,7 @@ pub fn create_domain_spec(
 
 pub fn load_domain_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "dev" => domain_dev_config(),
+        "dev" => domain_dev_config()?,
         path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
             std::path::PathBuf::from(path),
         )?,
@@ -163,7 +157,7 @@ pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisC
         .ok_or_else(|| "Development wasm not available".to_string())?;
 
     let raw_genesis_storage = {
-        let domain_genesis_config = domain_dev_config();
+        let domain_genesis_config = domain_dev_config()?;
         let storage = domain_genesis_config
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");
@@ -171,16 +165,12 @@ pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisC
         raw_genesis.encode()
     };
 
-    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
-    #[allow(deprecated)]
-    Ok(GenericChainSpec::from_genesis(
-        // Name
-        "Subspace development",
-        // ID
-        "subspace_dev",
-        ChainType::Development,
-        move || {
-            subspace_genesis_config(
+    Ok(GenericChainSpec::builder(wasm_binary, None)
+        .with_name("Subspace development")
+        .with_id("subspace_dev")
+        .with_chain_type(ChainType::Development)
+        .with_genesis_config(patch_domain_runtime_version(
+            serde_json::to_value(subspace_genesis_config(
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
@@ -214,22 +204,10 @@ pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisC
                     initial_balances: endowed_accounts(),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Anyone,
                 },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        None,
-        None,
-        // Properties
-        None,
-        // Extensions
-        NoExtension::None,
-        // Code
-        wasm_binary,
-    ))
+            ))
+            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+        ))
+        .build())
 }
 
 /// Configure initial storage state for FRAME modules.
@@ -301,4 +279,37 @@ fn subspace_genesis_config(
             }),
         },
     }
+}
+
+// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
+fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
+    let Some(runtime_version) = genesis_config
+        .get_mut("domains")
+        .and_then(|domains| domains.get_mut("genesisDomain"))
+        .and_then(|genesis_domain| genesis_domain.get_mut("runtime_version"))
+    else {
+        return genesis_config;
+    };
+
+    if let Some(spec_name) = runtime_version.get_mut("specName") {
+        if let Some(spec_name_bytes) = spec_name
+            .as_str()
+            .map(|spec_name| spec_name.as_bytes().to_vec())
+        {
+            *spec_name = serde_json::to_value(spec_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
+    }
+
+    if let Some(impl_name) = runtime_version.get_mut("implName") {
+        if let Some(impl_name_bytes) = impl_name
+            .as_str()
+            .map(|impl_name| impl_name.as_bytes().to_vec())
+        {
+            *impl_name = serde_json::to_value(impl_name_bytes)
+                .expect("Bytes serialization doesn't fail; qed");
+        }
+    }
+
+    genesis_config
 }
