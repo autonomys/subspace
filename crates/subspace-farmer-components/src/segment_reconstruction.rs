@@ -7,10 +7,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{ArchivedHistorySegment, Piece, PieceIndex, RecordedHistorySegment};
 use thiserror::Error;
 use tokio::sync::Semaphore;
+use tokio::task::JoinError;
 use tracing::{debug, error, info, trace, warn};
-
-// TODO: Probably should be made configurable
-const PARALLELISM_LEVEL: usize = 20;
 
 #[derive(Debug, Error)]
 pub(crate) enum SegmentReconstructionError {
@@ -21,6 +19,10 @@ pub(crate) enum SegmentReconstructionError {
     /// Internal piece retrieval process failed
     #[error("Pieces retrieval failed")]
     PieceRetrievalFailed(#[from] ReconstructorError),
+
+    /// Join error
+    #[error("Join error: {0}")]
+    JoinError(#[from] JoinError),
 }
 
 pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
@@ -32,7 +34,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     let segment_index = missing_piece_index.segment_index();
     let position = missing_piece_index.position();
 
-    let semaphore = &Semaphore::new(PARALLELISM_LEVEL);
+    let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
     let acquired_pieces_counter = &AtomicUsize::default();
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
 
@@ -100,9 +102,13 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
 
-    let archiver = PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
+    let result = tokio::task::spawn_blocking(move || {
+        let reconstructor =
+            PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
 
-    let result = archiver.reconstruct_piece(&segment_pieces, position as usize)?;
+        reconstructor.reconstruct_piece(&segment_pieces, position as usize)
+    })
+    .await??;
 
     info!(%missing_piece_index, "Recovering missing piece succeeded.");
 
