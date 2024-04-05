@@ -192,6 +192,8 @@ mod pallet {
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
     #[cfg(not(feature = "std"))]
+    use alloc::vec;
+    #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
     use codec::FullCodec;
     use domain_runtime_primitives::EVMChainId;
@@ -219,7 +221,6 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
-    use sp_std::vec;
     use subspace_core_primitives::U256;
     use subspace_runtime_primitives::StorageFee;
 
@@ -1399,16 +1400,16 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
-        pub genesis_domain: Option<GenesisDomain<T::AccountId, BalanceOf<T>>>,
         pub permissioned_action_allowed_by:
             Option<sp_domains::PermissionedActionAllowedBy<T::AccountId>>,
+        pub genesis_domains: Vec<GenesisDomain<T::AccountId, BalanceOf<T>>>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
         fn default() -> Self {
             GenesisConfig {
-                genesis_domain: None,
                 permissioned_action_allowed_by: None,
+                genesis_domains: vec![],
             }
         }
     }
@@ -1421,46 +1422,58 @@ mod pallet {
             {
                 PermissionedActionAllowedBy::<T>::put(permissioned_action_allowed_by)
             }
-            if let Some(genesis_domain) = self.genesis_domain.as_ref().cloned() {
-                // Register the genesis domain runtime
-                let runtime_id = register_runtime_at_genesis::<T>(
-                    genesis_domain.runtime_name,
-                    genesis_domain.runtime_type,
-                    genesis_domain.runtime_version,
-                    genesis_domain.raw_genesis_storage,
-                    Zero::zero(),
-                )
-                .expect("Genesis runtime registration must always succeed");
 
-                // Instantiate the genesis domain
-                let domain_config = DomainConfig {
-                    domain_name: genesis_domain.domain_name,
-                    runtime_id,
-                    max_block_size: genesis_domain.max_block_size,
-                    max_block_weight: genesis_domain.max_block_weight,
-                    bundle_slot_probability: genesis_domain.bundle_slot_probability,
-                    target_bundles_per_block: genesis_domain.target_bundles_per_block,
-                    operator_allow_list: genesis_domain.operator_allow_list,
-                    initial_balances: genesis_domain.initial_balances,
-                };
-                let domain_owner = genesis_domain.owner_account_id;
-                let domain_id =
-                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
-                        .expect("Genesis domain instantiation must always succeed");
+            self.genesis_domains
+                .clone()
+                .into_iter()
+                .for_each(|genesis_domain| {
+                    // Register the genesis domain runtime
+                    let runtime_id = register_runtime_at_genesis::<T>(
+                        genesis_domain.runtime_name,
+                        genesis_domain.runtime_type,
+                        genesis_domain.runtime_version,
+                        genesis_domain.raw_genesis_storage,
+                        Zero::zero(),
+                    )
+                    .expect("Genesis runtime registration must always succeed");
 
-                // Register domain_owner as the genesis operator.
-                let operator_config = OperatorConfig {
-                    signing_key: genesis_domain.signing_key.clone(),
-                    minimum_nominator_stake: genesis_domain.minimum_nominator_stake,
-                    nomination_tax: genesis_domain.nomination_tax,
-                };
-                let operator_stake = T::MinOperatorStake::get();
-                do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
+                    // Instantiate the genesis domain
+                    let domain_config = DomainConfig {
+                        domain_name: genesis_domain.domain_name,
+                        runtime_id,
+                        max_block_size: genesis_domain.max_block_size,
+                        max_block_weight: genesis_domain.max_block_weight,
+                        bundle_slot_probability: genesis_domain.bundle_slot_probability,
+                        target_bundles_per_block: genesis_domain.target_bundles_per_block,
+                        operator_allow_list: genesis_domain.operator_allow_list,
+                        initial_balances: genesis_domain.initial_balances,
+                    };
+                    let domain_owner = genesis_domain.owner_account_id;
+                    let domain_id = do_instantiate_domain::<T>(
+                        domain_config,
+                        domain_owner.clone(),
+                        Zero::zero(),
+                    )
+                    .expect("Genesis domain instantiation must always succeed");
+
+                    // Register domain_owner as the genesis operator.
+                    let operator_config = OperatorConfig {
+                        signing_key: genesis_domain.signing_key.clone(),
+                        minimum_nominator_stake: genesis_domain.minimum_nominator_stake,
+                        nomination_tax: genesis_domain.nomination_tax,
+                    };
+                    let operator_stake = T::MinOperatorStake::get();
+                    do_register_operator::<T>(
+                        domain_owner,
+                        domain_id,
+                        operator_stake,
+                        operator_config,
+                    )
                     .expect("Genesis operator registration must succeed");
 
-                do_finalize_domain_current_epoch::<T>(domain_id)
-                    .expect("Genesis epoch must succeed");
-            }
+                    do_finalize_domain_current_epoch::<T>(domain_id)
+                        .expect("Genesis epoch must succeed");
+                });
         }
     }
 
