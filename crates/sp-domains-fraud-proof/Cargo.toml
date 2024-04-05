@@ -17,7 +17,7 @@ domain-runtime-primitives = { version = "0.1.0", default-features = false, path 
 frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 hash-db = { version = "0.16.0", default-features = false }
 log = { version = "0.4.21", default-features = false }
-scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea", optional = true }
 sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea", default-features = false, optional = true }
 sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
@@ -36,7 +36,7 @@ sp-trie = { default-features = false, git = "https://github.com/subspace/polkado
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 trie-db = { version = "0.28.0", default-features = false }
-thiserror = { version = "1.0.56", optional = true }
+thiserror = { version = "1.0.58", optional = true }
 
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
@@ -61,7 +61,7 @@ sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc76
 subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
-tempfile = "3.9.0"
+tempfile = "3.10.1"
 tokio = "1.37.0"
 
 [features]

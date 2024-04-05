@@ -17,7 +17,7 @@ async-oneshot = "0.5.9"
 futures = "0.3.29"
 futures-timer = "3.0.3"
 jsonrpsee = { version = "0.22.3", features = ["server", "macros"] }
-lru = "0.12.1"
+lru = "0.12.3"
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.1"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
@@ -37,5 +37,5 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-thiserror = "1.0.56"
+thiserror = "1.0.58"
 tracing = "0.1.40"

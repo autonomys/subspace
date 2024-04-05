@@ -17,5 +17,5 @@ include = [
 [dependencies]
 actix-web = "4.5.1"
 prometheus = { version = "0.13.0", default-features = false }
-prometheus-client = "0.22.0"
+prometheus-client = "0.22.2"
 tracing = "0.1.40"

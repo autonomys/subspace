@@ -40,7 +40,7 @@ hex = "0.4.3"
 hex-literal = "0.4.1"
 mimalloc = "0.1.39"
 parity-scale-codec = "3.6.9"
-prometheus-client = "0.22.0"
+prometheus-client = "0.22.2"
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 sc-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea", default-features = false }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
@@ -76,9 +76,9 @@ subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
-supports-color = "2.1.0"
-tempfile = "3.9.0"
-thiserror = "1.0.56"
+supports-color = "3.0.0"
+tempfile = "3.10.1"
+thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = ["macros"] }
 tokio-stream = { version = "0.1.15" }
 tracing = "0.1.40"
