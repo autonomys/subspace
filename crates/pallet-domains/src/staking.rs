@@ -184,7 +184,7 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     /// Total shares of all the nominators under this operator.
     pub current_total_shares: Share,
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
-    /// not assigned to this field directlt, thus MUST use the `status()` method to query the status
+    /// not assigned to this field directly, thus MUST use the `status()` method to query the status
     /// instead.
     /// TODO: update the filed to `_status` to avoid accidental access in next network reset
     status: OperatorStatus<DomainBlockNumber>,

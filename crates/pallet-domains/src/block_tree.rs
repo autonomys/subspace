@@ -78,7 +78,7 @@ pub(crate) enum RejectedReceiptType {
     Stale,
     // Receipt that tries to create a new branch of the block tree
     //
-    // The honests operatpr must submit fraud proof to prune the bad receipt at the
+    // The honests operator must submit fraud proof to prune the bad receipt at the
     // same height before submitting the valid receipt.
     NewBranch,
 }
@@ -1040,7 +1040,7 @@ mod tests {
                 Error::InvalidTraceRoot
             );
 
-            // Receipt with addtional trace
+            // Receipt with additional trace
             let mut invalid_receipt = next_receipt.clone();
             invalid_receipt.execution_trace.push(H256::random());
             assert_err!(

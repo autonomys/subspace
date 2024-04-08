@@ -2032,7 +2032,7 @@ impl<T: Config> Pallet<T> {
                 _ => return Err(FraudProofError::UnexpectedFraudProof),
             }
 
-            // Bundle equivacotion fraud proof doesn't target bad ER thus we give it the lowest priority
+            // Bundle equivocation fraud proof doesn't target bad ER thus we give it the lowest priority
             // compared to other fraud proofs
             let priority = TransactionPriority::MAX
                 - T::BlockTreePruningDepth::get().saturated_into::<u64>()
