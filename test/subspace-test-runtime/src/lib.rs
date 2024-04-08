@@ -24,7 +24,6 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
-use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -344,11 +343,10 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
-}
-
-parameter_types! {
-    pub const MaxHolds: u32 = 10;
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 10;
 }
 
 impl pallet_balances::Config for Runtime {

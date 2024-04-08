@@ -13,7 +13,6 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
@@ -201,10 +200,6 @@ impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
     }
 }
 
-parameter_types! {
-    pub const MaxHolds: u32 = 100;
-}
-
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -354,7 +349,14 @@ pub enum HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+    // TODO: revist this value, it is used as the max number of hold an account can
+    // create. Currently, opening an XDM channel will create 1 hold, so this value
+    // also used as the limit of how many channel an account can open.
+    //
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 100;
 }
 
 impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {

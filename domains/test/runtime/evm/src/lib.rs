@@ -15,7 +15,6 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
@@ -306,10 +305,6 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
-parameter_types! {
-    pub const MaxHolds: u32 = 100;
-}
-
 impl pallet_balances::Config for Runtime {
     type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
@@ -432,7 +427,10 @@ pub enum HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 10;
 }
 
 impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {

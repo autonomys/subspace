@@ -8,7 +8,6 @@ use crate::{
     Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
@@ -133,11 +132,13 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 10;
 }
 
 parameter_types! {
-    pub const MaxHolds: u32 = 10;
     pub const ExistentialDeposit: Balance = 1;
 }
 
