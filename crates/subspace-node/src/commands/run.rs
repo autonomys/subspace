@@ -238,7 +238,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 consensus_network: consensus_chain_node.network_service,
                 block_importing_notification_stream: consensus_chain_node
                     .block_importing_notification_stream,
-                new_slot_notification_stream: consensus_chain_node.new_slot_notification_stream,
+                pot_slot_info_stream: consensus_chain_node.pot_slot_info_stream,
                 consensus_network_sync_oracle: consensus_chain_node.sync_service,
                 domain_message_receiver,
                 gossip_message_sink,

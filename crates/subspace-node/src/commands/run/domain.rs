@@ -20,10 +20,10 @@ use sc_cli::{
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::NetworkPeers;
+use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::KeystoreConfig;
 use sc_service::{Configuration, PruningMode};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -36,6 +36,9 @@ use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
+use tokio::sync::broadcast::Receiver;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tracing::log::info;
 use tracing::warn;
 
 /// Options for Substrate networking
@@ -384,7 +387,7 @@ pub(super) struct DomainStartOptions<CNetwork> {
     pub(super) consensus_network: Arc<CNetwork>,
     pub(super) block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
-    pub(super) new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    pub(super) pot_slot_info_stream: Receiver<PotSlotInfo>,
     pub(super) consensus_network_sync_oracle: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub(super) domain_message_receiver:
         TracingUnboundedReceiver<cross_domain_message_gossip::ChainTxPoolMsg>,
@@ -428,7 +431,7 @@ where
         consensus_offchain_tx_pool_factory,
         consensus_network,
         block_importing_notification_stream,
-        new_slot_notification_stream,
+        pot_slot_info_stream,
         consensus_network_sync_oracle,
         domain_message_receiver,
         gossip_message_sink,
@@ -444,22 +447,28 @@ where
         },
     );
 
-    let new_slot_notification_stream =
-        new_slot_notification_stream
-            .subscribe()
-            .then(|slot_notification| async move {
-                (
-                    slot_notification.new_slot_info.slot,
-                    slot_notification.new_slot_info.proof_of_time,
-                )
-            });
+    let pot_slot_info_stream = tokio_stream::StreamExt::filter_map(
+        tokio_stream::wrappers::BroadcastStream::new(pot_slot_info_stream),
+        |result| match result {
+            Ok(pot_slot_info) => Some((pot_slot_info.slot, pot_slot_info.checkpoints.output())),
+            Err(err) => match err {
+                BroadcastStreamRecvError::Lagged(skipped_notifications) => {
+                    info!(
+                        "Domain slot receiver is lagging. Skipped {} slot notification(s)",
+                        skipped_notifications
+                    );
+                    None
+                }
+            },
+        },
+    );
 
     let operator_streams = OperatorStreams {
         // TODO: proper value
         consensus_block_import_throttling_buffer_size: 10,
         block_importing_notification_stream,
         imported_block_notification_stream,
-        new_slot_notification_stream,
+        new_slot_notification_stream: pot_slot_info_stream,
         acknowledgement_sender_stream: futures::stream::empty(),
         _phantom: Default::default(),
     };

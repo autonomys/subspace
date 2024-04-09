@@ -8,7 +8,6 @@ pub mod verifier;
 
 use crate::slots::SlotInfoProducer;
 use crate::source::{PotSlotInfo, PotSlotInfoStream};
-use futures::StreamExt;
 use sc_consensus_slots::{SimpleSlotWorker, SimpleSlotWorkerToSlotWorker, SlotWorker};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -19,6 +18,8 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_core_primitives::PotCheckpoints;
+use tokio::sync::broadcast::error::RecvError;
+use tracing::log::info;
 use tracing::{debug, error, trace};
 
 pub trait PotSlotWorker<Block>
@@ -72,7 +73,23 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
 
     let mut maybe_last_proven_slot = None;
 
-    while let Some(PotSlotInfo { slot, checkpoints }) = slot_info_stream.next().await {
+    loop {
+        let PotSlotInfo { slot, checkpoints } = match slot_info_stream.recv().await {
+            Ok(slot_info) => slot_info,
+            Err(err) => match err {
+                RecvError::Closed => {
+                    info!("No Slot info senders available. Exiting slot worker.");
+                    return;
+                }
+                RecvError::Lagged(skipped_notifications) => {
+                    debug!(
+                        "Slot worker is lagging. Skipped {} slot notification(s)",
+                        skipped_notifications
+                    );
+                    continue;
+                }
+            },
+        };
         if let Some(last_proven_slot) = maybe_last_proven_slot {
             if last_proven_slot >= slot {
                 // Already processed

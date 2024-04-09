@@ -33,4 +33,5 @@ sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc76
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-proof-of-time = { version = "0.1.0", path = "../subspace-proof-of-time" }
 thread-priority = "0.16.0"
+tokio = { version = "1.37.0", features = ["sync"] }
 tracing = "0.1.40"
