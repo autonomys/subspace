@@ -1,6 +1,10 @@
 use clap::Parser;
-use sc_cli::{Cors, RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN};
+use sc_cli::{
+    Cors, RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN,
+    RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN,
+};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::num::NonZeroU32;
 
 /// Options for RPC
 #[derive(Debug, Parser)]
@@ -30,6 +34,15 @@ pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     )]
     pub(super) rpc_methods: RpcMethods,
 
+    /// RPC rate limiting (calls/minute) for each connection.
+    ///
+    /// This is disabled by default.
+    ///
+    /// For example `--rpc-rate-limit 10` will maximum allow
+    /// 10 calls per minute per connection.
+    #[arg(long)]
+    pub rpc_rate_limit: Option<NonZeroU32>,
+
     /// Set the the maximum concurrent subscriptions per connection.
     #[arg(long, default_value_t = RPC_DEFAULT_MAX_SUBS_PER_CONN)]
     pub(super) rpc_max_subscriptions_per_connection: u32,
@@ -37,6 +50,25 @@ pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     /// Maximum number of RPC server connections.
     #[arg(long, default_value_t = RPC_DEFAULT_MAX_CONNECTIONS)]
     pub(super) rpc_max_connections: u32,
+
+    /// The number of messages the RPC server is allowed to keep in memory.
+    ///
+    /// If the buffer becomes full then the server will not process
+    /// new messages until the connected client start reading the
+    /// underlying messages.
+    ///
+    /// This applies per connection which includes both
+    /// JSON-RPC methods calls and subscriptions.
+    #[arg(long, default_value_t = RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN)]
+    pub rpc_message_buffer_capacity_per_connection: u32,
+
+    /// Disable RPC batch requests
+    #[arg(long, alias = "rpc_no_batch_requests", conflicts_with_all = &["rpc_max_batch_request_len"])]
+    pub rpc_disable_batch_requests: bool,
+
+    /// Limit the max length per RPC batch request
+    #[arg(long, conflicts_with_all = &["rpc_disable_batch_requests"])]
+    pub rpc_max_batch_request_len: Option<u32>,
 
     /// Specify browser Origins allowed to access the HTTP & WS RPC servers.
     /// A comma-separated list of origins (protocol://domain or special `null`

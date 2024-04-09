@@ -49,6 +49,8 @@ mod pallet {
     pub type EnableBalanceTransfers<T> = StorageValue<_, bool, ValueQuery>;
 
     /// Whether to enable calls from non-root account.
+    // TODO: Find a way to work around `Sudo::key()`
+    //  (https://github.com/paritytech/polkadot-sdk/pull/3370) or remove this feature
     #[pallet::storage]
     #[pallet::getter(fn enable_non_root_calls)]
     pub type EnableNonRootCalls<T> = StorageValue<_, bool, ValueQuery>;

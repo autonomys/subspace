@@ -2,6 +2,7 @@
 
 use frame_support::derive_impl;
 use frame_support::traits::{ConstU128, ConstU32};
+use frame_system::DefaultConfig;
 use sp_runtime::traits::parameter_types;
 use subspace_runtime_primitives::{
     FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,
@@ -18,7 +19,7 @@ frame_support::construct_runtime!(
     }
 );
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
     type AccountData = pallet_balances::AccountData<Balance>;

@@ -1,5 +1,6 @@
 use frame_support::weights::Weight;
 use frame_support::{construct_runtime, derive_impl, parameter_types};
+use frame_system::DefaultConfig;
 use sp_runtime::Perbill;
 
 pub(crate) type ChainId = u64;
@@ -21,7 +22,7 @@ parameter_types! {
     pub const AvailableBlockRatio: Perbill = Perbill::one();
 }
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for TestRuntime {
     type Block = Block;
 }
