@@ -21,10 +21,10 @@
 
 use futures::channel::mpsc;
 use futures::{future, FutureExt, StreamExt};
-use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
+use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::types::{SubscriptionEmptyError, SubscriptionResult};
-use jsonrpsee::SubscriptionSink;
+use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
+use jsonrpsee::PendingSubscriptionSink;
 use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -36,7 +36,9 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
     NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
-use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
+use sc_rpc::utils::pipe_from_stream;
+use sc_rpc::SubscriptionTaskExecutor;
+use sc_rpc_api::{DenyUnsafe, UnsafeRpcError};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -69,20 +71,42 @@ use subspace_rpc_primitives::{
 };
 use tracing::{debug, error, warn};
 
+const SUBSPACE_ERROR: i32 = 9000;
 /// This is essentially equal to expected number of votes per block, one more is added implicitly by
 /// the fact that channel sender exists
 const SOLUTION_SENDER_CHANNEL_CAPACITY: usize = 9;
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
+
+// TODO: More specific errors instead of `StringError`
+/// Top-level error type for the RPC handler.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// Errors that can be formatted as a String
+    #[error("{0}")]
+    StringError(String),
+    /// Call to an unsafe RPC was denied.
+    #[error(transparent)]
+    UnsafeRpcCalled(#[from] UnsafeRpcError),
+}
+
+impl From<Error> for ErrorObjectOwned {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::StringError(e) => ErrorObject::owned(SUBSPACE_ERROR + 1, e, None::<()>),
+            Error::UnsafeRpcCalled(e) => e.into(),
+        }
+    }
+}
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
     /// Get metadata necessary for farmer operation
     #[method(name = "subspace_getFarmerAppInfo")]
-    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo>;
+    fn get_farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 
     #[method(name = "subspace_submitSolutionResponse")]
-    fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> Result<(), Error>;
 
     /// Slot info subscription
     #[subscription(
@@ -101,7 +125,10 @@ pub trait SubspaceRpcApi {
     fn subscribe_reward_signing(&self);
 
     #[method(name = "subspace_submitRewardSignature")]
-    fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()>;
+    fn submit_reward_signature(
+        &self,
+        reward_signature: RewardSignatureResponse,
+    ) -> Result<(), Error>;
 
     /// Archived segment header subscription
     #[subscription(
@@ -115,19 +142,19 @@ pub trait SubspaceRpcApi {
     async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentHeader>>>;
+    ) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
     #[method(name = "subspace_piece", blocking)]
-    fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
+    fn piece(&self, piece_index: PieceIndex) -> Result<Option<Vec<u8>>, Error>;
 
     #[method(name = "subspace_acknowledgeArchivedSegmentHeader")]
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> RpcResult<()>;
+    ) -> Result<(), Error>;
 
     #[method(name = "subspace_lastSegmentHeaders")]
-    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>>;
+    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }
 
 #[derive(Default)]
@@ -294,7 +321,7 @@ where
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
-    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
+    fn get_farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
         let last_segment_index = self
             .segment_headers_store
             .max_segment_index()
@@ -324,11 +351,11 @@ where
 
         farmer_app_info.map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
-            JsonRpseeError::Custom("Internal error".to_string())
+            Error::StringError("Internal error".to_string())
         })
     }
 
-    fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()> {
+    fn submit_solution_response(&self, solution_response: SolutionResponse) -> Result<(), Error> {
         self.deny_unsafe.check_if_safe()?;
 
         let slot = solution_response.slot_number;
@@ -345,13 +372,13 @@ where
                 "Solution was ignored, likely because farmer was too slow"
             );
 
-            return Err(JsonRpseeError::Custom("Solution was ignored".to_string()));
+            return Err(Error::StringError("Solution was ignored".to_string()));
         }
 
         Ok(())
     }
 
-    fn subscribe_slot_info(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
+    fn subscribe_slot_info(&self, pending: PendingSubscriptionSink) {
         let executor = self.subscription_executor.clone();
         let solution_response_senders = self.solution_response_senders.clone();
         let allow_solutions = self.deny_unsafe.check_if_safe().is_ok();
@@ -438,23 +465,18 @@ where
             .subscribe()
             .map(handle_slot_notification);
 
-        let fut = async move {
-            sink.pipe_from_stream(stream).await;
-        };
-
         self.subscription_executor.spawn(
             "subspace-slot-info-subscription",
             Some("rpc"),
-            fut.boxed(),
+            pipe_from_stream(pending, stream).boxed(),
         );
-
-        Ok(())
     }
 
-    fn subscribe_reward_signing(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
-        self.deny_unsafe
-            .check_if_safe()
-            .map_err(|_error| SubscriptionEmptyError)?;
+    fn subscribe_reward_signing(&self, pending: PendingSubscriptionSink) {
+        if self.deny_unsafe.check_if_safe().is_err() {
+            debug!("Unsafe subscribe_reward_signing ignored");
+            return;
+        }
 
         let executor = self.subscription_executor.clone();
         let reward_signature_senders = self.reward_signature_senders.clone();
@@ -526,20 +548,17 @@ where
             },
         );
 
-        let fut = async move {
-            sink.pipe_from_stream(stream).await;
-        };
-
         self.subscription_executor.spawn(
             "subspace-block-signing-subscription",
             Some("rpc"),
-            fut.boxed(),
+            pipe_from_stream(pending, stream).boxed(),
         );
-
-        Ok(())
     }
 
-    fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()> {
+    fn submit_reward_signature(
+        &self,
+        reward_signature: RewardSignatureResponse,
+    ) -> Result<(), Error> {
         self.deny_unsafe.check_if_safe()?;
 
         let reward_signature_senders = self.reward_signature_senders.clone();
@@ -557,7 +576,7 @@ where
         Ok(())
     }
 
-    fn subscribe_archived_segment_header(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
+    fn subscribe_archived_segment_header(&self, pending: PendingSubscriptionSink) {
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
@@ -623,7 +642,7 @@ where
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
         let fut = async move {
-            sink.pipe_from_stream(stream).await;
+            pipe_from_stream(pending, stream).await;
 
             let mut archived_segment_acknowledgement_senders =
                 archived_segment_acknowledgement_senders.lock();
@@ -638,14 +657,12 @@ where
             Some("rpc"),
             fut.boxed(),
         );
-
-        Ok(())
     }
 
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> RpcResult<()> {
+    ) -> Result<(), Error> {
         self.deny_unsafe.check_if_safe()?;
 
         let archived_segment_acknowledgement_senders =
@@ -682,7 +699,7 @@ where
         Ok(())
     }
 
-    fn piece(&self, requested_piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
+    fn piece(&self, requested_piece_index: PieceIndex) -> Result<Option<Vec<u8>>, Error> {
         self.deny_unsafe.check_if_safe()?;
 
         let archived_segment = {
@@ -715,7 +732,7 @@ where
                         Err(error) => {
                             error!(%error, "Failed to re-create genesis segment");
 
-                            return Err(JsonRpseeError::Custom(
+                            return Err(Error::StringError(
                                 "Failed to re-create genesis segment".to_string(),
                             ));
                         }
@@ -738,14 +755,14 @@ where
     async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
+    ) -> Result<Vec<Option<SegmentHeader>>, Error> {
         if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
                 segment_indexes.len()
             );
 
-            return Err(JsonRpseeError::Custom(format!(
+            return Err(Error::StringError(format!(
                 "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
             )));
         };
@@ -756,14 +773,14 @@ where
             .collect())
     }
 
-    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>> {
+    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
         if limit as usize > MAX_SEGMENT_HEADERS_PER_REQUEST {
             error!(
                 "Request limit ({}) exceed the server limit: {} ",
                 limit, MAX_SEGMENT_HEADERS_PER_REQUEST
             );
 
-            return Err(JsonRpseeError::Custom(format!(
+            return Err(Error::StringError(format!(
                 "Request limit ({}) exceed the server limit: {} ",
                 limit, MAX_SEGMENT_HEADERS_PER_REQUEST
             )));

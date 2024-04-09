@@ -24,7 +24,6 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
-use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -344,11 +343,10 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
-}
-
-parameter_types! {
-    pub const MaxHolds: u32 = 10;
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 10;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -368,7 +366,6 @@ impl pallet_balances::Config for Runtime {
     type FreezeIdentifier = ();
     type MaxFreezes = ();
     type RuntimeHoldReason = HoldIdentifier;
-    type MaxHolds = MaxHolds;
 }
 
 pub struct CreditSupply;
@@ -667,14 +664,14 @@ const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
 pub struct BlockSlot;
 
 impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
-    fn future_slot(block_number: BlockNumber) -> Option<sp_consensus_slots::Slot> {
+    fn future_slot(block_number: BlockNumber) -> Option<Slot> {
         let block_slots = Subspace::block_slots();
         block_slots
             .get(&block_number)
             .map(|slot| *slot + Slot::from(BlockAuthoringDelay::get()))
     }
 
-    fn slot_produced_after(to_check: sp_consensus_slots::Slot) -> Option<BlockNumber> {
+    fn slot_produced_after(to_check: Slot) -> Option<BlockNumber> {
         let block_slots = Subspace::block_slots();
         for (block_number, slot) in block_slots.into_iter().rev() {
             if to_check > slot {
