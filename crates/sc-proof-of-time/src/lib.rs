@@ -8,7 +8,6 @@ pub mod verifier;
 
 use crate::slots::SlotInfoProducer;
 use crate::source::{PotSlotInfo, PotSlotInfoStream};
-use futures::StreamExt;
 use sc_consensus_slots::{SimpleSlotWorker, SimpleSlotWorkerToSlotWorker, SlotWorker};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -72,7 +71,7 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
 
     let mut maybe_last_proven_slot = None;
 
-    while let Some(PotSlotInfo { slot, checkpoints }) = slot_info_stream.next().await {
+    while let Ok(PotSlotInfo { slot, checkpoints }) = slot_info_stream.recv().await {
         if let Some(last_proven_slot) = maybe_last_proven_slot {
             if last_proven_slot >= slot {
                 // Already processed

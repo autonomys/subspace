@@ -50,6 +50,7 @@ sc-domains = { version = "0.1.0", path = "../sc-domains" }
 sc-informant = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-keystore = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
+sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
 sc-storage-monitor = { version = "0.1.0", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
@@ -79,6 +80,7 @@ supports-color = "2.1.0"
 tempfile = "3.9.0"
 thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["macros"] }
+tokio-stream = { version = "0.1.15" }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
