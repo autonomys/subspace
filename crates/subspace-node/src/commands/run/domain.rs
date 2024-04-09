@@ -37,6 +37,8 @@ use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tracing::log::info;
 use tracing::warn;
 
 /// Options for Substrate networking
@@ -442,10 +444,17 @@ where
 
     let pot_slot_info_stream = tokio_stream::StreamExt::filter_map(
         tokio_stream::wrappers::BroadcastStream::new(pot_slot_info_stream),
-        |result| {
-            result
-                .ok()
-                .map(|pot_slot_info| (pot_slot_info.slot, pot_slot_info.checkpoints.output()))
+        |result| match result {
+            Ok(pot_slot_info) => Some((pot_slot_info.slot, pot_slot_info.checkpoints.output())),
+            Err(err) => match err {
+                BroadcastStreamRecvError::Lagged(skipped_notifications) => {
+                    info!(
+                        "Domain slot receiver is lagging. Skipped {} slot notification(s)",
+                        skipped_notifications
+                    );
+                    None
+                }
+            },
         },
     );
 

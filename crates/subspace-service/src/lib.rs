@@ -115,7 +115,7 @@ use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
-use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast;
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -639,7 +639,7 @@ where
     /// Full client backend.
     pub backend: Arc<FullBackend>,
     /// Pot slot info stream.
-    pub pot_slot_info_stream: Receiver<PotSlotInfo>,
+    pub pot_slot_info_stream: broadcast::Receiver<PotSlotInfo>,
     /// New slot stream.
     /// Note: this is currently used to send solutions from the farmer during tests.
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,

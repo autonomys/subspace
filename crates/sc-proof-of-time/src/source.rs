@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
 use thread_priority::{set_current_thread_priority, ThreadPriority};
-use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::sync::broadcast;
 use tracing::{debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
@@ -48,7 +48,7 @@ pub struct PotSlotInfo {
 
 /// Stream with proof of time slots
 #[derive(Debug, Deref, DerefMut)]
-pub struct PotSlotInfoStream(Receiver<PotSlotInfo>);
+pub struct PotSlotInfoStream(broadcast::Receiver<PotSlotInfo>);
 
 /// Worker producing proofs of time.
 ///
@@ -64,7 +64,7 @@ pub struct PotSourceWorker<Block, Client, SO> {
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
     from_gossip_receiver: mpsc::Receiver<(PeerId, GossipProof)>,
     last_slot_sent: Slot,
-    slot_sender: Sender<PotSlotInfo>,
+    slot_sender: broadcast::Sender<PotSlotInfo>,
     state: Arc<PotState>,
     _block: PhantomData<Block>,
 }
@@ -135,7 +135,7 @@ where
 
         let (timekeeper_proofs_sender, timekeeper_proofs_receiver) =
             mpsc::channel(LOCAL_PROOFS_CHANNEL_CAPACITY);
-        let (slot_sender, slot_receiver) = channel(SLOTS_CHANNEL_CAPACITY);
+        let (slot_sender, slot_receiver) = broadcast::channel(SLOTS_CHANNEL_CAPACITY);
         if is_timekeeper {
             let state = Arc::clone(&state);
             let pot_verifier = pot_verifier.clone();
@@ -421,7 +421,7 @@ where
     }
 
     /// Subscribe to pot slot notifications.
-    pub fn subscribe_pot_slot_info_stream(&self) -> Receiver<PotSlotInfo> {
+    pub fn subscribe_pot_slot_info_stream(&self) -> broadcast::Receiver<PotSlotInfo> {
         self.slot_sender.subscribe()
     }
 }
