@@ -8,7 +8,6 @@ use crate::{
     Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
@@ -18,6 +17,7 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
+use frame_system::DefaultConfig;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
@@ -76,7 +76,7 @@ type BlockNumber = u64;
 type Hash = H256;
 type AccountId = u128;
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
     type Block = Block;
     type Hash = Hash;
@@ -132,11 +132,13 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+    // TODO: HACK this is not the actual variant count but it is required see
+    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
+    const VARIANT_COUNT: u32 = 10;
 }
 
 parameter_types! {
-    pub const MaxHolds: u32 = 10;
     pub const ExistentialDeposit: Balance = 1;
 }
 

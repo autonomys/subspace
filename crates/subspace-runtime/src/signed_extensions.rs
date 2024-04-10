@@ -1,4 +1,4 @@
-use crate::{Runtime, RuntimeCall, RuntimeConfigs, Sudo};
+use crate::{Runtime, RuntimeCall, RuntimeConfigs};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
@@ -23,16 +23,18 @@ impl SignedExtension for CheckStorageAccess {
 
     fn validate(
         &self,
-        who: &Self::AccountId,
+        _who: &Self::AccountId,
         _call: &Self::Call,
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        if RuntimeConfigs::enable_non_root_calls() || Some(who) == Sudo::key().as_ref() {
-            Ok(ValidTransaction::default())
-        } else {
-            InvalidTransaction::BadSigner.into()
-        }
+        // TODO: Find a way to work around `Sudo::key()`
+        //  (https://github.com/paritytech/polkadot-sdk/pull/3370) or remove this feature
+        // if RuntimeConfigs::enable_non_root_calls() || Some(who) == Sudo::key().as_ref() {
+        Ok(ValidTransaction::default())
+        // } else {
+        //     InvalidTransaction::BadSigner.into()
+        // }
     }
 
     fn pre_dispatch(

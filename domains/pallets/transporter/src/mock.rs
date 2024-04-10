@@ -3,6 +3,7 @@ use crate::{Config, TryConvertBack};
 use codec::{Decode, Encode};
 use domain_runtime_primitives::MultiAccountId;
 use frame_support::{derive_impl, parameter_types};
+use frame_system::DefaultConfig;
 use pallet_balances::AccountData;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_messenger::messages::ChainId;
@@ -21,7 +22,7 @@ frame_support::construct_runtime!(
     }
 );
 
-#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for MockRuntime {
     type Block = Block;
     type AccountId = AccountId;

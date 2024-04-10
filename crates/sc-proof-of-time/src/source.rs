@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
 use thread_priority::{set_current_thread_priority, ThreadPriority};
+use tokio::sync::broadcast;
 use tracing::{debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
@@ -37,6 +38,7 @@ const GOSSIP_OUTGOING_CHANNEL_CAPACITY: usize = 10;
 const GOSSIP_INCOMING_CHANNEL_CAPACITY: usize = 10;
 
 /// Proof of time slot information
+#[derive(Clone)]
 pub struct PotSlotInfo {
     /// Slot number
     pub slot: Slot,
@@ -46,7 +48,7 @@ pub struct PotSlotInfo {
 
 /// Stream with proof of time slots
 #[derive(Debug, Deref, DerefMut)]
-pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
+pub struct PotSlotInfoStream(broadcast::Receiver<PotSlotInfo>);
 
 /// Worker producing proofs of time.
 ///
@@ -62,7 +64,7 @@ pub struct PotSourceWorker<Block, Client, SO> {
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
     from_gossip_receiver: mpsc::Receiver<(PeerId, GossipProof)>,
     last_slot_sent: Slot,
-    slot_sender: mpsc::Sender<PotSlotInfo>,
+    slot_sender: broadcast::Sender<PotSlotInfo>,
     state: Arc<PotState>,
     _block: PhantomData<Block>,
 }
@@ -133,7 +135,7 @@ where
 
         let (timekeeper_proofs_sender, timekeeper_proofs_receiver) =
             mpsc::channel(LOCAL_PROOFS_CHANNEL_CAPACITY);
-        let (slot_sender, slot_receiver) = mpsc::channel(SLOTS_CHANNEL_CAPACITY);
+        let (slot_sender, slot_receiver) = broadcast::channel(SLOTS_CHANNEL_CAPACITY);
         if is_timekeeper {
             let state = Arc::clone(&state);
             let pot_verifier = pot_verifier.clone();
@@ -288,7 +290,7 @@ where
 
             // We don't care if block production is too slow or block production is not enabled on this
             // node at all
-            let _ = self.slot_sender.try_send(PotSlotInfo { slot, checkpoints });
+            let _ = self.slot_sender.send(PotSlotInfo { slot, checkpoints });
         }
     }
 
@@ -312,7 +314,7 @@ where
 
                 // We don't care if block production is too slow or block production is not enabled on
                 // this node at all
-                let _ = self.slot_sender.try_send(PotSlotInfo {
+                let _ = self.slot_sender.send(PotSlotInfo {
                     slot: proof.slot,
                     checkpoints: proof.checkpoints,
                 });
@@ -416,5 +418,10 @@ where
                 }
             }
         }
+    }
+
+    /// Subscribe to pot slot notifications.
+    pub fn subscribe_pot_slot_info_stream(&self) -> broadcast::Receiver<PotSlotInfo> {
+        self.slot_sender.subscribe()
     }
 }

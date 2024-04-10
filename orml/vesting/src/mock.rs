@@ -57,7 +57,6 @@ impl pallet_balances::Config for Runtime {
 	type WeightInfo = ();
 	type RuntimeHoldReason = RuntimeHoldReason;
 	type FreezeIdentifier = [u8; 8];
-	type MaxHolds = ();
 	type MaxFreezes = ();
 }
 
