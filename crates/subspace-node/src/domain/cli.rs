@@ -15,13 +15,15 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::commands::{CreateDomainKeyOptions, InsertDomainKeyOptions};
-use crate::domain::evm_chain_spec;
+use crate::domain::{auto_id_chain_spec, evm_chain_spec};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use domain_runtime_primitives::MultiAccountId;
 use parity_scale_codec::Encode;
 use sc_cli::{
     BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
-    KeystoreParams, NetworkParams, Role, RunCmd as SubstrateRunCmd, SharedParams, SubstrateCli,
+    KeystoreParams, NetworkParams, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
+    SubstrateCli,
 };
 use sc_client_api::backend::AuxStore;
 use sc_network::config::NodeKeyConfig;
@@ -30,7 +32,7 @@ use sc_service::{BasePath, Configuration, DatabaseSource};
 use sp_blockchain::HeaderBackend;
 use sp_domain_digests::AsPredigest;
 use sp_domains::storage::RawGenesis;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainId, OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeType};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
 use sp_runtime::DigestItem;
@@ -38,6 +40,7 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::path::Path;
 use subspace_runtime::Block;
+use subspace_runtime_primitives::{AccountId, Balance};
 
 /// Sub-commands supported by the operator.
 #[derive(Debug, clap::Subcommand)]
@@ -84,6 +87,13 @@ pub struct DomainCli {
     /// Use provided operator id to submit bundles.
     #[arg(long)]
     pub operator_id: Option<OperatorId>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SpecId {
+    Dev,
+    Gemini,
+    DevNet,
 }
 
 impl DomainCli {
@@ -167,6 +177,7 @@ impl SubstrateCli for DomainCli {
         let runtime_name = "evm";
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
+            "auto-id" => auto_id_chain_spec::load_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
         }
     }
@@ -436,4 +447,23 @@ impl ExportExecutionReceiptCmd {
         }
         Ok(())
     }
+}
+
+/// Genesis domain
+pub struct GenesisDomain {
+    /// encoded raw genesis
+    pub raw_genesis: Vec<u8>,
+    pub runtime_name: String,
+    pub runtime_type: RuntimeType,
+    pub runtime_version: RuntimeVersion,
+    pub domain_name: String,
+    pub initial_balances: Vec<(MultiAccountId, Balance)>,
+    pub operator_allow_list: OperatorAllowList<AccountId>,
+    pub operator_signing_key: OperatorPublicKey,
+}
+
+/// Genesis Operator list params
+pub(crate) struct GenesisOperatorParams {
+    pub operator_allow_list: OperatorAllowList<subspace_runtime_primitives::AccountId>,
+    pub operator_signing_key: OperatorPublicKey,
 }

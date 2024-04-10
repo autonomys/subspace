@@ -280,7 +280,7 @@ fn subspace_genesis_config(
             permissioned_action_allowed_by: Some(
                 genesis_domain_params.permissioned_action_allowed_by,
             ),
-            genesis_domain: Some(sp_domains::GenesisDomain {
+            genesis_domains: vec![sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
@@ -298,7 +298,7 @@ fn subspace_genesis_config(
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
                 initial_balances: genesis_domain_params.initial_balances,
-            }),
+            }],
         },
     }
 }

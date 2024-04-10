@@ -9684,6 +9684,7 @@ dependencies = [
  "sc-client-api",
  "sc-executor",
  "sp-api",
+ "sp-auto-id",
  "sp-blockchain",
  "sp-core",
  "sp-domains",
@@ -12118,6 +12119,7 @@ dependencies = [
 name = "subspace-malicious-operator"
 version = "0.1.0"
 dependencies = [
+ "auto-id-domain-runtime",
  "clap",
  "cross-domain-message-gossip",
  "domain-client-message-relayer",
@@ -12229,6 +12231,7 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
+ "auto-id-domain-runtime",
  "bip39",
  "clap",
  "cross-domain-message-gossip",

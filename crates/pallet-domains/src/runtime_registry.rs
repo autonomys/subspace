@@ -15,6 +15,7 @@ use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
 use frame_system::AccountInfo;
 use scale_info::TypeInfo;
+use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
 use sp_domains::{DomainId, DomainsDigestItem, RuntimeId, RuntimeType};
@@ -56,6 +57,7 @@ pub struct RuntimeObject<Number, Hash> {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Copy)]
 pub enum DomainRuntimeInfo {
     EVM { chain_id: EVMChainId },
+    AutoId,
 }
 
 impl Default for DomainRuntimeInfo {
@@ -110,6 +112,25 @@ impl<Number, Hash> RuntimeObject<Number, Hash> {
                     |mut balances, (account_id, balance)| {
                         let account_id =
                             domain_runtime_primitives::AccountId20Converter::try_convert_back(
+                                account_id,
+                            )
+                            .ok_or(Error::InvalidAccountIdType)?;
+
+                        balances.push((account_id, balance));
+                        Ok(balances)
+                    },
+                )?;
+                raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
+                    total_issuance,
+                    initial_balances,
+                ));
+            }
+            DomainRuntimeInfo::AutoId => {
+                let initial_balances = initial_balances.into_iter().try_fold(
+                    Vec::<(AccountId32, BalanceOf<T>)>::new(),
+                    |mut balances, (account_id, balance)| {
+                        let account_id =
+                            domain_runtime_primitives::AccountIdConverter::try_convert_back(
                                 account_id,
                             )
                             .ok_or(Error::InvalidAccountIdType)?;

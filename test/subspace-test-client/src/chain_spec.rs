@@ -134,7 +134,7 @@ fn create_genesis_config(
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(sp_domains::PermissionedActionAllowedBy::Anyone),
-            genesis_domain: Some(GenesisDomain {
+            genesis_domains: vec![GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_test_runtime::VERSION,
@@ -162,7 +162,7 @@ fn create_genesis_config(
                         )
                     })
                     .collect(),
-            }),
+            }],
         },
     }
 }
