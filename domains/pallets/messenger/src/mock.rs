@@ -30,7 +30,6 @@ macro_rules! impl_runtime {
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_messenger::messages::ChainId;
         use sp_runtime::traits::Convert;
-        use frame_system::DefaultConfig;
         use sp_runtime::BuildStorage;
         use crate::HoldIdentifier;
         use sp_domains::ChannelId;

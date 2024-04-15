@@ -3,33 +3,33 @@ name = "orml-vesting"
 description = "Provides scheduled balance locking mechanism, in a *graded vesting* way."
 repository = "https://github.com/open-web3-stack/open-runtime-module-library/tree/master/vesting"
 license = "Apache-2.0"
-version = "0.4.1-dev"
+version = "0.9.1"
 authors = ["Laminar Developers <hello@laminar.one>"]
 edition = "2021"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["max-encoded-len"] }
-scale-info = { version = "2.9.0", default-features = false, features = ["derive"] }
+parity-scale-codec = { version = "3.6.9", default-features = false, features = ["max-encoded-len"] }
+scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
 serde = { version = "1.0.196", optional = true }
 
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
-sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 
 [dev-dependencies]
-pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 
 [features]
 default = ["std"]
 std = [
-    "serde",
-    "codec/std",
     "frame-support/std",
     "frame-system/std",
+    "parity-scale-codec/std",
     "scale-info/std",
+    "serde",
     "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",
@@ -42,4 +42,5 @@ runtime-benchmarks = [
 try-runtime = [
     "frame-support/try-runtime",
     "frame-system/try-runtime",
+    "sp-runtime/try-runtime",
 ]

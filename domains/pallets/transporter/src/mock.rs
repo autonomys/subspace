@@ -3,7 +3,6 @@ use crate::{Config, TryConvertBack};
 use codec::{Decode, Encode};
 use domain_runtime_primitives::MultiAccountId;
 use frame_support::{derive_impl, parameter_types};
-use frame_system::DefaultConfig;
 use pallet_balances::AccountData;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_messenger::messages::ChainId;

@@ -43,7 +43,7 @@ use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::traits::{
     BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
-    OnFinalize, OnIdle, OnInitialize, OnRuntimeUpgrade,
+    OnFinalize, OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade,
 };
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
@@ -55,7 +55,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::{ApplyExtrinsicResult, DispatchError};
+use sp_runtime::{ApplyExtrinsicResult, DispatchError, ExtrinsicInclusionMode};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 
@@ -228,7 +228,8 @@ impl<
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>
-            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>,
+            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
+            + OnPoll<BlockNumberFor<ExecutiveConfig>>,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
     > ExecuteBlock<BlockOf<ExecutiveConfig>>
     for Executive<
@@ -266,7 +267,8 @@ impl<
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>
-            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>,
+            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>
+            + OnPoll<BlockNumberFor<ExecutiveConfig>>,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
     >
     Executive<ExecutiveConfig, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
@@ -325,7 +327,7 @@ where
     /// Wrapped `frame_executive::Executive::initialize_block`.
     ///
     /// Note the storage root in the end.
-    pub fn initialize_block(header: &HeaderFor<ExecutiveConfig>) {
+    pub fn initialize_block(header: &HeaderFor<ExecutiveConfig>) -> ExtrinsicInclusionMode {
         frame_executive::Executive::<
             ExecutiveConfig,
             BlockOf<ExecutiveConfig>,
@@ -333,7 +335,7 @@ where
             UnsignedValidator,
             AllPalletsWithSystem,
             COnRuntimeUpgrade,
-        >::initialize_block(header);
+        >::initialize_block(header)
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711

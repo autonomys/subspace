@@ -19,8 +19,8 @@ use frame_support::traits::fungible::{Inspect, InspectHold, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
-use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY};
+use sp_core::{sr25519, Get};
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
@@ -320,7 +320,7 @@ pub(crate) fn do_register_operator<T: Config>(
 
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
         ensure!(
-            config.signing_key != OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+            config.signing_key != OperatorPublicKey::from(sr25519::Public::default()),
             Error::InvalidOperatorSigningKey
         );
 
@@ -1315,10 +1315,10 @@ pub(crate) mod tests {
     use frame_support::traits::Currency;
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
-    use sp_core::{Pair, U256};
+    use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
         ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorId, OperatorPair,
-        OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY,
+        OperatorPublicKey,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -1427,7 +1427,7 @@ pub(crate) mod tests {
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             let operator_config = OperatorConfig {
-                signing_key: OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+                signing_key: OperatorPublicKey::from(sr25519::Public::default()),
                 minimum_nominator_stake: Default::default(),
                 nomination_tax: Default::default(),
             };

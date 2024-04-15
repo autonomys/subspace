@@ -1,6 +1,5 @@
 use crate::{self as pallet_domain_id};
 use frame_support::derive_impl;
-use frame_system::DefaultConfig;
 use sp_runtime::BuildStorage;
 
 type Block = frame_system::mocking::MockBlock<Test>;

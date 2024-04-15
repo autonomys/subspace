@@ -2,7 +2,6 @@
 
 use frame_support::derive_impl;
 use frame_support::traits::{ConstU128, ConstU32};
-use frame_system::DefaultConfig;
 use sp_runtime::traits::parameter_types;
 use subspace_runtime_primitives::{
     FindBlockRewardAddress, FindVotingRewardAddresses, RewardsEnabled,
