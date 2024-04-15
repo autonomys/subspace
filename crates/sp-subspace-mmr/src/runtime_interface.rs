@@ -12,6 +12,7 @@ use sp_core::H256;
 use sp_externalities::ExternalitiesExt;
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime_interface::runtime_interface;
+use subspace_core_primitives::BlockNumber;
 
 /// MMR related runtime interface
 #[runtime_interface]
@@ -21,6 +22,13 @@ pub trait SubspaceMmrRuntimeInterface {
         self.extension::<SubspaceMmrExtension>()
             .expect("No `SubspaceMmrExtension` associated for the current context!")
             .get_mmr_leaf_data(consensus_block_hash)
+    }
+
+    /// Returns the consensus block hash for a given block number.
+    fn consensus_block_hash(&mut self, block_number: BlockNumber) -> Option<H256> {
+        self.extension::<SubspaceMmrExtension>()
+            .expect("No `SubspaceMmrExtension` associated for the current context!")
+            .consensus_block_hash(block_number)
     }
 }
 

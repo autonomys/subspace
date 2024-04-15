@@ -763,12 +763,21 @@ mod mmr {
     pub type Hash = <Hashing as sp_runtime::traits::Hash>::Output;
 }
 
+pub struct BlockHashProvider;
+
+impl pallet_mmr::BlockHashProvider<BlockNumber, Hash> for BlockHashProvider {
+    fn block_hash(block_number: BlockNumber) -> Hash {
+        sp_subspace_mmr::subspace_mmr_runtime_interface::consensus_block_hash(block_number)
+            .expect("Hash must exist for a given block number.")
+    }
+}
+
 impl pallet_mmr::Config for Runtime {
     const INDEXING_PREFIX: &'static [u8] = mmr::INDEXING_PREFIX;
     type Hashing = Keccak256;
     type LeafData = SubspaceMmr;
     type OnNewRoot = SubspaceMmr;
-    type BlockHashProvider = pallet_mmr::DefaultBlockHashProvider<Runtime>;
+    type BlockHashProvider = BlockHashProvider;
     type WeightInfo = ();
 }
 

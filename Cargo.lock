@@ -11741,6 +11741,7 @@ dependencies = [
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-runtime-interface",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -12439,6 +12440,7 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-std",
+ "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
  "static_assertions",
@@ -12622,6 +12624,7 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-std",
+ "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-version",
  "static_assertions",

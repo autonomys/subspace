@@ -54,6 +54,7 @@ sp-offchain = { default-features = false, git = "https://github.com/subspace/pol
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 sp-session = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+sp-subspace-mmr = { default-features = false, path = "../../crates/sp-subspace-mmr" }
 sp-transaction-pool = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 static_assertions = "1.1.0"
@@ -111,6 +112,7 @@ std = [
     "sp-runtime/std",
     "sp-session/std",
     "sp-std/std",
+    "sp-subspace-mmr/std",
     "sp-transaction-pool/std",
     "sp-version/std",
     "subspace-core-primitives/std",
