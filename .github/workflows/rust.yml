@@ -69,7 +69,14 @@ jobs:
       - name: Install LLVM and Clang for macOS
         uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
         with:
+          env: true
           version: 17
+        if: runner.os == 'macOS'
+
+      # Because macOS, see https://andreasfertig.blog/2021/02/clang-and-gcc-on-macos-catalina-finding-the-include-paths/
+      - name: Configure C compiler macOS
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
       # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
@@ -149,7 +156,14 @@ jobs:
       - name: Install LLVM and Clang for macOS
         uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
         with:
+          env: true
           version: 17
+        if: runner.os == 'macOS'
+
+      # Because macOS, see https://andreasfertig.blog/2021/02/clang-and-gcc-on-macos-catalina-finding-the-include-paths/
+      - name: Configure C compiler macOS
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
       # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
