@@ -140,7 +140,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
 where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>>,
-    CBlock::Hash: From<Hash>,
+    CBlock::Hash: From<Hash> + Into<Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>

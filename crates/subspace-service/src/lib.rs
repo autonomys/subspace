@@ -242,7 +242,7 @@ impl<PosTable, Block, Client, DomainBlock> ExtensionsFactory<Block>
 where
     PosTable: Table,
     Block: BlockT,
-    Block::Hash: From<H256>,
+    Block::Hash: From<H256> + Into<H256>,
     DomainBlock: BlockT,
     DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block>
