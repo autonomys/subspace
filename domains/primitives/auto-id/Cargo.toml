@@ -16,9 +16,9 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = ["derive"] }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
-sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
-sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
+sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
 x509-parser = { version = "0.16.0", features = ["verify"], optional = true }
 
