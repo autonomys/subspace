@@ -5,6 +5,7 @@ use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
@@ -16,6 +17,7 @@ use sc_network::NetworkPeers;
 use sc_service::PruningMode;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
+use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
@@ -168,6 +170,65 @@ where
                     _,
                     evm_domain_runtime::RuntimeApi,
                     AccountId20,
+                    _,
+                    _,
+                >(domain_params)
+                .await?;
+
+                let malicious_bundle_producer = MaliciousBundleProducer::new(
+                    domain_id,
+                    domain_node.client.clone(),
+                    consensus_client,
+                    consensus_keystore,
+                    consensus_offchain_tx_pool_factory,
+                    domain_node.transaction_pool.clone(),
+                    sudo_account,
+                );
+
+                domain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "malicious-bundle-producer",
+                        None,
+                        Box::pin(malicious_bundle_producer.start(new_slot_notification_stream())),
+                    );
+
+                domain_node.network_starter.start_network();
+
+                domain_node.task_manager.future().await?;
+
+                Ok(())
+            }
+            RuntimeType::AutoId => {
+                let domain_params = domain_service::DomainParams {
+                    domain_id,
+                    domain_config,
+                    domain_created_at,
+                    consensus_client: consensus_client.clone(),
+                    consensus_offchain_tx_pool_factory: consensus_offchain_tx_pool_factory.clone(),
+                    consensus_network,
+                    consensus_network_sync_oracle: consensus_sync_service.clone(),
+                    operator_streams,
+                    gossip_message_sink,
+                    domain_message_receiver,
+                    provider: DefaultProvider,
+                    skip_empty_bundle_production: true,
+                    skip_out_of_order_slot: false,
+                    // Always set it to `None` to not running the normal bundle producer
+                    maybe_operator_id: None,
+                    consensus_state_pruning,
+                };
+
+                let mut domain_node = domain_service::new_full::<
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    auto_id_domain_runtime::RuntimeApi,
+                    AccountId32,
                     _,
                     _,
                 >(domain_params)

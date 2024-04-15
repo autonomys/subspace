@@ -215,6 +215,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
                 chain_id: evm_chain_id,
             }
         }
+        RuntimeType::AutoId => DomainRuntimeInfo::AutoId,
     };
 
     // burn total issuance on domain from owners account and track the domain balance

@@ -258,7 +258,7 @@ fn subspace_genesis_config(
             permissioned_action_allowed_by: Some(
                 genesis_domain_params.permissioned_action_allowed_by,
             ),
-            genesis_domain: Some(sp_domains::GenesisDomain {
+            genesis_domains: vec![sp_domains::GenesisDomain {
                 runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
@@ -276,38 +276,44 @@ fn subspace_genesis_config(
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
                 initial_balances: genesis_domain_params.initial_balances,
-            }),
+            }],
         },
     }
 }
 
 // TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
 fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
-    let Some(runtime_version) = genesis_config
+    let Some(genesis_domains) = genesis_config
         .get_mut("domains")
-        .and_then(|domains| domains.get_mut("genesisDomain"))
-        .and_then(|genesis_domain| genesis_domain.get_mut("runtime_version"))
+        .and_then(|domains| domains.get_mut("genesisDomains"))
+        .and_then(|genesis_domains| genesis_domains.as_array_mut())
     else {
         return genesis_config;
     };
 
-    if let Some(spec_name) = runtime_version.get_mut("specName") {
-        if let Some(spec_name_bytes) = spec_name
-            .as_str()
-            .map(|spec_name| spec_name.as_bytes().to_vec())
-        {
-            *spec_name = serde_json::to_value(spec_name_bytes)
-                .expect("Bytes serialization doesn't fail; qed");
-        }
-    }
+    for genesis_domain in genesis_domains {
+        let Some(runtime_version) = genesis_domain.get_mut("runtime_version") else {
+            continue;
+        };
 
-    if let Some(impl_name) = runtime_version.get_mut("implName") {
-        if let Some(impl_name_bytes) = impl_name
-            .as_str()
-            .map(|impl_name| impl_name.as_bytes().to_vec())
-        {
-            *impl_name = serde_json::to_value(impl_name_bytes)
-                .expect("Bytes serialization doesn't fail; qed");
+        if let Some(spec_name) = runtime_version.get_mut("specName") {
+            if let Some(spec_name_bytes) = spec_name
+                .as_str()
+                .map(|spec_name| spec_name.as_bytes().to_vec())
+            {
+                *spec_name = serde_json::to_value(spec_name_bytes)
+                    .expect("Bytes serialization doesn't fail; qed");
+            }
+        }
+
+        if let Some(impl_name) = runtime_version.get_mut("implName") {
+            if let Some(impl_name_bytes) = impl_name
+                .as_str()
+                .map(|impl_name| impl_name.as_bytes().to_vec())
+            {
+                *impl_name = serde_json::to_value(impl_name_bytes)
+                    .expect("Bytes serialization doesn't fail; qed");
+            }
         }
     }
 

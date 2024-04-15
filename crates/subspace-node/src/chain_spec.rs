@@ -16,23 +16,18 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{
-    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
-};
-use crate::domain::evm_chain_spec::{self, SpecId};
-use domain_runtime_primitives::MultiAccountId;
-use hex_literal::hex;
-use parity_scale_codec::Encode;
+use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use crate::domain::auto_id_chain_spec;
+use crate::domain::cli::{GenesisDomain, SpecId};
+use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, GEMINI_3H_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::storage::RawGenesis;
-use sp_domains::{OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy, RuntimeType};
-use sp_runtime::{BuildStorage, Percent};
-use std::collections::btree_set::BTreeSet;
+use sp_domains::PermissionedActionAllowedBy;
+use sp_runtime::Percent;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
@@ -106,11 +101,8 @@ struct GenesisParams {
 }
 
 struct GenesisDomainParams {
-    domain_name: String,
-    operator_allow_list: OperatorAllowList<AccountId>,
-    operator_signing_key: OperatorPublicKey,
-    initial_balances: Vec<(MultiAccountId, Balance)>,
     permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
+    genesis_domains: Vec<GenesisDomain>,
 }
 
 pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
@@ -179,7 +171,6 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
             .collect::<Vec<_>>();
         patch_domain_runtime_version(
             serde_json::to_value(subspace_genesis_config(
-                SpecId::Gemini,
                 sudo_account.clone(),
                 balances,
                 vesting_schedules,
@@ -207,19 +198,13 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     },
                 },
                 GenesisDomainParams {
-                    domain_name: "nova".to_owned(),
-                    operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
-                        sudo_account.clone(),
-                    ])),
-                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-                    )),
-                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
-                        SpecId::Gemini,
-                    ),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
-                        sudo_account,
+                        sudo_account.clone(),
                     ]),
+                    genesis_domains: vec![evm_chain_spec::get_genesis_domain(
+                        SpecId::Gemini,
+                        sudo_account,
+                    )?],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -301,7 +286,6 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
             .collect::<Vec<_>>();
         patch_domain_runtime_version(
             serde_json::to_value(subspace_genesis_config(
-                SpecId::DevNet,
                 sudo_account.clone(),
                 balances,
                 vesting_schedules,
@@ -323,17 +307,13 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     },
                 },
                 GenesisDomainParams {
-                    domain_name: "evm-domain".to_owned(),
-                    operator_allow_list: OperatorAllowList::Anyone,
-                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-                    )),
-                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
-                        SpecId::DevNet,
-                    ),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
-                        sudo_account,
+                        sudo_account.clone(),
                     ]),
+                    genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
+                        SpecId::DevNet,
+                        sudo_account,
+                    )],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -344,6 +324,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
 
 pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
+    let sudo_account = get_account_id_from_seed("Alice");
 
     Ok(GenericChainSpec::builder(wasm_binary, None)
         .with_name("Subspace development")
@@ -359,12 +340,11 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
         })
         .with_genesis_config(patch_domain_runtime_version(
             serde_json::to_value(subspace_genesis_config(
-                SpecId::Dev,
                 // Sudo account
-                get_account_id_from_seed("Alice"),
+                sudo_account.clone(),
                 // Pre-funded accounts
                 vec![
-                    (get_account_id_from_seed("Alice"), Balance::MAX / 2),
+                    (sudo_account.clone(), Balance::MAX / 2),
                     (get_account_id_from_seed("Bob"), 1_000 * SSC),
                     (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
@@ -386,15 +366,13 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     },
                 },
                 GenesisDomainParams {
-                    domain_name: "evm-domain".to_owned(),
-                    operator_allow_list: OperatorAllowList::Anyone,
-                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
-                    initial_balances: evm_chain_spec::get_testnet_endowed_accounts_by_spec_id(
-                        SpecId::Dev,
-                    ),
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
-                        get_account_id_from_seed("Alice"),
+                        sudo_account.clone(),
                     ]),
+                    genesis_domains: vec![
+                        auto_id_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account.clone()),
+                        evm_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account)?,
+                    ],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -404,7 +382,6 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
 
 /// Configure initial storage state for FRAME modules.
 fn subspace_genesis_config(
-    spec_id: SpecId,
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
@@ -424,23 +401,34 @@ fn subspace_genesis_config(
         rewards_config,
     } = genesis_params;
 
-    let raw_genesis_storage = {
-        let domain_chain_spec = match spec_id {
-            SpecId::Dev => evm_chain_spec::development_config(
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
-            )?,
-            SpecId::Gemini => evm_chain_spec::gemini_3h_config(
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
-            )?,
-            SpecId::DevNet => evm_chain_spec::devnet_config(
-                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id),
-            )?,
-        };
-        let storage = domain_chain_spec
-            .build_storage()
-            .expect("Failed to build genesis storage from genesis runtime config");
-        let raw_genesis = RawGenesis::from_storage(storage);
-        raw_genesis.encode()
+    let genesis_domains = if enable_domains {
+        genesis_domain_params
+            .genesis_domains
+            .into_iter()
+            .map(|genesis_domain| {
+                sp_domains::GenesisDomain {
+                    runtime_name: genesis_domain.runtime_name,
+                    runtime_type: genesis_domain.runtime_type,
+                    runtime_version: genesis_domain.runtime_version,
+                    raw_genesis_storage: genesis_domain.raw_genesis,
+
+                    // Domain config, mainly for placeholder the concrete value TBD
+                    owner_account_id: sudo_account.clone(),
+                    domain_name: genesis_domain.domain_name,
+                    max_block_size: MaxDomainBlockSize::get(),
+                    max_block_weight: MaxDomainBlockWeight::get(),
+                    bundle_slot_probability: (1, 1),
+                    target_bundles_per_block: 10,
+                    operator_allow_list: genesis_domain.operator_allow_list.clone(),
+                    signing_key: genesis_domain.operator_signing_key.clone(),
+                    nomination_tax: Percent::from_percent(5),
+                    minimum_nominator_stake: 100 * SSC,
+                    initial_balances: genesis_domain.initial_balances,
+                }
+            })
+            .collect()
+    } else {
+        vec![]
     };
 
     Ok(RuntimeGenesisConfig {
@@ -469,56 +457,44 @@ fn subspace_genesis_config(
         domains: DomainsConfig {
             permissioned_action_allowed_by: enable_domains
                 .then_some(genesis_domain_params.permissioned_action_allowed_by),
-            genesis_domain: enable_domains.then_some(sp_domains::GenesisDomain {
-                runtime_name: "evm".to_owned(),
-                runtime_type: RuntimeType::Evm,
-                runtime_version: evm_domain_runtime::VERSION,
-                raw_genesis_storage,
-
-                // Domain config, mainly for placeholder the concrete value TBD
-                owner_account_id: sudo_account,
-                domain_name: genesis_domain_params.domain_name,
-                max_block_size: MaxDomainBlockSize::get(),
-                max_block_weight: MaxDomainBlockWeight::get(),
-                bundle_slot_probability: (1, 1),
-                target_bundles_per_block: 10,
-                operator_allow_list: genesis_domain_params.operator_allow_list,
-                signing_key: genesis_domain_params.operator_signing_key,
-                nomination_tax: Percent::from_percent(5),
-                minimum_nominator_stake: 100 * SSC,
-                initial_balances: genesis_domain_params.initial_balances,
-            }),
+            genesis_domains,
         },
     })
 }
 
 // TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
 fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
-    let Some(runtime_version) = genesis_config
+    let Some(genesis_domains) = genesis_config
         .get_mut("domains")
-        .and_then(|domains| domains.get_mut("genesisDomain"))
-        .and_then(|genesis_domain| genesis_domain.get_mut("runtime_version"))
+        .and_then(|domains| domains.get_mut("genesisDomains"))
+        .and_then(|genesis_domains| genesis_domains.as_array_mut())
     else {
         return genesis_config;
     };
 
-    if let Some(spec_name) = runtime_version.get_mut("specName") {
-        if let Some(spec_name_bytes) = spec_name
-            .as_str()
-            .map(|spec_name| spec_name.as_bytes().to_vec())
-        {
-            *spec_name = serde_json::to_value(spec_name_bytes)
-                .expect("Bytes serialization doesn't fail; qed");
-        }
-    }
+    for genesis_domain in genesis_domains {
+        let Some(runtime_version) = genesis_domain.get_mut("runtime_version") else {
+            continue;
+        };
 
-    if let Some(impl_name) = runtime_version.get_mut("implName") {
-        if let Some(impl_name_bytes) = impl_name
-            .as_str()
-            .map(|impl_name| impl_name.as_bytes().to_vec())
-        {
-            *impl_name = serde_json::to_value(impl_name_bytes)
-                .expect("Bytes serialization doesn't fail; qed");
+        if let Some(spec_name) = runtime_version.get_mut("specName") {
+            if let Some(spec_name_bytes) = spec_name
+                .as_str()
+                .map(|spec_name| spec_name.as_bytes().to_vec())
+            {
+                *spec_name = serde_json::to_value(spec_name_bytes)
+                    .expect("Bytes serialization doesn't fail; qed");
+            }
+        }
+
+        if let Some(impl_name) = runtime_version.get_mut("implName") {
+            if let Some(impl_name_bytes) = impl_name
+                .as_str()
+                .map(|impl_name| impl_name.as_bytes().to_vec())
+            {
+                *impl_name = serde_json::to_value(impl_name_bytes)
+                    .expect("Bytes serialization doesn't fail; qed");
+            }
         }
     }
 

@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+pub mod auto_id_chain_spec;
 pub(crate) mod cli;
 pub mod evm_chain_spec;
 

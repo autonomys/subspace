@@ -27,7 +27,7 @@ where
     fn block_import(&self, client: Arc<Client>) -> Self::BI;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct DefaultProvider;
 
 impl<Block, RuntimeApi> BlockImportProvider<Block, FullClient<Block, RuntimeApi>>

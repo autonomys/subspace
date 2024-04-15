@@ -19,6 +19,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+auto-id-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/auto-id" }
 clap = { version = "4.5.4", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
