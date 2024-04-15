@@ -22,7 +22,7 @@ sp-arithmetic = { default-features = false, git = "https://github.com/subspace/p
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", default-features = false }
-thiserror = { version = "1.0.56", optional = true }
+thiserror = { version = "1.0.58", optional = true }
 
 [features]
 default = ["std"]

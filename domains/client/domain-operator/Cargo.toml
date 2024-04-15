@@ -37,7 +37,7 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc76
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
-thiserror = "1.0.56"
+thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = ["macros"] }
 
 [dev-dependencies]
@@ -59,4 +59,4 @@ sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "44
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-core-primitives" }
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
-tempfile = "3.9.0"
+tempfile = "3.10.1"

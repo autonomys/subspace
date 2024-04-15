@@ -15,10 +15,10 @@ atomic = "0.5.3"
 core_affinity = "0.8.1"
 derive_more = "0.99.17"
 futures = "0.3.29"
-lru = "0.12.1"
+lru = "0.12.3"
 parity-scale-codec = { version = "3.6.9", features = ["derive"] }
 parking_lot = "0.12.1"
-rayon = "1.8.1"
+rayon = "1.10.0"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }

@@ -13,8 +13,8 @@ readme = "README.md"
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false }
 finality-grandpa = { version = "0.16.1", default-features = false }
 log = { version = "0.4.21", default-features = false }
-num-traits = { version = "0.2.17", default-features = false }
-scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+num-traits = { version = "0.2.18", default-features = false }
+scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
 serde = { version = "1.0.196", optional = true }
 
 # Substrate Dependencies
@@ -27,7 +27,7 @@ sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc76
 sp-std = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea", default-features = false }
 
 [dev-dependencies]
-ed25519-dalek = { version = "2.1.0", default-features = false }
+ed25519-dalek = { version = "2.1.1", default-features = false }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 sp-application-crypto = { git = "https://github.com/subspace/polkadot-sdk", rev = "447bbc765020674614e9ac982163f7e11e5b03ea" }
 

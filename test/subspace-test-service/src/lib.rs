@@ -123,7 +123,7 @@ pub fn node_config(
         Role::Full
     };
     let key_seed = key.to_seed();
-    let spec = chain_spec::subspace_local_testnet_config();
+    let spec = chain_spec::subspace_local_testnet_config().unwrap();
 
     let mut network_config = NetworkConfiguration::new(
         key_seed.to_string(),
