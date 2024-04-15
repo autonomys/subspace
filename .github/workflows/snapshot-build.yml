@@ -112,10 +112,6 @@ jobs:
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
-            target: x86_64-apple-darwin
-            suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ""
           - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
