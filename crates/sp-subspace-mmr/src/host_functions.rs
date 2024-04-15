@@ -7,6 +7,7 @@ pub use sp_mmr_primitives::{EncodableOpaqueLeaf, MmrApi, Proof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::BlockNumber;
 
 /// Trait to query MMR specific data through host function..
 pub trait SubspaceMmrHostFunctions: Send + Sync {
@@ -15,6 +16,12 @@ pub trait SubspaceMmrHostFunctions: Send + Sync {
 
     /// Verifies the mmr proof using consensus chain.
     fn verify_mmr_proof(&self, leaves: Vec<EncodableOpaqueLeaf>, encoded_proof: Vec<u8>) -> bool;
+
+    /// Returns the consensus block hash for given block number.
+    fn consensus_block_hash(
+        &self,
+        block_number: subspace_core_primitives::BlockNumber,
+    ) -> Option<H256>;
 }
 
 sp_externalities::decl_extension! {
@@ -46,7 +53,7 @@ impl<Block, Client> SubspaceMmrHostFunctionsImpl<Block, Client> {
 impl<Block, Client> SubspaceMmrHostFunctions for SubspaceMmrHostFunctionsImpl<Block, Client>
 where
     Block: BlockT,
-    Block::Hash: From<H256>,
+    Block::Hash: From<H256> + Into<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: MmrApi<Block, H256, NumberFor<Block>>,
 {
@@ -80,5 +87,13 @@ where
         api.verify_proof(parent_hash, leaves, proof).expect(
             "Runtime Api should not fail in host function, there is no recovery from this; qed.",
         ).is_ok()
+    }
+
+    fn consensus_block_hash(&self, block_number: BlockNumber) -> Option<H256> {
+        let block_number = NumberFor::<Block>::from(block_number);
+        self.consensus_client
+            .hash(block_number)
+            .expect("Header must be available. This is unrecoverable error")
+            .map(|block_hash| block_hash.into())
     }
 }

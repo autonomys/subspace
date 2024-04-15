@@ -25,6 +25,7 @@ sp-externalities = { default-features = false, git = "https://github.com/subspac
 sp-mmr-primitives = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
 sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "b66c1c2e48b44f6433b421e6d5a0aedd2165b85f" }
+subspace-core-primitives = { default-features = false, path = "../subspace-core-primitives"}
 
 [features]
 default = ["std"]
@@ -38,4 +39,5 @@ std = [
     "sp-mmr-primitives/std",
     "sp-runtime/std",
     "sp-runtime-interface/std",
+    "subspace-core-primitives/std"
 ]

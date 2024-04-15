@@ -243,7 +243,7 @@ impl<Block, Client, DomainBlock, Executor, CBackend> ExtensionsFactory<Block>
     for MockExtensionsFactory<Client, DomainBlock, Executor, CBackend>
 where
     Block: BlockT,
-    Block::Hash: From<H256>,
+    Block::Hash: From<H256> + Into<H256>,
     DomainBlock: BlockT,
     DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
