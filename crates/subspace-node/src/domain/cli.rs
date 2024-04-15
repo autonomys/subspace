@@ -105,10 +105,11 @@ impl DomainCli {
     /// Creates domain configuration from domain cli.
     pub fn create_domain_configuration(
         &self,
+        cmd: &impl CliConfiguration,
         base_path: &Path,
         tokio_handle: tokio::runtime::Handle,
     ) -> sc_cli::Result<Configuration> {
-        let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
+        let mut domain_config = SubstrateCli::create_configuration(self, cmd, tokio_handle)?;
 
         // Change default paths to Subspace structure
         let domain_base_path = base_path.join(self.domain_id.to_string());
@@ -173,8 +174,13 @@ impl SubstrateCli for DomainCli {
     }
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
-        // TODO: Fetch the runtime name of `self.domain_id` properly.
-        let runtime_name = "evm";
+        // TODO: properly fetch the runtime name of `self.domain_id`
+        let runtime_name = if self.domain_id == 0.into() {
+            "auto-id"
+        } else {
+            "evm"
+        };
+
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
             "auto-id" => auto_id_chain_spec::load_chain_spec(id),
