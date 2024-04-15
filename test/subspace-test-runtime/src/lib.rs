@@ -768,6 +768,7 @@ impl pallet_mmr::Config for Runtime {
     type Hashing = Keccak256;
     type LeafData = SubspaceMmr;
     type OnNewRoot = SubspaceMmr;
+    type BlockHashProvider = pallet_mmr::DefaultBlockHashProvider<Runtime>;
     type WeightInfo = ();
 }
 
