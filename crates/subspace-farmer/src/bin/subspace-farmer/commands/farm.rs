@@ -1,6 +1,6 @@
 use crate::commands::shared::metrics::{FarmerMetrics, SectorState};
 use crate::commands::shared::network::{configure_network, NetworkArgs};
-use crate::commands::shared::DiskFarm;
+use crate::commands::shared::{DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::Mutex as AsyncMutex;
@@ -12,13 +12,13 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
+use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -44,7 +44,6 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use thread_priority::ThreadPriority;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
@@ -66,50 +65,6 @@ fn should_farm_during_initial_plotting() -> bool {
         .flat_map(|set| set.cpu_cores())
         .count();
     total_cpu_cores > 8
-}
-
-/// Plotting thread priority
-#[derive(Debug, Parser, Copy, Clone)]
-enum PlottingThreadPriority {
-    /// Minimum priority
-    Min,
-    /// Default priority
-    Default,
-    /// Max priority (not recommended)
-    Max,
-}
-
-impl FromStr for PlottingThreadPriority {
-    type Err = String;
-
-    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
-        match s {
-            "min" => Ok(Self::Min),
-            "default" => Ok(Self::Default),
-            "max" => Ok(Self::Max),
-            s => Err(format!("Thread priority {s} is not valid")),
-        }
-    }
-}
-
-impl fmt::Display for PlottingThreadPriority {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Min => "min",
-            Self::Default => "default",
-            Self::Max => "max",
-        })
-    }
-}
-
-impl From<PlottingThreadPriority> for Option<ThreadPriority> {
-    fn from(value: PlottingThreadPriority) -> Self {
-        match value {
-            PlottingThreadPriority::Min => Some(ThreadPriority::Min),
-            PlottingThreadPriority::Default => None,
-            PlottingThreadPriority::Max => Some(ThreadPriority::Max),
-        }
-    }
 }
 
 /// Arguments for farmer

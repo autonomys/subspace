@@ -2,9 +2,56 @@ pub(super) mod metrics;
 pub(super) mod network;
 
 use bytesize::ByteSize;
+use clap::Parser;
+use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use thread_priority::ThreadPriority;
+
+/// Plotting thread priority
+#[derive(Debug, Parser, Copy, Clone)]
+pub(in super::super) enum PlottingThreadPriority {
+    /// Minimum priority
+    Min,
+    /// Default priority
+    Default,
+    /// Max priority (not recommended)
+    Max,
+}
+
+impl FromStr for PlottingThreadPriority {
+    type Err = String;
+
+    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
+        match s {
+            "min" => Ok(Self::Min),
+            "default" => Ok(Self::Default),
+            "max" => Ok(Self::Max),
+            s => Err(format!("Thread priority {s} is not valid")),
+        }
+    }
+}
+
+impl fmt::Display for PlottingThreadPriority {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Min => "min",
+            Self::Default => "default",
+            Self::Max => "max",
+        })
+    }
+}
+
+impl From<PlottingThreadPriority> for Option<ThreadPriority> {
+    fn from(value: PlottingThreadPriority) -> Self {
+        match value {
+            PlottingThreadPriority::Min => Some(ThreadPriority::Min),
+            PlottingThreadPriority::Default => None,
+            PlottingThreadPriority::Max => Some(ThreadPriority::Max),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(in super::super) struct DiskFarm {
