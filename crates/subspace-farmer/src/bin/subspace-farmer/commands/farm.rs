@@ -1,8 +1,5 @@
-mod dsn;
-mod metrics;
-
-use crate::commands::farm::dsn::{configure_network, NetworkArgs};
-use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
+use crate::commands::shared::metrics::{FarmerMetrics, SectorState};
+use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::Mutex as AsyncMutex;

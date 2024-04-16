@@ -1,7 +1,10 @@
+pub(super) mod metrics;
+pub(super) mod network;
+
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 
-pub(crate) fn print_disk_farm_info(directory: PathBuf, farm_index: usize) {
+pub(super) fn print_disk_farm_info(directory: PathBuf, farm_index: usize) {
     println!("Single disk farm {farm_index}:");
     match SingleDiskFarm::collect_summary(directory) {
         SingleDiskFarmSummary::Found { info, directory } => {
