@@ -1,6 +1,5 @@
 use frame_support::weights::Weight;
 use frame_support::{construct_runtime, derive_impl, parameter_types};
-use frame_system::DefaultConfig;
 use sp_runtime::Perbill;
 
 pub(crate) type ChainId = u64;

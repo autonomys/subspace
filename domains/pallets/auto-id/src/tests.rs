@@ -67,6 +67,11 @@ impl frame_system::Config for Test {
     type SystemWeightInfo = ();
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
+    type SingleBlockMigrations = ();
+    type MultiBlockMigrator = ();
+    type PreInherents = ();
+    type PostInherents = ();
+    type PostTransactions = ();
     type MaxConsumers = ConstU32<16>;
 }
 

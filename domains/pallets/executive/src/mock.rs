@@ -4,7 +4,6 @@ use frame_support::dispatch::DispatchInfo;
 use frame_support::weights::IdentityFee;
 use frame_support::{derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
-use frame_system::DefaultConfig;
 use pallet_balances::AccountData;
 use sp_runtime::BuildStorage;
 

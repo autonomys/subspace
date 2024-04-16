@@ -24,7 +24,6 @@ use codec::Encode;
 use frame_support::derive_impl;
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::Weight;
-use frame_system::DefaultConfig;
 use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;

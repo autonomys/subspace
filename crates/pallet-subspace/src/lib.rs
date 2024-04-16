@@ -301,11 +301,13 @@ pub mod pallet {
         T: Config,
     {
         #[inline]
-        #[track_caller]
         fn default() -> Self {
-            // TODO: Remove once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our
-            //  fork
-            unreachable!("Config must be initialized explicitly");
+            Self {
+                enable_rewards_at: EnableRewardsAt::Height(None),
+                allow_authoring_by: AllowAuthoringBy::Anyone,
+                pot_slot_iterations: NonZeroU32::MIN,
+                phantom: PhantomData,
+            }
         }
     }
 

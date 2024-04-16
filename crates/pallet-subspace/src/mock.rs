@@ -23,7 +23,6 @@ use crate::{
 };
 use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
-use frame_system::DefaultConfig;
 use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;

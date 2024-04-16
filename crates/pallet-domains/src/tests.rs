@@ -17,7 +17,6 @@ use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, derive_impl, parameter_types, PalletId};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
-use frame_system::DefaultConfig;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
