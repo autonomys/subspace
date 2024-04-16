@@ -1,7 +1,7 @@
 mod dsn;
 mod metrics;
 
-use crate::commands::farm::dsn::configure_dsn;
+use crate::commands::farm::dsn::{configure_network, NetworkArgs};
 use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
@@ -14,7 +14,7 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::pin::pin;
@@ -45,8 +45,6 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use thread_priority::ThreadPriority;
@@ -130,8 +128,8 @@ pub(crate) struct FarmingArgs {
     ///
     ///   path=/path/to/directory,size=5T
     ///
-    /// `size` is max allocated size in human readable format (e.g. 10GB, 2TiB) or just bytes that
-    /// farmer will make sure not not exceed (and will pre-allocated all the space on startup to
+    /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
+    /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
     /// ensure it will not run out of space in runtime).
     disk_farms: Vec<DiskFarm>,
     /// WebSocket RPC URL of the Subspace node to connect to
@@ -143,10 +141,10 @@ pub(crate) struct FarmingArgs {
     /// Percentage of allocated space dedicated for caching purposes, 99% max
     #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
     cache_percentage: NonZeroU8,
-    /// Sets some flags that are convenient during development, currently `--allow-private-ips`.
+    /// Sets some flags that are convenient during development, currently `--allow-private-ips`
     #[arg(long)]
     dev: bool,
-    /// Run temporary farmer with specified plot size in human readable format (e.g. 10GB, 2TiB) or
+    /// Run temporary farmer with specified plot size in human-readable format (e.g. 10GB, 2TiB) or
     /// just bytes (e.g. 4096), this will create a temporary directory for storing farmer data that
     /// will be deleted at the end of the process.
     #[arg(long, conflicts_with = "disk_farms")]
@@ -160,9 +158,9 @@ pub(crate) struct FarmingArgs {
     /// This is primarily for development and not recommended to use by regular users.
     #[arg(long)]
     max_pieces_in_sector: Option<u16>,
-    /// DSN parameters
+    /// Network parameters
     #[clap(flatten)]
-    dsn: DsnArgs,
+    network_args: NetworkArgs,
     /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
@@ -277,45 +275,6 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
     Ok(cache_percentage)
 }
 
-/// Arguments for DSN
-#[derive(Debug, Parser)]
-struct DsnArgs {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long)]
-    bootstrap_nodes: Vec<Multiaddr>,
-    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-    /// multiple are supported.
-    #[arg(long, default_values_t = [
-        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533)),
-        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533))
-    ])]
-    listen_on: Vec<Multiaddr>,
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
-    /// Kademlia DHT.
-    #[arg(long, default_value_t = false)]
-    allow_private_ips: bool,
-    /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
-    #[arg(long)]
-    reserved_peers: Vec<Multiaddr>,
-    /// Defines max established incoming connection limit.
-    #[arg(long, default_value_t = 300)]
-    in_connections: u32,
-    /// Defines max established outgoing swarm connection limit.
-    #[arg(long, default_value_t = 100)]
-    out_connections: u32,
-    /// Defines max pending incoming connection limit.
-    #[arg(long, default_value_t = 100)]
-    pending_in_connections: u32,
-    /// Defines max pending outgoing swarm connection limit.
-    #[arg(long, default_value_t = 100)]
-    pending_out_connections: u32,
-    /// Known external addresses
-    #[arg(long, alias = "external-address")]
-    external_addresses: Vec<Multiaddr>,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct DiskFarm {
     /// Path to directory where data is stored.
@@ -390,7 +349,7 @@ where
         node_rpc_url,
         reward_address,
         max_pieces_in_sector,
-        mut dsn,
+        mut network_args,
         cache_percentage,
         no_info,
         dev,
@@ -422,7 +381,7 @@ where
     });
 
     // Override flags with `--dev`
-    dsn.allow_private_ips = dsn.allow_private_ips || dev;
+    network_args.allow_private_ips = network_args.allow_private_ips || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
@@ -482,15 +441,15 @@ where
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
     let (node, mut node_runner) = {
-        if dsn.bootstrap_nodes.is_empty() {
-            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
+        if network_args.bootstrap_nodes.is_empty() {
+            network_args.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
 
-        configure_dsn(
+        configure_network(
             hex::encode(farmer_app_info.genesis_hash),
             first_farm_directory,
             keypair,
-            dsn,
+            network_args,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
             farmer_cache.clone(),
