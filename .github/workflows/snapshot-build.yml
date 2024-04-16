@@ -112,10 +112,6 @@ jobs:
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
-            target: x86_64-apple-darwin
-            suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ""
           - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
@@ -138,7 +134,14 @@ jobs:
       - name: Install LLVM and Clang for macOS
         uses: KyleMayes/install-llvm-action@dec985c8d7b46a2f363ea1a78f660c946a3349ea # v2.0.1
         with:
+          env: true
           version: 17
+        if: runner.os == 'macOS'
+
+      # Because macOS, see https://andreasfertig.blog/2021/02/clang-and-gcc-on-macos-catalina-finding-the-include-paths/
+      - name: Configure C compiler macOS
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
       # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
@@ -206,13 +209,6 @@ jobs:
       - name: Build farmer (Linux and Windows)
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
-        if: runner.os != 'macOS'
-
-      # We build macOS without `numa` feature, primarily because of https://github.com/HadrienG2/hwlocality/issues/31
-      - name: Build farmer (macOS)
-        run: |
-          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --no-default-features
-        if: runner.os == 'macOS'
 
       - name: Build node
         run: |
