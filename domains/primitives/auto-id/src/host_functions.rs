@@ -1,4 +1,6 @@
-use crate::{DerVec, SignatureVerificationRequest, TbsCertificate, Validity};
+use crate::{
+    DerVec, SignatureVerificationRequest, SubjectDistinguishedName, TbsCertificate, Validity,
+};
 use sp_core::U256;
 use std::sync::Arc;
 use x509_parser::der_parser::asn1_rs::BitString;
@@ -47,9 +49,11 @@ impl HostFunctions for HostFunctionsImpl {
             x509_parser::certificate::TbsCertificate::from_der(certificate.as_ref()).ok()?;
         let serial = U256::from_big_endian(&tbs_certificate.serial.to_bytes_be());
         let validity = Validity::try_from(tbs_certificate.validity).ok()?;
+        let subject_dn = SubjectDistinguishedName::try_from(tbs_certificate.subject).ok()?;
+
         Some(TbsCertificate {
             serial,
-            subject: tbs_certificate.subject.as_raw().to_vec().into(),
+            subject: subject_dn,
             subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
             validity,
         })
