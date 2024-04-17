@@ -50,11 +50,6 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) autonat: AutonatWrapperConfig,
 }
 
-// #[derive(Debug, Clone, Copy)]
-// pub(crate) struct GeneralConnectedPeersInstance;
-// #[derive(Debug, Clone, Copy)]
-// pub(crate) struct SpecialConnectedPeersInstance;
-
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event")]
 #[behaviour(event_process = false)]
@@ -69,12 +64,6 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) request_response: RequestResponseFactoryBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
-    // TODO: Restore or remove connected peer later
-    // pub(crate) peer_info: Toggle<PeerInfoBehaviour>,
-    // pub(crate) general_connected_peers:
-    //     Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
-    // pub(crate) special_connected_peers:
-    //     Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
     pub(crate) autonat: AutonatWrapper,
 }
 
@@ -100,11 +89,6 @@ where
                 .expect("Correct configuration")
             })
             .into();
-
-        // TODO: Restore or remove connected peer later
-        // let peer_info = config
-        //     .peer_info_provider
-        //     .map(|provider| PeerInfoBehaviour::new(config.peer_info_config, provider));
 
         Self {
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),

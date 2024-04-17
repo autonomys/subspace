@@ -149,10 +149,6 @@ struct DsnOptions {
     #[arg(long, default_value_t = 150)]
     dsn_pending_out_connections: u32,
 
-    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
-    #[arg(long, default_value_t = false)]
-    dsn_disable_bootstrap_on_start: bool,
-
     /// Known external addresses
     #[arg(long, alias = "dsn-external-address")]
     dsn_external_addresses: Vec<Multiaddr>,
@@ -440,7 +436,7 @@ pub(super) fn create_consensus_chain_configuration(
         mut force_synced,
         mut force_authoring,
         pot_external_entropy,
-        mut dsn_options,
+        dsn_options,
         sync_from_dsn,
         storage_monitor,
         mut timekeeper_options,
@@ -459,7 +455,6 @@ pub(super) fn create_consensus_chain_configuration(
             force_synced = true;
             force_authoring = true;
             network_options.allow_private_ips = true;
-            dsn_options.dsn_disable_bootstrap_on_start = true;
             timekeeper_options.timekeeper = true;
         }
 
@@ -643,7 +638,6 @@ pub(super) fn create_consensus_chain_configuration(
             max_pending_in_connections: dsn_options.dsn_pending_in_connections,
             max_pending_out_connections: dsn_options.dsn_pending_out_connections,
             external_addresses: dsn_options.dsn_external_addresses,
-            disable_bootstrap_on_start: dsn_options.dsn_disable_bootstrap_on_start,
         }
     };
 

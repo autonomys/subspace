@@ -242,8 +242,6 @@ pub struct Config<LocalRecordProvider> {
     /// Known external addresses to the local peer. The addresses will be added on the swarm start
     /// and enable peer to notify others about its reachable address.
     pub external_addresses: Vec<Multiaddr>,
-    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
-    pub disable_bootstrap_on_start: bool,
 }
 
 impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
@@ -366,7 +364,6 @@ where
             bootstrap_addresses: Vec::new(),
             kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
-            disable_bootstrap_on_start: false,
         }
     }
 }
@@ -430,7 +427,6 @@ where
         bootstrap_addresses,
         kademlia_mode,
         external_addresses,
-        disable_bootstrap_on_start,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -577,7 +573,6 @@ where
         metrics,
         protocol_version,
         bootstrap_addresses,
-        disable_bootstrap_on_start,
     });
 
     Ok((node, node_runner))
