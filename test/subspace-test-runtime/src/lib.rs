@@ -788,8 +788,13 @@ impl pallet_mmr::Config for Runtime {
     type WeightInfo = ();
 }
 
+parameter_types! {
+    pub const MmrRootHashCount: u32 = 15;
+}
+
 impl pallet_subspace_mmr::Config for Runtime {
     type MmrRootHash = mmr::Hash;
+    type MmrRootHashCount = MmrRootHashCount;
 }
 
 construct_runtime!(
