@@ -1536,6 +1536,30 @@ impl_runtime_apis! {
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
+
+        fn verify_proof_and_extract_consensus_state_root(mmr_leaf_proof: sp_subspace_mmr::ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<H256> {
+            let sp_subspace_mmr::ConsensusChainMmrLeafProof {
+                consensus_block_number,
+                opaque_mmr_leaf,
+                proof,
+                ..
+            } = mmr_leaf_proof;
+    
+            let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
+    
+            pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
+                mmr_root,
+                vec![mmr::DataOrHash::Data(
+                    EncodableOpaqueLeaf(opaque_mmr_leaf.0.clone()).into_opaque_leaf(),
+                )],
+                proof,
+            )
+            .ok()?;
+    
+            let leaf: mmr::Leaf = opaque_mmr_leaf.into_opaque_leaf().try_decode()?;
+    
+            Some(leaf.state_root())
+        }
     }
 
     impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {

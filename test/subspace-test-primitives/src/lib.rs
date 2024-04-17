@@ -2,7 +2,10 @@
 //! Test primitive crates that expose necessary extensions that are used in tests.
 
 use codec::{Decode, Encode};
+use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId};
+use sp_runtime::traits::NumberFor;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 
 sp_api::decl_runtime_apis! {
     /// Api for querying onchain state in the test
@@ -16,5 +19,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the last open channel for a given domain.
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
+
+        /// Verify the mmr proof stateless and extract the state root.
+        fn verify_proof_and_extract_consensus_state_root(proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Block::Hash, H256>) -> Option<Block::Hash>;
     }
 }

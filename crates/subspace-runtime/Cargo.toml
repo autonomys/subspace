@@ -123,6 +123,7 @@ std = [
     "sp-std/std",
     "sp-subspace-mmr/std",
     "sp-transaction-pool/std",
+    "sp-subspace-mmr/std",
     "sp-version/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",

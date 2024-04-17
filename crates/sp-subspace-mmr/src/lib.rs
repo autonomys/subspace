@@ -28,6 +28,7 @@ pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_i
 
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
+use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::DigestItem;
 
@@ -78,6 +79,36 @@ impl<MmrRootHash: Codec> MmrDigest<MmrRootHash> for DigestItem {
         match self.try_to::<MmrDigestItem<MmrRootHash>>(OpaqueDigestItemId::Other) {
             Some(MmrDigestItem::NewMmrRoot(root)) => Some(root),
             _ => None,
+        }
+    }
+}
+
+/// Consensus chain MMR leaf and its Proof at specific block.
+///
+/// The verifier is not required to contains any the MMR offchain data but this proof
+/// will be expired after `N` blocks where `N` is the number of MMR root stored in the
+// consensus chain runtime.
+#[derive(Debug, Encode, Decode, Eq, PartialEq, TypeInfo)]
+pub struct ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash> {
+    /// Consensus block info from which this proof was generated.
+    pub consensus_block_number: CBlockNumber,
+    pub consensus_block_hash: CBlockHash,
+    /// Encoded MMR leaf
+    pub opaque_mmr_leaf: EncodableOpaqueLeaf,
+    /// MMR proof for the leaf above.
+    pub proof: MmrProof<MmrHash>,
+}
+
+// TODO: update upstream `EncodableOpaqueLeaf` to derive clone.
+impl<CBlockNumber: Clone, CBlockHash: Clone, MmrHash: Clone> Clone
+    for ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>
+{
+    fn clone(&self) -> Self {
+        Self {
+            consensus_block_number: self.consensus_block_number.clone(),
+            consensus_block_hash: self.consensus_block_hash.clone(),
+            opaque_mmr_leaf: EncodableOpaqueLeaf(self.opaque_mmr_leaf.0.clone()),
+            proof: self.proof.clone(),
         }
     }
 }
