@@ -549,15 +549,26 @@ impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for Mm
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
     ) -> Option<Hash> {
         let ConsensusChainMmrLeafProof {
-            opaque_mmr_leaf: opaque_leaf,
+            consensus_block_number,
+            opaque_mmr_leaf,
             proof,
             ..
         } = mmr_leaf_proof;
 
-        let leaf: mmr::Leaf = opaque_leaf.into_opaque_leaf().try_decode()?;
-        let state_root = leaf.state_root();
-        Mmr::verify_leaves(vec![leaf], proof).ok()?;
-        Some(state_root)
+        let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
+
+        pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
+            mmr_root,
+            vec![mmr::DataOrHash::Data(
+                EncodableOpaqueLeaf(opaque_mmr_leaf.0.clone()).into_opaque_leaf(),
+            )],
+            proof,
+        )
+        .ok()?;
+
+        let leaf: mmr::Leaf = opaque_mmr_leaf.into_opaque_leaf().try_decode()?;
+
+        Some(leaf.state_root())
     }
 }
 
@@ -1543,28 +1554,8 @@ impl_runtime_apis! {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
 
-        fn verify_proof_and_extract_consensus_state_root(mmr_leaf_proof: sp_subspace_mmr::ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<H256> {
-            let sp_subspace_mmr::ConsensusChainMmrLeafProof {
-                consensus_block_number,
-                opaque_mmr_leaf,
-                proof,
-                ..
-            } = mmr_leaf_proof;
-    
-            let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
-    
-            pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
-                mmr_root,
-                vec![mmr::DataOrHash::Data(
-                    EncodableOpaqueLeaf(opaque_mmr_leaf.0.clone()).into_opaque_leaf(),
-                )],
-                proof,
-            )
-            .ok()?;
-    
-            let leaf: mmr::Leaf = opaque_mmr_leaf.into_opaque_leaf().try_decode()?;
-    
-            Some(leaf.state_root())
+        fn verify_proof_and_extract_consensus_state_root(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<H256> {
+            <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_consensus_state_root(mmr_leaf_proof)
         }
     }
 

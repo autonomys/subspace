@@ -93,7 +93,8 @@ type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>
 
 fn construct_consensus_mmr_proof<Client, Block>(
     consensus_chain_client: &Arc<Client>,
-    block_number: NumberFor<Block>,
+    dst_chain_id: ChainId,
+    (block_number, block_hash): (NumberFor<Block>, Block::Hash),
 ) -> Result<ConsensusChainMmrLeafProof<NumberFor<Block>, Block::Hash, H256>, Error>
 where
     Block: BlockT,
@@ -102,17 +103,31 @@ where
 {
     let api = consensus_chain_client.runtime_api();
     let best_hash = consensus_chain_client.info().best_hash;
+    let best_number = consensus_chain_client.info().best_number;
+
+    let (prove_at_number, prove_at_hash) = match dst_chain_id {
+        // The consensus chain will verify the MMR proof stateless with the MMR root
+        // stored in the runtime, we need to generate the proof with the best block
+        // with the latest MMR root in the runtime so the proof will be valid as long
+        // as the MMR root is available when verifying the proof.
+        ChainId::Consensus => (best_number, best_hash),
+        // The domain chain will verify the MMR proof with the offchain MMR leaf data
+        // in the consensus client, we need to generate the proof with the proving block
+        // (i.e. finalized block) to avoid potential consensus fork and ensure the verification
+        // result is deterministic.
+        ChainId::Domain(_) => (block_number, block_hash),
+    };
+
     let (mut leaves, proof) = api
-        .generate_proof(best_hash, vec![block_number], Some(block_number))
+        .generate_proof(best_hash, vec![block_number], Some(prove_at_number))
         .map_err(Error::ApiError)?
         .map_err(Error::MmrProof)?;
     debug_assert!(leaves.len() == 1, "should always be of length 1");
     let leaf = leaves.pop().ok_or(Error::MmrLeafMissing)?;
 
     Ok(ConsensusChainMmrLeafProof {
-        // FIXME: recorrect the value
-        consensus_block_number: Default::default(),
-        consensus_block_hash: Default::default(),
+        consensus_block_number: prove_at_number,
+        consensus_block_hash: prove_at_hash,
         opaque_mmr_leaf: leaf,
         proof,
     })
@@ -124,11 +139,11 @@ fn construct_cross_chain_message_and_submit<CNumber, CHash, Submitter, ProofCons
     submitter: Submitter,
 ) -> Result<(), Error>
 where
-    Submitter: Fn(CrossDomainMessage<CHash, H256>) -> Result<(), Error>,
-    ProofConstructor: Fn(&[u8]) -> Result<Proof<CHash, H256>, Error>,
+    Submitter: Fn(CrossDomainMessage<CNumber, CHash, H256>) -> Result<(), Error>,
+    ProofConstructor: Fn(&[u8], ChainId) -> Result<Proof<CNumber, CHash, H256>, Error>,
 {
     for msg in msgs {
-        let proof = match proof_constructor(&msg.storage_key) {
+        let proof = match proof_constructor(&msg.storage_key, msg.dst_chain_id) {
             Ok(proof) => proof,
             Err(err) => {
                 tracing::error!(
@@ -187,7 +202,7 @@ where
 /// this message is the response of the Inbox message execution.
 fn gossip_inbox_message_response<Block, Client, CNumber, CHash>(
     client: &Arc<Client>,
-    msg: CrossDomainMessage<CHash, H256>,
+    msg: CrossDomainMessage<CNumber, CHash, H256>,
     sink: &GossipMessageSink,
 ) -> Result<(), Error>
 where
@@ -222,6 +237,7 @@ where
         finalized_block: (NumberFor<Block>, Block::Hash),
         block_hash_to_process: Block::Hash,
         key: &[u8],
+        dst_chain_id: ChainId,
     ) -> Result<ProofOf<Block>, Error>
     where
         Client::Api: MmrApi<Block, H256, NumberFor<Block>>,
@@ -231,7 +247,7 @@ where
             .map_err(|_| Error::ConstructStorageProof)?;
 
         let consensus_chain_mmr_proof =
-            construct_consensus_mmr_proof(consensus_chain_client, finalized_block.0)?;
+            construct_consensus_mmr_proof(consensus_chain_client, dst_chain_id, finalized_block)?;
 
         Ok(Proof::Consensus {
             consensus_chain_mmr_proof,
@@ -318,12 +334,13 @@ where
 
         construct_cross_chain_message_and_submit::<NumberFor<Block>, Block::Hash, _, _>(
             filtered_messages.outbox,
-            |key| {
+            |key, dst_chain_id| {
                 Self::construct_consensus_chain_xdm_proof_for_key_at(
                     consensus_chain_client,
                     finalized_block,
                     block_hash_to_process,
                     key,
+                    dst_chain_id,
                 )
             },
             |msg| gossip_outbox_message(consensus_chain_client, msg, gossip_message_sink),
@@ -331,12 +348,13 @@ where
 
         construct_cross_chain_message_and_submit::<NumberFor<Block>, Block::Hash, _, _>(
             filtered_messages.inbox_responses,
-            |key| {
+            |key, dst_chain_id| {
                 Self::construct_consensus_chain_xdm_proof_for_key_at(
                     consensus_chain_client,
                     finalized_block,
                     block_hash_to_process,
                     key,
+                    dst_chain_id,
                 )
             },
             |msg| gossip_inbox_message_response(consensus_chain_client, msg, gossip_message_sink),
@@ -398,7 +416,7 @@ where
 
         construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
             filtered_messages.outbox,
-            |key| {
+            |key, dst_chain_id| {
                 Self::construct_domain_chain_xdm_proof_for_key_at(
                     finalized_consensus_block,
                     consensus_chain_client,
@@ -406,6 +424,7 @@ where
                     confirmed_domain_block_hash,
                     key,
                     domain_proof.clone(),
+                    dst_chain_id,
                 )
             },
             |msg| gossip_outbox_message(domain_client, msg, gossip_message_sink),
@@ -413,7 +432,7 @@ where
 
         construct_cross_chain_message_and_submit::<NumberFor<CBlock>, CBlock::Hash, _, _>(
             filtered_messages.inbox_responses,
-            |key| {
+            |key, dst_chain_id| {
                 Self::construct_domain_chain_xdm_proof_for_key_at(
                     finalized_consensus_block,
                     consensus_chain_client,
@@ -421,6 +440,7 @@ where
                     confirmed_domain_block_hash,
                     key,
                     domain_proof.clone(),
+                    dst_chain_id,
                 )
             },
             |msg| gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
@@ -437,6 +457,7 @@ where
         block_hash: Block::Hash,
         key: &[u8],
         domain_proof: StorageProof,
+        dst_chain_id: ChainId,
     ) -> Result<ProofOf<CBlock>, Error>
     where
         CBlock: BlockT,
@@ -447,7 +468,8 @@ where
     {
         let consensus_chain_mmr_proof = construct_consensus_mmr_proof(
             consensus_chain_client,
-            consensus_chain_finalized_block.0,
+            dst_chain_id,
+            consensus_chain_finalized_block,
         )?;
 
         let proof = domain_client
