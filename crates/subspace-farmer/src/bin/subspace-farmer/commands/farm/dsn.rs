@@ -41,7 +41,6 @@ pub(super) fn configure_dsn(
         pending_in_connections,
         pending_out_connections,
         external_addresses,
-        disable_bootstrap_on_start,
     }: DsnArgs,
     weak_plotted_pieces: Weak<Mutex<Option<PlottedPieces>>>,
     node_client: NodeRpcClient,
@@ -180,7 +179,6 @@ pub(super) fn configure_dsn(
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,
-        disable_bootstrap_on_start,
         ..default_config
     };
 
