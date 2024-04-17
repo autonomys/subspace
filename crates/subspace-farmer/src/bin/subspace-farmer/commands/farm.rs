@@ -1,8 +1,6 @@
-mod dsn;
-mod metrics;
-
-use crate::commands::farm::dsn::configure_dsn;
-use crate::commands::farm::metrics::{FarmerMetrics, SectorState};
+use crate::commands::shared::metrics::{FarmerMetrics, SectorState};
+use crate::commands::shared::network::{configure_network, NetworkArgs};
+use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::Mutex as AsyncMutex;
@@ -14,14 +12,13 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::fs;
+use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
-use std::path::PathBuf;
 use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fmt, fs};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
@@ -44,15 +41,10 @@ use subspace_farmer::utils::{
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
-use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use thread_priority::ThreadPriority;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, warn, Instrument};
-use zeroize::Zeroizing;
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -73,50 +65,6 @@ fn should_farm_during_initial_plotting() -> bool {
     total_cpu_cores > 8
 }
 
-/// Plotting thread priority
-#[derive(Debug, Parser, Copy, Clone)]
-enum PlottingThreadPriority {
-    /// Minimum priority
-    Min,
-    /// Default priority
-    Default,
-    /// Max priority (not recommended)
-    Max,
-}
-
-impl FromStr for PlottingThreadPriority {
-    type Err = String;
-
-    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
-        match s {
-            "min" => Ok(Self::Min),
-            "default" => Ok(Self::Default),
-            "max" => Ok(Self::Max),
-            s => Err(format!("Thread priority {s} is not valid")),
-        }
-    }
-}
-
-impl fmt::Display for PlottingThreadPriority {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Min => "min",
-            Self::Default => "default",
-            Self::Max => "max",
-        })
-    }
-}
-
-impl From<PlottingThreadPriority> for Option<ThreadPriority> {
-    fn from(value: PlottingThreadPriority) -> Self {
-        match value {
-            PlottingThreadPriority::Min => Some(ThreadPriority::Min),
-            PlottingThreadPriority::Default => None,
-            PlottingThreadPriority::Max => Some(ThreadPriority::Max),
-        }
-    }
-}
-
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 pub(crate) struct FarmingArgs {
@@ -130,8 +78,8 @@ pub(crate) struct FarmingArgs {
     ///
     ///   path=/path/to/directory,size=5T
     ///
-    /// `size` is max allocated size in human readable format (e.g. 10GB, 2TiB) or just bytes that
-    /// farmer will make sure not not exceed (and will pre-allocated all the space on startup to
+    /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
+    /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
     /// ensure it will not run out of space in runtime).
     disk_farms: Vec<DiskFarm>,
     /// WebSocket RPC URL of the Subspace node to connect to
@@ -143,10 +91,10 @@ pub(crate) struct FarmingArgs {
     /// Percentage of allocated space dedicated for caching purposes, 99% max
     #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
     cache_percentage: NonZeroU8,
-    /// Sets some flags that are convenient during development, currently `--allow-private-ips`.
+    /// Sets some flags that are convenient during development, currently `--allow-private-ips`
     #[arg(long)]
     dev: bool,
-    /// Run temporary farmer with specified plot size in human readable format (e.g. 10GB, 2TiB) or
+    /// Run temporary farmer with specified plot size in human-readable format (e.g. 10GB, 2TiB) or
     /// just bytes (e.g. 4096), this will create a temporary directory for storing farmer data that
     /// will be deleted at the end of the process.
     #[arg(long, conflicts_with = "disk_farms")]
@@ -160,9 +108,9 @@ pub(crate) struct FarmingArgs {
     /// This is primarily for development and not recommended to use by regular users.
     #[arg(long)]
     max_pieces_in_sector: Option<u16>,
-    /// DSN parameters
+    /// Network parameters
     #[clap(flatten)]
-    dsn: DsnArgs,
+    network_args: NetworkArgs,
     /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
@@ -277,107 +225,6 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
     Ok(cache_percentage)
 }
 
-/// Arguments for DSN
-#[derive(Debug, Parser)]
-struct DsnArgs {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long)]
-    bootstrap_nodes: Vec<Multiaddr>,
-    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-    /// multiple are supported.
-    #[arg(long, default_values_t = [
-        Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533)),
-        Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
-            .with(Protocol::Tcp(30533))
-    ])]
-    listen_on: Vec<Multiaddr>,
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
-    /// Kademlia DHT.
-    #[arg(long, default_value_t = false)]
-    allow_private_ips: bool,
-    /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
-    #[arg(long)]
-    reserved_peers: Vec<Multiaddr>,
-    /// Defines max established incoming connection limit.
-    #[arg(long, default_value_t = 300)]
-    in_connections: u32,
-    /// Defines max established outgoing swarm connection limit.
-    #[arg(long, default_value_t = 100)]
-    out_connections: u32,
-    /// Defines max pending incoming connection limit.
-    #[arg(long, default_value_t = 100)]
-    pending_in_connections: u32,
-    /// Defines max pending outgoing swarm connection limit.
-    #[arg(long, default_value_t = 100)]
-    pending_out_connections: u32,
-    /// Known external addresses
-    #[arg(long, alias = "external-address")]
-    external_addresses: Vec<Multiaddr>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DiskFarm {
-    /// Path to directory where data is stored.
-    directory: PathBuf,
-    /// How much space in bytes can farm use for plots (metadata space is not included)
-    allocated_plotting_space: u64,
-}
-
-impl FromStr for DiskFarm {
-    type Err = String;
-
-    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
-        let parts = s.split(',').collect::<Vec<_>>();
-        if parts.len() != 2 {
-            return Err("Must contain 2 coma-separated components".to_string());
-        }
-
-        let mut plot_directory = None;
-        let mut allocated_plotting_space = None;
-
-        for part in parts {
-            let part = part.splitn(2, '=').collect::<Vec<_>>();
-            if part.len() != 2 {
-                return Err("Each component must contain = separating key from value".to_string());
-            }
-
-            let key = *part.first().expect("Length checked above; qed");
-            let value = *part.get(1).expect("Length checked above; qed");
-
-            match key {
-                "path" => {
-                    plot_directory.replace(PathBuf::from(value));
-                }
-                "size" => {
-                    allocated_plotting_space.replace(
-                        value
-                            .parse::<ByteSize>()
-                            .map_err(|error| {
-                                format!("Failed to parse `size` \"{value}\": {error}")
-                            })?
-                            .as_u64(),
-                    );
-                }
-                key => {
-                    return Err(format!(
-                        "Key \"{key}\" is not supported, only `path` or `size`"
-                    ));
-                }
-            }
-        }
-
-        Ok(DiskFarm {
-            directory: plot_directory.ok_or({
-                "`path` key is required with path to directory where plots will be stored"
-            })?,
-            allocated_plotting_space: allocated_plotting_space.ok_or({
-                "`size` key is required with path to directory where plots will be stored"
-            })?,
-        })
-    }
-}
-
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> anyhow::Result<()>
@@ -390,7 +237,7 @@ where
         node_rpc_url,
         reward_address,
         max_pieces_in_sector,
-        mut dsn,
+        mut network_args,
         cache_percentage,
         no_info,
         dev,
@@ -422,7 +269,7 @@ where
     });
 
     // Override flags with `--dev`
-    dsn.allow_private_ips = dsn.allow_private_ips || dev;
+    network_args.allow_private_ips = network_args.allow_private_ips || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
@@ -482,15 +329,15 @@ where
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
     let (node, mut node_runner) = {
-        if dsn.bootstrap_nodes.is_empty() {
-            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
+        if network_args.bootstrap_nodes.is_empty() {
+            network_args.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
 
-        configure_dsn(
+        configure_network(
             hex::encode(farmer_app_info.genesis_hash),
             first_farm_directory,
             keypair,
-            dsn,
+            network_args,
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
             farmer_cache.clone(),
@@ -1073,15 +920,4 @@ where
     );
 
     anyhow::Ok(())
-}
-
-fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
-    let mut secret_bytes = Zeroizing::new(schnorrkel_sk.to_ed25519_bytes());
-
-    let keypair = ed25519::Keypair::from(
-        ed25519::SecretKey::try_from_bytes(&mut secret_bytes.as_mut()[..32])
-            .expect("Secret key is exactly 32 bytes in size; qed"),
-    );
-
-    Keypair::from(keypair)
 }
