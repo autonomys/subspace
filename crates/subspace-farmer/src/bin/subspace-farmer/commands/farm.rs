@@ -1,6 +1,6 @@
 use crate::commands::shared::metrics::{FarmerMetrics, SectorState};
 use crate::commands::shared::network::{configure_network, NetworkArgs};
-use crate::commands::shared::{DiskFarm, PlottingThreadPriority};
+use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use async_lock::Mutex as AsyncMutex;
@@ -41,12 +41,10 @@ use subspace_farmer::utils::{
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
-use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{debug, error, info, info_span, warn, Instrument};
-use zeroize::Zeroizing;
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -922,15 +920,4 @@ where
     );
 
     anyhow::Ok(())
-}
-
-fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
-    let mut secret_bytes = Zeroizing::new(schnorrkel_sk.to_ed25519_bytes());
-
-    let keypair = ed25519::Keypair::from(
-        ed25519::SecretKey::try_from_bytes(&mut secret_bytes.as_mut()[..32])
-            .expect("Secret key is exactly 32 bytes in size; qed"),
-    );
-
-    Keypair::from(keypair)
 }
