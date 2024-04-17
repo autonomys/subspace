@@ -112,3 +112,19 @@ impl<CBlockNumber: Clone, CBlockHash: Clone, MmrHash: Clone> Clone
         }
     }
 }
+
+/// Trait to verify MMR proofs
+pub trait MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> {
+    /// Returns consensus state root if the given MMR proof is valid
+    fn verify_proof_and_extract_consensus_state_root(
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    ) -> Option<CBlockHash>;
+}
+
+impl<MmrHash, CBlockNumber, CBlockHash> MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> for () {
+    fn verify_proof_and_extract_consensus_state_root(
+        _mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    ) -> Option<CBlockHash> {
+        None
+    }
+}

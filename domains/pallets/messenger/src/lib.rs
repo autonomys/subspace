@@ -35,6 +35,7 @@ extern crate alloc;
 
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectHold};
+use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -158,11 +159,10 @@ mod pallet {
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        InherentError, InherentType, MmrProofVerifier, OnXDMRewards, StorageKeys,
-        INHERENT_IDENTIFIER,
+        InherentError, InherentType, OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
     };
-    use sp_mmr_primitives::EncodableOpaqueLeaf;
     use sp_runtime::ArithmeticError;
+    use sp_subspace_mmr::MmrProofVerifier;
     #[cfg(feature = "std")]
     use std::collections::BTreeSet;
 
@@ -187,7 +187,11 @@ mod pallet {
         /// Hash type of MMR
         type MmrHash: Parameter + Member + Default + Clone;
         /// MMR proof verifier
-        type MmrProofVerifier: MmrProofVerifier<Self::MmrHash, StateRootOf<Self>>;
+        type MmrProofVerifier: MmrProofVerifier<
+            Self::MmrHash,
+            BlockNumberFor<Self>,
+            StateRootOf<Self>,
+        >;
         /// Storage key provider.
         type StorageKeys: StorageKeys;
         /// Domain owner provider.
@@ -619,7 +623,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<T::Hash, T::MmrHash>,
+            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -632,7 +636,7 @@ mod pallet {
         #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<T::Hash, T::MmrHash>,
+            msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
@@ -988,7 +992,7 @@ mod pallet {
         }
 
         pub fn validate_relay_message(
-            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -1087,7 +1091,7 @@ mod pallet {
         }
 
         pub fn validate_relay_message_response(
-            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -1134,7 +1138,7 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
-            xdm: &CrossDomainMessage<T::Hash, T::MmrHash>,
+            xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for chain.
             let next_channel_id = NextChannelId::<T>::get(xdm.src_chain_id);
@@ -1144,13 +1148,8 @@ mod pallet {
             // nonce should be either be next or in future.
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
-            let mmr_leaf =
-                EncodableOpaqueLeaf(xdm.proof.consensus_mmr_proof().opaque_mmr_leaf.0.clone());
-
-            let mmr_proof = xdm.proof.consensus_mmr_proof().proof.clone();
-
             let state_root = T::MmrProofVerifier::verify_proof_and_extract_consensus_state_root(
-                mmr_leaf, mmr_proof,
+                xdm.proof.consensus_mmr_proof(),
             )
             .ok_or(InvalidTransaction::BadProof)?;
 
@@ -1222,14 +1221,14 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     pub fn outbox_message_unsigned(
-        msg: CrossDomainMessage<T::Hash, T::MmrHash>,
+        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
         T::Extrinsic::new(call.into(), None)
     }
 
     pub fn inbox_response_message_unsigned(
-        msg: CrossDomainMessage<T::Hash, T::MmrHash>,
+        msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
         T::Extrinsic::new(call.into(), None)

@@ -65,7 +65,7 @@ use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
+use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstBool, DispatchInfoOf,
     Keccak256, NumberFor, PostDispatchInfoOf, Zero,
@@ -80,6 +80,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
@@ -543,11 +544,16 @@ parameter_types! {
 
 pub struct MmrProofVerifier;
 
-impl sp_messenger::MmrProofVerifier<mmr::Hash, Hash> for MmrProofVerifier {
+impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for MmrProofVerifier {
     fn verify_proof_and_extract_consensus_state_root(
-        opaque_leaf: EncodableOpaqueLeaf,
-        proof: Proof<mmr::Hash>,
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
     ) -> Option<Hash> {
+        let ConsensusChainMmrLeafProof {
+            opaque_mmr_leaf: opaque_leaf,
+            proof,
+            ..
+        } = mmr_leaf_proof;
+
         let leaf: mmr::Leaf = opaque_leaf.into_opaque_leaf().try_decode()?;
         let state_root = leaf.state_root();
         Mmr::verify_leaves(vec![leaf], proof).ok()?;
@@ -1447,16 +1453,16 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber, BlockNumber, <Block as BlockT>::Hash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

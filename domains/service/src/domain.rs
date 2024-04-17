@@ -86,7 +86,7 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
         + MessengerApi<Block>
-        + RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -273,7 +273,7 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header>
-        + RelayerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>
         + MessengerApi<CBlock>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
@@ -293,7 +293,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     AccountId: DeserializeOwned
         + Encode
         + Decode

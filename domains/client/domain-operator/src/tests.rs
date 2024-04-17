@@ -39,9 +39,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
-use sp_messenger::messages::{
-    ConsensusChainMmrLeafProof, CrossDomainMessage, FeeModel, InitiateChannelParams, Proof,
-};
+use sp_messenger::messages::{CrossDomainMessage, FeeModel, InitiateChannelParams, Proof};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
@@ -50,6 +48,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
@@ -1558,6 +1557,7 @@ async fn test_invalid_xdm_proof_creation_and_verification() {
                     nonce: Default::default(),
                     proof: Proof::Domain {
                         consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                            consensus_block_number: Default::default(),
                             consensus_block_hash: Default::default(),
                             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![0, 1, 2]),
                             proof: MmrProof {

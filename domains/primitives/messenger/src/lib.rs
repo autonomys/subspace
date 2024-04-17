@@ -31,7 +31,6 @@ use frame_support::inherent::{InherentData, InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
 use sp_inherents::Error;
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
 
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
@@ -43,24 +42,6 @@ pub trait OnXDMRewards<Balance> {
 
 impl<Balance> OnXDMRewards<Balance> for () {
     fn on_xdm_rewards(_: Balance) {}
-}
-
-/// Trait to verify MMR proofs
-pub trait MmrProofVerifier<MmrHash, StateRoot> {
-    /// Returns consensus state root if the given MMR proof is valid
-    fn verify_proof_and_extract_consensus_state_root(
-        leaf: EncodableOpaqueLeaf,
-        proof: Proof<MmrHash>,
-    ) -> Option<StateRoot>;
-}
-
-impl<MmrHash, StateRoot> MmrProofVerifier<MmrHash, StateRoot> for () {
-    fn verify_proof_and_extract_consensus_state_root(
-        _leaf: EncodableOpaqueLeaf,
-        _proof: Proof<MmrHash>,
-    ) -> Option<StateRoot> {
-        None
-    }
 }
 
 /// Trait that return various storage keys for storages on Consensus chain and domains
@@ -158,9 +139,10 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    pub trait RelayerApi<BlockNumber, CHash>
+    pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
+        CNumber: Encode + Decode,
         CHash: Encode + Decode,
     {
         /// Returns all the outbox and inbox responses to deliver.
@@ -169,12 +151,12 @@ sp_api::decl_runtime_apis! {
 
         /// Constructs an outbox message to the dst_chain as an unsigned extrinsic.
         fn outbox_message_unsigned(
-            msg: CrossDomainMessage<CHash, sp_core::H256>,
+            msg: CrossDomainMessage<CNumber, CHash, sp_core::H256>,
         ) -> Option<Block::Extrinsic>;
 
         /// Constructs an inbox response message to the dst_chain as an unsigned extrinsic.
         fn inbox_response_message_unsigned(
-            msg: CrossDomainMessage<CHash, sp_core::H256>,
+            msg: CrossDomainMessage<CNumber, CHash, sp_core::H256>,
         ) -> Option<Block::Extrinsic>;
 
         /// Returns true if the outbox message is ready to be relayed to dst_chain.

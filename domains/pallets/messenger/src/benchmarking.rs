@@ -8,10 +8,11 @@ use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
-    ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams, Message,
-    MessageWeightTag, Payload, Proof, RequestResponse, VersionedPayload,
+    CrossDomainMessage, InitiateChannelParams, Message, MessageWeightTag, Payload, Proof,
+    RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 
 #[benchmarks]
@@ -120,7 +121,7 @@ mod benchmarks {
         };
         Inbox::<T>::put(msg);
 
-        let xdm = CrossDomainMessage::<T::Hash, T::MmrHash> {
+        let xdm = CrossDomainMessage::<BlockNumberFor<T>, T::Hash, T::MmrHash> {
             src_chain_id: dst_chain_id,
             dst_chain_id: T::SelfChainId::get(),
             channel_id,
@@ -187,7 +188,7 @@ mod benchmarks {
         };
         OutboxResponses::<T>::put(resp_msg);
 
-        let xdm = CrossDomainMessage::<T::Hash, T::MmrHash> {
+        let xdm = CrossDomainMessage::<BlockNumberFor<T>, T::Hash, T::MmrHash> {
             src_chain_id: dst_chain_id,
             dst_chain_id: T::SelfChainId::get(),
             channel_id,
@@ -240,12 +241,14 @@ mod benchmarks {
     );
 }
 
-pub fn dummy_proof<CBlockHash, MmrHash>() -> Proof<CBlockHash, MmrHash>
+pub fn dummy_proof<CNumber, CBlockHash, MmrHash>() -> Proof<CNumber, CBlockHash, MmrHash>
 where
+    CNumber: Default,
     CBlockHash: Default,
 {
     Proof::Consensus {
         consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+            consensus_block_number: Default::default(),
             consensus_block_hash: Default::default(),
             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
             proof: MmrProof {
