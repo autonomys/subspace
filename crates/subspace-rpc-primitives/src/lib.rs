@@ -15,6 +15,7 @@
 
 //! Primitives for Subspace RPC.
 
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use subspace_core_primitives::{
@@ -43,8 +44,70 @@ pub struct FarmerAppInfo {
     pub protocol_info: FarmerProtocolInfo,
 }
 
+impl Encode for FarmerAppInfo {
+    fn size_hint(&self) -> usize {
+        0_usize
+            .saturating_add(Encode::size_hint(&self.genesis_hash))
+            .saturating_add(Encode::size_hint(
+                &self
+                    .dsn_bootstrap_nodes
+                    .iter()
+                    .map(|addr| addr.as_ref())
+                    .collect::<Vec<_>>(),
+            ))
+            .saturating_add(Encode::size_hint(&self.syncing))
+            .saturating_add(Encode::size_hint(&self.farming_timeout))
+            .saturating_add(Encode::size_hint(&self.protocol_info))
+    }
+
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        Encode::encode_to(&self.genesis_hash, output);
+        Encode::encode_to(
+            &self
+                .dsn_bootstrap_nodes
+                .iter()
+                .map(|addr| addr.as_ref())
+                .collect::<Vec<_>>(),
+            output,
+        );
+        Encode::encode_to(&self.syncing, output);
+        Encode::encode_to(&self.farming_timeout, output);
+        Encode::encode_to(&self.protocol_info, output);
+    }
+}
+
+impl EncodeLike for FarmerAppInfo {}
+
+impl Decode for FarmerAppInfo {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        Ok(FarmerAppInfo {
+            genesis_hash: <[u8; 32]>::decode(input)
+                .map_err(|error| error.chain("Could not decode `FarmerAppInfo::genesis_hash`"))?,
+            dsn_bootstrap_nodes: Vec::<Vec<u8>>::decode(input)
+                .map_err(|error| {
+                    error.chain("Could not decode `FarmerAppInfo::dsn_bootstrap_nodes`")
+                })?
+                .into_iter()
+                .map(Multiaddr::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| {
+                    parity_scale_codec::Error::from("Failed to decode bytes as Multiaddr")
+                        .chain(error.to_string())
+                        .chain("Could not decode `FarmerAppInfo::dsn_bootstrap_nodes`")
+                })?,
+            syncing: bool::decode(input)
+                .map_err(|error| error.chain("Could not decode `FarmerAppInfo::syncing`"))?,
+            farming_timeout: Duration::decode(input).map_err(|error| {
+                error.chain("Could not decode `FarmerAppInfo::farming_timeout`")
+            })?,
+            protocol_info: FarmerProtocolInfo::decode(input)
+                .map_err(|error| error.chain("Could not decode `FarmerAppInfo::protocol_info`"))?,
+        })
+    }
+}
+
 /// Information about new slot that just arrived
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlotInfo {
     /// Slot number
@@ -59,7 +122,7 @@ pub struct SlotInfo {
 
 /// Response of a slot challenge consisting of an optional solution and
 /// the submitter(farmer)'s secret key for block signing.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SolutionResponse {
     /// Slot number.
@@ -71,7 +134,7 @@ pub struct SolutionResponse {
 }
 
 /// Reward info that needs to be signed.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RewardSigningInfo {
     /// Hash to be signed.
@@ -83,7 +146,7 @@ pub struct RewardSigningInfo {
 }
 
 /// Signature in response to reward hash signing request.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RewardSignatureResponse {
     /// Hash that was signed.

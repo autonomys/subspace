@@ -25,15 +25,15 @@ mod segment_reconstruction;
 
 use crate::file_ext::FileExt;
 use async_trait::async_trait;
+use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::error::Error;
 use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::{ArchivedHistorySegment, HistorySize, Piece, PieceIndex};
-
-use std::error::Error;
 
 /// Trait representing a way to get pieces
 #[async_trait]
@@ -304,7 +304,7 @@ where
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Information about the protocol necessary for farmer operation
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerProtocolInfo {
     /// Size of the blockchain history
