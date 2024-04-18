@@ -232,6 +232,7 @@ where
     pub skip_empty_bundle_production: bool,
     pub consensus_state_pruning: PruningMode,
     pub skip_out_of_order_slot: bool,
+    pub confirmation_depth_k: NumberFor<CBlock>,
 }
 
 /// Builds service for a domain full node.
@@ -332,6 +333,7 @@ where
         skip_empty_bundle_production,
         consensus_state_pruning,
         skip_out_of_order_slot,
+        confirmation_depth_k,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -459,6 +461,7 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
             domain_id,
             consensus_client.clone(),
+            confirmation_depth_k,
             consensus_state_pruning,
             client.clone(),
             domain_state_pruning,

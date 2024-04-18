@@ -39,6 +39,7 @@ sp-arithmetic = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-consensus-subspace = { version = "0.1.0", path = "../../../crates/sp-consensus-subspace" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 sp-messenger = { version = "0.1.0", path = "../../../domains/primitives/messenger" }

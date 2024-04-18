@@ -15,6 +15,7 @@ use std::sync::Arc;
 /// If the node is in major sync, worker waits until the sync is finished.
 pub async fn relay_consensus_chain_messages<Client, Block, SO>(
     consensus_chain_client: Arc<Client>,
+    confirmation_depth_k: NumberFor<Block>,
     state_pruning_mode: PruningMode,
     sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
@@ -32,6 +33,7 @@ pub async fn relay_consensus_chain_messages<Client, Block, SO>(
     let result = start_relaying_messages(
         ChainId::Consensus,
         consensus_chain_client.clone(),
+        confirmation_depth_k,
         |client, block_id, _| {
             Relayer::submit_messages_from_consensus_chain(client, block_id, &gossip_message_sink)
         },
@@ -67,9 +69,11 @@ type DomainExtraData<Block> = (NumberFor<Block>, <Block as BlockT>::Hash);
 
 /// Starts relaying domain messages to other chains.
 /// If the domain node is in major sync, worker waits until the sync is finished.
+#[allow(clippy::too_many_arguments)]
 pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
     domain_id: DomainId,
     consensus_chain_client: Arc<CClient>,
+    confirmation_depth_k: NumberFor<CBlock>,
     consensus_state_pruning: PruningMode,
     domain_client: Arc<Client>,
     domain_state_pruning: PruningMode,
@@ -93,6 +97,7 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
     let result = start_relaying_messages(
         ChainId::Domain(domain_id),
         consensus_chain_client.clone(),
+        confirmation_depth_k,
         |consensus_chain_client, consensus_block, (domain_block_number, domain_hash)| {
             let res = Relayer::submit_messages_from_domain(
                 domain_id,
@@ -222,6 +227,7 @@ where
 async fn start_relaying_messages<CClient, CBlock, MP, SO, CRM, ExtraData>(
     chain_id: ChainId,
     consensus_client: Arc<CClient>,
+    confirmation_depth_k: NumberFor<CBlock>,
     message_processor: MP,
     sync_oracle: SO,
     can_relay_message_from_block: CRM,
@@ -242,21 +248,38 @@ where
         "Starting relayer for chain: {:?}",
         chain_id,
     );
-    let mut chain_block_finalization = consensus_client.finality_notification_stream();
+    let mut chain_block_imported = consensus_client.every_import_notification_stream();
 
     // from the start block, start processing all the messages assigned
     // wait for new block finalization of the chain,
     // then fetch new messages in the block
     // construct proof of each message to be relayed
     // submit XDM as unsigned extrinsic.
-    while let Some(block) = chain_block_finalization.next().await {
+    while let Some(block) = chain_block_imported.next().await {
         // if the client is in major sync, wait until sync is complete
         if sync_oracle.is_major_syncing() {
             tracing::debug!(target: LOG_TARGET, "Client is in major sync. Skipping...");
             continue;
         }
 
-        let (number, hash) = (*block.header.number(), block.header.hash());
+        if !block.is_new_best {
+            tracing::debug!(target: LOG_TARGET, "Imported non-best block. Skipping...");
+            continue;
+        }
+
+        let (number, hash) = {
+            let imported_block_number = *block.header.number();
+            if let Some(block_to_relay) = imported_block_number.checked_sub(&confirmation_depth_k) {
+                let block_to_relay_hash = consensus_client
+                    .hash(block_to_relay)?
+                    .ok_or(Error::MissingBlockHash)?;
+                (block_to_relay, block_to_relay_hash)
+            } else {
+                tracing::debug!(target: LOG_TARGET, "Not enough confirmed blocks. Skipping...");
+                continue;
+            }
+        };
+
         let blocks_to_process: Vec<(NumberFor<CBlock>, CBlock::Hash)> =
             Relayer::fetch_unprocessed_consensus_blocks_until(
                 &consensus_client,

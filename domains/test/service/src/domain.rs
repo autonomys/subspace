@@ -28,6 +28,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::{Decode, Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainId;
@@ -212,6 +213,13 @@ where
 
         let maybe_operator_id = role.is_authority().then_some(0);
 
+        let consensus_best_hash = mock_consensus_node.client.info().best_hash;
+        let chain_constants = mock_consensus_node
+            .client
+            .runtime_api()
+            .chain_constants(consensus_best_hash)
+            .unwrap();
+
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
@@ -230,6 +238,7 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             consensus_state_pruning: PruningMode::ArchiveCanonical,
+            confirmation_depth_k: chain_constants.confirmation_depth_k(),
         };
 
         let domain_node =

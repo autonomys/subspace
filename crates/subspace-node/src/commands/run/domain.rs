@@ -27,6 +27,9 @@ use sc_service::config::KeystoreConfig;
 use sc_service::{Configuration, PruningMode};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::{AccountId32, SecretString};
 use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
 use std::collections::HashMap;
@@ -460,6 +463,12 @@ where
         _phantom: Default::default(),
     };
 
+    let consensus_best_hash = consensus_client.info().best_hash;
+    let chain_constants = consensus_client
+        .runtime_api()
+        .chain_constants(consensus_best_hash)
+        .map_err(|err| Error::Other(err.to_string()))?;
+
     match runtime_type {
         RuntimeType::Evm => {
             let eth_provider = EthProvider::<
@@ -489,6 +498,7 @@ where
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 consensus_state_pruning,
+                confirmation_depth_k: chain_constants.confirmation_depth_k(),
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -528,6 +538,7 @@ where
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 consensus_state_pruning,
+                confirmation_depth_k: chain_constants.confirmation_depth_k(),
             };
 
             let mut domain_node = domain_service::new_full::<

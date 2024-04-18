@@ -17,6 +17,9 @@ use sc_network::NetworkPeers;
 use sc_service::PruningMode;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::AccountId32;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainInstanceData, RuntimeType};
@@ -127,6 +130,11 @@ where
             _phantom: Default::default(),
         };
 
+        let consensus_best_hash = consensus_client.info().best_hash;
+        let chain_constants = consensus_client
+            .runtime_api()
+            .chain_constants(consensus_best_hash)?;
+
         match runtime_type {
             RuntimeType::Evm => {
                 let evm_base_path = domain_config
@@ -159,6 +167,7 @@ where
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     consensus_state_pruning,
+                    confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -218,6 +227,7 @@ where
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     consensus_state_pruning,
+                    confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 };
 
                 let mut domain_node = domain_service::new_full::<

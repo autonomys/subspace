@@ -3358,12 +3358,10 @@ async fn test_cross_domains_messages_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie with Alice Key since that is the sudo key
-    let mut ferdie = MockConsensusNode::run_with_finalization_depth(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Sr25519Alice,
         BasePath::new(directory.path().join("ferdie")),
-        // finalization depth
-        Some(10),
     );
 
     // Run Alice (an evm domain)

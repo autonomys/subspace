@@ -57,7 +57,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
-use sp_consensus_subspace::{FarmerPublicKey, PotExtension};
+use sp_consensus_subspace::{FarmerPublicKey, PotExtension, SubspaceApi};
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -479,6 +479,12 @@ impl MockConsensusNode {
             key.to_account_id(),
         );
 
+        let consensus_best_hash = client.info().best_hash;
+        let chain_constants = client
+            .runtime_api()
+            .chain_constants(consensus_best_hash)
+            .unwrap();
+
         let mut gossip_builder = GossipWorkerBuilder::new();
         task_manager
             .spawn_essential_handle()
@@ -488,6 +494,7 @@ impl MockConsensusNode {
                 Box::pin(
                     domain_client_message_relayer::worker::relay_consensus_chain_messages(
                         client.clone(),
+                        chain_constants.confirmation_depth_k(),
                         state_pruning.clone(),
                         sync_service.clone(),
                         gossip_builder.gossip_msg_sink(),
