@@ -102,41 +102,13 @@ impl TryFrom<x509_parser::prelude::Validity> for Validity {
     }
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SubjectDistinguishedName {
-    /// Common name encoded as a DER vector.
-    pub common_name: DerVec,
-    /// Raw value of this subject distinguished name.
-    pub raw: DerVec,
-}
-
-#[cfg(feature = "std")]
-impl<'a> TryFrom<x509_parser::prelude::X509Name<'a>> for SubjectDistinguishedName {
-    type Error = HostFunctionsConversionError;
-
-    fn try_from(value: x509_parser::prelude::X509Name<'a>) -> Result<Self, Self::Error> {
-        use x509_parser::der_parser::asn1_rs::ToDer;
-
-        let common_name = value
-            .iter_common_name()
-            .next()
-            .and_then(|cn| cn.attr_value().to_der_vec().ok())
-            .ok_or(HostFunctionsConversionError::CommonNameNotFound)?;
-
-        Ok(SubjectDistinguishedName {
-            common_name: common_name.into(),
-            raw: value.as_raw().to_vec().into(),
-        })
-    }
-}
-
 /// Decoded Tbs certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct TbsCertificate {
     /// Certificate serial number.
     pub serial: U256,
-    /// Certificate subject.
-    pub subject: SubjectDistinguishedName,
+    /// Certificate subject common name.
+    pub subject_common_name: DerVec,
     /// Certificate subject public key info.
     pub subject_public_key_info: DerVec,
     /// Certificate validity.

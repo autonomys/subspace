@@ -33,14 +33,14 @@ use frame_support::traits::Time;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
-use sp_auto_id::{DerVec, SignatureVerificationRequest, SubjectDistinguishedName, Validity};
-use sp_core::{blake2_256, U256};
+use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};
+use sp_core::{blake2_256, H256, U256};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::Moment;
 
 /// Unique AutoId identifier.
-pub type Identifier = U256;
+pub type Identifier = H256;
 
 /// X509 certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -49,8 +49,8 @@ pub struct X509Certificate {
     pub issuer_id: Option<Identifier>,
     /// Serial number for this certificate
     pub serial: U256,
-    /// Subject distinguished name of the certificate.
-    pub subject: SubjectDistinguishedName,
+    /// Subject common name of the certificate.
+    pub subject_common_name: DerVec,
     /// Der encoded certificate's subject's public key info
     pub subject_public_key_info: DerVec,
     /// Validity of the certificate
@@ -75,9 +75,9 @@ pub enum Certificate {
 impl Certificate {
     /// Returns the subject distinguished name.
     #[cfg(test)]
-    fn subject(&self) -> SubjectDistinguishedName {
+    fn subject_common_name(&self) -> DerVec {
         match self {
-            Certificate::X509(cert) => cert.subject.clone(),
+            Certificate::X509(cert) => cert.subject_common_name.clone(),
         }
     }
 
@@ -154,19 +154,15 @@ impl AutoId {
     fn derive_identifier(&self) -> Identifier {
         match &self.certificate {
             Certificate::X509(cert) => {
-                let subject_common_name = &cert.subject.common_name.0[..];
-
                 if let Some(issuer_id) = cert.issuer_id {
-                    let mut data = [0u8; 32];
-                    issuer_id.to_big_endian(&mut data);
+                    let mut data = issuer_id.to_fixed_bytes().to_vec();
 
-                    let mut data = data.to_vec();
-                    data.extend_from_slice(subject_common_name);
+                    data.extend_from_slice(cert.subject_common_name.as_ref());
 
                     blake2_256(&data).into()
                 } else {
                     // Root certificate
-                    blake2_256(cert.subject.common_name.as_ref()).into()
+                    blake2_256(cert.subject_common_name.as_ref()).into()
                 }
             }
         }
@@ -323,7 +319,6 @@ impl<T: Config> Pallet<T> {
                 } => {
                     let tbs_certificate = decode_tbs_certificate(certificate.clone())
                         .ok_or(Error::<T>::InvalidCertificate)?;
-
                     let req = SignatureVerificationRequest {
                         public_key_info: tbs_certificate.subject_public_key_info.clone(),
                         signature_algorithm,
@@ -340,7 +335,7 @@ impl<T: Config> Pallet<T> {
                     Certificate::X509(X509Certificate {
                         issuer_id: None,
                         serial: tbs_certificate.serial,
-                        subject: tbs_certificate.subject,
+                        subject_common_name: tbs_certificate.subject_common_name,
                         subject_public_key_info: tbs_certificate.subject_public_key_info,
                         validity: tbs_certificate.validity,
                         raw: certificate,
@@ -394,7 +389,7 @@ impl<T: Config> Pallet<T> {
                     Certificate::X509(X509Certificate {
                         issuer_id: Some(issuer_id),
                         serial: tbs_certificate.serial,
-                        subject: tbs_certificate.subject,
+                        subject_common_name: tbs_certificate.subject_common_name,
                         subject_public_key_info: tbs_certificate.subject_public_key_info,
                         validity: tbs_certificate.validity,
                         raw: certificate,

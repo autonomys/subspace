@@ -11,7 +11,8 @@ use frame_support::traits::{ConstU16, ConstU32, ConstU64, Time};
 use pem::parse;
 use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;
-use sp_auto_id::{DerVec, SubjectDistinguishedName, Validity};
+use sp_auto_id::{DerVec, Validity};
+use sp_core::bytes::to_hex;
 use sp_core::{blake2_256, H256, U256};
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
@@ -137,9 +138,7 @@ fn identifier_from_x509_cert(
         .unwrap();
 
     if let Some(issuer_id) = issuer_id {
-        let mut data = [0u8; 32];
-        issuer_id.to_big_endian(&mut data);
-        let mut data = data.to_vec();
+        let mut data = issuer_id.to_fixed_bytes().to_vec();
         data.extend(subject_common_name);
 
         blake2_256(&data).into()
@@ -157,7 +156,7 @@ fn register_issuer_auto_id() -> Identifier {
         RawOrigin::Signed(1).into(),
         RegisterAutoId::X509(RegisterAutoIdX509::Root {
             certificate: cert.tbs_certificate.as_ref().to_vec().into(),
-            signature_algorithm: algorithm_to_der(cert.signature_algorithm),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
             signature: cert.signature_value.as_ref().to_vec(),
         }),
     )
@@ -167,8 +166,15 @@ fn register_issuer_auto_id() -> Identifier {
         AutoIds::<Test>::get(auto_id_identifier)
             .unwrap()
             .certificate
-            .subject(),
-        SubjectDistinguishedName::try_from(cert.tbs_certificate.subject).unwrap()
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .to_der_vec()
+            .unwrap()
+            .into()
     );
 
     auto_id_identifier
@@ -184,7 +190,7 @@ fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
         RegisterAutoId::X509(RegisterAutoIdX509::Leaf {
             issuer_id: issuer_auto_id,
             certificate: cert.tbs_certificate.as_ref().to_vec().into(),
-            signature_algorithm: algorithm_to_der(cert.signature_algorithm),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
             signature: cert.signature_value.as_ref().to_vec(),
         }),
     )
@@ -194,8 +200,15 @@ fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
         AutoIds::<Test>::get(auto_id_identifier)
             .unwrap()
             .certificate
-            .subject(),
-        SubjectDistinguishedName::try_from(cert.tbs_certificate.subject).unwrap()
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .to_der_vec()
+            .unwrap()
+            .into(),
     );
 
     auto_id_identifier
@@ -314,10 +327,7 @@ fn test_auto_id_identifier_is_deterministic() {
         let auto_id = crate::AutoId {
             certificate: Certificate::X509(X509Certificate {
                 issuer_id: None,
-                subject: SubjectDistinguishedName {
-                    common_name: vec![0].into(),
-                    raw: vec![1, 2, 3, 4].into(),
-                },
+                subject_common_name: vec![0].into(),
                 validity: Validity {
                     not_before: 0,
                     not_after: 0,
@@ -332,19 +342,16 @@ fn test_auto_id_identifier_is_deterministic() {
         };
 
         let expected_auto_id_identifier =
-            "1397646298244667745486217504895751438883282566112771878314322027592178275092";
+            "0x3170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314";
         assert_eq!(
-            auto_id.derive_identifier().to_string(),
+            to_hex(&auto_id.derive_identifier().to_fixed_bytes(), true),
             expected_auto_id_identifier
         );
 
         let auto_id_child = crate::AutoId {
             certificate: Certificate::X509(X509Certificate {
                 issuer_id: Some(auto_id.derive_identifier()),
-                subject: SubjectDistinguishedName {
-                    common_name: vec![0].into(),
-                    raw: vec![1, 2, 3, 4].into(),
-                },
+                subject_common_name: vec![0].into(),
                 validity: Validity {
                     not_before: 0,
                     not_after: 0,
@@ -359,10 +366,9 @@ fn test_auto_id_identifier_is_deterministic() {
         };
 
         let expected_auto_id_child_identifier =
-            "14212650606811341505407574217996004039420491237980120340700875297135685142319";
-
+            "0x1f6c133e7bca8c7714c5c9df36562e5cd51304530cc85e583351167bb75e072f";
         assert_eq!(
-            auto_id_child.derive_identifier().to_string(),
+            to_hex(&auto_id_child.derive_identifier().to_fixed_bytes(), true),
             expected_auto_id_child_identifier
         );
     })
