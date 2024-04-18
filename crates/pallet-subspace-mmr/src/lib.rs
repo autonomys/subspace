@@ -57,6 +57,8 @@ mod pallet {
 
 impl<T: Config> OnNewRoot<T::MmrRootHash> for Pallet<T> {
     fn on_new_root(root: &T::MmrRootHash) {
+        // TODO: this digest is not used remove it before next network reset but keep it
+        // as is for now to keep compatible with gemini-3h.
         let digest = DigestItem::new_mmr_root(*root);
         <frame_system::Pallet<T>>::deposit_log(digest);
 
