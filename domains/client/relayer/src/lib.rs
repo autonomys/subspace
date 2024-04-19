@@ -106,7 +106,7 @@ where
     let best_number = consensus_chain_client.info().best_number;
 
     let (prove_at_number, prove_at_hash) = match dst_chain_id {
-        // The consensus chain will verify the MMR proof stateless with the MMR root
+        // The consensus chain will verify the MMR proof statelessly with the MMR root
         // stored in the runtime, we need to generate the proof with the best block
         // with the latest MMR root in the runtime so the proof will be valid as long
         // as the MMR root is available when verifying the proof.
