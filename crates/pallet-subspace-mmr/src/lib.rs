@@ -41,10 +41,10 @@ mod pallet {
     pub trait Config: frame_system::Config<Hash: Into<H256> + From<H256>> {
         type MmrRootHash: Parameter + Copy + MaxEncodedLen;
 
-        /// The number of mmr root hash store in runtime, it will be used to verify mmmr
-        /// proof stateless, the number of roots stored here represent the number of blocks
-        /// for which the mmr proof is valid since it is generated, after that the mmr proof
-        /// will be expired and the prover need to re-generate the proof.
+        /// The number of mmr root hashes to store in the runtime. It will be used to verify mmr
+        /// proof statelessly and the number of roots stored here represents the number of blocks
+        /// for which the mmr proof is valid since it is generated. After that the mmr proof
+        /// will be expired and the prover needs to re-generate the proof.
         type MmrRootHashCount: Get<u32>;
     }
 
