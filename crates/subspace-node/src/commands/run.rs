@@ -20,6 +20,9 @@ use sc_consensus_slots::SlotProportion;
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
@@ -168,6 +171,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             {
                 let span = info_span!("Consensus");
                 let _enter = span.enter();
+                let consensus_best_hash = consensus_chain_node.client.info().best_hash;
+                let chain_constants = consensus_chain_node
+                    .client
+                    .runtime_api()
+                    .chain_constants(consensus_best_hash)
+                    .map_err(|err| Error::Other(err.to_string()))?;
 
                 consensus_chain_node
                     .task_manager
@@ -178,6 +187,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         Box::pin(
                             domain_client_message_relayer::worker::relay_consensus_chain_messages(
                                 consensus_chain_node.client.clone(),
+                                chain_constants.confirmation_depth_k(),
                                 consensus_state_pruning.clone(),
                                 consensus_chain_node.sync_service.clone(),
                                 xdm_gossip_worker_builder.gossip_msg_sink(),
