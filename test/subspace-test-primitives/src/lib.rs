@@ -20,7 +20,7 @@ sp_api::decl_runtime_apis! {
         /// Returns the last open channel for a given domain.
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
 
-        /// Verify the mmr proof stateless and extract the state root.
+        /// Verify the mmr proof statelessly and extract the state root.
         fn verify_proof_and_extract_consensus_state_root(proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Block::Hash, H256>) -> Option<Block::Hash>;
     }
 }
