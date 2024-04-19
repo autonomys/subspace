@@ -17,11 +17,12 @@ use sp_core::{Blake2Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    ChainId, ConsensusChainMmrLeafProof, CrossDomainMessage, InitiateChannelParams,
-    MessageWeightTag, Payload, Proof, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    ChainId, CrossDomainMessage, InitiateChannelParams, MessageWeightTag, Payload, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::traits::Convert;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 use std::collections::BTreeSet;
 
@@ -83,8 +84,9 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<
     assert_eq!(messages_with_keys.outbox[0].storage_key, expected_key);
 }
 
-fn default_consensus_proof() -> ConsensusChainMmrLeafProof<H256, H256> {
+fn default_consensus_proof() -> ConsensusChainMmrLeafProof<u64, H256, H256> {
     ConsensusChainMmrLeafProof {
+        consensus_block_number: Default::default(),
         consensus_block_hash: Default::default(),
         opaque_mmr_leaf: EncodableOpaqueLeaf(vec![]),
         proof: MmrProof {

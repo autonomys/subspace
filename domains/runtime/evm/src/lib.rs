@@ -55,12 +55,12 @@ use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof};
+use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, Keccak256, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Verify, Zero,
+    IdentityLookup, Keccak256, NumberFor, One, PostDispatchInfoOf, SignedExtension,
+    UniqueSaturatedInto, ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -73,7 +73,7 @@ pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
-use sp_subspace_mmr::MmrLeaf;
+use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment,
@@ -426,11 +426,16 @@ type MmrHash = <Keccak256 as sp_runtime::traits::Hash>::Output;
 
 pub struct MmrProofVerifier;
 
-impl sp_messenger::MmrProofVerifier<MmrHash, Hash> for MmrProofVerifier {
+impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrProofVerifier {
     fn verify_proof_and_extract_consensus_state_root(
-        opaque_leaf: EncodableOpaqueLeaf,
-        proof: Proof<MmrHash>,
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, MmrHash>,
     ) -> Option<Hash> {
+        let ConsensusChainMmrLeafProof {
+            opaque_mmr_leaf: opaque_leaf,
+            proof,
+            ..
+        } = mmr_leaf_proof;
+
         let leaf: MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash> =
             opaque_leaf.into_opaque_leaf().try_decode()?;
         let state_root = leaf.state_root();
@@ -1122,16 +1127,16 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockHash> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
         fn block_messages() -> BlockMessagesWithStorageKey {
             Messenger::get_block_messages()
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

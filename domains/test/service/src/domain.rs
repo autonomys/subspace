@@ -86,7 +86,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, NumberFor<Block>, <CBlock as BlockT>::Hash>,
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>,
     AccountId: Encode + Decode + FromKeyring,
 {
     /// The domain id
@@ -137,7 +137,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block>
-        + RelayerApi<Block, NumberFor<Block>, <CBlock as BlockT>::Hash>
+        + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,
     AccountId: DeserializeOwned

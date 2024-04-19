@@ -1,4 +1,6 @@
-use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
+use crate::domain_block_processor::{
+    generate_mmr_proof, DomainBlockProcessor, PendingConsensusBlocks,
+};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
@@ -37,9 +39,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
-use sp_messenger::messages::{
-    ConsensusChainMmrLeafProof, CrossDomainMessage, FeeModel, InitiateChannelParams, Proof,
-};
+use sp_messenger::messages::{CrossDomainMessage, FeeModel, InitiateChannelParams, Proof};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
@@ -48,6 +48,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
@@ -1556,6 +1557,7 @@ async fn test_invalid_xdm_proof_creation_and_verification() {
                     nonce: Default::default(),
                     proof: Proof::Domain {
                         consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
+                            consensus_block_number: Default::default(),
                             consensus_block_hash: Default::default(),
                             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![0, 1, 2]),
                             proof: MmrProof {
@@ -4570,4 +4572,86 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
         .unwrap();
     assert_eq!(alice.free_balance(Bob.to_account_id()), bob_pre_balance + 3);
     assert_eq!(alice.account_nonce(), nonce + 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_verify_mmr_proof_stateless() {
+    use subspace_test_primitives::OnchainStateApi as _;
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run_with_finalization_depth(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+        // finalization depth
+        Some(10),
+    );
+
+    // Run Alice (an evm domain)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let to_prove = ferdie.client.info().best_number;
+    let expected_state_root = *ferdie
+        .client
+        .header(ferdie.client.info().best_hash)
+        .unwrap()
+        .unwrap()
+        .state_root();
+
+    // Can't generate MMR proof for the current best block
+    assert!(generate_mmr_proof(&ferdie.client, to_prove).is_err());
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    let proof = generate_mmr_proof(&ferdie.client, to_prove).unwrap();
+    for i in 0..20 {
+        let res = ferdie
+            .client
+            .runtime_api()
+            .verify_proof_and_extract_consensus_state_root(
+                ferdie.client.info().best_hash,
+                proof.clone(),
+            )
+            .unwrap();
+
+        produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+        // The MMR is proof is valid for the first `MmrRootHashCount` (i.e. 15) blocks but then expired
+        if i < 15 {
+            assert_eq!(res, Some(expected_state_root));
+        } else {
+            assert_eq!(res, None);
+        }
+    }
+
+    // Re-generate MMR proof for the same block, it will be valid for the next `MmrRootHashCount` blocks
+    let proof = generate_mmr_proof(&ferdie.client, to_prove).unwrap();
+    for _ in 0..15 {
+        let res = ferdie
+            .client
+            .runtime_api()
+            .verify_proof_and_extract_consensus_state_root(
+                ferdie.client.info().best_hash,
+                proof.clone(),
+            )
+            .unwrap();
+
+        assert_eq!(res, Some(expected_state_root));
+        produce_blocks!(ferdie, alice, 1).await.unwrap();
+    }
 }

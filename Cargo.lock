@@ -2679,6 +2679,7 @@ dependencies = [
  "sp-messenger",
  "sp-mmr-primitives",
  "sp-runtime",
+ "sp-subspace-mmr",
  "tracing",
 ]
 
@@ -2725,11 +2726,13 @@ dependencies = [
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-state-machine",
+ "sp-subspace-mmr",
  "sp-transaction-pool",
  "sp-trie",
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
  "tempfile",
@@ -7643,6 +7646,7 @@ dependencies = [
  "sp-mmr-primitives",
  "sp-runtime",
  "sp-state-machine",
+ "sp-subspace-mmr",
  "sp-trie",
 ]
 
@@ -11562,6 +11566,7 @@ dependencies = [
  "sp-inherents",
  "sp-mmr-primitives",
  "sp-runtime",
+ "sp-subspace-mmr",
  "sp-trie",
 ]
 
@@ -12652,7 +12657,11 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
+ "sp-core",
+ "sp-domains",
  "sp-messenger",
+ "sp-runtime",
+ "sp-subspace-mmr",
  "subspace-runtime-primitives",
 ]
 

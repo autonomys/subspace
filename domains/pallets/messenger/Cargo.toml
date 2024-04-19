@@ -26,6 +26,7 @@ sp-messenger = { version = "0.1.0", default-features = false, path = "../../prim
 sp-mmr-primitives = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
 sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../../../crates/sp-subspace-mmr" }
 
 [dev-dependencies]
 domain-runtime-primitives = { path = "../../primitives/runtime" }
@@ -48,6 +49,7 @@ std = [
     "sp-mmr-primitives/std",
     "sp-runtime/std",
     "sp-trie/std",
+    "sp-subspace-mmr/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [

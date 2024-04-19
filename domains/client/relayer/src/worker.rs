@@ -25,7 +25,7 @@ pub async fn relay_consensus_chain_messages<Client, Block, SO>(
         + AuxStore
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, Block::Hash>
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<Block>, Block::Hash>
         + MmrApi<Block, sp_core::H256, NumberFor<Block>>,
     SO: SyncOracle,
 {
@@ -79,7 +79,7 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
     Block: BlockT,
     CBlock: BlockT,
     Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, NumberFor<Block>, CBlock::Hash>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     CClient: BlockchainEvents<CBlock>
         + HeaderBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
