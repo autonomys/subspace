@@ -71,6 +71,7 @@ impl Validity {
 #[cfg(feature = "std")]
 #[derive(TypeInfo, Encode, Decode, Debug, PartialEq)]
 pub enum ValidityError {
+    /// Overflow during conversion to `Validity`.
     Overflow,
 }
 
@@ -101,8 +102,8 @@ impl TryFrom<x509_parser::prelude::Validity> for Validity {
 pub struct TbsCertificate {
     /// Certificate serial number.
     pub serial: U256,
-    /// Certificate subject.
-    pub subject: DerVec,
+    /// Certificate subject common name.
+    pub subject_common_name: DerVec,
     /// Certificate subject public key info.
     pub subject_public_key_info: DerVec,
     /// Certificate validity.

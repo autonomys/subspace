@@ -34,13 +34,13 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
 use sp_auto_id::{DerVec, SignatureVerificationRequest, Validity};
-use sp_core::U256;
+use sp_core::{blake2_256, H256, U256};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 use subspace_runtime_primitives::Moment;
 
 /// Unique AutoId identifier.
-pub type Identifier = U256;
+pub type Identifier = H256;
 
 /// X509 certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -49,8 +49,8 @@ pub struct X509Certificate {
     pub issuer_id: Option<Identifier>,
     /// Serial number for this certificate
     pub serial: U256,
-    /// Der encoded certificate's subject.
-    pub subject: DerVec,
+    /// Subject common name of the certificate.
+    pub subject_common_name: DerVec,
     /// Der encoded certificate's subject's public key info
     pub subject_public_key_info: DerVec,
     /// Validity of the certificate
@@ -73,6 +73,14 @@ pub enum Certificate {
 }
 
 impl Certificate {
+    /// Returns the subject distinguished name.
+    #[cfg(test)]
+    fn subject_common_name(&self) -> DerVec {
+        match self {
+            Certificate::X509(cert) => cert.subject_common_name.clone(),
+        }
+    }
+
     /// Returns the subject public key info.
     fn subject_public_key_info(&self) -> DerVec {
         match self {
@@ -138,6 +146,29 @@ pub struct AutoId {
     pub certificate: Certificate,
 }
 
+impl AutoId {
+    /// Deterministically derives an identifier for the `AutoId`.
+    ///
+    /// The identifier is derived by hashing the subject common name of the certificate.
+    /// If the certificate is a leaf certificate, the issuer identifier is combined with the subject common name.
+    fn derive_identifier(&self) -> Identifier {
+        match &self.certificate {
+            Certificate::X509(cert) => {
+                if let Some(issuer_id) = cert.issuer_id {
+                    let mut data = issuer_id.to_fixed_bytes().to_vec();
+
+                    data.extend_from_slice(cert.subject_common_name.as_ref());
+
+                    blake2_256(&data).into()
+                } else {
+                    // Root certificate
+                    blake2_256(cert.subject_common_name.as_ref()).into()
+                }
+            }
+        }
+    }
+}
+
 /// Type holds X509 certificate details used to register an AutoId.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum RegisterAutoIdX509 {
@@ -199,10 +230,6 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Stores the next auto id identifier.
-    #[pallet::storage]
-    pub(super) type NextAutoIdIdentifier<T> = StorageValue<_, Identifier, ValueQuery>;
-
     /// Stores the auto id identifier against an AutoId.
     #[pallet::storage]
     pub(super) type AutoIds<T> = StorageMap<_, Identity, Identifier, AutoId, OptionQuery>;
@@ -215,8 +242,6 @@ mod pallet {
         InvalidCertificate,
         /// Invalid signature.
         InvalidSignature,
-        /// AutoId identifier overflow.
-        IdentifierOverflow,
         /// Certificate serial already issued.
         CertificateSerialAlreadyIssued,
         /// Certificate expired.
@@ -225,6 +250,8 @@ mod pallet {
         CertificateRevoked,
         /// Nonce overflow.
         NonceOverflow,
+        /// Identifier already exists.
+        AutoIdIdentifierAlreadyExists,
     }
 
     #[pallet::event]
@@ -292,7 +319,6 @@ impl<T: Config> Pallet<T> {
                 } => {
                     let tbs_certificate = decode_tbs_certificate(certificate.clone())
                         .ok_or(Error::<T>::InvalidCertificate)?;
-
                     let req = SignatureVerificationRequest {
                         public_key_info: tbs_certificate.subject_public_key_info.clone(),
                         signature_algorithm,
@@ -309,7 +335,7 @@ impl<T: Config> Pallet<T> {
                     Certificate::X509(X509Certificate {
                         issuer_id: None,
                         serial: tbs_certificate.serial,
-                        subject: tbs_certificate.subject,
+                        subject_common_name: tbs_certificate.subject_common_name,
                         subject_public_key_info: tbs_certificate.subject_public_key_info,
                         validity: tbs_certificate.validity,
                         raw: certificate,
@@ -363,7 +389,7 @@ impl<T: Config> Pallet<T> {
                     Certificate::X509(X509Certificate {
                         issuer_id: Some(issuer_id),
                         serial: tbs_certificate.serial,
-                        subject: tbs_certificate.subject,
+                        subject_common_name: tbs_certificate.subject_common_name,
                         subject_public_key_info: tbs_certificate.subject_public_key_info,
                         validity: tbs_certificate.validity,
                         raw: certificate,
@@ -375,13 +401,13 @@ impl<T: Config> Pallet<T> {
             },
         };
 
-        let auto_id_identifier = NextAutoIdIdentifier::<T>::get();
-        let next_auto_id_identifier = auto_id_identifier
-            .checked_add(Identifier::one())
-            .ok_or(Error::<T>::IdentifierOverflow)?;
-        NextAutoIdIdentifier::<T>::put(next_auto_id_identifier);
-
         let auto_id = AutoId { certificate };
+        let auto_id_identifier = auto_id.derive_identifier();
+
+        ensure!(
+            !AutoIds::<T>::contains_key(auto_id_identifier),
+            Error::<T>::AutoIdIdentifierAlreadyExists
+        );
 
         AutoIds::<T>::insert(auto_id_identifier, auto_id);
 

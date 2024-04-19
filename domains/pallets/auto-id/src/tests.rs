@@ -1,16 +1,19 @@
-use crate::pallet::{AutoIds, NextAutoIdIdentifier};
+use crate::pallet::AutoIds;
 use crate::{
-    self as pallet_auto_id, CertificateAction, CertificateActionType, Identifier, Pallet,
-    RegisterAutoId, RegisterAutoIdX509, Signature,
+    self as pallet_auto_id, Certificate, CertificateAction, CertificateActionType, Error,
+    Identifier, Pallet, RegisterAutoId, RegisterAutoIdX509, Signature, X509Certificate,
 };
+use alloc::collections::BTreeSet;
 use codec::Encode;
+use frame_support::assert_noop;
 use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Time};
 use pem::parse;
 use ring::rand::SystemRandom;
 use ring::signature::RsaKeyPair;
-use sp_auto_id::DerVec;
-use sp_core::{H256, U256};
+use sp_auto_id::{DerVec, Validity};
+use sp_core::bytes::to_hex;
+use sp_core::{blake2_256, H256, U256};
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
 use std::sync::Arc;
@@ -121,41 +124,93 @@ fn algorithm_to_der(algorithm_identifier: AlgorithmIdentifier) -> DerVec {
     d.into()
 }
 
+fn identifier_from_x509_cert(
+    issuer_id: Option<Identifier>,
+    cert: &x509_parser::prelude::X509Certificate<'_>,
+) -> Identifier {
+    let subject_common_name = cert
+        .subject()
+        .iter_common_name()
+        .next()
+        .unwrap()
+        .attr_value()
+        .to_der_vec()
+        .unwrap();
+
+    if let Some(issuer_id) = issuer_id {
+        let mut data = issuer_id.to_fixed_bytes().to_vec();
+        data.extend(subject_common_name);
+
+        blake2_256(&data).into()
+    } else {
+        blake2_256(&subject_common_name).into()
+    }
+}
+
 fn register_issuer_auto_id() -> Identifier {
     let issuer_cert = include_bytes!("../res/issuer.cert.der").to_vec();
     let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&issuer_cert).unwrap();
+    let auto_id_identifier = identifier_from_x509_cert(None, &cert);
 
-    let auto_id_identifier = NextAutoIdIdentifier::<Test>::get();
     Pallet::<Test>::register_auto_id(
         RawOrigin::Signed(1).into(),
         RegisterAutoId::X509(RegisterAutoIdX509::Root {
             certificate: cert.tbs_certificate.as_ref().to_vec().into(),
-            signature_algorithm: algorithm_to_der(cert.signature_algorithm),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
             signature: cert.signature_value.as_ref().to_vec(),
         }),
     )
     .unwrap();
 
-    assert_eq!(NextAutoIdIdentifier::<Test>::get(), auto_id_identifier + 1);
+    assert_eq!(
+        AutoIds::<Test>::get(auto_id_identifier)
+            .unwrap()
+            .certificate
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .to_der_vec()
+            .unwrap()
+            .into()
+    );
+
     auto_id_identifier
 }
 
 fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
     let cert = include_bytes!("../res/leaf.cert.der").to_vec();
     let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&cert).unwrap();
-    let auto_id_identifier = NextAutoIdIdentifier::<Test>::get();
+    let auto_id_identifier = identifier_from_x509_cert(Some(issuer_auto_id), &cert);
+
     Pallet::<Test>::register_auto_id(
         RawOrigin::Signed(1).into(),
         RegisterAutoId::X509(RegisterAutoIdX509::Leaf {
             issuer_id: issuer_auto_id,
             certificate: cert.tbs_certificate.as_ref().to_vec().into(),
-            signature_algorithm: algorithm_to_der(cert.signature_algorithm),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
             signature: cert.signature_value.as_ref().to_vec(),
         }),
     )
     .unwrap();
 
-    assert_eq!(NextAutoIdIdentifier::<Test>::get(), auto_id_identifier + 1);
+    assert_eq!(
+        AutoIds::<Test>::get(auto_id_identifier)
+            .unwrap()
+            .certificate
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .to_der_vec()
+            .unwrap()
+            .into(),
+    );
+
     auto_id_identifier
 }
 
@@ -195,6 +250,29 @@ fn test_register_leaf_auto_id() {
     new_test_ext().execute_with(|| {
         let issuer_id = register_issuer_auto_id();
         register_leaf_auto_id(issuer_id);
+    })
+}
+
+#[test]
+fn test_register_issuer_auto_id_duplicate() {
+    new_test_ext().execute_with(|| {
+        register_issuer_auto_id();
+
+        let issuer_cert = include_bytes!("../res/issuer.cert.der").to_vec();
+        let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&issuer_cert).unwrap();
+
+        // try to register auto id with the same common name
+        assert_noop!(
+            Pallet::<Test>::register_auto_id(
+                RawOrigin::Signed(1).into(),
+                RegisterAutoId::X509(RegisterAutoIdX509::Root {
+                    certificate: cert.tbs_certificate.as_ref().to_vec().into(),
+                    signature_algorithm: algorithm_to_der(cert.signature_algorithm),
+                    signature: cert.signature_value.as_ref().to_vec(),
+                }),
+            ),
+            Error::<Test>::AutoIdIdentifierAlreadyExists
+        );
     })
 }
 
@@ -240,5 +318,58 @@ fn test_deactivate_auto_id() {
         )
         .unwrap();
         assert!(AutoIds::<Test>::get(auto_id_identifier).is_none());
+    })
+}
+
+#[test]
+fn test_auto_id_identifier_is_deterministic() {
+    new_test_ext().execute_with(|| {
+        let auto_id = crate::AutoId {
+            certificate: Certificate::X509(X509Certificate {
+                issuer_id: None,
+                subject_common_name: vec![0].into(),
+                validity: Validity {
+                    not_before: 0,
+                    not_after: 0,
+                },
+                subject_public_key_info: DerVec::from(vec![1, 2, 3, 4]),
+                nonce: U256::zero(),
+                revoked: false,
+                serial: U256::zero(),
+                raw: vec![1, 2, 3, 4].into(),
+                issued_serials: BTreeSet::new(),
+            }),
+        };
+
+        let expected_auto_id_identifier =
+            "0x3170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314";
+        assert_eq!(
+            to_hex(&auto_id.derive_identifier().to_fixed_bytes(), true),
+            expected_auto_id_identifier
+        );
+
+        let auto_id_child = crate::AutoId {
+            certificate: Certificate::X509(X509Certificate {
+                issuer_id: Some(auto_id.derive_identifier()),
+                subject_common_name: vec![0].into(),
+                validity: Validity {
+                    not_before: 0,
+                    not_after: 0,
+                },
+                subject_public_key_info: DerVec::from(vec![1, 2, 3, 4]),
+                nonce: U256::zero(),
+                revoked: false,
+                serial: U256::zero(),
+                raw: vec![1, 2, 3, 4].into(),
+                issued_serials: BTreeSet::new(),
+            }),
+        };
+
+        let expected_auto_id_child_identifier =
+            "0x1f6c133e7bca8c7714c5c9df36562e5cd51304530cc85e583351167bb75e072f";
+        assert_eq!(
+            to_hex(&auto_id_child.derive_identifier().to_fixed_bytes(), true),
+            expected_auto_id_child_identifier
+        );
     })
 }
