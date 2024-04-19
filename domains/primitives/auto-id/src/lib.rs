@@ -67,22 +67,17 @@ impl Validity {
     }
 }
 
-/// Generic error type for conversion errors.
+/// Validity conversion error.
 #[cfg(feature = "std")]
 #[derive(TypeInfo, Encode, Decode, Debug, PartialEq)]
-pub enum HostFunctionsConversionError {
+pub enum ValidityError {
     /// Overflow during conversion to `Validity`.
     Overflow,
-    /// Failed to fetch common name from subject distinguished name.
-    ///
-    /// Note that there are multiple reasons for failure or incorrect behavior,
-    /// for ex. if the attribute is present multiple times, or is not a UTF-8 encoded string.
-    CommonNameNotFound,
 }
 
 #[cfg(feature = "std")]
 impl TryFrom<x509_parser::prelude::Validity> for Validity {
-    type Error = HostFunctionsConversionError;
+    type Error = ValidityError;
 
     fn try_from(value: x509_parser::certificate::Validity) -> Result<Self, Self::Error> {
         Ok(Validity {
