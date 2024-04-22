@@ -25,7 +25,6 @@ use core::mem;
 use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
-use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{
@@ -335,13 +334,14 @@ pub fn derive_next_solution_range(
     // next_solution_range =
     //     (solution_ranges.current as f64 * adjustment_factor).round() as u64;
     // ```
-    u64::saturated_from(
+    u64::try_from(
         u128::from(current_solution_range)
             .saturating_mul(u128::from(era_slot_count))
             .saturating_mul(u128::from(slot_probability.0))
             / u128::from(era_duration)
             / u128::from(slot_probability.1),
     )
+    .unwrap_or(u64::MAX)
     .clamp(
         current_solution_range / 4,
         current_solution_range.saturating_mul(4),
