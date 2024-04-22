@@ -12468,6 +12468,7 @@ name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "parity-scale-codec",
  "serde",
  "subspace-core-primitives",
  "subspace-farmer-components",
