@@ -22,7 +22,7 @@ use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
-    plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
+    plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
 };
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
@@ -824,20 +824,22 @@ impl SingleDiskFarm {
                 let _span_guard = span.enter();
 
                 let plotting_options = PlottingOptions {
-                    public_key,
-                    node_client: &node_client,
-                    pieces_in_sector,
-                    sector_size,
-                    sector_metadata_size,
                     metadata_header,
-                    plot_file,
-                    metadata_file,
-                    sectors_metadata,
-                    handlers,
-                    sectors_being_modified,
                     sectors_to_plot_receiver,
-                    global_mutex: &global_mutex,
-                    plotter,
+                    sector_plotting_options: SectorPlottingOptions {
+                        public_key,
+                        node_client: &node_client,
+                        pieces_in_sector,
+                        sector_size,
+                        sector_metadata_size,
+                        plot_file: &plot_file,
+                        metadata_file,
+                        sectors_metadata: &sectors_metadata,
+                        handlers: &handlers,
+                        sectors_being_modified: &sectors_being_modified,
+                        global_mutex: &global_mutex,
+                        plotter,
+                    },
                 };
 
                 let plotting_fut = async {
