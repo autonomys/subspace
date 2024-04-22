@@ -20,18 +20,18 @@ jsonrpsee = { version = "0.22.3", features = ["server", "macros"] }
 lru = "0.12.3"
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.1"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
-sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sc-rpc-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sc-rpc-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 sp-objects = { version = "0.1.0", path = "../sp-objects" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }

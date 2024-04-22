@@ -17,16 +17,16 @@ codec = { package = "parity-scale-codec", version = "3.6.5", default-features = 
 derive_more = "0.99.17"
 futures = "0.3.29"
 parking_lot = "0.12.1"
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sc-network-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sc-network-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 strum_macros = "0.26.2"
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "ac2f3efb476ee3f5ac6bafefb458e9be158adb7f" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "7cd795d5bc2c2d43520b20069a15336a27354d83" }
 thiserror = "1.0.58"
 tracing = "0.1.40"
 
