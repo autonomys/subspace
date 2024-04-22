@@ -1,11 +1,10 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
+use crate::plotter::{Plotter, SectorPlottingProgress};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use crate::thread_pool_manager::PlottingThreadPoolManager;
-use crate::utils::AsyncJoinOnDrop;
 use crate::{node_client, NodeClient};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
@@ -18,27 +17,18 @@ use std::fs::File;
 use std::io;
 use std::num::NonZeroUsize;
 use std::ops::Range;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
     SegmentIndex,
 };
-use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, DownloadSectorOptions, DownloadedSector, EncodeSectorOptions,
-    PlottedSector,
-};
+use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_farmer_components::{plotting, PieceGetter};
-use subspace_proof_of_space::Table;
 use thiserror::Error;
-use tokio::sync::{broadcast, watch, OwnedSemaphorePermit, Semaphore};
-use tokio::task::yield_now;
-use tracing::{debug, info, trace, warn, Instrument};
+use tokio::sync::watch;
+use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
@@ -51,7 +41,6 @@ pub(super) struct SectorToPlot {
     /// Whether this is the last sector queued so far
     last_queued: bool,
     acknowledgement_sender: oneshot::Sender<()>,
-    next_segment_index_hint: Option<SectorIndex>,
 }
 
 /// Errors that happen during plotting
@@ -83,7 +72,7 @@ pub enum PlottingError {
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
-    LowLevel(#[from] plotting::PlottingError),
+    LowLevel(String),
     /// I/O error occurred
     #[error("Plotting I/O error: {0}")]
     Io(#[from] io::Error),
@@ -92,7 +81,7 @@ pub enum PlottingError {
     BackgroundDownloadingPanicked,
 }
 
-pub(super) struct PlottingOptions<'a, NC, PG> {
+pub(super) struct PlottingOptions<'a, NC, P> {
     pub(super) public_key: PublicKey,
     pub(super) node_client: &'a NC,
     pub(super) pieces_in_sector: u16,
@@ -108,32 +97,23 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     #[cfg(windows)]
     pub(super) metadata_file: UnbufferedIoFileWindows,
     pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
-    pub(super) piece_getter: &'a PG,
-    pub(super) kzg: &'a Kzg,
-    pub(super) erasure_coding: &'a ErasureCoding,
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
-    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
-    /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub(crate) downloading_semaphore: Arc<Semaphore>,
-    pub(crate) record_encoding_concurrency: NonZeroUsize,
-    pub(super) plotting_thread_pool_manager: PlottingThreadPoolManager,
-    pub(super) stop_receiver: broadcast::Receiver<()>,
     pub(super) global_mutex: &'a AsyncMutex<()>,
+    pub(super) plotter: P,
 }
 
 /// Starts plotting process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-pub(super) async fn plotting<NC, PG, PosTable>(
-    plotting_options: PlottingOptions<'_, NC, PG>,
+pub(super) async fn plotting<NC, P>(
+    plotting_options: PlottingOptions<'_, NC, P>,
 ) -> Result<(), PlottingError>
 where
     NC: NodeClient,
-    PG: PieceGetter + Clone + Send + Sync + 'static,
-    PosTable: Table,
+    P: Plotter,
 {
     let PlottingOptions {
         public_key,
@@ -145,52 +125,19 @@ where
         plot_file,
         metadata_file,
         sectors_metadata,
-        piece_getter,
-        kzg,
-        erasure_coding,
         handlers,
         modifying_sector_index,
         mut sectors_to_plot_receiver,
-        downloading_semaphore,
-        record_encoding_concurrency,
-        plotting_thread_pool_manager,
-        mut stop_receiver,
         global_mutex,
+        plotter,
     } = plotting_options;
 
-    let abort_early = Arc::new(AtomicBool::new(false));
-
-    let _abort_early_task = AsyncJoinOnDrop::new(
-        tokio::spawn({
-            let abort_early = Arc::clone(&abort_early);
-
-            async move {
-                // Error doesn't matter here
-                let _ = stop_receiver.recv().await;
-
-                abort_early.store(true, Ordering::Release);
-            }
-        }),
-        true,
-    );
-
-    let mut table_generators = (0..record_encoding_concurrency.get())
-        .map(|_| PosTable::generator())
-        .collect::<Vec<_>>();
-
-    let mut maybe_next_downloaded_sector_fut = None::<
-        AsyncJoinOnDrop<Result<(OwnedSemaphorePermit, DownloadedSector), plotting::PlottingError>>,
-    >;
     while let Some(sector_to_plot) = sectors_to_plot_receiver.next().await {
         let SectorToPlot {
             sector_index,
             progress,
             last_queued,
             acknowledgement_sender: _acknowledgement_sender,
-            // TODO: Remove this hint once we have
-            //  https://github.com/rust-lang/futures-rs/issues/2793 and can
-            //  `sectors_to_plot_receiver.try_peek()` instead
-            next_segment_index_hint,
         } = sector_to_plot;
         trace!(%sector_index, "Preparing to plot sector");
 
@@ -245,155 +192,71 @@ where
             break farmer_app_info;
         };
 
-        // Take mutex briefly to make sure plotting is allowed right now
-        global_mutex.lock().await;
+        let (progress_sender, mut progress_receiver) = mpsc::channel(0);
 
-        let (_downloading_permit, downloaded_sector) =
-            if let Some(downloaded_sector_fut) = maybe_next_downloaded_sector_fut.take() {
-                downloaded_sector_fut
-                    .await
-                    .map_err(|_error| PlottingError::BackgroundDownloadingPanicked)??
-            } else {
-                let downloading_permit = Arc::clone(&downloading_semaphore)
-                    .acquire_owned()
-                    .await
-                    .map_err(plotting::PlottingError::from)?;
-
-                handlers.sector_update.call_simple(&(
-                    sector_index,
-                    SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
-                ));
-
-                let start = Instant::now();
-
-                let downloaded_sector_fut = download_sector(DownloadSectorOptions {
-                    public_key: &public_key,
-                    sector_index,
-                    piece_getter,
-                    farmer_protocol_info: farmer_app_info.protocol_info,
-                    kzg,
-                    pieces_in_sector,
-                });
-
-                let downloaded_sector = downloaded_sector_fut.await?;
-
-                handlers.sector_update.call_simple(&(
-                    sector_index,
-                    SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(start.elapsed())),
-                ));
-
-                (downloading_permit, downloaded_sector)
-            };
-
-        // Initiate downloading of pieces for the next segment index if already known
-        if let Some(sector_index) = next_segment_index_hint {
-            let piece_getter = piece_getter.clone();
-            let downloading_semaphore = Arc::clone(&downloading_semaphore);
-            let handlers = Arc::clone(&handlers);
-            let kzg = kzg.clone();
-
-            maybe_next_downloaded_sector_fut.replace(AsyncJoinOnDrop::new(
-                tokio::spawn(
-                    async move {
-                        let downloading_permit = downloading_semaphore
-                            .acquire_owned()
-                            .await
-                            .map_err(plotting::PlottingError::from)?;
-
+        // Initiate plotting
+        plotter
+            .plot_sector(
+                public_key,
+                sector_index,
+                farmer_app_info.protocol_info,
+                pieces_in_sector,
+                replotting,
+                progress_sender,
+            )
+            .await;
+        // Process plotting progress notifications
+        let progress_processor_fut = async {
+            while let Some(progress) = progress_receiver.next().await {
+                match progress {
+                    SectorPlottingProgress::Downloading => {
                         handlers.sector_update.call_simple(&(
                             sector_index,
                             SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
                         ));
-
-                        let start = Instant::now();
-
-                        let downloaded_sector_fut = download_sector(DownloadSectorOptions {
-                            public_key: &public_key,
-                            sector_index,
-                            piece_getter: &piece_getter,
-                            farmer_protocol_info: farmer_app_info.protocol_info,
-                            kzg: &kzg,
-                            pieces_in_sector,
-                        });
-
-                        let downloaded_sector = downloaded_sector_fut.await?;
-
+                    }
+                    SectorPlottingProgress::Downloaded(time) => {
                         handlers.sector_update.call_simple(&(
                             sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(
-                                start.elapsed(),
-                            )),
+                            SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)),
                         ));
-
-                        Ok((downloading_permit, downloaded_sector))
                     }
-                    .in_current_span(),
-                ),
-                true,
-            ));
-        }
-
-        let sector;
-        let sector_metadata;
-        let plotted_sector;
-
-        (sector, sector_metadata, table_generators, plotted_sector) = {
-            let plotting_fn = || {
-                tokio::task::block_in_place(|| {
-                    let mut sector = Vec::new();
-                    let mut sector_metadata = Vec::new();
-
-                    handlers.sector_update.call_simple(&(
-                        sector_index,
-                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
-                    ));
-
-                    let start = Instant::now();
-
-                    let plotted_sector = encode_sector::<PosTable>(
-                        downloaded_sector,
-                        EncodeSectorOptions {
+                    SectorPlottingProgress::Encoding => {
+                        handlers.sector_update.call_simple(&(
                             sector_index,
-                            erasure_coding,
-                            pieces_in_sector,
-                            sector_output: &mut sector,
-                            sector_metadata_output: &mut sector_metadata,
-                            table_generators: &mut table_generators,
-                            abort_early: &abort_early,
-                            global_mutex,
-                        },
-                    )?;
-
-                    handlers.sector_update.call_simple(&(
-                        sector_index,
-                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(start.elapsed())),
-                    ));
-
-                    Ok((sector, sector_metadata, table_generators, plotted_sector))
-                })
-            };
-
-            let thread_pools = plotting_thread_pool_manager.get_thread_pools().await;
-            let thread_pool = if replotting {
-                &thread_pools.replotting
-            } else {
-                &thread_pools.plotting
-            };
-
-            // Give a chance to interrupt plotting if necessary
-            yield_now().await;
-
-            let plotting_result = thread_pool.install(plotting_fn);
-
-            if matches!(
-                plotting_result,
-                Err(PlottingError::LowLevel(plotting::PlottingError::AbortEarly))
-            ) {
-                return Ok(());
+                            SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
+                        ));
+                    }
+                    SectorPlottingProgress::Encoded(time) => {
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)),
+                        ));
+                    }
+                    SectorPlottingProgress::Finished {
+                        plotted_sector,
+                        time: _,
+                        sector,
+                        sector_metadata,
+                    } => {
+                        return Ok((plotted_sector, sector, sector_metadata));
+                    }
+                    SectorPlottingProgress::Error { error } => {
+                        handlers.sector_update.call_simple(&(
+                            sector_index,
+                            SectorUpdate::Plotting(SectorPlottingDetails::Error(error.clone())),
+                        ));
+                        return Err(error);
+                    }
+                }
             }
 
-            plotting_result?
+            Err("Plotting progress stream ended before plotting finished".to_string())
         };
+
+        let (plotted_sector, sector, sector_metadata) = progress_processor_fut
+            .await
+            .map_err(PlottingError::LowLevel)?;
 
         // Inform others that this sector is being modified
         modifying_sector_index.write().await.replace(sector_index);
@@ -630,8 +493,7 @@ where
     NC: NodeClient,
 {
     // Finish initial plotting if some sectors were not plotted fully yet
-    let mut sectors_indices_left_to_plot = sectors_indices_left_to_plot.into_iter().peekable();
-    while let Some(sector_index) = sectors_indices_left_to_plot.next() {
+    for sector_index in sectors_indices_left_to_plot {
         let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
         if let Err(error) = sectors_to_plot_sender
             .send(SectorToPlot {
@@ -639,7 +501,6 @@ where
                 progress: sector_index as f32 / target_sector_count as f32 * 100.0,
                 last_queued: sector_index + 1 == target_sector_count,
                 acknowledgement_sender,
-                next_segment_index_hint: sectors_indices_left_to_plot.peek().copied(),
             })
             .await
         {
@@ -822,9 +683,7 @@ where
 
         let sectors_queued = sectors_to_replot.len();
         sectors_to_replot.sort_by_key(|sector_to_replot| sector_to_replot.expires_at);
-        let mut sector_indices_to_replot = sectors_to_replot.drain(..).enumerate().peekable();
-        while let Some((index, SectorToReplot { sector_index, .. })) =
-            sector_indices_to_replot.next()
+        for (index, SectorToReplot { sector_index, .. }) in sectors_to_replot.drain(..).enumerate()
         {
             let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
             if let Err(error) = sectors_to_plot_sender
@@ -833,9 +692,6 @@ where
                     progress: index as f32 / sectors_queued as f32 * 100.0,
                     last_queued: index + 1 == sectors_queued,
                     acknowledgement_sender,
-                    next_segment_index_hint: sector_indices_to_replot
-                        .peek()
-                        .map(|(_index, SectorToReplot { sector_index, .. })| *sector_index),
                 })
                 .await
             {

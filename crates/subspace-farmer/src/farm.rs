@@ -281,6 +281,8 @@ pub enum SectorPlottingDetails {
         /// How much time it took to plot a sector
         time: Duration,
     },
+    /// Plotting failed
+    Error(String),
 }
 
 /// Details about sector expiration

@@ -11,6 +11,7 @@ use crate::farm::{
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
+use crate::plotter::Plotter;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
@@ -26,7 +27,6 @@ use crate::single_disk_farm::plotting::{
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
-use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
@@ -45,7 +45,7 @@ use static_assertions::const_assert;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
-use std::num::{NonZeroU8, NonZeroUsize};
+use std::num::NonZeroU8;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -64,7 +64,7 @@ use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
-use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter, ReadAtSync};
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAtSync};
 use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
@@ -247,7 +247,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<NC, PG> {
+pub struct SingleDiskFarmOptions<NC, P> {
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -260,26 +260,19 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub node_client: NC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
-    /// Piece receiver implementation for plotting purposes.
-    pub piece_getter: PG,
+    /// Plotter
+    pub plotter: P,
     /// Kzg instance to use.
     pub kzg: Kzg,
     /// Erasure coding instance to use.
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
-    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
-    /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub downloading_semaphore: Arc<Semaphore>,
-    /// Defines how many record farmer will encode in a single sector concurrently
-    pub record_encoding_concurrency: NonZeroUsize,
     /// Whether to farm during initial plotting
     pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
-    /// Thread pool manager used for plotting
-    pub plotting_thread_pool_manager: PlottingThreadPoolManager,
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
@@ -671,13 +664,13 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskFarmOptions<NC, PG>,
+    pub async fn new<NC, P, PosTable>(
+        options: SingleDiskFarmOptions<NC, P>,
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Clone + Send + Sync + 'static,
+        P: Plotter + Send + 'static,
         PosTable: Table,
     {
         let span = Span::current();
@@ -717,13 +710,10 @@ impl SingleDiskFarm {
             farmer_app_info,
             node_client,
             reward_address,
-            piece_getter,
+            plotter,
             kzg,
             erasure_coding,
-            downloading_semaphore,
-            record_encoding_concurrency,
             farming_thread_pool_size,
-            plotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
             global_mutex,
@@ -821,8 +811,6 @@ impl SingleDiskFarm {
 
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
-            let kzg = kzg.clone();
-            let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
             let modifying_sector_index = Arc::clone(&modifying_sector_index);
             let node_client = node_client.clone();
@@ -844,17 +832,11 @@ impl SingleDiskFarm {
                     plot_file,
                     metadata_file,
                     sectors_metadata,
-                    piece_getter: &piece_getter,
-                    kzg: &kzg,
-                    erasure_coding: &erasure_coding,
                     handlers,
                     modifying_sector_index,
                     sectors_to_plot_receiver,
-                    downloading_semaphore,
-                    record_encoding_concurrency,
-                    plotting_thread_pool_manager,
-                    stop_receiver: stop_receiver.resubscribe(),
                     global_mutex: &global_mutex,
+                    plotter,
                 };
 
                 let plotting_fut = async {
@@ -870,7 +852,7 @@ impl SingleDiskFarm {
                         }
                     }
 
-                    plotting::<_, _, PosTable>(plotting_options).await
+                    plotting::<_, P>(plotting_options).await
                 };
 
                 Handle::current().block_on(async {
@@ -1084,8 +1066,8 @@ impl SingleDiskFarm {
         Ok(farm)
     }
 
-    fn init<NC, PG>(
-        options: &SingleDiskFarmOptions<NC, PG>,
+    fn init<NC, P>(
+        options: &SingleDiskFarmOptions<NC, P>,
     ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
         let SingleDiskFarmOptions {
             directory,
