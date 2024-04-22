@@ -264,7 +264,7 @@ where
         if block_number == 1 {
             return vec![self
                 .get_segment_header(SegmentIndex::ZERO)
-                .expect("The initial segment header must exist at this point.")];
+                .expect("Segment headers are stored in monononically increasing order; qed")];
         }
 
         let mut current_segment_index = last_segment_index;
