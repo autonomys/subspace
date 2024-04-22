@@ -8,16 +8,18 @@ use crate::single_disk_farm::{
 use crate::{node_client, NodeClient};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
+use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
 use std::collections::{HashMap, HashSet};
 #[cfg(not(windows))]
 use std::fs::File;
-use std::future::Future;
+use std::future::{pending, Future};
 use std::io;
 use std::num::NonZeroUsize;
 use std::ops::Range;
+use std::pin::pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{
@@ -126,26 +128,103 @@ where
         sector_plotting_options,
     } = plotting_options;
 
-    while let Some(sector_to_plot) = sectors_to_plot_receiver.next().await {
-        let sector_index = plot_single_sector(sector_to_plot, &sector_plotting_options)
-            .await?
-            .await?;
+    let mut sectors_being_plotted = FuturesOrdered::new();
 
-        if sector_index + 1 > metadata_header.plotted_sector_count {
-            metadata_header.plotted_sector_count = sector_index + 1;
-            sector_plotting_options
-                .metadata_file
-                .write_all_at(&metadata_header.encode(), 0)?;
+    // Wait for new sectors to plot from `sectors_to_plot_receiver` and wait for sectors that
+    // already started plotting to finish plotting and then update metadata header
+    loop {
+        select! {
+            maybe_sector_to_plot = sectors_to_plot_receiver.next() => {
+                if let Some(sector_to_plot) = maybe_sector_to_plot {
+                    let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
+                    let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
+
+                    // Wait for plotting of new sector to start (backpressure), while also waiting
+                    // for sectors that already started plotting to finish plotting and then update
+                    // metadata header
+                    loop {
+                        select! {
+                            sector_plotting_init_result = sector_plotting_init_fut => {
+                                sectors_being_plotted.push_back(sector_plotting_init_result?);
+                                break;
+                            }
+                            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+                                process_plotting_result(
+                                    maybe_sector_plotting_result?,
+                                    &mut metadata_header,
+                                    &sector_plotting_options.metadata_file
+                                )?;
+                            }
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+                process_plotting_result(
+                    maybe_sector_plotting_result?,
+                    &mut metadata_header,
+                    &sector_plotting_options.metadata_file
+                )?;
+            }
         }
     }
 
     Ok(())
 }
 
+fn process_plotting_result(
+    sector_plotting_result: SectorPlottingResult,
+    metadata_header: &mut PlotMetadataHeader,
+    #[cfg(not(windows))] metadata_file: &File,
+    #[cfg(windows)] metadata_file: &UnbufferedIoFileWindows,
+) -> Result<(), PlottingError> {
+    let SectorPlottingResult {
+        sector_index,
+        replotting,
+        last_queued,
+    } = sector_plotting_result;
+
+    if sector_index + 1 > metadata_header.plotted_sector_count {
+        metadata_header.plotted_sector_count = sector_index + 1;
+        metadata_file.write_all_at(&metadata_header.encode(), 0)?;
+    }
+
+    if last_queued {
+        if replotting {
+            info!("Replotting complete");
+        } else {
+            info!("Initial plotting complete");
+        }
+    }
+
+    Ok(())
+}
+
+/// Wait for next element in `FuturesOrdered`, but only if it is not empty. This avoids calling
+/// `.poll_next()` if `FuturesOrdered` is already empty, so it can be reused indefinitely
+async fn maybe_wait_futures_ordered<F>(stream: &mut FuturesOrdered<F>) -> F::Output
+where
+    F: Future,
+{
+    if stream.is_empty() {
+        pending().await
+    } else {
+        stream.next().await.expect("Not empty; qed")
+    }
+}
+
+struct SectorPlottingResult {
+    sector_index: SectorIndex,
+    replotting: bool,
+    last_queued: bool,
+}
+
 async fn plot_single_sector<'a, NC, P>(
     sector_to_plot: SectorToPlot,
     sector_plotting_options: &'a SectorPlottingOptions<'a, NC, P>,
-) -> Result<impl Future<Output = Result<SectorIndex, PlottingError>> + 'a, PlottingError>
+) -> Result<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a, PlottingError>
 where
     NC: NodeClient,
     P: Plotter,
@@ -179,12 +258,6 @@ where
         .get(sector_index as usize)
         .cloned();
     let replotting = maybe_old_sector_metadata.is_some();
-
-    if replotting {
-        info!(%sector_index, "Replotting sector ({progress:.2}% complete)");
-    } else {
-        info!(%sector_index, "Plotting sector ({progress:.2}% complete)");
-    }
 
     let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
         progress,
@@ -237,6 +310,12 @@ where
             progress_sender,
         )
         .await;
+
+    if replotting {
+        info!(%sector_index, "Replotting sector ({progress:.2}% complete)");
+    } else {
+        info!(%sector_index, "Plotting sector ({progress:.2}% complete)");
+    }
 
     Ok(async move {
         // Process plotting progress notifications
@@ -360,14 +439,8 @@ where
 
         if replotting {
             debug!(%sector_index, "Sector replotted successfully");
-            if last_queued {
-                info!("Replotting complete");
-            }
         } else {
             debug!(%sector_index, "Sector plotted successfully");
-            if last_queued {
-                info!("Initial plotting complete");
-            }
         }
 
         let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
@@ -379,7 +452,11 @@ where
             .sector_update
             .call_simple(&(sector_index, sector_state));
 
-        Ok(sector_index)
+        Ok(SectorPlottingResult {
+            sector_index,
+            replotting,
+            last_queued,
+        })
     })
 }
 
