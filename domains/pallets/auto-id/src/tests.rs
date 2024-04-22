@@ -1,7 +1,8 @@
 use crate::pallet::AutoIds;
 use crate::{
-    self as pallet_auto_id, Certificate, CertificateAction, CertificateActionType, Error,
-    Identifier, Pallet, RegisterAutoId, RegisterAutoIdX509, Signature, X509Certificate,
+    self as pallet_auto_id, Certificate, CertificateAction, CertificateActionType,
+    CertificateRevocationList, Error, Identifier, Pallet, RegisterAutoId, RegisterAutoIdX509,
+    Signature, X509Certificate,
 };
 use alloc::collections::BTreeSet;
 use codec::Encode;
@@ -281,7 +282,9 @@ fn test_revoke_certificate() {
     new_test_ext().execute_with(|| {
         let auto_id_identifier = register_issuer_auto_id();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
-        assert!(!auto_id.certificate.is_revoked());
+        assert!(!CertificateRevocationList::<Test>::contains_key(
+            auto_id_identifier
+        ));
         let signing_data = CertificateAction {
             id: auto_id_identifier,
             nonce: auto_id.certificate.nonce(),
@@ -295,7 +298,9 @@ fn test_revoke_certificate() {
         )
         .unwrap();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
-        assert!(auto_id.certificate.is_revoked());
+        assert!(CertificateRevocationList::<Test>::contains_key(
+            auto_id_identifier
+        ));
         assert_eq!(auto_id.certificate.nonce(), U256::one());
     })
 }
@@ -334,7 +339,6 @@ fn test_auto_id_identifier_is_deterministic() {
                 },
                 subject_public_key_info: DerVec::from(vec![1, 2, 3, 4]),
                 nonce: U256::zero(),
-                revoked: false,
                 serial: U256::zero(),
                 raw: vec![1, 2, 3, 4].into(),
                 issued_serials: BTreeSet::new(),
@@ -344,13 +348,16 @@ fn test_auto_id_identifier_is_deterministic() {
         let expected_auto_id_identifier =
             "0x3170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314";
         assert_eq!(
-            to_hex(&auto_id.derive_identifier().to_fixed_bytes(), true),
+            to_hex(
+                &auto_id.certificate.derive_identifier().to_fixed_bytes(),
+                true
+            ),
             expected_auto_id_identifier
         );
 
         let auto_id_child = crate::AutoId {
             certificate: Certificate::X509(X509Certificate {
-                issuer_id: Some(auto_id.derive_identifier()),
+                issuer_id: Some(auto_id.certificate.derive_identifier()),
                 subject_common_name: vec![0].into(),
                 validity: Validity {
                     not_before: 0,
@@ -358,7 +365,6 @@ fn test_auto_id_identifier_is_deterministic() {
                 },
                 subject_public_key_info: DerVec::from(vec![1, 2, 3, 4]),
                 nonce: U256::zero(),
-                revoked: false,
                 serial: U256::zero(),
                 raw: vec![1, 2, 3, 4].into(),
                 issued_serials: BTreeSet::new(),
@@ -368,7 +374,13 @@ fn test_auto_id_identifier_is_deterministic() {
         let expected_auto_id_child_identifier =
             "0x1f6c133e7bca8c7714c5c9df36562e5cd51304530cc85e583351167bb75e072f";
         assert_eq!(
-            to_hex(&auto_id_child.derive_identifier().to_fixed_bytes(), true),
+            to_hex(
+                &auto_id_child
+                    .certificate
+                    .derive_identifier()
+                    .to_fixed_bytes(),
+                true
+            ),
             expected_auto_id_child_identifier
         );
     })
