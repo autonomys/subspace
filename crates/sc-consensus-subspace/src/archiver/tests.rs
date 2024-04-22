@@ -105,16 +105,7 @@ fn segment_headers_store_block_number_queries_work() {
     };
 
     segment_headers
-        .add_segment_headers(
-            vec![
-                segment_header0,
-                segment_header1,
-                segment_header2,
-                segment_header3,
-                segment_header4,
-            ]
-            .as_slice(),
-        )
+        .add_segment_headers(&[segment_header0])
         .unwrap();
 
     // Initial segment
@@ -123,6 +114,24 @@ fn segment_headers_store_block_number_queries_work() {
         .unwrap();
     let result = segment_headers.segment_headers_for_block(1u32);
     assert_eq!(result, vec![segment_header0]);
+
+    // Special case, genesis segment header is included in block 1, not later
+    let result = segment_headers.segment_headers_for_block(confirmation_depth_k + 1);
+    assert_eq!(result, vec![]);
+
+    for num in 2u32..752u32 {
+        let result = segment_headers.segment_headers_for_block(num);
+        assert_eq!(result, vec![]);
+    }
+
+    segment_headers
+        .add_segment_headers(&[
+            segment_header1,
+            segment_header2,
+            segment_header3,
+            segment_header4,
+        ])
+        .unwrap();
 
     for num in 2u32..752u32 {
         let result = segment_headers.segment_headers_for_block(num);
