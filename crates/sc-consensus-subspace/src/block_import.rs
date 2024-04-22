@@ -316,7 +316,7 @@ where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
@@ -563,7 +563,7 @@ where
             if let Some(extrinsics) = extrinsics {
                 let create_inherent_data_providers = self
                     .create_inherent_data_providers
-                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                    .create_inherent_data_providers(parent_hash, ())
                     .await
                     .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
 
@@ -610,7 +610,7 @@ where
         + Send
         + Sync,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {

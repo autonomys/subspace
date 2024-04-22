@@ -35,18 +35,13 @@ pub mod slot_worker;
 mod tests;
 pub mod verifier;
 
-use crate::archiver::{ArchivedSegmentNotification, FINALIZATION_DEPTH_IN_SEGMENTS};
+use crate::archiver::ArchivedSegmentNotification;
 use crate::block_import::BlockImportingNotification;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
-use lru::LruCache;
-use parking_lot::Mutex;
 use sp_consensus_subspace::ChainConstants;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
+use sp_runtime::traits::Block as BlockT;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::SegmentHeader;
 
 /// State that must be shared between various consensus components.
 #[derive(Clone)]
@@ -61,9 +56,6 @@ pub struct SubspaceLink<Block: BlockT> {
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<Block>>,
-    /// Segment headers that are expected to appear in the corresponding blocks, used for block
-    /// production and validation
-    segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
     chain_constants: ChainConstants,
     kzg: Kzg,
 }
@@ -89,10 +81,6 @@ impl<Block: BlockT> SubspaceLink<Block> {
             archived_segment_notification_stream,
             block_importing_notification_sender,
             block_importing_notification_stream,
-            segment_headers: Arc::new(Mutex::new(LruCache::new(
-                NonZeroUsize::new(u64::from(FINALIZATION_DEPTH_IN_SEGMENTS) as usize + 1)
-                    .expect("Not zero; qed"),
-            ))),
             chain_constants,
             kzg,
         }
@@ -127,15 +115,6 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self,
     ) -> SubspaceNotificationStream<BlockImportingNotification<Block>> {
         self.block_importing_notification_stream.clone()
-    }
-
-    /// Get blocks that are expected to be included at specified block number.
-    pub fn segment_headers_for_block(&self, block_number: NumberFor<Block>) -> Vec<SegmentHeader> {
-        self.segment_headers
-            .lock()
-            .peek(&block_number)
-            .cloned()
-            .unwrap_or_default()
     }
 
     /// Subspace chain constants.

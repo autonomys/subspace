@@ -510,25 +510,30 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let segment_headers_store =
-        tokio::task::block_in_place(|| SegmentHeadersStore::new(client.clone()))
-            .map_err(|error| ServiceError::Application(error.into()))?;
-
     let chain_constants = client
         .runtime_api()
         .chain_constants(client_info.best_hash)
         .map_err(|error| ServiceError::Application(error.into()))?;
 
+    let segment_headers_store = tokio::task::block_in_place(|| {
+        SegmentHeadersStore::new(client.clone(), chain_constants.confirmation_depth_k())
+    })
+    .map_err(|error| ServiceError::Application(error.into()))?;
+
     let subspace_link = SubspaceLink::new(chain_constants, kzg.clone());
+    let segment_headers_store = segment_headers_store.clone();
+
     let block_import = SubspaceBlockImport::<PosTable, _, _, _, _, _>::new(
         client.clone(),
         client.clone(),
         subspace_link.clone(),
         {
             let client = client.clone();
+            let segment_headers_store = segment_headers_store.clone();
 
-            move |parent_hash, subspace_link: SubspaceLink<Block>| {
+            move |parent_hash, ()| {
                 let client = client.clone();
+                let segment_headers_store = segment_headers_store.clone();
 
                 async move {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -541,7 +546,8 @@ where
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::new(
-                            subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            segment_headers_store
+                                .segment_headers_for_block(parent_block_number + 1),
                         );
 
                     Ok((timestamp, subspace_inherents))
@@ -1038,11 +1044,11 @@ where
 
         let create_inherent_data_providers = {
             let client = client.clone();
-            let subspace_link = subspace_link.clone();
+            let segment_headers_store = segment_headers_store.clone();
 
             move |parent_hash, ()| {
                 let client = client.clone();
-                let subspace_link = subspace_link.clone();
+                let segment_headers_store = segment_headers_store.clone();
 
                 async move {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -1055,7 +1061,8 @@ where
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::new(
-                            subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            segment_headers_store
+                                .segment_headers_for_block(parent_block_number + 1),
                         );
 
                     Ok((timestamp, subspace_inherents))
