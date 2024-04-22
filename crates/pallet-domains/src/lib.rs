@@ -81,8 +81,7 @@ pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
 use subspace_runtime_primitives::Balance;
 
-pub(crate) type BalanceOf<T> =
-    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
+pub(crate) type BalanceOf<T> = <T as Config>::Balance;
 
 pub(crate) type FungibleHoldId<T> =
     <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
@@ -198,7 +197,7 @@ mod pallet {
     use codec::FullCodec;
     use domain_runtime_primitives::EVMChainId;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
+    use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
     use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
@@ -249,6 +248,19 @@ mod pallet {
             + Into<H256>
             + From<H256>;
 
+        // We need this explicit type since Currency::Balance does not provide From<u64>
+        type Balance: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + AtLeast32BitUnsigned
+            + FullCodec
+            + Debug
+            + MaybeDisplay
+            + Default
+            + Copy
+            + MaxEncodedLen
+            + From<u64>;
+
         /// The domain header type.
         type DomainHeader: HeaderT<Hash = Self::DomainHash>;
 
@@ -261,7 +273,8 @@ mod pallet {
         type DomainRuntimeUpgradeDelay: Get<BlockNumberFor<Self>>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
-        type Currency: Mutate<Self::AccountId>
+        type Currency: Inspect<Self::AccountId, Balance = Self::Balance>
+            + Mutate<Self::AccountId>
             + InspectHold<Self::AccountId>
             + MutateHold<Self::AccountId>;
 
