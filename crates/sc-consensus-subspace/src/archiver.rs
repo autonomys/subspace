@@ -256,7 +256,8 @@ where
     /// Get segment headers that are expected to be included at specified block number.
     pub fn segment_headers_for_block(&self, block_number: BlockNumber) -> Vec<SegmentHeader> {
         let Some(last_segment_index) = self.max_segment_index() else {
-            return Vec::new(); // not initialized
+            // Not initialized
+            return Vec::new();
         };
 
         // Special case for the initial segment (for genesis block).
