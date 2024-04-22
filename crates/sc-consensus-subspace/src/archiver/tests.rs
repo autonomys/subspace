@@ -94,6 +94,16 @@ fn segment_headers_store_block_number_queries_work() {
         },
     };
 
+    let segment_header4 = SegmentHeader::V0 {
+        segment_index: SegmentIndex::from(4),
+        segment_commitment: Default::default(),
+        prev_segment_header_hash: Default::default(),
+        last_archived_block: LastArchivedBlock {
+            number: 806,
+            archived_progress: ArchivedBlockProgress::Partial(5),
+        },
+    };
+
     segment_headers
         .add_segment_headers(
             vec![
@@ -101,6 +111,7 @@ fn segment_headers_store_block_number_queries_work() {
                 segment_header1,
                 segment_header2,
                 segment_header3,
+                segment_header4,
             ]
             .as_slice(),
         )
@@ -144,5 +155,5 @@ fn segment_headers_store_block_number_queries_work() {
         .get_segment_header(SegmentIndex::from(3))
         .unwrap();
     let result = segment_headers.segment_headers_for_block(907u32);
-    assert_eq!(result, vec![segment_header3]);
+    assert_eq!(result, vec![segment_header3, segment_header4]);
 }

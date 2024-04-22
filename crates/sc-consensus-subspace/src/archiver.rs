@@ -281,7 +281,23 @@ where
             let target_block_number =
                 current_segment_header.last_archived_block().number + 1 + self.confirmation_depth_k;
             if target_block_number == block_number {
-                return vec![current_segment_header];
+                let mut headers_for_block = vec![current_segment_header];
+
+                // Check block spanning multiple segments
+                let last_archived_block_number =
+                    current_segment_header.last_archived_block().number;
+                let mut segment_index = current_segment_index - SegmentIndex::ONE;
+
+                while let Some(segment_header) = self.get_segment_header(segment_index) {
+                    if segment_header.last_archived_block().number == last_archived_block_number {
+                        headers_for_block.insert(0, segment_header);
+                        segment_index -= SegmentIndex::ONE;
+                    } else {
+                        break;
+                    }
+                }
+
+                return headers_for_block;
             }
 
             // iterate segments further
