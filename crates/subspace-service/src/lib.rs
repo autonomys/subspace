@@ -531,7 +531,7 @@ where
             let client = client.clone();
             let segment_headers_store = segment_headers_store.clone();
 
-            move |parent_hash, _| {
+            move |parent_hash, ()| {
                 let client = client.clone();
                 let segment_headers_store = segment_headers_store.clone();
 

@@ -26,8 +26,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-extern crate core;
-
 pub mod archiver;
 pub mod aux_schema;
 pub mod block_import;

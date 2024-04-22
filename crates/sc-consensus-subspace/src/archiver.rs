@@ -262,16 +262,20 @@ where
 
         // Special case for the initial segment (for genesis block).
         if block_number == 1 {
+            // If there is a segment index present and we store monotonically increasing segment headers,
+            // then the first header exists.
             return vec![self
                 .get_segment_header(SegmentIndex::ZERO)
-                .expect("Segment headers are stored in monononically increasing order; qed")];
+                .expect("Segment headers are stored in monotonically increasing order; qed")];
         }
 
         let mut current_segment_index = last_segment_index;
         loop {
+            // If the current segment index present and we store monotonically increasing segment headers,
+            // then the current segment header exists as well.
             let current_segment_header = self
                 .get_segment_header(current_segment_index)
-                .expect("Current segment must always exist.");
+                .expect("Segment headers are stored in monotonically increasing order; qed");
 
             // The block immediately after the archived segment adding the confirmation depth
             let target_block_number =
