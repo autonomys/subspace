@@ -42,6 +42,7 @@ use rayon::prelude::*;
 use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
@@ -738,7 +739,7 @@ impl SingleDiskFarm {
         let handlers = Arc::<Handlers>::default();
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
-        let modifying_sector_index = Arc::<AsyncRwLock<Option<SectorIndex>>>::default();
+        let sectors_being_modified = Arc::<AsyncRwLock<HashSet<SectorIndex>>>::default();
         let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
@@ -812,7 +813,7 @@ impl SingleDiskFarm {
         let plotting_join_handle = tokio::task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let handlers = Arc::clone(&handlers);
-            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let sectors_being_modified = Arc::clone(&sectors_being_modified);
             let node_client = node_client.clone();
             let plot_file = Arc::clone(&plot_file);
             let error_sender = Arc::clone(&error_sender);
@@ -833,7 +834,7 @@ impl SingleDiskFarm {
                     metadata_file,
                     sectors_metadata,
                     handlers,
-                    modifying_sector_index,
+                    sectors_being_modified,
                     sectors_to_plot_receiver,
                     global_mutex: &global_mutex,
                     plotter,
@@ -916,7 +917,7 @@ impl SingleDiskFarm {
         let farming_join_handle = tokio::task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
-            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let sectors_being_modified = Arc::clone(&sectors_being_modified);
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let mut start_receiver = start_sender.subscribe();
             let mut stop_receiver = stop_sender.subscribe();
@@ -951,7 +952,7 @@ impl SingleDiskFarm {
                         kzg,
                         erasure_coding,
                         handlers,
-                        modifying_sector_index,
+                        sectors_being_modified,
                         slot_info_notifications: slot_info_forwarder_receiver,
                         thread_pool: farming_thread_pool,
                         read_sector_record_chunks_mode,
@@ -997,7 +998,7 @@ impl SingleDiskFarm {
             plot_file,
             Arc::clone(&sectors_metadata),
             erasure_coding,
-            modifying_sector_index,
+            sectors_being_modified,
             read_sector_record_chunks_mode,
             global_mutex,
         );

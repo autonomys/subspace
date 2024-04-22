@@ -10,6 +10,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use rayon::ThreadPool;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -58,7 +59,7 @@ where
 
 /// Plot audit options
 #[derive(Debug)]
-pub struct PlotAuditOptions<'a, PosTable>
+pub struct PlotAuditOptions<'a, 'b, PosTable>
 where
     PosTable: Table,
 {
@@ -76,14 +77,14 @@ where
     pub erasure_coding: &'a ErasureCoding,
     /// Optional sector that is currently being modified (for example replotted) and should not be
     /// audited
-    pub maybe_sector_being_modified: Option<SectorIndex>,
+    pub sectors_being_modified: &'b HashSet<SectorIndex>,
     /// Mode of reading chunks during proving
     pub read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
-impl<'a, PosTable> Clone for PlotAuditOptions<'a, PosTable>
+impl<'a, 'b, PosTable> Clone for PlotAuditOptions<'a, 'b, PosTable>
 where
     PosTable: Table,
 {
@@ -92,7 +93,7 @@ where
     }
 }
 
-impl<'a, PosTable> Copy for PlotAuditOptions<'a, PosTable> where PosTable: Table {}
+impl<'a, 'b, PosTable> Copy for PlotAuditOptions<'a, 'b, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
 pub struct PlotAudit<Plot>(Plot)
@@ -108,9 +109,9 @@ where
         Self(plot)
     }
 
-    pub fn audit<PosTable>(
+    pub fn audit<'b, PosTable>(
         &'a self,
-        options: PlotAuditOptions<'a, PosTable>,
+        options: PlotAuditOptions<'a, 'b, PosTable>,
     ) -> Result<
         Vec<(
             SectorIndex,
@@ -128,7 +129,7 @@ where
             sectors_metadata,
             kzg,
             erasure_coding,
-            maybe_sector_being_modified,
+            sectors_being_modified,
             read_sector_record_chunks_mode: mode,
             table_generator,
         } = options;
@@ -139,7 +140,7 @@ where
             slot_info.voting_solution_range,
             &self.0,
             sectors_metadata,
-            maybe_sector_being_modified,
+            sectors_being_modified,
         )?;
 
         Ok(audit_results
@@ -187,7 +188,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) kzg: Kzg,
     pub(super) erasure_coding: ErasureCoding,
     pub(super) handlers: Arc<Handlers>,
-    pub(super) modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
+    pub(super) sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
     pub(super) thread_pool: ThreadPool,
     pub(super) read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
@@ -215,7 +216,7 @@ where
         kzg,
         erasure_coding,
         handlers,
-        modifying_sector_index,
+        sectors_being_modified,
         mut slot_info_notifications,
         thread_pool,
         read_sector_record_chunks_mode,
@@ -248,8 +249,7 @@ where
             debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
 
             let mut sectors_solutions = {
-                let modifying_sector_guard = modifying_sector_index.read().await;
-                let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
+                let sectors_being_modified = &*sectors_being_modified.read().await;
 
                 thread_pool.install(|| {
                     let _span_guard = span.enter();
@@ -261,7 +261,7 @@ where
                         sectors_metadata: &sectors_metadata,
                         kzg: &kzg,
                         erasure_coding: &erasure_coding,
-                        maybe_sector_being_modified,
+                        sectors_being_modified,
                         read_sector_record_chunks_mode,
                         table_generator: &table_generator,
                     })

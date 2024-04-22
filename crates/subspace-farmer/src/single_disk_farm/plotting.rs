@@ -11,7 +11,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(not(windows))]
 use std::fs::File;
 use std::io;
@@ -98,7 +98,7 @@ pub(super) struct PlottingOptions<'a, NC, P> {
     pub(super) metadata_file: UnbufferedIoFileWindows,
     pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) handlers: Arc<Handlers>,
-    pub(super) modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
+    pub(super) sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
     pub(super) global_mutex: &'a AsyncMutex<()>,
     pub(super) plotter: P,
@@ -126,7 +126,7 @@ where
         metadata_file,
         sectors_metadata,
         handlers,
-        modifying_sector_index,
+        sectors_being_modified,
         mut sectors_to_plot_receiver,
         global_mutex,
         plotter,
@@ -259,7 +259,7 @@ where
             .map_err(PlottingError::LowLevel)?;
 
         // Inform others that this sector is being modified
-        modifying_sector_index.write().await.replace(sector_index);
+        sectors_being_modified.write().await.insert(sector_index);
 
         {
             // Take mutex briefly to make sure writing is allowed right now
@@ -326,7 +326,7 @@ where
         });
 
         // Inform others that this sector is no longer being modified
-        modifying_sector_index.write().await.take();
+        sectors_being_modified.write().await.remove(&sector_index);
 
         if replotting {
             debug!(%sector_index, "Sector replotted successfully");
