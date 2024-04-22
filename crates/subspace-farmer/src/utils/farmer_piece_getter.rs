@@ -110,7 +110,7 @@ where
         let maybe_piece = self.get_piece_fast_internal(piece_index).await;
         // Store the result for others to observe
         if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
-            *in_progress_piece = maybe_piece.clone();
+            in_progress_piece.clone_from(&maybe_piece);
             self.inner.in_progress_pieces.lock().remove(&piece_index);
         }
         maybe_piece
@@ -198,7 +198,7 @@ where
         let maybe_piece = self.get_piece_slow_internal(piece_index).await;
         // Store the result for others to observe
         if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
-            *in_progress_piece = maybe_piece.clone();
+            in_progress_piece.clone_from(&maybe_piece);
             self.inner.in_progress_pieces.lock().remove(&piece_index);
         }
         maybe_piece

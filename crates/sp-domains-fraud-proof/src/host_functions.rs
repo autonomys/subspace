@@ -27,7 +27,7 @@ use sp_externalities::Extensions;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
-use sp_state_machine::{Error, OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
+use sp_state_machine::{OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
 use sp_trie::{MemoryDB, StorageProof};
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -669,8 +669,10 @@ where
     }
 }
 
-type CreateProofCheckBackedResult<H> =
-    Result<(TrieBackend<MemoryDB<H>, H>, sp_trie::recorder::Recorder<H>), Box<dyn Error>>;
+type CreateProofCheckBackedResult<H> = Result<
+    (TrieBackend<MemoryDB<H>, H>, sp_trie::recorder::Recorder<H>),
+    Box<dyn sp_state_machine::Error>,
+>;
 
 /// Creates a memory db backed with a recorder.
 /// Fork of `sp_state_machine::create_proof_check_backend` with recorder enabled.
@@ -697,15 +699,17 @@ where
 
 /// Execution Proof check error.
 #[derive(Debug)]
-pub enum ExecutionProofCheckError {
+pub(crate) enum ExecutionProofCheckError {
     /// Holds the actual execution proof error
+    // While we don't read the error, we'd still like it to be present in case we need it later
+    #[allow(dead_code)]
     ExecutionError(Box<dyn sp_state_machine::Error>),
     /// Error when storage proof contains unused node keys.
     UnusedNodes,
 }
 
 impl From<Box<dyn sp_state_machine::Error>> for ExecutionProofCheckError {
-    fn from(value: Box<dyn Error>) -> Self {
+    fn from(value: Box<dyn sp_state_machine::Error>) -> Self {
         Self::ExecutionError(value)
     }
 }
@@ -725,7 +729,7 @@ pub(crate) fn execution_proof_check<H, Exec>(
 ) -> Result<Vec<u8>, ExecutionProofCheckError>
 where
     H: Hasher,
-    H::Out: Ord + 'static + codec::Codec,
+    H::Out: Ord + 'static + Codec,
     Exec: CodeExecutor + Clone + 'static,
 {
     let expected_nodes_to_be_read = proof.iter_nodes().count();

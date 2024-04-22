@@ -714,8 +714,7 @@ impl Archiver {
                 let output_chunks = pieces.iter_mut().map(|piece| {
                     piece
                         .record_mut()
-                        .iter_mut()
-                        .nth(record_offset)
+                        .get_mut(record_offset)
                         .expect("Statically known to exist in a record; qed")
                 });
 

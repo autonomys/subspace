@@ -875,11 +875,14 @@ impl PieceArray {
             .expect("Slice of memory has correct length; qed");
 
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let record = unsafe { mem::transmute(record) };
+        let record = unsafe { mem::transmute::<&[u8; Record::SIZE], &Record>(record) };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let commitment = unsafe { mem::transmute(commitment) };
+        let commitment = unsafe {
+            mem::transmute::<&[u8; RecordCommitment::SIZE], &RecordCommitment>(commitment)
+        };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let witness = unsafe { mem::transmute(witness) };
+        let witness =
+            unsafe { mem::transmute::<&[u8; RecordWitness::SIZE], &RecordWitness>(witness) };
 
         (record, commitment, witness)
     }
@@ -898,11 +901,15 @@ impl PieceArray {
             .expect("Slice of memory has correct length; qed");
 
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let record = unsafe { mem::transmute(record) };
+        let record = unsafe { mem::transmute::<&mut [u8; Record::SIZE], &mut Record>(record) };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let commitment = unsafe { mem::transmute(commitment) };
+        let commitment = unsafe {
+            mem::transmute::<&mut [u8; RecordCommitment::SIZE], &mut RecordCommitment>(commitment)
+        };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let witness = unsafe { mem::transmute(witness) };
+        let witness = unsafe {
+            mem::transmute::<&mut [u8; RecordWitness::SIZE], &mut RecordWitness>(witness)
+        };
 
         (record, commitment, witness)
     }

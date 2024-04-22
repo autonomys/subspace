@@ -238,7 +238,8 @@ pub(super) fn compute_f1_simd<const K: u8>(
     );
 
     // SAFETY: `X` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
-    let xs = unsafe { mem::transmute::<_, [u32; COMPUTE_F1_SIMD_FACTOR]>(xs) };
+    let xs =
+        unsafe { mem::transmute::<[X; COMPUTE_F1_SIMD_FACTOR], [u32; COMPUTE_F1_SIMD_FACTOR]>(xs) };
     // Extract `PARAM_EXT` most significant bits from `xs` and store in the final offset of
     // eventual `ys` with the rest of bits being in undefined state.
     let pre_exts = Simd::from(xs) >> Simd::splat(u32::from(K - PARAM_EXT));

@@ -330,7 +330,9 @@ where
 
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
-            network_args.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
+            network_args
+                .bootstrap_nodes
+                .clone_from(&farmer_app_info.dsn_bootstrap_nodes);
         }
 
         configure_network(
@@ -481,7 +483,7 @@ where
             .first()
             .expect("Guaranteed to have some CPU cores; qed");
 
-        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).max(1).min(8)).expect("Not zero; qed")
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).clamp(1, 8)).expect("Not zero; qed")
     });
 
     info!(

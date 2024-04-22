@@ -20,7 +20,6 @@ use rand::distributions::{Distribution, Uniform};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
-use sp_core::crypto::AccountId32;
 use sp_core::ecdsa::Pair;
 use sp_core::{keccak_256, Pair as _, H160, H256, U256};
 use sp_domains::core_api::DomainCoreApi;
@@ -33,7 +32,6 @@ use tempfile::TempDir;
 #[derive(Clone)]
 pub struct AccountInfo {
     pub address: H160,
-    pub account_id: AccountId32,
     pub private_key: H256,
 }
 
@@ -50,7 +48,6 @@ fn address_build(seed_number: u128) -> AccountInfo {
 
     AccountInfo {
         private_key,
-        account_id: AccountId32::from(Into::<[u8; 32]>::into(data)),
         address,
     }
 }

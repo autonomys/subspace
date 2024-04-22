@@ -136,7 +136,7 @@ impl DomainCli {
             }
 
             domain_config.base_path = BasePath::new(domain_base_path.clone());
-            domain_config.data_path = domain_base_path.clone();
+            domain_config.data_path.clone_from(&domain_base_path);
         }
         Ok(domain_config)
     }
