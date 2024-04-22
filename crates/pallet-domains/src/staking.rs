@@ -9,7 +9,7 @@ use crate::pallet::{
     NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches,
     PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
-use crate::staking_epoch::mint_funds;
+use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
     BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
     OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
@@ -1181,7 +1181,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<u
             .map_err(Error::BundleStorageFund)?;
 
         // transfer any remaining amount to treasury
-        mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
+        mint_into_treasury::<T>(total_stake).ok_or(Error::MintBalance)?;
 
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
@@ -1234,7 +1234,7 @@ pub(crate) fn do_reward_operators<T: Config>(
                 .ok_or(Error::BalanceUnderflow)?;
         }
 
-        mint_funds::<T>(&T::TreasuryAccount::get(), rewards)
+        mint_into_treasury::<T>(rewards).ok_or(Error::MintBalance)
     })
 }
 

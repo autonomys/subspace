@@ -1,6 +1,7 @@
 //! Bundle storage fund
 
 use crate::staking::NewDeposit;
+use crate::staking_epoch::mint_into_treasury;
 use crate::{BalanceOf, Config, Event, HoldIdentifier, Operators, Pallet};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
@@ -124,8 +125,7 @@ pub fn refund_storage_fee<T: Config>(
 
     // Drop any dust and deregistered/slashed operator's bundle storage fee to the treasury
     if !remaining_fee.is_zero() {
-        T::Currency::mint_into(&T::TreasuryAccount::get(), remaining_fee)
-            .map_err(|_| Error::MintBalance)?;
+        mint_into_treasury::<T>(remaining_fee).ok_or(Error::MintBalance)?;
     }
 
     Ok(())

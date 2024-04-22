@@ -2,7 +2,8 @@
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
-    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, TreasuryFunds,
+    Withdrawals,
 };
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
@@ -13,8 +14,10 @@ use crate::{
     OperatorEpochSharePrice, Pallet,
 };
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
-use frame_support::traits::tokens::{Fortitude, Precision, Restriction};
+use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+use frame_support::traits::tokens::{
+    DepositConsequence, Fortitude, Precision, Provenance, Restriction,
+};
 use frame_support::PalletError;
 use scale_info::TypeInfo;
 use sp_core::Get;
@@ -365,6 +368,20 @@ pub(crate) fn mint_funds<T: Config>(
     Ok(())
 }
 
+pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Option<()> {
+    let existing_funds = TreasuryFunds::<T>::take();
+    let total_funds = existing_funds.checked_add(&amount)?;
+    match T::Currency::can_deposit(&T::TreasuryAccount::get(), total_funds, Provenance::Minted) {
+        // Deposit is possible, so we mint the funds into treasury.
+        DepositConsequence::Success => {
+            T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds).ok()?;
+        }
+        // Deposit cannot be done to treasury, so hold the funds until we can.
+        _ => TreasuryFunds::<T>::set(total_funds),
+    }
+    Some(())
+}
+
 pub(crate) fn do_finalize_slashed_operators<T: Config>(
     domain_id: DomainId,
 ) -> Result<u32, TransitionError> {
@@ -461,7 +478,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                         .ok_or(TransitionError::BalanceOverflow)?
                         .checked_sub(&amount_to_slash_in_holding)
                         .ok_or(TransitionError::BalanceUnderflow)?;
-                    mint_funds::<T>(&T::TreasuryAccount::get(), nominator_reward)?;
+                    mint_into_treasury::<T>(nominator_reward)
+                        .ok_or(TransitionError::MintBalance)?;
 
                     total_stake = total_stake.saturating_sub(nominator_staked_amount);
 
@@ -507,7 +525,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             )?;
 
             // mint any gains to treasury account
-            mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
+            mint_into_treasury::<T>(total_stake).ok_or(TransitionError::MintBalance)?;
 
             // Transfer all the storage fund to treasury
             bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
