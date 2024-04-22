@@ -19,8 +19,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_core_primitives::PotCheckpoints;
 use tokio::sync::broadcast::error::RecvError;
-use tracing::log::info;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 pub trait PotSlotWorker<Block>
 where

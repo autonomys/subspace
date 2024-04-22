@@ -46,6 +46,9 @@
 //! [`encode_block`] and [`decode_block`] are symmetric encoding/decoding functions turning
 //! [`SignedBlock`]s into bytes and back.
 
+#[cfg(test)]
+mod tests;
+
 use crate::block_import::BlockImportingNotification;
 use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
@@ -65,7 +68,7 @@ use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, Zero};
 use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::future::Future;
@@ -112,12 +115,14 @@ struct SegmentHeadersStoreInner<AS> {
 #[derive(Debug)]
 pub struct SegmentHeadersStore<AS> {
     inner: Arc<SegmentHeadersStoreInner<AS>>,
+    confirmation_depth_k: BlockNumber,
 }
 
 impl<AS> Clone for SegmentHeadersStore<AS> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
+            confirmation_depth_k: self.confirmation_depth_k,
         }
     }
 }
@@ -130,7 +135,10 @@ where
     const INITIAL_CACHE_CAPACITY: usize = 1_000;
 
     /// Create new instance
-    pub fn new(aux_store: Arc<AS>) -> sp_blockchain::Result<Self> {
+    pub fn new(
+        aux_store: Arc<AS>,
+        confirmation_depth_k: BlockNumber,
+    ) -> sp_blockchain::Result<Self> {
         let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
 
         debug!("Started loading segment headers into cache");
@@ -157,6 +165,7 @@ where
                 next_key_index: AtomicU16::new(next_key_index),
                 cache: Mutex::new(cache),
             }),
+            confirmation_depth_k,
         })
     }
 
@@ -242,6 +251,48 @@ where
 
     fn key(key_index: u16) -> Vec<u8> {
         (Self::KEY_PREFIX, key_index.to_le_bytes()).encode()
+    }
+
+    /// Get segment headers that are expected to be included at specified block number.
+    pub fn segment_headers_for_block(&self, block_number: BlockNumber) -> Vec<SegmentHeader> {
+        let Some(last_segment_index) = self.max_segment_index() else {
+            return Vec::new(); // not initialized
+        };
+
+        // Special case for the initial segment (for genesis block).
+        if block_number == 1 {
+            return vec![self
+                .get_segment_header(SegmentIndex::ZERO)
+                .expect("The initial segment header must exist at this point.")];
+        }
+
+        let mut current_segment_index = last_segment_index;
+        loop {
+            let current_segment_header = self
+                .get_segment_header(current_segment_index)
+                .expect("Current segment must always exist.");
+
+            // The block immediately after the archived segment adding the confirmation depth
+            let target_block_number =
+                current_segment_header.last_archived_block().number + 1 + self.confirmation_depth_k;
+            if target_block_number == block_number {
+                return vec![current_segment_header];
+            }
+
+            // iterate segments further
+            if target_block_number > block_number {
+                // no need to check the initial segment
+                if current_segment_index > SegmentIndex::ONE {
+                    current_segment_index -= SegmentIndex::ONE
+                } else {
+                    break;
+                }
+            } else {
+                return Vec::new(); // no segment headers required
+            }
+        }
+
+        Vec::new() // no segment headers required
     }
 }
 
@@ -495,30 +546,6 @@ where
             )
             .expect("Incorrect parameters for archiver");
 
-            if last_segment_header.segment_index() == SegmentIndex::ZERO {
-                // Due to sync from DSN it is possible that the very first segment header is known
-                // even though only genesis block exists, in this case there is nothing else left to
-                // archive and we need to insert segment header to be included in the block 1
-                // explicitly here or else it'll be missing and block import will fail.
-                //
-                // Checking for segment index instead of best block number ensures we support
-                // hypothetical reorgs of the early blocks within confirmation depth distance from
-                // genesis.
-                subspace_link
-                    .segment_headers
-                    .lock()
-                    .put(One::one(), vec![last_segment_header]);
-            } else {
-                // Otherwise segment header is expected to be included in
-                // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
-                // processing block `+ confirmation_depth_k` and corresponding segment header will
-                // be included in the next block after that
-                subspace_link.segment_headers.lock().put(
-                    (last_archived_block_number + confirmation_depth_k + 1).into(),
-                    vec![last_segment_header],
-                );
-            }
-
             archiver
         } else {
             info!("Starting archiving from genesis");
@@ -627,18 +654,6 @@ where
 
                 if !new_segment_headers.is_empty() {
                     segment_headers_store.add_segment_headers(&new_segment_headers)?;
-                    // Set list of expected segment headers for the block where we expect segment
-                    // header extrinsic to be included
-                    subspace_link.segment_headers.lock().put(
-                        if block_number_to_archive.is_zero() {
-                            // Special case for genesis block whose segment header should be included in
-                            // the first block in order for further validation to work properly.
-                            One::one()
-                        } else {
-                            block_number_to_archive + confirmation_depth_k.into() + One::one()
-                        },
-                        new_segment_headers,
-                    );
                 }
             }
         }
@@ -754,7 +769,6 @@ where
         .subscribe();
     let archived_segment_notification_sender =
         subspace_link.archived_segment_notification_sender.clone();
-    let segment_headers = Arc::clone(&subspace_link.segment_headers);
 
     Ok(async move {
         // Farmers may have not received all previous segments, send them now.
@@ -861,10 +875,6 @@ where
             }
 
             if !new_segment_headers.is_empty() {
-                segment_headers
-                    .lock()
-                    .put(block_number + One::one(), new_segment_headers);
-
                 let maybe_block_number_to_finalize = segment_headers_store
                     .max_segment_index()
                     // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
