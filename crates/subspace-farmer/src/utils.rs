@@ -15,7 +15,7 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
-use std::{fmt, io, thread};
+use std::{fmt, io, iter, thread};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::runtime::Handle;
 use tokio::task;
@@ -356,9 +356,16 @@ pub fn thread_pool_core_indices(
     thread_pool_size: Option<NonZeroUsize>,
     thread_pools: Option<NonZeroUsize>,
 ) -> Vec<CpuCoreSet> {
-    let all_numa_nodes = all_cpu_cores();
+    thread_pool_core_indices_internal(all_cpu_cores(), thread_pool_size, thread_pools)
+}
+
+fn thread_pool_core_indices_internal(
+    all_cpu_cores: Vec<CpuCoreSet>,
+    thread_pool_size: Option<NonZeroUsize>,
+    thread_pools: Option<NonZeroUsize>,
+) -> Vec<CpuCoreSet> {
     #[cfg(feature = "numa")]
-    let topology = &all_numa_nodes
+    let topology = &all_cpu_cores
         .first()
         .expect("Not empty according to function description; qed")
         .topology;
@@ -367,32 +374,27 @@ pub fn thread_pool_core_indices(
     // default to auto-detected number of thread pools
     let thread_pools = thread_pools
         .map(|thread_pools| thread_pools.get())
-        .or_else(|| thread_pool_size.map(|_| all_numa_nodes.len()));
+        .or_else(|| thread_pool_size.map(|_| all_cpu_cores.len()));
 
     if let Some(thread_pools) = thread_pools {
         let mut thread_pool_core_indices = Vec::<CpuCoreSet>::with_capacity(thread_pools);
 
-        let total_cpu_cores = all_numa_nodes
-            .iter()
-            .flat_map(|set| set.cpu_cores())
-            .count();
+        let total_cpu_cores = all_cpu_cores.iter().flat_map(|set| set.cpu_cores()).count();
 
         if let Some(thread_pool_size) = thread_pool_size {
             // If thread pool size is fixed, loop over all CPU cores as many times as necessary and
             // assign contiguous ranges of CPU cores to corresponding thread pools
+            let mut cpu_cores_iterator = iter::repeat(
+                all_cpu_cores
+                    .iter()
+                    .flat_map(|cpu_core_set| cpu_core_set.cores.iter())
+                    .copied(),
+            )
+            .flatten();
 
             for _ in 0..thread_pools {
-                let cpu_cores_range = if let Some(last_cpu_index) = thread_pool_core_indices
-                    .last()
-                    .and_then(|thread_indices| thread_indices.cpu_cores().last())
-                    .copied()
-                {
-                    last_cpu_index + 1..
-                } else {
-                    0..
-                };
-
-                let cpu_cores = cpu_cores_range
+                let cpu_cores = cpu_cores_iterator
+                    .by_ref()
                     .take(thread_pool_size.get())
                     // To loop over all CPU cores multiple times, modulo naively obtained CPU
                     // cores by the total available number of CPU cores
@@ -408,14 +410,14 @@ pub fn thread_pool_core_indices(
         } else {
             // If thread pool size is not fixed, create threads pools with `total_cpu_cores/thread_pools` threads
 
-            let all_cpu_cores = all_numa_nodes
+            let all_cpu_cores = all_cpu_cores
                 .iter()
                 .flat_map(|cpu_core_set| cpu_core_set.cores.iter())
                 .copied()
                 .collect::<Vec<_>>();
 
             thread_pool_core_indices = all_cpu_cores
-                .chunks_exact(total_cpu_cores / thread_pools)
+                .chunks(total_cpu_cores.div_ceil(thread_pools))
                 .map(|cpu_cores| CpuCoreSet {
                     cores: cpu_cores.to_vec(),
                     #[cfg(feature = "numa")]
@@ -426,7 +428,7 @@ pub fn thread_pool_core_indices(
         thread_pool_core_indices
     } else {
         // If everything is set to defaults, use physical layout of CPUs
-        all_numa_nodes
+        all_cpu_cores
     }
 }
 
