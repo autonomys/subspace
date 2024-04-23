@@ -46,6 +46,7 @@ pub(in super::super) struct FarmerMetrics {
     pub(in super::super) sector_written: Counter<u64, AtomicU64>,
     pub(in super::super) sector_plotting: Counter<u64, AtomicU64>,
     pub(in super::super) sector_plotted: Counter<u64, AtomicU64>,
+    pub(in super::super) sector_plotting_error: Counter<u64, AtomicU64>,
 }
 
 impl FarmerMetrics {
@@ -207,6 +208,15 @@ impl FarmerMetrics {
             sector_plotted.clone(),
         );
 
+        let sector_plotting_error = Counter::<_, _>::default();
+
+        sub_registry.register_with_unit(
+            "sector_plotting_error_counter",
+            "Number of sector plotting failures",
+            Unit::Other("sectors".to_string()),
+            sector_plotting_error.clone(),
+        );
+
         Self {
             auditing_time,
             proving_time,
@@ -224,6 +234,7 @@ impl FarmerMetrics {
             sector_written,
             sector_plotting,
             sector_plotted,
+            sector_plotting_error,
         }
     }
 

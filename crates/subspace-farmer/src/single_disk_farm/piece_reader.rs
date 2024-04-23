@@ -5,6 +5,7 @@ use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
+use std::collections::HashSet;
 #[cfg(not(windows))]
 use std::fs::File;
 use std::future::Future;
@@ -54,7 +55,7 @@ impl DiskPieceReader {
         #[cfg(windows)] plot_file: Arc<UnbufferedIoFileWindows>,
         sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
-        modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
+        sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
         read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
         global_mutex: Arc<AsyncMutex<()>>,
     ) -> (Self, impl Future<Output = ()>)
@@ -70,7 +71,7 @@ impl DiskPieceReader {
                 &*plot_file,
                 sectors_metadata,
                 erasure_coding,
-                modifying_sector_index,
+                sectors_being_modified,
                 read_piece_receiver,
                 read_sector_record_chunks_mode,
                 global_mutex,
@@ -113,7 +114,7 @@ async fn read_pieces<PosTable, S>(
     plot_file: S,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     erasure_coding: ErasureCoding,
-    modifying_sector_index: Arc<AsyncRwLock<Option<SectorIndex>>>,
+    sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
     mode: ReadSectorRecordChunksMode,
     global_mutex: Arc<AsyncMutex<()>>,
@@ -134,9 +135,9 @@ async fn read_pieces<PosTable, S>(
             continue;
         }
 
-        let modifying_sector_guard = modifying_sector_index.read().await;
+        let sectors_being_modified = &*sectors_being_modified.read().await;
 
-        if *modifying_sector_guard == Some(sector_index) {
+        if sectors_being_modified.contains(&sector_index) {
             // Skip sector that is being modified right now
             continue;
         }

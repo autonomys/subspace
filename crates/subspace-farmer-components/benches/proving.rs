@@ -5,6 +5,7 @@ use futures::executor::block_on;
 use parking_lot::Mutex;
 use rand::prelude::*;
 use schnorrkel::Keypair;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -164,7 +165,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             solution_range,
             &plotted_sector_bytes,
             slice::from_ref(&plotted_sector.sector_metadata),
-            None,
+            &HashSet::default(),
         )
         .unwrap();
 
@@ -253,7 +254,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 solution_range,
                 &plot_file,
                 &sectors_metadata,
-                None,
+                &HashSet::default(),
             )
             .unwrap();
             let solution_candidates = audit_results
