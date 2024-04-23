@@ -182,11 +182,9 @@ where
 
         if core_version >= 5 {
             if api.initialize_block(parent_hash, &header).is_err() {
-                #[allow(deprecated)]
                 // TODO: Hack for Subspace fork caused by
                 // https://github.com/subspace/polkadot-sdk/commit/447bbc765020674614e9ac982163f7e11e5b03ea
-                // remove before next network
-                api.initialize_block_before_version_5(parent_hash, &header)?;
+                // Replace with error propagation before next network
             }
         } else {
             #[allow(deprecated)]
