@@ -27,10 +27,11 @@ use crate::messages::MessageKey;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use frame_support::inherent::{InherentData, InherentIdentifier, IsFatalError};
+#[cfg(feature = "std")]
+use frame_support::inherent::InherentData;
+use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
-use sp_inherents::Error;
 
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
@@ -133,7 +134,9 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
         let error = InherentError::decode(&mut &*error).ok()?;
 
-        Some(Err(Error::Application(Box::from(format!("{error:?}")))))
+        Some(Err(sp_inherents::Error::Application(Box::from(format!(
+            "{error:?}"
+        )))))
     }
 }
 

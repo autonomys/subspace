@@ -12787,7 +12787,6 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "schnorrkel",
- "sp-arithmetic",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
