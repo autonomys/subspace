@@ -176,7 +176,22 @@ where
             api.record_proof();
         }
 
-        api.initialize_block(parent_hash, &header)?;
+        let core_version = api
+            .api_version::<dyn Core<Block>>(parent_hash)?
+            .ok_or_else(|| Error::VersionInvalid("Core".to_string()))?;
+
+        if core_version >= 5 {
+            if api.initialize_block(parent_hash, &header).is_err() {
+                #[allow(deprecated)]
+                // TODO: Hack for Subspace fork caused by
+                // https://github.com/subspace/polkadot-sdk/commit/447bbc765020674614e9ac982163f7e11e5b03ea
+                // remove before next network
+                api.initialize_block_before_version_5(parent_hash, &header)?;
+            }
+        } else {
+            #[allow(deprecated)]
+            api.initialize_block_before_version_5(parent_hash, &header)?;
+        }
 
         if let Some(inherent_data) = maybe_inherent_data {
             let inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
