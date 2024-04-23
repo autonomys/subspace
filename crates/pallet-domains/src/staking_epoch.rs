@@ -1,9 +1,9 @@
 //! Staking epoch transition for domain
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
-    Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
-    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, TreasuryFunds,
-    Withdrawals,
+    AccumulatedTreasuryFunds, Deposits, DomainStakingSummary, LastEpochStakingDistribution,
+    OperatorIdOwner, Operators, PendingOperatorSwitches, PendingSlashes,
+    PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
@@ -369,15 +369,20 @@ pub(crate) fn mint_funds<T: Config>(
 }
 
 pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Option<()> {
-    let existing_funds = TreasuryFunds::<T>::take();
+    let existing_funds = AccumulatedTreasuryFunds::<T>::get();
     let total_funds = existing_funds.checked_add(&amount)?;
+    if total_funds.is_zero() {
+        return Some(());
+    }
+
     match T::Currency::can_deposit(&T::TreasuryAccount::get(), total_funds, Provenance::Minted) {
         // Deposit is possible, so we mint the funds into treasury.
         DepositConsequence::Success => {
             T::Currency::mint_into(&T::TreasuryAccount::get(), total_funds).ok()?;
+            AccumulatedTreasuryFunds::<T>::kill();
         }
         // Deposit cannot be done to treasury, so hold the funds until we can.
-        _ => TreasuryFunds::<T>::set(total_funds),
+        _ => AccumulatedTreasuryFunds::<T>::set(total_funds),
     }
     Some(())
 }

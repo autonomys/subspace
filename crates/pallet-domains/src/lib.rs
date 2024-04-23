@@ -636,10 +636,10 @@ mod pallet {
     pub(super) type PermissionedActionAllowedBy<T: Config> =
         StorageValue<_, sp_domains::PermissionedActionAllowedBy<T::AccountId>, OptionQuery>;
 
-    /// Accumulate treasury funds temporarily until the funds have Exisitential despoit.
-    /// We do this do minting small amounts into treasury would not fail.
+    /// Accumulate treasury funds temporarily until the funds are above Existential despoit.
+    /// We do this to ensure minting small amounts into treasury would not fail.
     #[pallet::storage]
-    pub(super) type TreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+    pub(super) type AccumulatedTreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
