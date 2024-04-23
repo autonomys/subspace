@@ -21,8 +21,8 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::{sr25519, Get};
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
-use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
-use sp_runtime::{Perbill, Percent, Saturating};
+use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
+use sp_runtime::{Perbill, Percent, Perquintill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::collections::vec_deque::VecDeque;
@@ -1203,20 +1203,44 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<u
 pub(crate) fn do_reward_operators<T: Config>(
     domain_id: DomainId,
     operators: IntoIter<OperatorId>,
-    mut rewards: BalanceOf<T>,
+    rewards: BalanceOf<T>,
 ) -> Result<(), Error> {
     DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
             .ok_or(Error::DomainNotInitialized)?;
 
-        let distribution = Perbill::from_rational(One::one(), operators.len() as u32);
-        let reward_per_operator = distribution.mul_floor(rewards);
-        for operator_id in operators {
+        let total_count = operators.len() as u64;
+        // calculate the operator weights based on the number of times they are repeated in the original list.
+        let operator_weights = operators.into_iter().fold(
+            BTreeMap::<OperatorId, u64>::new(),
+            |mut acc, operator_id| {
+                let total_weight = match acc.get(&operator_id) {
+                    None => 1,
+                    Some(weight) => weight + 1,
+                };
+                acc.insert(operator_id, total_weight);
+                acc
+            },
+        );
+
+        let mut allocated_rewards = BalanceOf::<T>::zero();
+        let mut weight_balance_cache = BTreeMap::<u64, BalanceOf<T>>::new();
+        for (operator_id, weight) in operator_weights {
+            let operator_reward = match weight_balance_cache.get(&weight) {
+                None => {
+                    let distribution = Perquintill::from_rational(weight, total_count);
+                    let operator_reward = distribution.mul_floor(rewards);
+                    weight_balance_cache.insert(weight, operator_reward);
+                    operator_reward
+                }
+                Some(operator_reward) => *operator_reward,
+            };
+
             let total_reward = match stake_summary.current_epoch_rewards.get(&operator_id) {
-                None => reward_per_operator,
+                None => operator_reward,
                 Some(rewards) => rewards
-                    .checked_add(&reward_per_operator)
+                    .checked_add(&operator_reward)
                     .ok_or(Error::BalanceOverflow)?,
             };
 
@@ -1226,15 +1250,21 @@ pub(crate) fn do_reward_operators<T: Config>(
 
             Pallet::<T>::deposit_event(Event::OperatorRewarded {
                 operator_id,
-                reward: reward_per_operator,
+                reward: operator_reward,
             });
 
-            rewards = rewards
-                .checked_sub(&reward_per_operator)
-                .ok_or(Error::BalanceUnderflow)?;
+            allocated_rewards = allocated_rewards
+                .checked_add(&operator_reward)
+                .ok_or(Error::BalanceOverflow)?;
         }
 
-        mint_into_treasury::<T>(rewards).ok_or(Error::MintBalance)
+        // mint remaining funds to treasury
+        mint_into_treasury::<T>(
+            rewards
+                .checked_sub(&allocated_rewards)
+                .ok_or(Error::BalanceUnderflow)?,
+        )
+        .ok_or(Error::MintBalance)
     })
 }
 
