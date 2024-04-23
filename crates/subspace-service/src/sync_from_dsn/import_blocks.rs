@@ -100,6 +100,17 @@ where
     IQS: ImportQueueService<Block> + ?Sized,
 {
     {
+        if !segment_headers_store
+            .wait_for_initialization(Duration::from_mins(5))
+            .await
+        {
+            return Err(sc_service::Error::Other(
+                "Archiver needs to be initialized before syncing from DSN to populate the very \
+                           first segment"
+                    .to_string(),
+            ));
+        }
+
         let max_segment_index = segment_headers_store.max_segment_index().ok_or_else(|| {
             sc_service::Error::Other(
                 "Archiver needs to be initialized before syncing from DSN to populate the very \
@@ -107,6 +118,7 @@ where
                     .to_string(),
             )
         })?;
+
         let new_segment_headers = segment_header_downloader
             .get_segment_headers(max_segment_index)
             .await

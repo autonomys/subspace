@@ -75,10 +75,12 @@ use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use tokio::time::Instant;
 use tracing::{debug, info, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
@@ -100,6 +102,7 @@ struct SegmentHeadersStoreInner<AS> {
     next_key_index: AtomicU16,
     /// In-memory cache of segment headers
     cache: Mutex<Vec<SegmentHeader>>,
+    initialization_completed: Mutex<bool>,
 }
 
 /// Persistent storage of segment headers.
@@ -164,9 +167,39 @@ where
                 aux_store,
                 next_key_index: AtomicU16::new(next_key_index),
                 cache: Mutex::new(cache),
+                initialization_completed: Mutex::new(false),
             }),
             confirmation_depth_k,
         })
+    }
+
+    /// Waits until the initialization completed with timeout.
+    pub async fn wait_for_initialization(&self, timeout: Duration) -> bool {
+        let start = Instant::now();
+        const WAIT_PERIOD: Duration = Duration::from_secs(1);
+
+        loop {
+            if *self.inner.initialization_completed.lock() {
+                return true;
+            }
+
+            if Instant::now().duration_since(start) > timeout {
+                return false;
+            }
+
+            debug!(
+                ?start,
+                ?timeout,
+                "Waiting for the segment headers store initialization..."
+            );
+            tokio::time::sleep(WAIT_PERIOD).await;
+        }
+    }
+
+    /// Marks initialization finished - required for access synchronization.
+    pub fn finish_initialization(&self) {
+        *self.inner.initialization_completed.lock() = true;
+        debug!("Segment headers store finished initialization.");
     }
 
     /// Returns last observed segment index
@@ -518,7 +551,7 @@ where
 
 fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
-    subspace_link: &SubspaceLink<Block>,
+    subspace_link: SubspaceLink<Block>,
     client: &Client,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
@@ -682,6 +715,8 @@ where
                     segment_headers_store.add_segment_headers(&new_segment_headers)?;
                 }
             }
+
+            segment_headers_store.finish_initialization();
         }
     }
 
@@ -762,7 +797,7 @@ fn finalize_block<Block, Backend, Client>(
 /// efficient overall and during sync only total sync time matters.
 pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
-    subspace_link: &SubspaceLink<Block>,
+    subspace_link: SubspaceLink<Block>,
     client: Arc<Client>,
     sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
@@ -783,20 +818,24 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
-    let InitializedArchiver {
-        confirmation_depth_k,
-        mut archiver,
-        older_archived_segments,
-        best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
-    } = initialize_archiver(&segment_headers_store, subspace_link, client.as_ref())?;
-
-    let mut block_importing_notification_stream = subspace_link
-        .block_importing_notification_stream
-        .subscribe();
-    let archived_segment_notification_sender =
-        subspace_link.archived_segment_notification_sender.clone();
-
     Ok(async move {
+        let InitializedArchiver {
+            confirmation_depth_k,
+            mut archiver,
+            older_archived_segments,
+            best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
+        } = initialize_archiver(
+            &segment_headers_store,
+            subspace_link.clone(),
+            client.as_ref(),
+        )?;
+
+        let mut block_importing_notification_stream = subspace_link
+            .block_importing_notification_stream
+            .subscribe();
+        let archived_segment_notification_sender =
+            subspace_link.archived_segment_notification_sender.clone();
+
         // Farmers may have not received all previous segments, send them now.
         for archived_segment in older_archived_segments {
             send_archived_segment_notification(
