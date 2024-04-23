@@ -262,17 +262,22 @@ where
 
         // Special case for the initial segment (for genesis block).
         if block_number == 1 {
-            // If there is a segment index present and we store monotonically increasing segment headers,
-            // then the first header exists.
+            // If there is a segment index present, and we store monotonically increasing segment
+            // headers, then the first header exists.
             return vec![self
                 .get_segment_header(SegmentIndex::ZERO)
                 .expect("Segment headers are stored in monotonically increasing order; qed")];
         }
 
+        if last_segment_index == SegmentIndex::ZERO {
+            // Genesis segment already included in block #1
+            return Vec::new();
+        }
+
         let mut current_segment_index = last_segment_index;
         loop {
-            // If the current segment index present and we store monotonically increasing segment headers,
-            // then the current segment header exists as well.
+            // If the current segment index present, and we store monotonically increasing segment
+            // headers, then the current segment header exists as well.
             let current_segment_header = self
                 .get_segment_header(current_segment_index)
                 .expect("Segment headers are stored in monotonically increasing order; qed");
