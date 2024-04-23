@@ -387,7 +387,7 @@ mod tests {
                 Err(Error::DomainNameTooLong)
             );
             // Recorrect `domain_name`
-            domain_config.domain_name = "evm-domain".to_owned();
+            "evm-domain".clone_into(&mut domain_config.domain_name);
 
             // Failed to instantiate domain due to using unregistered runtime id
             assert_eq!(

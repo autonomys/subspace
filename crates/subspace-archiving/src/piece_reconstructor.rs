@@ -92,8 +92,7 @@ impl PiecesReconstructor {
                     .map(|piece| {
                         piece
                             .record()
-                            .iter()
-                            .nth(record_offset)
+                            .get(record_offset)
                             .expect("Statically guaranteed to exist in a piece; qed")
                     })
                     .map(Scalar::try_from)
@@ -110,8 +109,7 @@ impl PiecesReconstructor {
                 .zip(reconstructed_pieces.iter_mut().map(|piece| {
                     piece
                         .record_mut()
-                        .iter_mut()
-                        .nth(record_offset)
+                        .get_mut(record_offset)
                         .expect("Statically guaranteed to exist in a piece; qed")
                 }))
                 .for_each(|(source_scalar, segment_data)| {
