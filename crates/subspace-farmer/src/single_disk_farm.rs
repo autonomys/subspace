@@ -1,5 +1,4 @@
 pub mod farming;
-pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotting;
@@ -11,13 +10,13 @@ use crate::farm::{
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
+use crate::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::plotter::Plotter;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
-use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 pub use crate::single_disk_farm::plotting::PlottingError;
