@@ -91,7 +91,7 @@ By default, node data is written to `{subspace-node-base-path}/domains/{domain-i
 Once the project has been built, the following command can be used to explore all parameters and subcommands:
 
 ```bash
-target/production/subspace-node --dev -- --help
+target/production/subspace-node run --dev -- --help
 ```
 
 ### Build from source
