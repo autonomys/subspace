@@ -75,12 +75,10 @@ use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
-use tokio::time::Instant;
 use tracing::{debug, info, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
@@ -102,7 +100,6 @@ struct SegmentHeadersStoreInner<AS> {
     next_key_index: AtomicU16,
     /// In-memory cache of segment headers
     cache: Mutex<Vec<SegmentHeader>>,
-    initialization_completed: Mutex<bool>,
 }
 
 /// Persistent storage of segment headers.
@@ -167,39 +164,9 @@ where
                 aux_store,
                 next_key_index: AtomicU16::new(next_key_index),
                 cache: Mutex::new(cache),
-                initialization_completed: Mutex::new(false),
             }),
             confirmation_depth_k,
         })
-    }
-
-    /// Waits until the initialization completed with timeout.
-    pub async fn wait_for_initialization(&self, timeout: Duration) -> bool {
-        let start = Instant::now();
-        const WAIT_PERIOD: Duration = Duration::from_secs(1);
-
-        loop {
-            if *self.inner.initialization_completed.lock() {
-                return true;
-            }
-
-            if Instant::now().duration_since(start) > timeout {
-                return false;
-            }
-
-            debug!(
-                ?start,
-                ?timeout,
-                "Waiting for the segment headers store initialization..."
-            );
-            tokio::time::sleep(WAIT_PERIOD).await;
-        }
-    }
-
-    /// Marks initialization finished - required for access synchronization.
-    pub fn finish_initialization(&self) {
-        *self.inner.initialization_completed.lock() = true;
-        debug!("Segment headers store finished initialization.");
     }
 
     /// Returns last observed segment index
@@ -715,8 +682,6 @@ where
                     segment_headers_store.add_segment_headers(&new_segment_headers)?;
                 }
             }
-
-            segment_headers_store.finish_initialization();
         }
     }
 
@@ -818,17 +783,32 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
+    let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
+        Some(initialize_archiver(
+            &segment_headers_store,
+            subspace_link.clone(),
+            client.as_ref(),
+        )?)
+    } else {
+        None
+    };
+
     Ok(async move {
+        let archiver = match maybe_archiver {
+            Some(archiver) => archiver,
+            None => initialize_archiver(
+                &segment_headers_store,
+                subspace_link.clone(),
+                client.as_ref(),
+            )?,
+        };
+
         let InitializedArchiver {
             confirmation_depth_k,
             mut archiver,
             older_archived_segments,
             best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
-        } = initialize_archiver(
-            &segment_headers_store,
-            subspace_link.clone(),
-            client.as_ref(),
-        )?;
+        } = archiver;
 
         let mut block_importing_notification_stream = subspace_link
             .block_importing_notification_stream
