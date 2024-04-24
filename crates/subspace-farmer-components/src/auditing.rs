@@ -2,6 +2,7 @@ use crate::proving::SolutionCandidates;
 use crate::sector::{sector_size, SectorContentsMap, SectorMetadataChecksummed};
 use crate::{ReadAtOffset, ReadAtSync};
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::io;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
@@ -103,13 +104,13 @@ where
 }
 
 /// Audit the whole plot and generate streams of solutions
-pub fn audit_plot_sync<'a, Plot>(
+pub fn audit_plot_sync<'a, 'b, Plot>(
     public_key: &'a PublicKey,
     global_challenge: &Blake3Hash,
     solution_range: SolutionRange,
     plot: &'a Plot,
     sectors_metadata: &'a [SectorMetadataChecksummed],
-    maybe_sector_being_modified: Option<SectorIndex>,
+    sectors_being_modified: &'b HashSet<SectorIndex>,
 ) -> Result<Vec<AuditResult<'a, ReadAtOffset<'a, Plot>>>, AuditingError>
 where
     Plot: ReadAtSync + 'a,
@@ -128,7 +129,7 @@ where
         // Read s-buckets of all sectors, map to winning chunks and then to audit results, all in
         // parallel
         .filter_map(|(sector_auditing_info, sector_metadata)| {
-            if maybe_sector_being_modified == Some(sector_metadata.sector_index) {
+            if sectors_being_modified.contains(&sector_metadata.sector_index) {
                 // Skip sector that is being modified right now
                 return None;
             }

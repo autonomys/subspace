@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use clap::Subcommand;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 use parking_lot::Mutex;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -153,7 +154,7 @@ fn audit(
                             sectors_metadata: &sectors_metadata,
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
-                            maybe_sector_being_modified: None,
+                            sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
@@ -191,7 +192,7 @@ fn audit(
                             sectors_metadata: &sectors_metadata,
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
-                            maybe_sector_being_modified: None,
+                            sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
@@ -226,7 +227,7 @@ fn audit(
                             sectors_metadata: &sectors_metadata,
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
-                            maybe_sector_being_modified: None,
+                            sectors_being_modified: &HashSet::default(),
                             read_sector_record_chunks_mode:
                                 ReadSectorRecordChunksMode::ConcurrentChunks,
                             table_generator: &table_generator,
@@ -310,7 +311,7 @@ fn prove(
                 sectors_metadata: &sectors_metadata,
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
-                maybe_sector_being_modified: None,
+                sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &Mutex::new(PosTable::generator()),
             };
@@ -383,7 +384,7 @@ fn prove(
                 sectors_metadata: &sectors_metadata,
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
-                maybe_sector_being_modified: None,
+                sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &table_generator,
             };
@@ -453,7 +454,7 @@ fn prove(
                 sectors_metadata: &sectors_metadata,
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
-                maybe_sector_being_modified: None,
+                sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
                 table_generator: &table_generator,
             };

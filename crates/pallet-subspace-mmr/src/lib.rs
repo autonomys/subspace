@@ -16,7 +16,6 @@
 //! Pallet that provides necessary Leaf data for MMR.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(associated_type_bounds)]
 
 use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;

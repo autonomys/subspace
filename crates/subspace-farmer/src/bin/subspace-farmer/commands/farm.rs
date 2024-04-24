@@ -26,6 +26,7 @@ use subspace_farmer::farm::{
     Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
 };
 use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -36,7 +37,7 @@ use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop, CpuCoreSet,
+    thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -330,7 +331,9 @@ where
 
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
-            network_args.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
+            network_args
+                .bootstrap_nodes
+                .clone_from(&farmer_app_info.dsn_bootstrap_nodes);
         }
 
         configure_network(
@@ -415,8 +418,8 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let mut plotting_thread_pool_core_indices;
-    let mut replotting_thread_pool_core_indices;
+    let plotting_thread_pool_core_indices;
+    let replotting_thread_pool_core_indices;
     if let Some(plotting_cpu_cores) = plotting_cpu_cores {
         plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
             .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
@@ -455,18 +458,6 @@ where
                 l3_cache_groups = %plotting_thread_pool_core_indices.len(),
                 "Multiple L3 cache groups detected"
             );
-
-            if plotting_thread_pool_core_indices.len() > disk_farms.len() {
-                plotting_thread_pool_core_indices =
-                    CpuCoreSet::regroup(&plotting_thread_pool_core_indices, disk_farms.len());
-                replotting_thread_pool_core_indices =
-                    CpuCoreSet::regroup(&replotting_thread_pool_core_indices, disk_farms.len());
-
-                info!(
-                    farms_count = %disk_farms.len(),
-                    "Regrouped CPU cores to match number of farms, more farms may leverage CPU more efficiently"
-                );
-            }
         }
     }
 
@@ -481,7 +472,7 @@ where
             .first()
             .expect("Guaranteed to have some CPU cores; qed");
 
-        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).max(1).min(8)).expect("Not zero; qed")
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).clamp(1, 8)).expect("Not zero; qed")
     });
 
     info!(
@@ -499,10 +490,19 @@ where
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
+    let global_mutex = Arc::default();
+    let plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
+        piece_getter,
+        downloading_semaphore,
+        plotting_thread_pool_manager,
+        record_encoding_concurrency,
+        Arc::clone(&global_mutex),
+        kzg.clone(),
+        erasure_coding.clone(),
+    ));
 
     let (farms, plotting_delay_senders) = {
         let node_rpc_url = &node_rpc_url;
-        let global_mutex = Arc::default();
         let info_mutex = &AsyncMutex::new(());
         let faster_read_sector_record_chunks_mode_barrier =
             Arc::new(Barrier::new(disk_farms.len()));
@@ -520,9 +520,7 @@ where
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
-                let piece_getter = piece_getter.clone();
-                let downloading_semaphore = Arc::clone(&downloading_semaphore);
-                let plotting_thread_pool_manager = plotting_thread_pool_manager.clone();
+                let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
                 let faster_read_sector_record_chunks_mode_barrier =
                     Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
@@ -548,18 +546,15 @@ where
                             reward_address,
                             kzg,
                             erasure_coding,
-                            piece_getter,
                             cache_percentage,
-                            downloading_semaphore,
-                            record_encoding_concurrency,
                             farm_during_initial_plotting,
                             farming_thread_pool_size,
-                            plotting_thread_pool_manager,
                             plotting_delay: Some(plotting_delay_receiver),
                             global_mutex,
                             disable_farm_locking,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
+                            plotter,
                         },
                         farm_index,
                     );
@@ -803,6 +798,9 @@ where
                         farmer_metrics.observe_sector_plotting_time(&farm_id, time);
                         farmer_metrics.sector_plotted.inc();
                         farmer_metrics.update_sector_state(&farm_id, SectorState::Plotted);
+                    }
+                    SectorUpdate::Plotting(SectorPlottingDetails::Error(_)) => {
+                        farmer_metrics.sector_plotting_error.inc();
                     }
                     SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
                         farmer_metrics.update_sector_state(&farm_id, SectorState::AboutToExpire);

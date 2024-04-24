@@ -40,8 +40,7 @@ use domain_runtime_primitives::{
 use frame_support::genesis_builder_helper::{build_config, create_default_config};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, OnRuntimeUpgrade,
-    VariantCount,
+    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, VariantCount,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -78,8 +77,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, BoundedVec,
-    ExtrinsicInclusionMode, Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
@@ -714,6 +712,7 @@ impl pallet_domains::Config for Runtime {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type DomainBundleSubmitted = Messenger;
+    type Balance = Balance;
 }
 
 parameter_types! {
@@ -845,79 +844,6 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
-pub struct InitializeDynamicIssuance;
-
-impl OnRuntimeUpgrade for InitializeDynamicIssuance {
-    fn on_runtime_upgrade() -> Weight {
-        if !pallet_rewards::ProposerSubsidyPoints::<Runtime>::get().is_empty() {
-            return <Runtime as frame_system::Config>::DbWeight::get().reads_writes(1, 0);
-        }
-        let remaining_issuance = 1_000_000_000 * SSC;
-        pallet_rewards::RemainingIssuance::<Runtime>::put(remaining_issuance);
-        pallet_rewards::RewardsEnabled::<Runtime>::put(true);
-
-        let mut proposer_subsidy_points = BoundedVec::try_from(vec![
-            RewardPoint {
-                block: 0,
-                subsidy: 100000000000000000,
-            },
-            RewardPoint {
-                block: 201600,
-                subsidy: 99989921015995728,
-            },
-            RewardPoint {
-                block: 79041600,
-                subsidy: 92408728791312960,
-            },
-            RewardPoint {
-                block: 779041600,
-                subsidy: 45885578019877912,
-            },
-            RewardPoint {
-                block: 2443104160,
-                subsidy: 8687806947398648,
-            },
-        ])
-        .expect("Number of elements is below configured MaxRewardPoints; qed");
-        let mut voter_subsidy_points = BoundedVec::try_from(vec![
-            RewardPoint {
-                block: 0,
-                subsidy: 100000000000000000,
-            },
-            RewardPoint {
-                block: 201600,
-                subsidy: 99989921015995728,
-            },
-            RewardPoint {
-                block: 79041600,
-                subsidy: 92408728791312960,
-            },
-            RewardPoint {
-                block: 779041600,
-                subsidy: 45885578019877912,
-            },
-            RewardPoint {
-                block: 2443104160,
-                subsidy: 8687806947398648,
-            },
-        ])
-        .expect("Number of elements is below configured MaxRewardPoints; qed");
-
-        let current_block_number = System::block_number();
-        proposer_subsidy_points.iter_mut().for_each(|point| {
-            point.block += current_block_number;
-        });
-        voter_subsidy_points.iter_mut().for_each(|point| {
-            point.block += current_block_number;
-        });
-
-        pallet_rewards::ProposerSubsidyPoints::<Runtime>::put(proposer_subsidy_points);
-        pallet_rewards::VoterSubsidyPoints::<Runtime>::put(voter_subsidy_points);
-
-        <Runtime as frame_system::Config>::DbWeight::get().reads_writes(1, 3)
-    }
-}
-
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -925,7 +851,6 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    InitializeDynamicIssuance,
 >;
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {

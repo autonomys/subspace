@@ -63,6 +63,7 @@ impl Drop for PlottingThreadPoolsGuard {
 #[derive(Debug, Clone)]
 pub struct PlottingThreadPoolManager {
     inner: Arc<(Mutex<Inner>, Event)>,
+    thread_pool_pairs: NonZeroUsize,
 }
 
 impl PlottingThreadPoolManager {
@@ -85,7 +86,13 @@ impl PlottingThreadPoolManager {
 
         Ok(Self {
             inner: Arc::new((Mutex::new(inner), Event::new())),
+            thread_pool_pairs,
         })
+    }
+
+    /// How many thread pool pairs are being managed here
+    pub fn thread_pool_pairs(&self) -> NonZeroUsize {
+        self.thread_pool_pairs
     }
 
     /// Get one of inner thread pool pairs, will wait until one is available if needed
