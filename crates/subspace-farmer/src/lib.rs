@@ -42,6 +42,7 @@ pub mod farm;
 pub mod farmer_cache;
 pub(crate) mod identity;
 pub mod node_client;
+pub mod piece_cache;
 pub mod plotter;
 pub mod reward_signing;
 pub mod single_disk_farm;
