@@ -1,22 +1,22 @@
 pub mod farming;
+pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{
-    Farm, FarmError, FarmId, HandlerFn, PieceCache, PieceReader, PlotCache, SectorUpdate,
-};
+use crate::farm::{Farm, FarmError, FarmId, HandlerFn, PieceReader, PlotCache, SectorUpdate};
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
-use crate::piece_cache::{DiskPieceCache, DiskPieceCacheError};
+use crate::piece_cache::{PieceCache, PieceCacheError};
 use crate::plotter::Plotter;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
+use crate::single_disk_farm::piece_cache::DiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 pub use crate::single_disk_farm::plotting::PlottingError;
@@ -27,7 +27,7 @@ use crate::single_disk_farm::plotting::{
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
-use crate::KNOWN_PEERS_CACHE_SIZE;
+use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
@@ -45,7 +45,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
-use std::num::NonZeroU8;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -267,7 +266,7 @@ pub struct SingleDiskFarmOptions<NC, P> {
     /// Erasure coding instance to use.
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
-    pub cache_percentage: NonZeroU8,
+    pub cache_percentage: u8,
     /// Whether to farm during initial plotting
     pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
@@ -306,7 +305,7 @@ pub enum SingleDiskFarmError {
     TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
-    PieceCacheError(#[from] DiskPieceCacheError),
+    PieceCacheError(#[from] PieceCacheError),
     /// Can't preallocate metadata file, probably not enough space on disk
     #[error("Can't preallocate metadata file, probably not enough space on disk: {0}")]
     CantPreallocateMetadataFile(io::Error),
@@ -620,7 +619,7 @@ impl Farm for SingleDiskFarm {
         )))
     }
 
-    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
+    fn piece_cache(&self) -> Arc<dyn farm::PieceCache + 'static> {
         Arc::new(self.piece_cache())
     }
 
@@ -1193,7 +1192,7 @@ impl SingleDiskFarm {
         let target_sector_count = {
             let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
                 / 100
-                * (100 - u64::from(cache_percentage.get()));
+                * (100 - u64::from(*cache_percentage));
             // Do the rounding to make sure we have exactly as much space as fits whole number of
             // sectors, account for disk sector size just in case
             (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
@@ -1201,14 +1200,14 @@ impl SingleDiskFarm {
 
         if target_sector_count == 0 {
             let mut single_plot_with_cache_space =
-                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage.get())) * 100;
+                single_sector_overhead.div_ceil(100 - u64::from(*cache_percentage)) * 100;
             // Cache must not be empty, ensure it contains at least one element even if
             // percentage-wise it will use more space
             if single_plot_with_cache_space - single_sector_overhead
-                < DiskPieceCache::element_size() as u64
+                < PieceCache::element_size() as u64
             {
                 single_plot_with_cache_space =
-                    single_sector_overhead + DiskPieceCache::element_size() as u64;
+                    single_sector_overhead + PieceCache::element_size() as u64;
             }
 
             return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
@@ -1222,12 +1221,14 @@ impl SingleDiskFarm {
             plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
-        let cache_capacity = {
+        let cache_capacity = if *cache_percentage > 0 {
             let cache_space = allocated_space
                 - fixed_space_usage
                 - plot_file_size
                 - (sector_metadata_size as u64 * target_sector_count);
-            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
+            (cache_space / u64::from(PieceCache::element_size())) as u32
+        } else {
+            0
         };
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
             Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
@@ -1376,7 +1377,11 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = DiskPieceCache::open(directory, cache_capacity)?;
+        let piece_cache = DiskPieceCache::new(if cache_capacity == 0 {
+            None
+        } else {
+            Some(PieceCache::open(directory, cache_capacity)?)
+        });
         let plot_cache = DiskPlotCache::new(
             &plot_file,
             &sectors_metadata,
@@ -1623,7 +1628,7 @@ impl SingleDiskFarm {
             }
         }
 
-        DiskPieceCache::wipe(directory)?;
+        PieceCache::wipe(directory)?;
 
         info!(
             "Deleting info file at {}",
@@ -2100,7 +2105,7 @@ impl SingleDiskFarm {
             })?;
 
         {
-            let file = directory.join(DiskPieceCache::FILE_NAME);
+            let file = directory.join(PieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
             let cache_file = match OpenOptions::new().read(true).write(!dry_run).open(&file) {
@@ -2127,7 +2132,7 @@ impl SingleDiskFarm {
                 }
             };
 
-            let element_size = DiskPieceCache::element_size();
+            let element_size = PieceCache::element_size();
             let number_of_cached_elements = cache_size / u64::from(element_size);
             let dummy_element = vec![0; element_size as usize];
             (0..number_of_cached_elements)

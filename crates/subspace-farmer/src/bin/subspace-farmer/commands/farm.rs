@@ -546,7 +546,7 @@ where
                             reward_address,
                             kzg,
                             erasure_coding,
-                            cache_percentage,
+                            cache_percentage: cache_percentage.get(),
                             farm_during_initial_plotting,
                             farming_thread_pool_size,
                             plotting_delay: Some(plotting_delay_receiver),

@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::farm::{FarmError, PieceCache, PieceCacheOffset};
+use crate::farm;
+use crate::farm::{FarmError, PieceCacheOffset};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
@@ -32,7 +33,7 @@ const CONTENTS_READ_SKIP_LIMIT: usize = 3;
 
 /// Disk piece cache open error
 #[derive(Debug, Error)]
-pub enum DiskPieceCacheError {
+pub enum PieceCacheError {
     /// I/O error occurred
     #[error("Disk piece cache I/O error: {0}")]
     Io(#[from] io::Error),
@@ -67,12 +68,12 @@ struct Inner {
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
 /// faster
 #[derive(Debug, Clone)]
-pub struct DiskPieceCache {
+pub struct PieceCache {
     inner: Arc<Inner>,
 }
 
 #[async_trait]
-impl PieceCache for DiskPieceCache {
+impl farm::PieceCache for PieceCache {
     fn max_num_elements(&self) -> usize {
         self.inner.num_elements as usize
     }
@@ -129,12 +130,12 @@ impl PieceCache for DiskPieceCache {
     }
 }
 
-impl DiskPieceCache {
+impl PieceCache {
     pub(crate) const FILE_NAME: &'static str = "piece_cache.bin";
 
-    pub(crate) fn open(directory: &Path, capacity: u32) -> Result<Self, DiskPieceCacheError> {
+    pub(crate) fn open(directory: &Path, capacity: u32) -> Result<Self, PieceCacheError> {
         if capacity == 0 {
-            return Err(DiskPieceCacheError::ZeroCapacity);
+            return Err(PieceCacheError::ZeroCapacity);
         }
 
         #[cfg(not(windows))]
@@ -159,7 +160,7 @@ impl DiskPieceCache {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
             // writes to fail later)
             file.preallocate(expected_size)
-                .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
+                .map_err(PieceCacheError::CantPreallocateCacheFile)?;
             // Truncating file (if necessary)
             file.set_len(expected_size)?;
         }
@@ -176,7 +177,7 @@ impl DiskPieceCache {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }
 
-    /// Contents of this disk piece cache
+    /// Contents of this piece cache
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
@@ -222,10 +223,10 @@ impl DiskPieceCache {
         offset: PieceCacheOffset,
         piece_index: PieceIndex,
         piece: &Piece,
-    ) -> Result<(), DiskPieceCacheError> {
+    ) -> Result<(), PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
-            return Err(DiskPieceCacheError::OffsetOutsideOfRange {
+            return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
                 max: self.inner.num_elements - 1,
             });
@@ -257,11 +258,11 @@ impl DiskPieceCache {
     pub(crate) fn read_piece_index(
         &self,
         offset: PieceCacheOffset,
-    ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
+    ) -> Result<Option<PieceIndex>, PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
-            return Err(DiskPieceCacheError::OffsetOutsideOfRange {
+            return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
                 max: self.inner.num_elements - 1,
             });
@@ -279,11 +280,11 @@ impl DiskPieceCache {
     pub(crate) fn read_piece(
         &self,
         offset: PieceCacheOffset,
-    ) -> Result<Option<Piece>, DiskPieceCacheError> {
+    ) -> Result<Option<Piece>, PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
-            return Err(DiskPieceCacheError::OffsetOutsideOfRange {
+            return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
                 max: self.inner.num_elements - 1,
             });
@@ -303,7 +304,7 @@ impl DiskPieceCache {
         &self,
         offset: u32,
         element: &mut [u8],
-    ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
+    ) -> Result<Option<PieceIndex>, PieceCacheError> {
         self.inner
             .file
             .read_exact_at(element, u64::from(offset) * u64::from(Self::element_size()))?;
@@ -324,7 +325,7 @@ impl DiskPieceCache {
                 "Hash doesn't match, corrupted piece in cache"
             );
 
-            return Err(DiskPieceCacheError::ChecksumMismatch);
+            return Err(PieceCacheError::ChecksumMismatch);
         }
 
         let piece_index = PieceIndex::from_bytes(
