@@ -35,7 +35,7 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    all_cpu_cores, create_plotting_thread_pool_manager, parse_cpu_cores_sets,
+    create_plotting_thread_pool_manager, parse_cpu_cores_sets,
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
@@ -57,14 +57,6 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 /// very long period of writing zeroes on Windows, see https://stackoverflow.com/q/78058306/3806795
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
-
-fn should_farm_during_initial_plotting() -> bool {
-    let total_cpu_cores = all_cpu_cores()
-        .iter()
-        .flat_map(|set| set.cpu_cores())
-        .count();
-    total_cpu_cores > 8
-}
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]
@@ -140,12 +132,6 @@ pub(crate) struct FarmingArgs {
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
     record_encoding_concurrency: Option<NonZeroUsize>,
-    /// Allows to enable farming during initial plotting. Not used by default on machines with 8 or
-    /// less logical cores because plotting is so intense on CPU and memory that farming will likely
-    /// not work properly, yet it will significantly impact plotting speed, delaying the time when
-    /// farming can actually start properly.
-    #[arg(long, default_value_t = should_farm_during_initial_plotting(), action = clap::ArgAction::Set)]
-    farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of logical CPUs
     /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
@@ -248,7 +234,6 @@ where
         sector_downloading_concurrency,
         sector_encoding_concurrency,
         record_encoding_concurrency,
-        farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
         plotting_cpu_cores,
@@ -547,7 +532,6 @@ where
                             kzg,
                             erasure_coding,
                             cache_percentage: cache_percentage.get(),
-                            farm_during_initial_plotting,
                             farming_thread_pool_size,
                             plotting_delay: Some(plotting_delay_receiver),
                             global_mutex,

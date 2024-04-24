@@ -267,8 +267,6 @@ pub struct SingleDiskFarmOptions<NC, P> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: u8,
-    /// Whether to farm during initial plotting
-    pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
@@ -714,7 +712,6 @@ impl SingleDiskFarm {
             erasure_coding,
             farming_thread_pool_size,
             plotting_delay,
-            farm_during_initial_plotting,
             global_mutex,
             faster_read_sector_record_chunks_mode_barrier,
             faster_read_sector_record_chunks_mode_concurrency,
@@ -742,13 +739,6 @@ impl SingleDiskFarm {
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
             metadata_header.plotted_sector_count..target_sector_count;
-
-        let (farming_delay_sender, delay_farmer_receiver) = if farm_during_initial_plotting {
-            (None, None)
-        } else {
-            let (sender, receiver) = oneshot::channel();
-            (Some(sender), Some(receiver))
-        };
 
         let farming_thread_pool = ThreadPoolBuilder::new()
             .thread_name(move |thread_index| format!("farming-{farm_index}.{thread_index}"))
@@ -897,7 +887,6 @@ impl SingleDiskFarm {
             handlers: Arc::clone(&handlers),
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
-            initial_plotting_finished: farming_delay_sender,
             new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
@@ -932,13 +921,6 @@ impl SingleDiskFarm {
                     if start_receiver.recv().await.is_err() {
                         // Dropped before starting
                         return Ok(());
-                    }
-
-                    if let Some(farming_delay) = delay_farmer_receiver {
-                        if farming_delay.await.is_err() {
-                            // Dropped before resolving
-                            return Ok(());
-                        }
                     }
 
                     let plot_audit = PlotAudit::new(&farming_plot);
