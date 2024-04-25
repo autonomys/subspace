@@ -45,6 +45,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -159,10 +160,12 @@ impl SingleDiskFarmInfo {
 
     /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
-        fs::write(
-            directory.join(Self::FILE_NAME),
-            serde_json::to_vec(self).expect("Info serialization never fails; qed"),
-        )
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(directory.join(Self::FILE_NAME))?;
+        fs4::FileExt::try_lock_exclusive(&file)?;
+        file.set_len(0)?;
+        file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
     }
 
     /// Try to acquire exclusive lock on the single disk farm info file, ensuring no concurrent edits by cooperating
