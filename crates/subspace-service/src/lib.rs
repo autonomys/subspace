@@ -17,6 +17,7 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 #![feature(
     const_option,
+    duration_constructors,
     impl_trait_in_assoc_type,
     int_roundings,
     let_chains,
@@ -868,7 +869,7 @@ where
     let subspace_archiver = tokio::task::block_in_place(|| {
         create_subspace_archiver(
             segment_headers_store.clone(),
-            &subspace_link,
+            subspace_link.clone(),
             client.clone(),
             sync_oracle.clone(),
             telemetry.as_ref().map(|telemetry| telemetry.handle()),

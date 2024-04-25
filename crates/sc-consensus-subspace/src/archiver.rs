@@ -762,7 +762,7 @@ fn finalize_block<Block, Backend, Client>(
 /// efficient overall and during sync only total sync time matters.
 pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
-    subspace_link: &SubspaceLink<Block>,
+    subspace_link: SubspaceLink<Block>,
     client: Arc<Client>,
     sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
@@ -783,20 +783,36 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
-    let InitializedArchiver {
-        confirmation_depth_k,
-        mut archiver,
-        older_archived_segments,
-        best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
-    } = initialize_archiver(&segment_headers_store, subspace_link, client.as_ref())?;
+    let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
+        Some(initialize_archiver(
+            &segment_headers_store,
+            &subspace_link,
+            client.as_ref(),
+        )?)
+    } else {
+        None
+    };
 
     let mut block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
         .subscribe();
-    let archived_segment_notification_sender =
-        subspace_link.archived_segment_notification_sender.clone();
 
     Ok(async move {
+        let archiver = match maybe_archiver {
+            Some(archiver) => archiver,
+            None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
+        };
+
+        let InitializedArchiver {
+            confirmation_depth_k,
+            mut archiver,
+            older_archived_segments,
+            best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
+        } = archiver;
+
+        let archived_segment_notification_sender =
+            subspace_link.archived_segment_notification_sender.clone();
+
         // Farmers may have not received all previous segments, send them now.
         for archived_segment in older_archived_segments {
             send_archived_segment_notification(

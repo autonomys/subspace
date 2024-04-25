@@ -107,6 +107,7 @@ where
                     .to_string(),
             )
         })?;
+
         let new_segment_headers = segment_header_downloader
             .get_segment_headers(max_segment_index)
             .await
