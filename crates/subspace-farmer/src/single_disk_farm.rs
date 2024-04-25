@@ -146,6 +146,12 @@ impl SingleDiskFarmInfo {
             }
         };
 
+        // TODO: Workaround for farm corruption where file is replaced with an empty one, remove at
+        //  some point in the future
+        if bytes.is_empty() {
+            return Ok(None);
+        }
+
         serde_json::from_slice(&bytes)
             .map(Some)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
