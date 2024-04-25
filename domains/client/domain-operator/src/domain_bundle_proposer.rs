@@ -29,7 +29,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
 
 // `PreviousBundledTx` used to keep track of tx that have included in previous bundle and avoid
-// to re-include the these tx in the following bundle to reduce deprecated tx.
+// to re-including these transactions in the next bundle if the consensus hash did not change.
 struct PreviousBundledTx<Block: BlockT, CBlock: BlockT> {
     bundled_at: <CBlock as BlockT>::Hash,
     tx_hashes: HashSet<<Block as BlockT>::Hash>,
