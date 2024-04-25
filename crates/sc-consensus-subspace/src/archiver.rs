@@ -518,7 +518,7 @@ where
 
 fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
-    subspace_link: SubspaceLink<Block>,
+    subspace_link: &SubspaceLink<Block>,
     client: &Client,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
@@ -786,21 +786,21 @@ where
     let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
         Some(initialize_archiver(
             &segment_headers_store,
-            subspace_link.clone(),
+            &subspace_link,
             client.as_ref(),
         )?)
     } else {
         None
     };
 
+    let mut block_importing_notification_stream = subspace_link
+        .block_importing_notification_stream
+        .subscribe();
+
     Ok(async move {
         let archiver = match maybe_archiver {
             Some(archiver) => archiver,
-            None => initialize_archiver(
-                &segment_headers_store,
-                subspace_link.clone(),
-                client.as_ref(),
-            )?,
+            None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
         };
 
         let InitializedArchiver {
@@ -810,9 +810,6 @@ where
             best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
         } = archiver;
 
-        let mut block_importing_notification_stream = subspace_link
-            .block_importing_notification_stream
-            .subscribe();
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
 
