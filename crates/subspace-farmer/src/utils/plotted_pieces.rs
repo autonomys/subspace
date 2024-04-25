@@ -1,5 +1,7 @@
-use crate::farm::PieceReader;
+use crate::farm::{FarmError, PieceReader};
+use async_trait::async_trait;
 use rand::prelude::*;
+use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
@@ -10,6 +12,20 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
 
+#[derive(Debug)]
+struct DummyReader;
+
+#[async_trait]
+impl PieceReader for DummyReader {
+    async fn read_piece(
+        &self,
+        _sector_index: SectorIndex,
+        _piece_offset: PieceOffset,
+    ) -> Result<Option<Piece>, FarmError> {
+        Ok(None)
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct PieceDetails<FarmIndex> {
     farm_index: FarmIndex,
@@ -18,7 +34,7 @@ struct PieceDetails<FarmIndex> {
 }
 
 /// Wrapper data structure for pieces plotted under multiple plots.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PlottedPieces<FarmIndex> {
     readers: Vec<Arc<dyn PieceReader>>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails<FarmIndex>>>,
@@ -26,17 +42,9 @@ pub struct PlottedPieces<FarmIndex> {
 
 impl<FarmIndex> PlottedPieces<FarmIndex>
 where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + 'static,
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
 {
-    /// Initialize with readers for each farm
-    pub fn new(readers: Vec<Arc<dyn PieceReader>>) -> Self {
-        Self {
-            readers,
-            pieces: HashMap::new(),
-        }
-    }
-
     /// Check if piece is known and can be retrieved
     pub fn contains_piece(&self, piece_index: &PieceIndex) -> bool {
         self.pieces.contains_key(piece_index)
@@ -66,7 +74,11 @@ where
         let reader = match self.readers.get(usize::from(piece_details.farm_index)) {
             Some(reader) => reader.clone(),
             None => {
-                warn!(?piece_index, ?piece_details, "Plot offset is invalid");
+                warn!(
+                    ?piece_index,
+                    ?piece_details,
+                    "No piece reader for associated farm index"
+                );
                 return None;
             }
         };
@@ -138,6 +150,41 @@ where
                 if piece_details.is_empty() {
                     entry.remove_entry();
                 }
+            }
+        }
+    }
+
+    /// Add new farm with corresponding piece reader
+    pub fn add_farm(&mut self, farm_index: FarmIndex, piece_reader: Arc<dyn PieceReader>) {
+        let farm_index = usize::from(farm_index);
+
+        if self.readers.len() <= farm_index {
+            self.readers.resize(farm_index, Arc::new(DummyReader));
+            self.readers.push(piece_reader);
+        } else {
+            self.readers[farm_index] = piece_reader;
+        }
+    }
+
+    /// Add all sectors of the farm
+    pub fn delete_farm(&mut self, farm_index: FarmIndex) {
+        if let Some(reader) = self.readers.get_mut(usize::from(farm_index)) {
+            // Replace reader with a dummy one to maintain farm order
+            *reader = Arc::new(DummyReader);
+
+            let piece_indices_to_remove = self
+                .pieces
+                .par_iter_mut()
+                .filter_map(|(&piece_index, piece_details)| {
+                    piece_details.retain(|piece_details| piece_details.farm_index != farm_index);
+
+                    piece_details.is_empty().then_some(piece_index)
+                })
+                .collect::<Vec<_>>();
+
+            // Remove pieces for which this was the only farm storing them
+            for piece_index in piece_indices_to_remove {
+                self.pieces.remove(&piece_index);
             }
         }
     }

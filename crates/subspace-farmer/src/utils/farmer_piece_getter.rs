@@ -1,7 +1,7 @@
 use crate::farmer_cache::FarmerCache;
 use crate::utils::plotted_pieces::PlottedPieces;
 use crate::NodeClient;
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
@@ -34,7 +34,7 @@ struct Inner<FarmIndex, PV, NC> {
     piece_provider: PieceProvider<PV>,
     farmer_cache: FarmerCache,
     node_client: NC,
-    plotted_pieces: Arc<Mutex<Option<PlottedPieces<FarmIndex>>>>,
+    plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
     in_progress_pieces: Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
 }
@@ -60,7 +60,7 @@ impl<FarmIndex, PV, NC> Clone for FarmerPieceGetter<FarmIndex, PV, NC> {
 
 impl<FarmIndex, PV, NC> FarmerPieceGetter<FarmIndex, PV, NC>
 where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + 'static,
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
@@ -69,7 +69,7 @@ where
         piece_provider: PieceProvider<PV>,
         farmer_cache: FarmerCache,
         node_client: NC,
-        plotted_pieces: Arc<Mutex<Option<PlottedPieces<FarmIndex>>>>,
+        plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
         dsn_cache_retry_policy: DsnCacheRetryPolicy,
     ) -> Self {
         Self {
@@ -212,11 +212,7 @@ where
         let inner = &self.inner;
 
         trace!(%piece_index, "Getting piece from local plot");
-        let maybe_read_piece_fut = inner
-            .plotted_pieces
-            .lock()
-            .as_ref()
-            .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
+        let maybe_read_piece_fut = inner.plotted_pieces.read().await.read_piece(piece_index);
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {
@@ -261,7 +257,7 @@ where
 #[async_trait]
 impl<FarmIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, PV, NC>
 where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + 'static,
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
@@ -379,7 +375,7 @@ impl<FarmIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
 #[async_trait]
 impl<FarmIndex, PV, NC> PieceGetter for WeakFarmerPieceGetter<FarmIndex, PV, NC>
 where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + 'static,
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
