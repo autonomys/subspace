@@ -470,7 +470,6 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
-    pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
     // Delay between segment header being acknowledged by farmer and potentially triggering
     // replotting
     pub(super) new_segment_processing_delay: Duration,
@@ -492,7 +491,6 @@ where
         handlers,
         sectors_metadata,
         sectors_to_plot_sender,
-        initial_plotting_finished,
         new_segment_processing_delay,
     } = plotting_scheduler_options;
 
@@ -529,7 +527,6 @@ where
         sectors_metadata,
         archived_segments_receiver,
         sectors_to_plot_sender,
-        initial_plotting_finished,
     );
 
     select! {
@@ -594,7 +591,6 @@ async fn send_plotting_notifications<NC>(
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     mut archived_segments_receiver: watch::Receiver<SegmentHeader>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
-    initial_plotting_finished: Option<oneshot::Sender<()>>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
@@ -617,11 +613,6 @@ where
 
         // We do not care if message was sent back or sender was just dropped
         let _ = acknowledgement_receiver.await;
-    }
-
-    if let Some(initial_plotting_finished) = initial_plotting_finished {
-        // Doesn't matter if receiver is still around
-        let _ = initial_plotting_finished.send(());
     }
 
     let mut sectors_expire_at =
