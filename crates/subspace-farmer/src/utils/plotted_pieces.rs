@@ -2,27 +2,33 @@ use crate::farm::PieceReader;
 use rand::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt;
 use std::future::Future;
+use std::hash::Hash;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct PieceDetails {
-    farm_index: u8,
+struct PieceDetails<FarmIndex> {
+    farm_index: FarmIndex,
     sector_index: SectorIndex,
     piece_offset: PieceOffset,
 }
 
 /// Wrapper data structure for pieces plotted under multiple plots.
 #[derive(Debug)]
-pub struct PlottedPieces {
+pub struct PlottedPieces<FarmIndex> {
     readers: Vec<Arc<dyn PieceReader>>,
-    pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
+    pieces: HashMap<PieceIndex, Vec<PieceDetails<FarmIndex>>>,
 }
 
-impl PlottedPieces {
+impl<FarmIndex> PlottedPieces<FarmIndex>
+where
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + 'static,
+    usize: From<FarmIndex>,
+{
     /// Initialize with readers for each farm
     pub fn new(readers: Vec<Arc<dyn PieceReader>>) -> Self {
         Self {
@@ -73,7 +79,7 @@ impl PlottedPieces {
                     warn!(
                         %error,
                         %piece_index,
-                        farm_index = piece_details.farm_index,
+                        farm_index = ?piece_details.farm_index,
                         sector_index = piece_details.sector_index,
                         "Failed to retrieve piece"
                     );
@@ -83,7 +89,7 @@ impl PlottedPieces {
     }
 
     /// Add new sector to collect plotted pieces
-    pub fn add_sector(&mut self, farm_index: u8, plotted_sector: &PlottedSector) {
+    pub fn add_sector(&mut self, farm_index: FarmIndex, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
@@ -105,7 +111,7 @@ impl PlottedPieces {
     }
 
     /// Add old sector from plotted pieces (happens on replotting)
-    pub fn delete_sector(&mut self, farm_index: u8, plotted_sector: &PlottedSector) {
+    pub fn delete_sector(&mut self, farm_index: FarmIndex, plotted_sector: &PlottedSector) {
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
