@@ -39,7 +39,7 @@
 //! of extrinsics from the transaction pool which are verified to be able to cover the transaction
 //! fee. With these colltected extrinsics, the bundle election solution and proper receipts, a
 //! [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
-//! included in each bundle are uninterpretable blob from the consensus chain's persepective.
+//! included in each bundle are uninterpretable blob from the consensus chain's perspective.
 //!
 //! - On each imported consensus block, operators will extract all the needed bundles from it
 //! and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to

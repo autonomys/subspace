@@ -44,7 +44,7 @@ Once the domain epoch is finished, Operator can produce bundles from the new epo
 
 ### Start the domain operator node
 
-The domain operator node runs with an embededded consensus node, thus you need to specify the args for both the consensus node and the domain operator node:
+The domain operator node runs with an embedded consensus node, thus you need to specify the args for both the consensus node and the domain operator node:
 
 ```bash
 subspace-node [consensus-chain-args] -- [domain-args]

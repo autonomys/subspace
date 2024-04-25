@@ -197,7 +197,7 @@ where
             // TODO: This is used to keep compatible with gemini-3h, remove before next network
             //
             // HACK: ideally, any network should maintain the inherent extrinsic order to keep consistency
-            // with the order in the fraud proof verifiaction side, but in gemini-3h, the domain inherent
+            // with the order in the fraud proof verification side, but in gemini-3h, the domain inherent
             // extrinsic order is changed in the ER that derived from the consensus block #168431, we have
             // to follow this change in the client side to ensure every domain node that sync from genesis
             // will produce the same ER and hence can successfully submit ER to exend the previous ER.

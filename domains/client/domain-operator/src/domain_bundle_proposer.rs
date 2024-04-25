@@ -29,7 +29,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
 
 // `PreviousBundledTx` used to keep track of tx that have included in previous bundle and avoid
-// to re-include the these tx in the following bundle to reduce deplicated tx.
+// to re-including these transactions in the next bundle if the consensus hash did not change.
 struct PreviousBundledTx<Block: BlockT, CBlock: BlockT> {
     bundled_at: <CBlock as BlockT>::Hash,
     tx_hashes: HashSet<<Block as BlockT>::Hash>,
@@ -239,7 +239,7 @@ where
         let mut bundle_size = 0u32;
         let mut skipped = 0;
 
-        // Seperate code block to make sure that runtime api instance is dropped after validation is done.
+        // Separate code block to make sure that runtime api instance is dropped after validation is done.
         {
             // We are using one runtime api instance here to maintain storage changes in the instance's internal buffer
             // between runtime calls done in this loop.
