@@ -37,8 +37,8 @@ impl Time for MockTime {
     type Moment = Moment;
 
     fn now() -> Self::Moment {
-        // valid block time for testing certs
-        1_711_367_658_200
+        // July 1, 2024, in milliseconds since Epoch
+        1_719_792_000_000
     }
 }
 
@@ -215,8 +215,12 @@ fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
     auto_id_identifier
 }
 
-fn sign_preimage(data: Vec<u8>) -> Signature {
-    let priv_key_pem = include_str!("../res/private.issuer.pem");
+fn sign_preimage(data: Vec<u8>, issuer: bool) -> Signature {
+    let priv_key_pem = if issuer {
+        include_str!("../res/private.issuer.pem")
+    } else {
+        include_str!("../res/private.leaf.pem")
+    };
     let priv_key_der = parse(priv_key_pem).unwrap().contents().to_vec();
     let rsa_key_pair = RsaKeyPair::from_pkcs8(&priv_key_der).unwrap();
     let mut signature = vec![0; rsa_key_pair.public().modulus_len()];
@@ -278,7 +282,7 @@ fn test_register_issuer_auto_id_duplicate() {
 }
 
 #[test]
-fn test_revoke_certificate() {
+fn test_self_revoke_certificate() {
     new_test_ext().execute_with(|| {
         let auto_id_identifier = register_issuer_auto_id();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
@@ -290,7 +294,7 @@ fn test_revoke_certificate() {
             nonce: auto_id.certificate.nonce(),
             action_type: CertificateActionType::RevokeCertificate,
         };
-        let signature = sign_preimage(signing_data.encode());
+        let signature = sign_preimage(signing_data.encode(), true);
         Pallet::<Test>::revoke_certificate(
             RawOrigin::Signed(1).into(),
             auto_id_identifier,
@@ -298,10 +302,82 @@ fn test_revoke_certificate() {
         )
         .unwrap();
         let auto_id = AutoIds::<Test>::get(auto_id_identifier).unwrap();
-        assert!(CertificateRevocationList::<Test>::contains_key(
-            auto_id_identifier
-        ));
+        assert!(CertificateRevocationList::<Test>::get(auto_id_identifier)
+            .unwrap()
+            .contains(&auto_id.certificate.serial()));
+
         assert_eq!(auto_id.certificate.nonce(), U256::one());
+
+        // try revoking leaf certificate when issuer is revoked
+        let leaf_id = register_leaf_auto_id(auto_id_identifier);
+        let leaf_auto_id = AutoIds::<Test>::get(leaf_id).unwrap();
+        let signing_data = CertificateAction {
+            id: leaf_id,
+            nonce: leaf_auto_id.certificate.nonce(),
+            action_type: CertificateActionType::RevokeCertificate,
+        };
+        let signature = sign_preimage(signing_data.encode(), false);
+
+        assert_noop!(
+            Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature),
+            Error::<Test>::CertificateAlreadyRevoked
+        );
+    })
+}
+
+#[test]
+fn test_revoke_leaf_certificate() {
+    new_test_ext().execute_with(|| {
+        let issuer_id = register_issuer_auto_id();
+        let leaf_id = register_leaf_auto_id(issuer_id);
+        let issuer_auto_id = AutoIds::<Test>::get(issuer_id).unwrap();
+        let leaf_auto_id = AutoIds::<Test>::get(leaf_id).unwrap();
+
+        assert!(!CertificateRevocationList::<Test>::contains_key(issuer_id));
+
+        // leaf tries to revoke itself
+        let signing_data = CertificateAction {
+            id: leaf_id,
+            nonce: issuer_auto_id.certificate.nonce(),
+            action_type: CertificateActionType::RevokeCertificate,
+        };
+
+        // sign with leaf's private key
+        let signature = sign_preimage(signing_data.encode(), false);
+
+        // leaf tries to revoke itself
+        assert_noop!(
+            Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature),
+            Error::<Test>::InvalidSignature
+        );
+
+        // now issuer revokes leaf
+        let signing_data = CertificateAction {
+            id: leaf_id,
+            nonce: issuer_auto_id.certificate.nonce(),
+            action_type: CertificateActionType::RevokeCertificate,
+        };
+        let signature = sign_preimage(signing_data.encode(), true);
+
+        Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature)
+            .unwrap();
+
+        assert!(CertificateRevocationList::<Test>::get(issuer_id)
+            .unwrap()
+            .contains(&leaf_auto_id.certificate.serial()));
+
+        // revoking the same certificate again should fail
+        let signing_data = CertificateAction {
+            id: leaf_id,
+            nonce: issuer_auto_id.certificate.nonce(),
+            action_type: CertificateActionType::RevokeCertificate,
+        };
+        let signature = sign_preimage(signing_data.encode(), true);
+
+        assert_noop!(
+            Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature),
+            Error::<Test>::CertificateAlreadyRevoked
+        );
     })
 }
 
@@ -315,7 +391,7 @@ fn test_deactivate_auto_id() {
             nonce: auto_id.certificate.nonce(),
             action_type: CertificateActionType::DeactivateAutoId,
         };
-        let signature = sign_preimage(signing_data.encode());
+        let signature = sign_preimage(signing_data.encode(), true);
         Pallet::<Test>::deactivate_auto_id(
             RawOrigin::Signed(1).into(),
             auto_id_identifier,
