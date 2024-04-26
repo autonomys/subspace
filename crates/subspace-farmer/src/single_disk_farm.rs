@@ -162,9 +162,10 @@ impl SingleDiskFarmInfo {
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
+            .create(true)
+            .truncate(true)
             .open(directory.join(Self::FILE_NAME))?;
         fs4::FileExt::try_lock_exclusive(&file)?;
-        file.set_len(0)?;
         file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
     }
 
