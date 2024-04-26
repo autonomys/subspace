@@ -45,6 +45,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -146,6 +147,12 @@ impl SingleDiskFarmInfo {
             }
         };
 
+        // TODO: Workaround for farm corruption where file is replaced with an empty one, remove at
+        //  some point in the future
+        if bytes.is_empty() {
+            return Ok(None);
+        }
+
         serde_json::from_slice(&bytes)
             .map(Some)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
@@ -153,10 +160,12 @@ impl SingleDiskFarmInfo {
 
     /// Store `SingleDiskFarm` info to path, so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
-        fs::write(
-            directory.join(Self::FILE_NAME),
-            serde_json::to_vec(self).expect("Info serialization never fails; qed"),
-        )
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(directory.join(Self::FILE_NAME))?;
+        fs4::FileExt::try_lock_exclusive(&file)?;
+        file.set_len(0)?;
+        file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
     }
 
     /// Try to acquire exclusive lock on the single disk farm info file, ensuring no concurrent edits by cooperating
@@ -1070,96 +1079,86 @@ impl SingleDiskFarm {
         let identity = Identity::open_or_create(directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
-        let (single_disk_farm_info, single_disk_farm_info_lock) =
-            match SingleDiskFarmInfo::load_from(directory)? {
-                Some(mut single_disk_farm_info) => {
-                    let single_disk_farm_info_lock = if *disable_farm_locking {
-                        None
-                    } else {
-                        Some(
-                            SingleDiskFarmInfo::try_lock(directory)
-                                .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
-                        )
-                    };
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(directory)? {
+            Some(mut single_disk_farm_info) => {
+                if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
+                    return Err(SingleDiskFarmError::WrongChain {
+                        id: *single_disk_farm_info.id(),
+                        correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
+                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
+                    });
+                }
 
-                    if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
-                        return Err(SingleDiskFarmError::WrongChain {
-                            id: *single_disk_farm_info.id(),
-                            correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
-                            wrong_chain: hex::encode(farmer_app_info.genesis_hash),
-                        });
-                    }
+                if &public_key != single_disk_farm_info.public_key() {
+                    return Err(SingleDiskFarmError::IdentityMismatch {
+                        id: *single_disk_farm_info.id(),
+                        correct_public_key: *single_disk_farm_info.public_key(),
+                        wrong_public_key: public_key,
+                    });
+                }
 
-                    if &public_key != single_disk_farm_info.public_key() {
-                        return Err(SingleDiskFarmError::IdentityMismatch {
-                            id: *single_disk_farm_info.id(),
-                            correct_public_key: *single_disk_farm_info.public_key(),
-                            wrong_public_key: public_key,
-                        });
-                    }
+                let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
 
-                    let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
+                if max_pieces_in_sector < pieces_in_sector {
+                    return Err(SingleDiskFarmError::InvalidPiecesInSector {
+                        id: *single_disk_farm_info.id(),
+                        max_supported: max_pieces_in_sector,
+                        initialized_with: pieces_in_sector,
+                    });
+                }
 
-                    if max_pieces_in_sector < pieces_in_sector {
-                        return Err(SingleDiskFarmError::InvalidPiecesInSector {
-                            id: *single_disk_farm_info.id(),
-                            max_supported: max_pieces_in_sector,
-                            initialized_with: pieces_in_sector,
-                        });
-                    }
-
-                    if max_pieces_in_sector > pieces_in_sector {
-                        info!(
+                if max_pieces_in_sector > pieces_in_sector {
+                    info!(
                         pieces_in_sector,
                         max_pieces_in_sector,
                         "Farm initialized with smaller number of pieces in sector, farm needs to \
                         be re-created for increase"
                     );
-                    }
-
-                    if allocated_space != single_disk_farm_info.allocated_space() {
-                        info!(
-                            old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
-                            new_space = %bytesize::to_string(allocated_space, true),
-                            "Farm size has changed"
-                        );
-
-                        {
-                            let new_allocated_space = allocated_space;
-                            let SingleDiskFarmInfo::V0 {
-                                allocated_space, ..
-                            } = &mut single_disk_farm_info;
-                            *allocated_space = new_allocated_space;
-                        }
-
-                        single_disk_farm_info.store_to(directory)?;
-                    }
-
-                    (single_disk_farm_info, single_disk_farm_info_lock)
                 }
-                None => {
-                    let single_disk_farm_info = SingleDiskFarmInfo::new(
-                        FarmId::new(),
-                        farmer_app_info.genesis_hash,
-                        public_key,
-                        max_pieces_in_sector,
-                        allocated_space,
+
+                if allocated_space != single_disk_farm_info.allocated_space() {
+                    info!(
+                        old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
+                        new_space = %bytesize::to_string(allocated_space, true),
+                        "Farm size has changed"
                     );
 
+                    {
+                        let new_allocated_space = allocated_space;
+                        let SingleDiskFarmInfo::V0 {
+                            allocated_space, ..
+                        } = &mut single_disk_farm_info;
+                        *allocated_space = new_allocated_space;
+                    }
+
                     single_disk_farm_info.store_to(directory)?;
-
-                    let single_disk_farm_info_lock = if *disable_farm_locking {
-                        None
-                    } else {
-                        Some(
-                            SingleDiskFarmInfo::try_lock(directory)
-                                .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
-                        )
-                    };
-
-                    (single_disk_farm_info, single_disk_farm_info_lock)
                 }
-            };
+
+                single_disk_farm_info
+            }
+            None => {
+                let single_disk_farm_info = SingleDiskFarmInfo::new(
+                    FarmId::new(),
+                    farmer_app_info.genesis_hash,
+                    public_key,
+                    max_pieces_in_sector,
+                    allocated_space,
+                );
+
+                single_disk_farm_info.store_to(directory)?;
+
+                single_disk_farm_info
+            }
+        };
+
+        let single_disk_farm_info_lock = if *disable_farm_locking {
+            None
+        } else {
+            Some(
+                SingleDiskFarmInfo::try_lock(directory)
+                    .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?,
+            )
+        };
 
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
