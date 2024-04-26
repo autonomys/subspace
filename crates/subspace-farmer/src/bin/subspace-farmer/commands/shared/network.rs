@@ -1,7 +1,9 @@
+use async_lock::RwLock as AsyncRwLock;
 use clap::Parser;
-use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;
+use std::fmt;
+use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::sync::{Arc, Weak};
@@ -68,7 +70,7 @@ pub(in super::super) struct NetworkArgs {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn configure_network(
+pub(in super::super) fn configure_network<FarmIndex>(
     protocol_prefix: String,
     base_path: &Path,
     keypair: Keypair,
@@ -83,11 +85,15 @@ pub(in super::super) fn configure_network(
         pending_out_connections,
         external_addresses,
     }: NetworkArgs,
-    weak_plotted_pieces: Weak<Mutex<Option<PlottedPieces>>>,
+    weak_plotted_pieces: Weak<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     node_client: NodeRpcClient,
     farmer_cache: FarmerCache,
     prometheus_metrics_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error> {
+) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error>
+where
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
+    usize: From<FarmIndex>,
+{
     let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
         path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
         ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
@@ -129,27 +135,16 @@ pub(in super::super) fn configure_network(
                             "No piece in the cache. Trying archival storage..."
                         );
 
-                        let read_piece_fut = {
-                            let plotted_pieces = match weak_plotted_pieces.upgrade() {
-                                Some(plotted_pieces) => plotted_pieces,
-                                None => {
-                                    debug!("A readers and pieces are already dropped");
-                                    return None;
-                                }
-                            };
-                            let plotted_pieces = plotted_pieces.lock();
-                            let plotted_pieces = match plotted_pieces.as_ref() {
-                                Some(plotted_pieces) => plotted_pieces,
-                                None => {
-                                    debug!(
-                                        ?piece_index,
-                                        "Readers and pieces are not initialized yet"
-                                    );
-                                    return None;
-                                }
-                            };
-
-                            plotted_pieces.read_piece(piece_index)?.in_current_span()
+                        let read_piece_fut = match weak_plotted_pieces.upgrade() {
+                            Some(plotted_pieces) => plotted_pieces
+                                .read()
+                                .await
+                                .read_piece(piece_index)?
+                                .in_current_span(),
+                            None => {
+                                debug!("A readers and pieces are already dropped");
+                                return None;
+                            }
                         };
 
                         let piece = read_piece_fut.await;

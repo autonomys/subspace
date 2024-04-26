@@ -3,7 +3,7 @@ use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -287,7 +287,7 @@ where
         None
     };
 
-    let plotted_pieces = Arc::new(Mutex::new(None));
+    let plotted_pieces = Arc::new(AsyncRwLock::new(PlottedPieces::default()));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -643,17 +643,11 @@ where
         .await;
     drop(farmer_cache);
 
-    // Store piece readers so we can reference them later
-    let piece_readers = farms
-        .iter()
-        .map(|farm| farm.piece_reader())
-        .collect::<Vec<_>>();
-
     info!("Collecting already plotted pieces (this will take some time)...");
 
     // Collect already plotted pieces
     {
-        let mut future_plotted_pieces = PlottedPieces::new(piece_readers);
+        let mut plotted_pieces = plotted_pieces.write().await;
 
         for (farm_index, farm) in farms.iter().enumerate() {
             let farm_index = farm_index.try_into().map_err(|_error| {
@@ -663,13 +657,15 @@ where
                 )
             })?;
 
+            plotted_pieces.add_farm(farm_index, farm.piece_reader());
+
             for (sector_index, mut plotted_sectors) in
                 (0 as SectorIndex..).zip(farm.plotted_sectors().await)
             {
                 while let Some(plotted_sector_result) = plotted_sectors.next().await {
                     match plotted_sector_result {
                         Ok(plotted_sector) => {
-                            future_plotted_pieces.add_sector(farm_index, &plotted_sector);
+                            plotted_pieces.add_sector(farm_index, &plotted_sector);
                         }
                         Err(error) => {
                             error!(
@@ -683,8 +679,6 @@ where
                 }
             }
         }
-
-        plotted_pieces.lock().replace(future_plotted_pieces);
     }
 
     info!("Finished collecting already plotted pieces successfully");
@@ -721,10 +715,7 @@ where
                     let _span_guard = span.enter();
 
                     {
-                        let mut plotted_pieces = plotted_pieces.lock();
-                        let plotted_pieces = plotted_pieces
-                            .as_mut()
-                            .expect("Initial value was populated above; qed");
+                        let mut plotted_pieces = plotted_pieces.write_blocking();
 
                         if let Some(old_plotted_sector) = &maybe_old_plotted_sector {
                             plotted_pieces.delete_sector(farm_index, old_plotted_sector);
