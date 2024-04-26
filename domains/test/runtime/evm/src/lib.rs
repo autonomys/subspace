@@ -36,9 +36,12 @@ use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECO
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use frame_system::CheckWeight;
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
-use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
+use pallet_ethereum::{
+    Call, PostLogContent, Transaction as EthereumTransaction, TransactionData, TransactionStatus,
+};
 use pallet_evm::{
     Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
     IdentityAddressMapping, Runner,
@@ -68,6 +71,7 @@ use sp_runtime::{
     ExtrinsicInclusionMode,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::cmp::{max, Ordering};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
@@ -76,6 +80,9 @@ use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
     BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SSC,
 };
+
+/// Custom error when nonce overflow occurs
+const ERR_NONCE_OVERFLOW: u8 = 100;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -597,6 +604,8 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 }
 
+impl pallet_evm_nonce_tracker::Config for Runtime {}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -689,6 +698,7 @@ construct_runtime!(
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
         BaseFee: pallet_base_fee = 83,
+        EVMNoncetracker: pallet_evm_nonce_tracker = 84,
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
@@ -785,6 +795,75 @@ fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
         .map(|(_, _, extra)| extra.4 .0)
 }
 
+/// Custom pre_dispatch for extrinsic verification.
+/// Most of the logic is same as `pre_dispatch_self_contained` except
+/// - we use `validate_self_contained` instead `pre_dispatch_self_contained`
+///   since the nonce is not incremented in `pre_dispatch_self_contained`
+/// - Manually track the account nonce to check either Stale or Future nonce.
+fn pre_dispatch_evm_transaction(
+    account_id: H160,
+    call: RuntimeCall,
+    dispatch_info: &DispatchInfoOf<RuntimeCall>,
+    len: usize,
+) -> Result<(), TransactionValidityError> {
+    match call {
+        RuntimeCall::Ethereum(call) => {
+            // Withdraw the consensus chain storage fee from the caller and record
+            // it in the `BlockFees`
+            let consensus_storage_fee =
+                BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
+            match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
+                &account_id,
+                consensus_storage_fee.into(),
+            ) {
+                Ok(None) => {}
+                Ok(Some(paid_consensus_storage_fee)) => {
+                    BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
+                }
+                Err(_) => return Err(InvalidTransaction::Payment.into()),
+            }
+
+            if let Some(transaction_validity) =
+                call.validate_self_contained(&account_id, dispatch_info, len)
+            {
+                transaction_validity.map(|_| ())?;
+
+                if let Call::transact { transaction } = call {
+                    CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+
+                    let transaction_data: TransactionData = (&transaction).into();
+                    let transaction_nonce = transaction_data.nonce;
+                    // if this the first transaction from this sender, then use the
+                    // transaction nonce as first nonce.
+                    // if the current account nonce is more the tracked nonce, then
+                    // pick the highest nonce
+                    let account_nonce = {
+                        let tracked_nonce =
+                            EVMNoncetracker::account_nonce(account_id).unwrap_or(transaction_nonce);
+                        let account_nonce = EVM::account_basic(&account_id).0.nonce;
+                        max(tracked_nonce, account_nonce)
+                    };
+
+                    match transaction_nonce.cmp(&account_nonce) {
+                        Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                        Ordering::Greater => return Err(InvalidTransaction::Future.into()),
+                        Ordering::Equal => {}
+                    }
+
+                    let next_nonce = account_nonce
+                        .checked_add(U256::one())
+                        .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
+
+                    EVMNoncetracker::set_account_nonce(account_id, next_nonce);
+                }
+            }
+
+            Ok(())
+        }
+        _ => Err(InvalidTransaction::Call.into()),
+    }
+}
+
 fn check_transaction_and_do_pre_dispatch_inner(
     uxt: &<Block as BlockT>::Extrinsic,
 ) -> Result<(), TransactionValidityError> {
@@ -805,19 +884,34 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.signed {
-        CheckedSignature::Signed(account_id, extra) => extra
-            .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
-            .map(|_| ()),
+        CheckedSignature::Signed(account_id, extra) => {
+            // if a sender sends a one evm transaction first and substrate transaction
+            // after with same nonce, then reject the second transaction
+            // if sender reverse the transaction types, substrate first and evm second,
+            // since substrate updates nonce in pre_dispatch, evm transaction will be rejected.
+            if let Some(tracked_nonce) = EVMNoncetracker::account_nonce(H160::from(account_id.0)) {
+                let account_nonce = U256::from(System::account_nonce(account_id));
+                let current_nonce = max(tracked_nonce, account_nonce);
+                let transaction_nonce = U256::from(extra.5 .0);
+                match transaction_nonce.cmp(&current_nonce) {
+                    Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                    Ordering::Greater => return Err(InvalidTransaction::Future.into()),
+                    Ordering::Equal => {}
+                }
+            }
+
+            extra
+                .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
+                .map(|_| ())
+        }
         CheckedSignature::Unsigned => {
             Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }
-        CheckedSignature::SelfContained(self_contained_signing_info) => xt
-            .function
-            .pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len)
-            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))
-            .map(|_| ()),
+        CheckedSignature::SelfContained(account_id) => {
+            pre_dispatch_evm_transaction(account_id, xt.function, &dispatch_info, encoded_len)
+        }
     }
 }
 
