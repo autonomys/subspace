@@ -49,6 +49,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::block_import::BlockImportingNotification;
 use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
@@ -78,7 +79,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
@@ -520,6 +521,7 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
+    overridden_last_archived_block: Option<NumberFor<Block>>,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
     Block: BlockT,
@@ -536,11 +538,16 @@ where
         .chain_constants(best_block_hash)?
         .confirmation_depth_k();
 
-    let maybe_last_archived_block = find_last_archived_block(
-        client,
-        segment_headers_store,
-        best_block_number.saturating_sub(confirmation_depth_k.into()),
-    )?;
+    let best_block_to_archive =
+        if let Some(overridden_last_archived_block) = overridden_last_archived_block {
+            overridden_last_archived_block
+        } else {
+            best_block_number.saturating_sub(confirmation_depth_k.into())
+        };
+
+    let maybe_last_archived_block =
+        find_last_archived_block(client, segment_headers_store, best_block_to_archive)?;
+
     let have_last_segment_header = maybe_last_archived_block.is_some();
     let mut best_archived_block = None;
 
@@ -783,64 +790,124 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
-    let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
+    let mut maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
         Some(initialize_archiver(
             &segment_headers_store,
             &subspace_link,
             client.as_ref(),
+            None,
         )?)
     } else {
         None
     };
 
-    let mut block_importing_notification_stream = subspace_link
+    let block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
         .subscribe();
 
     Ok(async move {
-        let archiver = match maybe_archiver {
-            Some(archiver) => archiver,
-            None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
-        };
+        let mut saved_block_import_notification = None;
 
-        let InitializedArchiver {
-            confirmation_depth_k,
-            mut archiver,
-            older_archived_segments,
-            best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
-        } = archiver;
+        let mut block_importing_notification_stream = block_importing_notification_stream;
 
-        let archived_segment_notification_sender =
-            subspace_link.archived_segment_notification_sender.clone();
+        'initialization_recovery: loop {
+            let overridden_last_archived_block = saved_block_import_notification
+                .as_ref()
+                .map(|notification: &BlockImportingNotification<Block>| notification.block_number);
+            let archived_segment_notification_sender =
+                subspace_link.archived_segment_notification_sender.clone();
 
-        // Farmers may have not received all previous segments, send them now.
-        for archived_segment in older_archived_segments {
-            send_archived_segment_notification(
-                &archived_segment_notification_sender,
-                archived_segment,
-            )
-            .await;
-        }
+            let archiver = match maybe_archiver.take() {
+                Some(archiver) => archiver,
+                None => initialize_archiver(
+                    &segment_headers_store,
+                    &subspace_link,
+                    client.as_ref(),
+                    overridden_last_archived_block,
+                )?,
+            };
 
-        while let Some(ref block_import_notification) =
-            block_importing_notification_stream.next().await
-        {
-            archive_block(
-                &mut archiver,
-                segment_headers_store.clone(),
-                client.clone(),
-                &sync_oracle,
-                telemetry.clone(),
-                archived_segment_notification_sender.clone(),
+            let InitializedArchiver {
                 confirmation_depth_k,
-                &mut best_archived_block_number,
-                &mut best_archived_block_hash,
-                block_import_notification.block_number,
-            )
-            .await?;
-        }
+                mut archiver,
+                older_archived_segments,
+                best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
+            } = archiver;
 
-        Ok(())
+            debug!(%best_archived_block_number, ?best_archived_block_hash,  "Archiver initialized.");
+
+            if let Some(block_import_notification) = saved_block_import_notification.take() {
+                let success = archive_block(
+                    &mut archiver,
+                    segment_headers_store.clone(),
+                    client.clone(),
+                    &sync_oracle,
+                    telemetry.clone(),
+                    archived_segment_notification_sender.clone(),
+                    confirmation_depth_k,
+                    &mut best_archived_block_number,
+                    &mut best_archived_block_hash,
+                    block_import_notification.block_number,
+                )
+                .await?;
+
+                if !success {
+                    let error = format!(
+                        "Failed to recover the archiver for block number: {}",
+                        block_import_notification.block_number
+                    );
+                    error!(error);
+
+                    return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
+                        error.into(),
+                    )));
+                } else {
+                    debug!(
+                        "Saved block import notification succeeded: #{}",
+                        block_import_notification.block_number
+                    );
+                }
+            }
+
+            // Farmers may have not received all previous segments, send them now.
+            for archived_segment in older_archived_segments {
+                send_archived_segment_notification(
+                    &archived_segment_notification_sender,
+                    archived_segment,
+                )
+                .await;
+            }
+
+            while let Some(block_import_notification) =
+                block_importing_notification_stream.next().await
+            {
+                let success = archive_block(
+                    &mut archiver,
+                    segment_headers_store.clone(),
+                    client.clone(),
+                    &sync_oracle,
+                    telemetry.clone(),
+                    archived_segment_notification_sender.clone(),
+                    confirmation_depth_k,
+                    &mut best_archived_block_number,
+                    &mut best_archived_block_hash,
+                    block_import_notification.block_number,
+                )
+                .await?;
+
+                if !success {
+                    warn!(
+                        "Archiver detected an error. \
+                        Attempting recovery with block number = {}...",
+                        block_import_notification.block_number
+                    );
+
+                    saved_block_import_notification = Some(block_import_notification);
+
+                    continue 'initialization_recovery;
+                }
+            }
+        }
     })
 }
 
@@ -885,14 +952,16 @@ where
         return Ok(true);
     }
 
-    *best_archived_block_number = block_number_to_archive;
+    let maybe_block_hash = client.hash(block_number_to_archive)?;
+
+    let Some(block_hash) = maybe_block_hash else {
+        warn!("Archiver detected an error: older block by number must always exist. ");
+
+        return Ok(false);
+    };
 
     let block = client
-        .block(
-            client
-                .hash(block_number_to_archive)?
-                .expect("Older block by number must always exist"),
-        )?
+        .block(block_hash)?
         .expect("Older block by number must always exist");
 
     let parent_block_hash = *block.block.header().parent_hash();
@@ -914,6 +983,7 @@ where
         )));
     }
 
+    *best_archived_block_number = block_number_to_archive;
     *best_archived_block_hash = block_hash_to_archive;
 
     let block_object_mappings = client
