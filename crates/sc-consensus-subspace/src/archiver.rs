@@ -81,8 +81,9 @@ use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
 use tracing::{debug, info, warn};
 
-/// This corresponds to default value of `--max-runtime-instances` in Substrate
-const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 8;
+/// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
+/// instances
+const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 6;
 
 /// How deep (in segments) should block be in order to be finalized.
 ///
