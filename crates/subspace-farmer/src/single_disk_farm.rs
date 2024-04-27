@@ -2,10 +2,13 @@ pub mod farming;
 pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
+mod plotted_sectors;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmError, FarmId, HandlerFn, PieceReader, PlotCache, SectorUpdate};
+use crate::farm::{
+    Farm, FarmError, FarmId, HandlerFn, PieceReader, PlotCache, PlottedSectors, SectorUpdate,
+};
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
@@ -19,6 +22,7 @@ use crate::single_disk_farm::farming::{
 use crate::single_disk_farm::piece_cache::DiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
+use crate::single_disk_farm::plotted_sectors::SingleDiskPlottedSectors;
 pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
@@ -33,7 +37,7 @@ use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
-use futures::{select, stream, FutureExt, Stream, StreamExt};
+use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rand::prelude::*;
@@ -55,13 +59,12 @@ use std::{fs, io, mem};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PieceOffset, PublicKey, Record, SectorId, SectorIndex, SegmentIndex,
+    Blake3Hash, HistorySize, PublicKey, Record, SectorIndex, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 #[cfg(not(windows))]
 use subspace_farmer_components::file_ext::OpenOptionsExt;
-use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAtSync};
@@ -616,15 +619,8 @@ impl Farm for SingleDiskFarm {
         Ok(self.plotted_sectors_count().await)
     }
 
-    async fn plotted_sectors(
-        &self,
-    ) -> Result<Box<dyn Stream<Item = Result<PlottedSector, FarmError>> + Unpin + '_>, FarmError>
-    {
-        Ok(Box::new(stream::iter(
-            self.plotted_sectors()
-                .await
-                .map(|result| result.map_err(Into::into)),
-        )))
+    fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
+        Arc::new(self.plotted_sectors())
     }
 
     fn piece_cache(&self) -> Arc<dyn farm::PieceCache + 'static> {
@@ -642,21 +638,18 @@ impl Farm for SingleDiskFarm {
     fn on_sector_update(
         &self,
         callback: HandlerFn<(SectorIndex, SectorUpdate)>,
-    ) -> Box<dyn crate::farm::HandlerId> {
+    ) -> Box<dyn farm::HandlerId> {
         Box::new(self.on_sector_update(callback))
     }
 
     fn on_farming_notification(
         &self,
         callback: HandlerFn<FarmingNotification>,
-    ) -> Box<dyn crate::farm::HandlerId> {
+    ) -> Box<dyn farm::HandlerId> {
         Box::new(self.on_farming_notification(callback))
     }
 
-    fn on_solution(
-        &self,
-        callback: HandlerFn<SolutionResponse>,
-    ) -> Box<dyn crate::farm::HandlerId> {
+    fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn farm::HandlerId> {
         Box::new(self.on_solution(callback))
     }
 
@@ -1487,38 +1480,13 @@ impl SingleDiskFarm {
     }
 
     /// Read information about sectors plotted so far
-    pub async fn plotted_sectors(
-        &self,
-    ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
-        let public_key = self.single_disk_farm_info.public_key();
-        let sectors_metadata = self.sectors_metadata.read().await.clone();
-
-        (0..)
-            .zip(sectors_metadata)
-            .map(move |(sector_index, sector_metadata)| {
-                let sector_id = SectorId::new(public_key.hash(), sector_index);
-
-                let mut piece_indexes = Vec::with_capacity(usize::from(self.pieces_in_sector));
-                (PieceOffset::ZERO..)
-                    .take(usize::from(self.pieces_in_sector))
-                    .map(|piece_offset| {
-                        sector_id.derive_piece_index(
-                            piece_offset,
-                            sector_metadata.history_size,
-                            self.farmer_protocol_info.max_pieces_in_sector,
-                            self.farmer_protocol_info.recent_segments,
-                            self.farmer_protocol_info.recent_history_fraction,
-                        )
-                    })
-                    .collect_into(&mut piece_indexes);
-
-                Ok(PlottedSector {
-                    sector_id,
-                    sector_index,
-                    sector_metadata,
-                    piece_indexes,
-                })
-            })
+    pub fn plotted_sectors(&self) -> SingleDiskPlottedSectors {
+        SingleDiskPlottedSectors {
+            public_key: *self.single_disk_farm_info.public_key(),
+            pieces_in_sector: self.pieces_in_sector,
+            farmer_protocol_info: self.farmer_protocol_info,
+            sectors_metadata: Arc::clone(&self.sectors_metadata),
+        }
     }
 
     /// Get piece cache instance
