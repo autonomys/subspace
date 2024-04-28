@@ -855,13 +855,13 @@ mod pallet {
                 MessageWeightTag::EndpointRequest(endpoint) => {
                     T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_weight())
-                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        // If there is no endpoint handler the request won't be handled thus return zero weight
                         .unwrap_or(Weight::zero())
                 }
                 MessageWeightTag::EndpointResponse(endpoint) => {
                     T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_response_weight())
-                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        // If there is no endpoint handler the request won't be handled thus return zero weight
                         .unwrap_or(Weight::zero())
                 }
                 MessageWeightTag::None => Weight::zero(),
