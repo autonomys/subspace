@@ -8,8 +8,8 @@ use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
-use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{FutureExt, StreamExt, TryStreamExt};
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -646,59 +646,42 @@ where
     info!("Collecting already plotted pieces (this will take some time)...");
 
     // Collect already plotted pieces
-    {
+    let mut total_and_plotted_sectors = Vec::with_capacity(farms.len());
+
+    for (farm_index, farm) in farms.iter().enumerate() {
         let mut plotted_pieces = plotted_pieces.write().await;
-
-        for (farm_index, farm) in farms.iter().enumerate() {
-            let farm_index = farm_index.try_into().map_err(|_error| {
-                anyhow!(
-                    "More than 256 plots are not supported, consider running multiple farmer \
+        let farm_index = farm_index.try_into().map_err(|_error| {
+            anyhow!(
+                "More than 256 plots are not supported, consider running multiple farmer \
                     instances"
-                )
-            })?;
+            )
+        })?;
 
-            plotted_pieces.add_farm(farm_index, farm.piece_reader());
+        plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
-            let plotted_sectors = farm.plotted_sectors();
-            let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
-                anyhow!("Failed to get plotted sectors for farm {farm_index}: {error}")
-            })?;
-            while let Some(plotted_sector_result) = plotted_sectors.next().await {
-                match plotted_sector_result {
-                    Ok(plotted_sector) => {
-                        plotted_pieces.add_sector(farm_index, &plotted_sector);
-                    }
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %farm_index,
-                            "Failed reading plotted sector on startup, skipping"
-                        );
-                    }
-                }
-            }
+        let total_sector_count = farm.total_sectors_count();
+        let mut plotted_sectors_count = 0;
+        let plotted_sectors = farm.plotted_sectors();
+        let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
+            anyhow!("Failed to get plotted sectors for farm {farm_index}: {error}")
+        })?;
+
+        while let Some(plotted_sector_result) = plotted_sectors.next().await {
+            plotted_sectors_count += 1;
+            plotted_pieces.add_sector(
+                farm_index,
+                &plotted_sector_result.map_err(|error| {
+                    anyhow!(
+                        "Failed reading plotted sector on startup for farm {farm_index}: {error}"
+                    )
+                })?,
+            )
         }
+
+        total_and_plotted_sectors.push((total_sector_count, plotted_sectors_count));
     }
 
     info!("Finished collecting already plotted pieces successfully");
-
-    let total_and_plotted_sectors = farms
-        .iter()
-        .enumerate()
-        .map(|(farm_index, farm)| async move {
-            let total_sector_count = farm.total_sectors_count();
-            let plotted_sectors_count = farm.plotted_sectors_count().await.map_err(|error| {
-                anyhow!(
-                    "Failed to get plotted sectors count from from index {farm_index}: \
-                            {error}"
-                )
-            })?;
-
-            anyhow::Ok((total_sector_count, plotted_sectors_count))
-        })
-        .collect::<FuturesOrdered<_>>()
-        .try_collect::<Vec<_>>()
-        .await?;
 
     let mut farms_stream = (0u8..)
         .zip(farms)

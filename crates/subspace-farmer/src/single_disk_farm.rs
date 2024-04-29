@@ -6,9 +6,7 @@ mod plotted_sectors;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{
-    Farm, FarmError, FarmId, HandlerFn, PieceReader, PlotCache, PlottedSectors, SectorUpdate,
-};
+use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlotCache, PlottedSectors, SectorUpdate};
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
@@ -613,10 +611,6 @@ impl Farm for SingleDiskFarm {
 
     fn total_sectors_count(&self) -> SectorIndex {
         self.total_sectors_count
-    }
-
-    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError> {
-        Ok(self.plotted_sectors_count().await)
     }
 
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
@@ -1467,16 +1461,6 @@ impl SingleDiskFarm {
     /// Number of sectors in this farm
     pub fn total_sectors_count(&self) -> SectorIndex {
         self.total_sectors_count
-    }
-
-    /// Number of sectors successfully plotted so far
-    pub async fn plotted_sectors_count(&self) -> SectorIndex {
-        self.sectors_metadata
-            .read()
-            .await
-            .len()
-            .try_into()
-            .expect("Number of sectors never exceeds `SectorIndex` type; qed")
     }
 
     /// Read information about sectors plotted so far

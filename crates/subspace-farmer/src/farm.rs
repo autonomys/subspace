@@ -370,9 +370,6 @@ pub trait Farm {
     /// Number of sectors in this farm
     fn total_sectors_count(&self) -> SectorIndex;
 
-    /// Number of sectors successfully plotted so far
-    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError>;
-
     /// Get plotted sectors instance
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static>;
 
