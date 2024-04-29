@@ -660,7 +660,7 @@ where
             plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
             for (sector_index, mut plotted_sectors) in
-                (0 as SectorIndex..).zip(farm.plotted_sectors().await)
+                (0 as SectorIndex..).zip(farm.plotted_sectors().get().await)
             {
                 while let Some(plotted_sector_result) = plotted_sectors.next().await {
                     match plotted_sector_result {
