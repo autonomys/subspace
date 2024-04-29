@@ -863,16 +863,19 @@ fn pre_dispatch_evm_transaction(
             if let Some(transaction_validity) =
                 call.validate_self_contained(&account_id, dispatch_info, len)
             {
-                transaction_validity.map(|_| ())?;
+                let _ = transaction_validity?;
 
                 if let Call::transact { transaction } = call {
                     CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
                     let transaction_data: TransactionData = (&transaction).into();
                     let transaction_nonce = transaction_data.nonce;
-                    // if this the first transaction from this sender, then use the
-                    // transaction nonce as first nonce.
-                    // if the current account nonce is more the tracked nonce, then
+                    // If this the first transaction from this sender for this bundle,
+                    // then use the transaction nonce as first nonce.
+                    // We do this to ensure all the ordered transactions coming from
+                    // tx_pool is included in all the successive bundles within the same consensus block.
+                    // Once the Domain block is imported, the nonce will be updated and as a result,
+                    // if the current account nonce is greater than the tracked nonce, then
                     // pick the highest nonce
                     let account_nonce = {
                         let tracked_nonce =
@@ -922,10 +925,10 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // runtime instance.
     match xt.signed {
         CheckedSignature::Signed(account_id, extra) => {
-            // if a sender sends a one evm transaction first and substrate transaction
+            // if a sender sends an evm transaction first and substrate transaction
             // after with same nonce, then reject the second transaction
             // if sender reverse the transaction types, substrate first and evm second,
-            // since substrate updates nonce in pre_dispatch, evm transaction will be rejected.
+            // evm transaction will be rejected, since substrate updates nonce in pre_dispatch.
             if let Some(tracked_nonce) = EVMNoncetracker::account_nonce(H160::from(account_id.0)) {
                 let account_nonce = U256::from(System::account_nonce(account_id));
                 let current_nonce = max(tracked_nonce, account_nonce);
