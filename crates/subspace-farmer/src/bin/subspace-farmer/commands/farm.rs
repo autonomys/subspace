@@ -20,7 +20,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PublicKey, Record, SectorIndex};
+use subspace_core_primitives::{PublicKey, Record};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::{
     Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
@@ -659,22 +659,21 @@ where
 
             plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
-            for (sector_index, mut plotted_sectors) in
-                (0 as SectorIndex..).zip(farm.plotted_sectors().get().await)
-            {
-                while let Some(plotted_sector_result) = plotted_sectors.next().await {
-                    match plotted_sector_result {
-                        Ok(plotted_sector) => {
-                            plotted_pieces.add_sector(farm_index, &plotted_sector);
-                        }
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %farm_index,
-                                %sector_index,
-                                "Failed reading plotted sector on startup, skipping"
-                            );
-                        }
+            let plotted_sectors = farm.plotted_sectors();
+            let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
+                anyhow!("Failed to get plotted sectors for farm {farm_index}: {error}")
+            })?;
+            while let Some(plotted_sector_result) = plotted_sectors.next().await {
+                match plotted_sector_result {
+                    Ok(plotted_sector) => {
+                        plotted_pieces.add_sector(farm_index, &plotted_sector);
+                    }
+                    Err(error) => {
+                        error!(
+                            %error,
+                            %farm_index,
+                            "Failed reading plotted sector on startup, skipping"
+                        );
                     }
                 }
             }
