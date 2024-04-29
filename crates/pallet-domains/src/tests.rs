@@ -40,6 +40,7 @@ use sp_domains_fraud_proof::{
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One,
 };
+use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic, Saturating};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{prove_read, Backend, TrieBackendBuilder};
@@ -299,7 +300,12 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFee
         (None, DispatchInfo::default())
     }
 
-    fn on_storage_fees_charged(_charged_fees: Balance, _tx_size: u32) {}
+    fn on_storage_fees_charged(
+        _charged_fees: Balance,
+        _tx_size: u32,
+    ) -> Result<(), TransactionValidityError> {
+        Ok(())
+    }
 }
 
 impl domain_pallet_executive::Config for Test {

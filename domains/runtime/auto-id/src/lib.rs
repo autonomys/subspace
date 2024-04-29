@@ -20,7 +20,7 @@ pub use domain_runtime_primitives::{
 };
 use domain_runtime_primitives::{
     AccountId, Address, CheckExtrinsicsValidityError, DecodeExtrinsicError, Signature,
-    SLOT_DURATION,
+    ERR_BALANCE_OVERFLOW, SLOT_DURATION,
 };
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::genesis_builder_helper::{build_config, create_default_config};
@@ -269,8 +269,13 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         (maybe_signer, dispatch_info)
     }
 
-    fn on_storage_fees_charged(charged_fees: Balance, tx_size: u32) {
-        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee() * Balance::from(tx_size);
+    fn on_storage_fees_charged(
+        charged_fees: Balance,
+        tx_size: u32,
+    ) -> Result<(), TransactionValidityError> {
+        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
+            .checked_mul(Balance::from(tx_size))
+            .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
 
         let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
         {
@@ -281,6 +286,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
 
         BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee);
         BlockFees::note_domain_execution_fee(paid_domain_fee);
+        Ok(())
     }
 }
 

@@ -68,7 +68,10 @@ pub trait ExtrinsicStorageFees<T: Config> {
     /// Extracts signer from given extrinsic and its dispatch info.
     fn extract_signer(xt: ExtrinsicOf<T>) -> (Option<AccountIdOf<T>>, DispatchInfo);
     /// Hook to note operator rewards for charged storage fees.
-    fn on_storage_fees_charged(charged_fees: BalanceOf<T>, tx_size: u32);
+    fn on_storage_fees_charged(
+        charged_fees: BalanceOf<T>,
+        tx_size: u32,
+    ) -> Result<(), TransactionValidityError>;
 }
 
 type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
@@ -501,7 +504,7 @@ where
                         ExecutiveConfig::ExtrinsicStorageFees::on_storage_fees_charged(
                             charged_fees,
                             encoded.len() as u32,
-                        )
+                        )?;
                     }
                 }
 
