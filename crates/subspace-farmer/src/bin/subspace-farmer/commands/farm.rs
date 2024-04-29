@@ -9,7 +9,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt};
+use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -197,7 +197,7 @@ pub(crate) struct FarmingArgs {
     disable_farm_locking: bool,
     /// Exit on farm error.
     ///
-    /// By default, farmer will continue running if the are still other working farms.
+    /// By default, farmer will continue running if there are still other working farms.
     #[arg(long)]
     exit_on_farm_error: bool,
 }
@@ -206,7 +206,7 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
     let cache_percentage = NonZeroU8::from_str(s)?;
 
     if cache_percentage.get() > 99 {
-        return Err(anyhow::anyhow!("Cache percentage can't exceed 99"));
+        return Err(anyhow!("Cache percentage can't exceed 99"));
     }
 
     Ok(cache_percentage)
@@ -295,7 +295,7 @@ where
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
-        .map_err(|error| anyhow::anyhow!(error))?;
+        .map_err(|error| anyhow!(error))?;
 
     let first_farm_directory = &disk_farms
         .first()
@@ -350,7 +350,7 @@ where
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
-    .map_err(|error| anyhow::anyhow!(error))?;
+    .map_err(|error| anyhow!(error))?;
     let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
         node_client.clone(),
@@ -407,17 +407,14 @@ where
     let replotting_thread_pool_core_indices;
     if let Some(plotting_cpu_cores) = plotting_cpu_cores {
         plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
-            .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
+            .map_err(|error| anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
         replotting_thread_pool_core_indices = match replotting_cpu_cores {
-            Some(replotting_cpu_cores) => {
-                parse_cpu_cores_sets(&replotting_cpu_cores).map_err(|error| {
-                    anyhow::anyhow!("Failed to parse `--replotting-cpu-cores`: {error}")
-                })?
-            }
+            Some(replotting_cpu_cores) => parse_cpu_cores_sets(&replotting_cpu_cores)
+                .map_err(|error| anyhow!("Failed to parse `--replotting-cpu-cores`: {error}"))?,
             None => plotting_thread_pool_core_indices.clone(),
         };
         if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Number of plotting thread pools ({}) is not the same as for replotting ({})",
                 plotting_thread_pool_core_indices.len(),
                 replotting_thread_pool_core_indices.len()
@@ -551,7 +548,7 @@ where
                         }) => {
                             return (
                                 farm_index,
-                                Err(anyhow::anyhow!(
+                                Err(anyhow!(
                                     "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
                                     {} bytes to be exact)",
                                     bytesize::to_string(allocated_space, true),
@@ -854,7 +851,7 @@ where
     let farm_fut = pin!(farm_fut);
     let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
-    futures::select!(
+    select! {
         // Signal future
         _ = signal.fuse() => {},
 
@@ -872,7 +869,7 @@ where
         _ = farmer_cache_worker_fut.fuse() => {
             info!("Farmer cache worker exited.")
         },
-    );
+    }
 
     anyhow::Ok(())
 }

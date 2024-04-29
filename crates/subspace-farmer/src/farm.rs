@@ -50,7 +50,7 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     /// doesn't happen for the same piece being accessed!
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_>;
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_>;
 
     /// Store piece in cache at specified offset, replacing existing piece if there is any.
     ///
@@ -332,7 +332,7 @@ pub trait PieceReader: Send + Sync + fmt::Debug {
 }
 
 /// Opaque handler ID for event handlers, once dropped handler will be removed automatically
-pub trait HandlerId: Send + fmt::Debug {
+pub trait HandlerId: Send + Sync + fmt::Debug {
     /// Consumes [`HandlerId`] and prevents handler from being removed automatically.
     fn detach(&self);
 }
