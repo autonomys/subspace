@@ -883,16 +883,11 @@ fn pre_dispatch_evm_transaction(
 
                     let transaction_data: TransactionData = (&transaction).into();
                     let transaction_nonce = transaction_data.nonce;
-                    // If this the first transaction from this sender for this bundle,
-                    // then use the transaction nonce as first nonce.
-                    // We do this to ensure all the ordered transactions coming from
-                    // tx_pool is included in all the successive bundles within the same consensus block.
-                    // Once the Domain block is imported, the nonce will be updated and as a result,
-                    // if the current account nonce is greater than the tracked nonce, then
+                    // If the current account nonce is greater than the tracked nonce, then
                     // pick the highest nonce
                     let account_nonce = {
                         let tracked_nonce =
-                            EVMNoncetracker::account_nonce(account_id).unwrap_or(transaction_nonce);
+                            EVMNoncetracker::account_nonce(account_id).unwrap_or(U256::zero());
                         let account_nonce = EVM::account_basic(&account_id).0.nonce;
                         max(tracked_nonce, account_nonce)
                     };

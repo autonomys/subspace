@@ -851,13 +851,11 @@ fn pre_dispatch_evm_transaction(
 
                     let transaction_data: TransactionData = (&transaction).into();
                     let transaction_nonce = transaction_data.nonce;
-                    // if this the first transaction from this sender, then use the
-                    // transaction nonce as first nonce.
                     // if the current account nonce is more the tracked nonce, then
                     // pick the highest nonce
                     let account_nonce = {
                         let tracked_nonce =
-                            EVMNoncetracker::account_nonce(account_id).unwrap_or(transaction_nonce);
+                            EVMNoncetracker::account_nonce(account_id).unwrap_or(U256::zero());
                         let account_nonce = EVM::account_basic(&account_id).0.nonce;
                         max(tracked_nonce, account_nonce)
                     };
