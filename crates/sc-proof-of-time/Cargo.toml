@@ -17,7 +17,7 @@ derive_more = "0.99.17"
 futures = "0.3.29"
 lru = "0.12.3"
 parity-scale-codec = { version = "3.6.9", features = ["derive"] }
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 rayon = "1.10.0"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-consensus-slots = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
@@ -32,6 +32,6 @@ sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-proof-of-time = { version = "0.1.0", path = "../subspace-proof-of-time" }
-thread-priority = "0.16.0"
+thread-priority = "1.1.0"
 tokio = { version = "1.37.0", features = ["sync"] }
 tracing = "0.1.40"

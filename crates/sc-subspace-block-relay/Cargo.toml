@@ -12,11 +12,11 @@ include = [
 
 [dependencies]
 async-channel = "1.9.0"
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = ["derive"] }
 derive_more = "0.99.17"
 futures = "0.3.29"
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-network-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
@@ -27,6 +27,6 @@ sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", re
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 strum_macros = "0.26.2"
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-thiserror = "1.0.58"
+thiserror = "1.0.59"
 tracing = "0.1.40"
 

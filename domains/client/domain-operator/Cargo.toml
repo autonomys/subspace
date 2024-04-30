@@ -11,7 +11,7 @@ domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" 
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 futures = "0.3.29"
 futures-timer = "3.0.3"
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
@@ -39,7 +39,7 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b9
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
-thiserror = "1.0.58"
+thiserror = "1.0.59"
 tokio = { version = "1.37.0", features = ["macros"] }
 
 [dev-dependencies]

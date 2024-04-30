@@ -18,7 +18,7 @@ frame-support = { default-features = false, git = "https://github.com/subspace/p
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 log = { version = "0.4.21", default-features = false }
-scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]

@@ -12,9 +12,9 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.81"
+anyhow = "1.0.82"
 async-lock = "3.3.0"
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"
@@ -23,26 +23,25 @@ bytesize = "1.3.0"
 clap = { version = "4.5.4", features = ["color", "derive"] }
 criterion = { version = "0.5.1", default-features = false, features = ["rayon", "async"] }
 derive_more = "0.99.17"
-event-listener = "5.2.0"
+event-listener = "5.3.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.3.0"
 fs4 = "0.8.2"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 hwlocality = { version = "1.0.0-alpha.3", features = ["vendored"], optional = true }
-jsonrpsee = { version = "0.22.3", features = ["client"] }
+jsonrpsee = { version = "0.22.5", features = ["client"] }
 lru = "0.12.3"
-mimalloc = "0.1.39"
-libmimalloc-sys = "0.1.35"
+mimalloc = "0.1.41"
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.9"
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 prometheus-client = "0.22.2"
 rand = "0.8.5"
 rayon = "1.10.0"
 schnorrkel = "0.11.4"
-serde = { version = "1.0.196", features = ["derive"] }
-serde_json = "1.0.115"
+serde = { version = "1.0.199", features = ["derive"] }
+serde_json = "1.0.116"
 static_assertions = "1.1.0"
 ss58-registry = "1.47.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
@@ -53,11 +52,11 @@ subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-substrate-bip39 = "0.5.0"
+substrate-bip39 = "0.6.0"
 supports-color = "3.0.0"
 tempfile = "3.10.1"
-thiserror = "1.0.58"
-thread-priority = "0.16.0"
+thiserror = "1.0.59"
+thread-priority = "1.1.0"
 tokio = { version = "1.37.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
