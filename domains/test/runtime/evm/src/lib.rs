@@ -17,7 +17,8 @@ use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, ERR_BALANCE_OVERFLOW, ERR_NONCE_OVERFLOW,
+    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -38,7 +39,9 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
-use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
+use pallet_ethereum::{
+    Call, PostLogContent, Transaction as EthereumTransaction, TransactionData, TransactionStatus,
+};
 use pallet_evm::{
     Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
     IdentityAddressMapping, Runner,
@@ -68,6 +71,7 @@ use sp_runtime::{
     ExtrinsicInclusionMode,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::cmp::{max, Ordering};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
@@ -107,6 +111,19 @@ pub type SignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
+    frame_system::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+);
+
+/// Custom signed extra for check_and_pre_dispatch.
+/// Only Nonce check is updated and rest remains same
+type CustomSignedExtra = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckMortality<Runtime>,
+    pallet_evm_nonce_tracker::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
@@ -154,7 +171,7 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Ensure the caller can pay the consensus chain storage fee
                 let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
+                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
                 let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
                     Runtime,
                 >>::withdraw_fee(info, consensus_storage_fee.into());
@@ -179,7 +196,7 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
                 let consensus_storage_fee =
-                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
+                    BlockFees::consensus_chain_byte_fee().checked_mul(Balance::from(len as u32))?;
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
                     consensus_storage_fee.into(),
@@ -367,8 +384,13 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         (maybe_signer, dispatch_info)
     }
 
-    fn on_storage_fees_charged(charged_fees: Balance, tx_size: u32) {
-        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee() * Balance::from(tx_size);
+    fn on_storage_fees_charged(
+        charged_fees: Balance,
+        tx_size: u32,
+    ) -> Result<(), TransactionValidityError> {
+        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
+            .checked_mul(Balance::from(tx_size))
+            .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
 
         let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
         {
@@ -379,6 +401,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
 
         BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee);
         BlockFees::note_domain_execution_fee(paid_domain_fee);
+        Ok(())
     }
 }
 
@@ -597,6 +620,8 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 }
 
+impl pallet_evm_nonce_tracker::Config for Runtime {}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -689,6 +714,7 @@ construct_runtime!(
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
         BaseFee: pallet_base_fee = 83,
+        EVMNoncetracker: pallet_evm_nonce_tracker = 84,
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
@@ -785,6 +811,75 @@ fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
         .map(|(_, _, extra)| extra.4 .0)
 }
 
+/// Custom pre_dispatch for extrinsic verification.
+/// Most of the logic is same as `pre_dispatch_self_contained` except
+/// - we use `validate_self_contained` instead `pre_dispatch_self_contained`
+///   since the nonce is not incremented in `pre_dispatch_self_contained`
+/// - Manually track the account nonce to check either Stale or Future nonce.
+fn pre_dispatch_evm_transaction(
+    account_id: H160,
+    call: RuntimeCall,
+    dispatch_info: &DispatchInfoOf<RuntimeCall>,
+    len: usize,
+) -> Result<(), TransactionValidityError> {
+    match call {
+        RuntimeCall::Ethereum(call) => {
+            // Withdraw the consensus chain storage fee from the caller and record
+            // it in the `BlockFees`
+            let consensus_storage_fee = BlockFees::consensus_chain_byte_fee()
+                .checked_mul(Balance::from(len as u32))
+                .ok_or(InvalidTransaction::Custom(ERR_BALANCE_OVERFLOW))?;
+            match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
+                &account_id,
+                consensus_storage_fee.into(),
+            ) {
+                Ok(None) => {}
+                Ok(Some(paid_consensus_storage_fee)) => {
+                    BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
+                }
+                Err(_) => return Err(InvalidTransaction::Payment.into()),
+            }
+
+            if let Some(transaction_validity) =
+                call.validate_self_contained(&account_id, dispatch_info, len)
+            {
+                transaction_validity.map(|_| ())?;
+
+                if let Call::transact { transaction } = call {
+                    frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+
+                    let transaction_data: TransactionData = (&transaction).into();
+                    let transaction_nonce = transaction_data.nonce;
+                    // if the current account nonce is more the tracked nonce, then
+                    // pick the highest nonce
+                    let account_nonce = {
+                        let tracked_nonce =
+                            EVMNoncetracker::account_nonce(AccountId::from(account_id))
+                                .unwrap_or(U256::zero());
+                        let account_nonce = EVM::account_basic(&account_id).0.nonce;
+                        max(tracked_nonce, account_nonce)
+                    };
+
+                    match transaction_nonce.cmp(&account_nonce) {
+                        Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                        Ordering::Greater => return Err(InvalidTransaction::Future.into()),
+                        Ordering::Equal => {}
+                    }
+
+                    let next_nonce = account_nonce
+                        .checked_add(U256::one())
+                        .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
+
+                    EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
+                }
+            }
+
+            Ok(())
+        }
+        _ => Err(InvalidTransaction::Call.into()),
+    }
+}
+
 fn check_transaction_and_do_pre_dispatch_inner(
     uxt: &<Block as BlockT>::Extrinsic,
 ) -> Result<(), TransactionValidityError> {
@@ -805,19 +900,30 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // which would help to maintain context across multiple transaction validity check against same
     // runtime instance.
     match xt.signed {
-        CheckedSignature::Signed(account_id, extra) => extra
-            .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
-            .map(|_| ()),
+        CheckedSignature::Signed(account_id, extra) => {
+            let custom_extra: CustomSignedExtra = (
+                extra.0,
+                extra.1,
+                extra.2,
+                extra.3,
+                extra.4,
+                pallet_evm_nonce_tracker::CheckNonce::from(extra.5 .0),
+                extra.6,
+                extra.7,
+            );
+
+            custom_extra
+                .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
+                .map(|_| ())
+        }
         CheckedSignature::Unsigned => {
             Runtime::pre_dispatch(&xt.function).map(|_| ())?;
             SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }
-        CheckedSignature::SelfContained(self_contained_signing_info) => xt
-            .function
-            .pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len)
-            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))
-            .map(|_| ()),
+        CheckedSignature::SelfContained(account_id) => {
+            pre_dispatch_evm_transaction(account_id, xt.function, &dispatch_info, encoded_len)
+        }
     }
 }
 

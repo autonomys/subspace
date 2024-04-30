@@ -5,6 +5,7 @@ use frame_support::weights::IdentityFee;
 use frame_support::{derive_impl, parameter_types};
 use frame_system::mocking::MockUncheckedExtrinsic;
 use pallet_balances::AccountData;
+use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::BuildStorage;
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
@@ -46,7 +47,12 @@ impl crate::ExtrinsicStorageFees<MockRuntime> for ExtrinsicStorageFees {
         (None, DispatchInfo::default())
     }
 
-    fn on_storage_fees_charged(_charged_fees: Balance, _tx_size: u32) {}
+    fn on_storage_fees_charged(
+        _charged_fees: Balance,
+        _tx_size: u32,
+    ) -> Result<(), TransactionValidityError> {
+        Ok(())
+    }
 }
 
 impl Config for MockRuntime {

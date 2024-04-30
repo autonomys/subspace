@@ -72,6 +72,11 @@ pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 /// Maximum block length for operational and normal dispatches.
 pub const MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH: u32 = u32::MAX;
 
+/// Custom error when nonce overflow occurs.
+pub const ERR_NONCE_OVERFLOW: u8 = 100;
+/// Custom error when balance overflow occurs.
+pub const ERR_BALANCE_OVERFLOW: u8 = 200;
+
 /// Maximum block length for all dispatches.
 pub fn maximum_block_length() -> BlockLength {
     BlockLength {
