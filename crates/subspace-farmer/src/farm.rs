@@ -2,7 +2,7 @@ use crate::node_client;
 use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::Stream;
-use parity_scale_codec::{Decode, Encode, Input, Output};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
@@ -50,7 +50,7 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     /// doesn't happen for the same piece being accessed!
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_>;
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_>;
 
     /// Store piece in cache at specified offset, replacing existing piece if there is any.
     ///
@@ -332,7 +332,7 @@ pub trait PieceReader: Send + Sync + fmt::Debug {
 }
 
 /// Opaque handler ID for event handlers, once dropped handler will be removed automatically
-pub trait HandlerId: Send + fmt::Debug {
+pub trait HandlerId: Send + Sync + fmt::Debug {
     /// Consumes [`HandlerId`] and prevents handler from being removed automatically.
     fn detach(&self);
 }
@@ -353,6 +353,39 @@ pub enum FarmId {
     Ulid(Ulid),
 }
 
+impl Encode for FarmId {
+    fn size_hint(&self) -> usize {
+        1_usize
+            + match self {
+                FarmId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
+            }
+    }
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        match self {
+            FarmId::Ulid(ulid) => {
+                output.push_byte(0);
+                Encode::encode_to(&ulid.0, output);
+            }
+        }
+    }
+}
+
+impl EncodeLike for FarmId {}
+
+impl Decode for FarmId {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        match input
+            .read_byte()
+            .map_err(|e| e.chain("Could not decode `FarmId`, failed to read variant byte"))?
+        {
+            0 => u128::decode(input)
+                .map(|ulid| FarmId::Ulid(Ulid(ulid)))
+                .map_err(|e| e.chain("Could not decode `FarmId::Ulid.0`")),
+            _ => Err("Could not decode `FarmId`, variant doesn't exist".into()),
+        }
+    }
+}
+
 #[allow(clippy::new_without_default)]
 impl FarmId {
     /// Creates new ID
@@ -369,9 +402,6 @@ pub trait Farm {
 
     /// Number of sectors in this farm
     fn total_sectors_count(&self) -> SectorIndex;
-
-    /// Number of sectors successfully plotted so far
-    async fn plotted_sectors_count(&self) -> Result<SectorIndex, FarmError>;
 
     /// Get plotted sectors instance
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static>;

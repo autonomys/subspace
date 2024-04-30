@@ -8,8 +8,8 @@ use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use futures::channel::oneshot;
-use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{FutureExt, StreamExt, TryStreamExt};
+use futures::stream::FuturesUnordered;
+use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
@@ -197,7 +197,7 @@ pub(crate) struct FarmingArgs {
     disable_farm_locking: bool,
     /// Exit on farm error.
     ///
-    /// By default, farmer will continue running if the are still other working farms.
+    /// By default, farmer will continue running if there are still other working farms.
     #[arg(long)]
     exit_on_farm_error: bool,
 }
@@ -206,7 +206,7 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
     let cache_percentage = NonZeroU8::from_str(s)?;
 
     if cache_percentage.get() > 99 {
-        return Err(anyhow::anyhow!("Cache percentage can't exceed 99"));
+        return Err(anyhow!("Cache percentage can't exceed 99"));
     }
 
     Ok(cache_percentage)
@@ -295,7 +295,7 @@ where
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
-        .map_err(|error| anyhow::anyhow!(error))?;
+        .map_err(|error| anyhow!(error))?;
 
     let first_farm_directory = &disk_farms
         .first()
@@ -350,7 +350,7 @@ where
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
-    .map_err(|error| anyhow::anyhow!(error))?;
+    .map_err(|error| anyhow!(error))?;
     let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
         node_client.clone(),
@@ -407,17 +407,14 @@ where
     let replotting_thread_pool_core_indices;
     if let Some(plotting_cpu_cores) = plotting_cpu_cores {
         plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
-            .map_err(|error| anyhow::anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
+            .map_err(|error| anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
         replotting_thread_pool_core_indices = match replotting_cpu_cores {
-            Some(replotting_cpu_cores) => {
-                parse_cpu_cores_sets(&replotting_cpu_cores).map_err(|error| {
-                    anyhow::anyhow!("Failed to parse `--replotting-cpu-cores`: {error}")
-                })?
-            }
+            Some(replotting_cpu_cores) => parse_cpu_cores_sets(&replotting_cpu_cores)
+                .map_err(|error| anyhow!("Failed to parse `--replotting-cpu-cores`: {error}"))?,
             None => plotting_thread_pool_core_indices.clone(),
         };
         if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Number of plotting thread pools ({}) is not the same as for replotting ({})",
                 plotting_thread_pool_core_indices.len(),
                 replotting_thread_pool_core_indices.len()
@@ -551,7 +548,7 @@ where
                         }) => {
                             return (
                                 farm_index,
-                                Err(anyhow::anyhow!(
+                                Err(anyhow!(
                                     "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, \
                                     {} bytes to be exact)",
                                     bytesize::to_string(allocated_space, true),
@@ -646,59 +643,42 @@ where
     info!("Collecting already plotted pieces (this will take some time)...");
 
     // Collect already plotted pieces
-    {
+    let mut total_and_plotted_sectors = Vec::with_capacity(farms.len());
+
+    for (farm_index, farm) in farms.iter().enumerate() {
         let mut plotted_pieces = plotted_pieces.write().await;
-
-        for (farm_index, farm) in farms.iter().enumerate() {
-            let farm_index = farm_index.try_into().map_err(|_error| {
-                anyhow!(
-                    "More than 256 plots are not supported, consider running multiple farmer \
+        let farm_index = farm_index.try_into().map_err(|_error| {
+            anyhow!(
+                "More than 256 plots are not supported, consider running multiple farmer \
                     instances"
-                )
-            })?;
+            )
+        })?;
 
-            plotted_pieces.add_farm(farm_index, farm.piece_reader());
+        plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
-            let plotted_sectors = farm.plotted_sectors();
-            let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
-                anyhow!("Failed to get plotted sectors for farm {farm_index}: {error}")
-            })?;
-            while let Some(plotted_sector_result) = plotted_sectors.next().await {
-                match plotted_sector_result {
-                    Ok(plotted_sector) => {
-                        plotted_pieces.add_sector(farm_index, &plotted_sector);
-                    }
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %farm_index,
-                            "Failed reading plotted sector on startup, skipping"
-                        );
-                    }
-                }
-            }
+        let total_sector_count = farm.total_sectors_count();
+        let mut plotted_sectors_count = 0;
+        let plotted_sectors = farm.plotted_sectors();
+        let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
+            anyhow!("Failed to get plotted sectors for farm {farm_index}: {error}")
+        })?;
+
+        while let Some(plotted_sector_result) = plotted_sectors.next().await {
+            plotted_sectors_count += 1;
+            plotted_pieces.add_sector(
+                farm_index,
+                &plotted_sector_result.map_err(|error| {
+                    anyhow!(
+                        "Failed reading plotted sector on startup for farm {farm_index}: {error}"
+                    )
+                })?,
+            )
         }
+
+        total_and_plotted_sectors.push((total_sector_count, plotted_sectors_count));
     }
 
     info!("Finished collecting already plotted pieces successfully");
-
-    let total_and_plotted_sectors = farms
-        .iter()
-        .enumerate()
-        .map(|(farm_index, farm)| async move {
-            let total_sector_count = farm.total_sectors_count();
-            let plotted_sectors_count = farm.plotted_sectors_count().await.map_err(|error| {
-                anyhow!(
-                    "Failed to get plotted sectors count from from index {farm_index}: \
-                            {error}"
-                )
-            })?;
-
-            anyhow::Ok((total_sector_count, plotted_sectors_count))
-        })
-        .collect::<FuturesOrdered<_>>()
-        .try_collect::<Vec<_>>()
-        .await?;
 
     let mut farms_stream = (0u8..)
         .zip(farms)
@@ -871,7 +851,7 @@ where
     let farm_fut = pin!(farm_fut);
     let farmer_cache_worker_fut = pin!(farmer_cache_worker_fut);
 
-    futures::select!(
+    select! {
         // Signal future
         _ = signal.fuse() => {},
 
@@ -889,7 +869,7 @@ where
         _ = farmer_cache_worker_fut.fuse() => {
             info!("Farmer cache worker exited.")
         },
-    );
+    }
 
     anyhow::Ok(())
 }

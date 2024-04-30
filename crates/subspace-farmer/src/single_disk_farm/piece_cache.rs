@@ -24,7 +24,7 @@ impl farm::PieceCache for DiskPieceCache {
 
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_> {
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_> {
         if let Some(piece_cache) = &self.maybe_piece_cache {
             farm::PieceCache::contents(piece_cache).await
         } else {

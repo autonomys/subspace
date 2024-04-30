@@ -80,7 +80,7 @@ impl farm::PieceCache for PieceCache {
 
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + '_> {
+    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_> {
         let this = self.clone();
         let (mut sender, receiver) = mpsc::channel(1);
         let read_contents = task::spawn_blocking(move || {
