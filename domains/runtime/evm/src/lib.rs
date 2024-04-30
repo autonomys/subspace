@@ -3,6 +3,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod check_nonce;
 mod precompiles;
 
 // Make the WASM binary available.
@@ -39,7 +40,6 @@ use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECO
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::CheckWeight;
 use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{
@@ -115,6 +115,19 @@ pub type SignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
+    frame_system::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+);
+
+/// Custom signed extra for check_and_pre_dispatch.
+/// Only Nonce check is updated and rest remains same
+type CustomSignedExtra = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckMortality<Runtime>,
+    check_nonce::CheckNonce,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
@@ -866,7 +879,7 @@ fn pre_dispatch_evm_transaction(
                 let _ = transaction_validity?;
 
                 if let Call::transact { transaction } = call {
-                    CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                    frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
                     let transaction_data: TransactionData = (&transaction).into();
                     let transaction_nonce = transaction_data.nonce;
@@ -925,22 +938,18 @@ fn check_transaction_and_do_pre_dispatch_inner(
     // runtime instance.
     match xt.signed {
         CheckedSignature::Signed(account_id, extra) => {
-            // if a sender sends an evm transaction first and substrate transaction
-            // after with same nonce, then reject the second transaction
-            // if sender reverse the transaction types, substrate first and evm second,
-            // evm transaction will be rejected, since substrate updates nonce in pre_dispatch.
-            if let Some(tracked_nonce) = EVMNoncetracker::account_nonce(H160::from(account_id.0)) {
-                let account_nonce = U256::from(System::account_nonce(account_id));
-                let current_nonce = max(tracked_nonce, account_nonce);
-                let transaction_nonce = U256::from(extra.5 .0);
-                match transaction_nonce.cmp(&current_nonce) {
-                    Ordering::Less => return Err(InvalidTransaction::Stale.into()),
-                    Ordering::Greater => return Err(InvalidTransaction::Future.into()),
-                    Ordering::Equal => {}
-                }
-            }
+            let custom_extra: CustomSignedExtra = (
+                extra.0,
+                extra.1,
+                extra.2,
+                extra.3,
+                extra.4,
+                check_nonce::CheckNonce::from(extra.5 .0),
+                extra.6,
+                extra.7,
+            );
 
-            extra
+            custom_extra
                 .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }
