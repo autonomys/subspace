@@ -164,6 +164,11 @@ where
                     let internal_result = match req {
                         SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
                             if segment_indexes.len() as u64 > SEGMENT_HEADER_NUMBER_LIMIT {
+                                debug!(
+                                    "segment_indexes length exceed the limit: {} ",
+                                    segment_indexes.len()
+                                );
+
                                 return None;
                             }
 
