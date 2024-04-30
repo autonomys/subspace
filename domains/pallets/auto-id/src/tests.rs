@@ -308,19 +308,22 @@ fn test_self_revoke_certificate() {
 
         assert_eq!(auto_id.certificate.nonce(), U256::one());
 
-        // try revoking leaf certificate when issuer is revoked
-        let leaf_id = register_leaf_auto_id(auto_id_identifier);
-        let leaf_auto_id = AutoIds::<Test>::get(leaf_id).unwrap();
-        let signing_data = CertificateAction {
-            id: leaf_id,
-            nonce: leaf_auto_id.certificate.nonce(),
-            action_type: CertificateActionType::RevokeCertificate,
-        };
-        let signature = sign_preimage(signing_data.encode(), false);
+        // try issuing leaf certificate when issuer is revoked
+        let cert = include_bytes!("../res/leaf.cert.der").to_vec();
+        let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&cert).unwrap();
+        let _ = identifier_from_x509_cert(Some(auto_id_identifier), &cert);
 
         assert_noop!(
-            Pallet::<Test>::revoke_certificate(RawOrigin::Signed(1).into(), leaf_id, signature),
-            Error::<Test>::CertificateAlreadyRevoked
+            Pallet::<Test>::register_auto_id(
+                RawOrigin::Signed(1).into(),
+                RegisterAutoId::X509(RegisterAutoIdX509::Leaf {
+                    issuer_id: auto_id_identifier,
+                    certificate: cert.tbs_certificate.as_ref().to_vec().into(),
+                    signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
+                    signature: cert.signature_value.as_ref().to_vec(),
+                }),
+            ),
+            Error::<Test>::CertificateRevoked,
         );
     })
 }

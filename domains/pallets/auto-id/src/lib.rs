@@ -108,7 +108,7 @@ impl Certificate {
         }
     }
 
-    fn serial(&self) -> U256 {
+    fn serial(&self) -> Serial {
         match self {
             Certificate::X509(cert) => cert.serial,
         }
@@ -217,11 +217,11 @@ pub struct CertificateAction {
 
 #[frame_support::pallet]
 mod pallet {
+    use super::*;
     use crate::{AutoId, Identifier, RegisterAutoId, Serial, Signature};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Time;
     use frame_system::pallet_prelude::*;
-    use scale_info::prelude::collections::BTreeSet;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -391,6 +391,16 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::ExpiredCertificate
                     );
 
+                    ensure!(
+                        !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                            serials.iter().any(|s| {
+                                *s == issuer_auto_id.certificate.serial()
+                                    || *s == tbs_certificate.serial
+                            })
+                        }),
+                        Error::<T>::CertificateRevoked
+                    );
+
                     issuer_auto_id
                         .certificate
                         .issue_certificate_serial::<T>(tbs_certificate.serial)?;
@@ -451,21 +461,21 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownAutoId)?;
 
-        let issuer_id = match auto_id.certificate.issuer_id() {
-            Some(issuer_id) => issuer_id,
+        let (issuer_id, mut issuer_auto_id) = match auto_id.certificate.issuer_id() {
+            Some(issuer_id) => (
+                issuer_id,
+                AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?,
+            ),
             // self revoke
-            None => auto_id_identifier,
+            None => (auto_id_identifier, auto_id.clone()),
         };
 
-        let mut issuer_auto_id = AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?;
-
         ensure!(
-            !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| serials
-                .iter()
-                .filter(|serial| *serial == &auto_id.certificate.serial()
-                    || *serial == &issuer_auto_id.certificate.serial())
-                .count()
-                > 0),
+            !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                serials.iter().any(|s| {
+                    *s == auto_id.certificate.serial() || *s == issuer_auto_id.certificate.serial()
+                })
+            }),
             Error::<T>::CertificateAlreadyRevoked
         );
 
