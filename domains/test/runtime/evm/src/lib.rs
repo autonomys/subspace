@@ -3,7 +3,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-mod check_nonce;
 mod precompiles;
 
 // Make the WASM binary available.
@@ -124,7 +123,7 @@ type CustomSignedExtra = (
     frame_system::CheckTxVersion<Runtime>,
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
-    check_nonce::CheckNonce,
+    pallet_evm_nonce_tracker::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
@@ -855,7 +854,8 @@ fn pre_dispatch_evm_transaction(
                     // pick the highest nonce
                     let account_nonce = {
                         let tracked_nonce =
-                            EVMNoncetracker::account_nonce(account_id).unwrap_or(U256::zero());
+                            EVMNoncetracker::account_nonce(AccountId::from(account_id))
+                                .unwrap_or(U256::zero());
                         let account_nonce = EVM::account_basic(&account_id).0.nonce;
                         max(tracked_nonce, account_nonce)
                     };
@@ -870,7 +870,7 @@ fn pre_dispatch_evm_transaction(
                         .checked_add(U256::one())
                         .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
 
-                    EVMNoncetracker::set_account_nonce(account_id, next_nonce);
+                    EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
                 }
             }
 
@@ -907,7 +907,7 @@ fn check_transaction_and_do_pre_dispatch_inner(
                 extra.2,
                 extra.3,
                 extra.4,
-                check_nonce::CheckNonce::from(extra.5 .0),
+                pallet_evm_nonce_tracker::CheckNonce::from(extra.5 .0),
                 extra.6,
                 extra.7,
             );

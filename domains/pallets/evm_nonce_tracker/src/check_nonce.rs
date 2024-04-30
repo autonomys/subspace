@@ -1,44 +1,53 @@
-use crate::{AccountId, EVMNoncetracker, Runtime, RuntimeCall};
+use crate::Config;
+#[cfg(not(feature = "std"))]
+use alloc::fmt;
+#[cfg(not(feature = "std"))]
+use alloc::vec;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::Nonce;
+use core::cmp::max;
+use core::result::Result;
+use frame_support::dispatch::DispatchInfo;
 use frame_support::pallet_prelude::{
     InvalidTransaction, TransactionLongevity, TransactionValidity, TransactionValidityError,
     TypeInfo, ValidTransaction,
 };
-use frame_support::sp_runtime::traits::{DispatchInfoOf, One, SignedExtension, Zero};
-use sp_core::{H160, U256};
-use sp_std::cmp::max;
-use sp_std::vec;
+use frame_support::sp_runtime::traits::{DispatchInfoOf, One, SignedExtension};
+use sp_runtime::traits::{Dispatchable, Zero};
+#[cfg(feature = "std")]
+use std::fmt;
+#[cfg(feature = "std")]
+use std::vec;
 
-/// Check nonce is a fork of frame_system::CheckNonce with change to pre_dispatch function
-/// where this fork uses EVMNonceTracker to track the nonce since EVM pre_dispatch does not
-/// increment the nonce unlike the Substrate pre_dispatch
 #[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CheckNonce(#[codec(compact)] pub Nonce);
+#[scale_info(skip_type_params(T))]
+pub struct CheckNonce<T: Config>(#[codec(compact)] pub T::Nonce);
 
-impl CheckNonce {
+impl<T: Config> CheckNonce<T> {
     /// utility constructor. Used only in client/factory code.
-    pub fn from(nonce: Nonce) -> Self {
+    pub fn from(nonce: T::Nonce) -> Self {
         Self(nonce)
     }
 }
 
-impl sp_std::fmt::Debug for CheckNonce {
+impl<T: Config> fmt::Debug for CheckNonce<T> {
     #[cfg(feature = "std")]
-    fn fmt(&self, f: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CheckNonce({})", self.0)
     }
 
     #[cfg(not(feature = "std"))]
-    fn fmt(&self, _: &mut sp_std::fmt::Formatter) -> sp_std::fmt::Result {
+    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
         Ok(())
     }
 }
 
-impl SignedExtension for CheckNonce {
+impl<T: Config> SignedExtension for CheckNonce<T>
+where
+    T::RuntimeCall: Dispatchable<Info = DispatchInfo>,
+{
     const IDENTIFIER: &'static str = "CheckNonce";
-    type AccountId = AccountId;
-    type Call = RuntimeCall;
+    type AccountId = T::AccountId;
+    type Call = T::RuntimeCall;
     type AdditionalSigned = ();
     type Pre = ();
 
@@ -53,7 +62,7 @@ impl SignedExtension for CheckNonce {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        let account = frame_system::Account::<Runtime>::get(who);
+        let account = frame_system::Account::<T>::get(who);
         if account.providers.is_zero() && account.sufficients.is_zero() {
             // Nonce storage not paid for
             return InvalidTransaction::Payment.into();
@@ -64,7 +73,7 @@ impl SignedExtension for CheckNonce {
 
         let provides = vec![Encode::encode(&(who, self.0))];
         let requires = if account.nonce < self.0 {
-            vec![Encode::encode(&(who, self.0 - Nonce::one()))]
+            vec![Encode::encode(&(who, self.0 - One::one()))]
         } else {
             vec![]
         };
@@ -85,24 +94,21 @@ impl SignedExtension for CheckNonce {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), TransactionValidityError> {
-        let mut account = frame_system::Account::<Runtime>::get(who);
+        let mut account = frame_system::Account::<T>::get(who);
         if account.providers.is_zero() && account.sufficients.is_zero() {
             // Nonce storage not paid for
             return Err(InvalidTransaction::Payment.into());
         }
-
         // if a sender sends an evm transaction first and substrate transaction
         // after with same nonce, then reject the second transaction
         // if sender reverse the transaction types, substrate first and evm second,
         // evm transaction will be rejected, since substrate updates nonce in pre_dispatch.
-        let account_nonce =
-            if let Some(tracked_nonce) = EVMNoncetracker::account_nonce(H160::from(*who)) {
-                let account_nonce = U256::from(account.nonce);
-                let current_nonce = max(tracked_nonce, account_nonce);
-                current_nonce.as_u32()
-            } else {
-                account.nonce
-            };
+        let account_nonce = if let Some(tracked_nonce) = crate::AccountNonce::<T>::get(who.clone())
+        {
+            max(tracked_nonce.as_u32().into(), account.nonce)
+        } else {
+            account.nonce
+        };
 
         if self.0 != account_nonce {
             return Err(if self.0 < account.nonce {
@@ -112,8 +118,8 @@ impl SignedExtension for CheckNonce {
             }
             .into());
         }
-        account.nonce += Nonce::one();
-        frame_system::Account::<Runtime>::insert(who, account);
+        account.nonce += T::Nonce::one();
+        frame_system::Account::<T>::insert(who, account);
         Ok(())
     }
 }
