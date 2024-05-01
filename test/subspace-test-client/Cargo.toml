@@ -18,7 +18,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "3.6.5", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
-fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "4354330f71535a5459b8e3c7e7ed0c0d612b5e0e" }
+fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "1fe202805f3a3158b278386200ca6761f22b271e" }
 futures = "0.3.29"
 schnorrkel = "0.11.4"
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
