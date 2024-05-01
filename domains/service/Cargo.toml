@@ -13,7 +13,7 @@ build = "build.rs"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
@@ -22,7 +22,7 @@ domain-client-operator = { version = "0.1.0", path = "../client/domain-operator"
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
 frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", optional = true }
 futures = "0.3.29"
-jsonrpsee = { version = "0.22.3", features = ["server"] }
+jsonrpsee = { version = "0.22.5", features = ["server"] }
 log = "0.4.21"
 pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 parity-scale-codec = "3.6.9"
@@ -45,7 +45,7 @@ sc-telemetry = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742
 sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-serde = { version = "1.0.196", features = ["derive"] }
+serde = { version = "1.0.199", features = ["derive"] }
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }

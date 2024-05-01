@@ -36,7 +36,7 @@ pallet-transaction-fees = { version = "0.1.0", default-features = false, path = 
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 pallet-transporter = { version = "0.1.0", path = "../../domains/pallets/transporter", default-features = false }
 pallet-utility = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", default-features = false }
 sp-consensus-slots = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }

@@ -16,18 +16,18 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", optional = true }
 futures = "0.3.29"
 hex = "0.4.3"
-jsonrpsee = { version = "0.22.3", features = ["server"] }
+jsonrpsee = { version = "0.22.5", features = ["server"] }
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 mmr-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 parity-scale-codec = "3.6.9"
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 prometheus-client = "0.22.2"
 sc-basic-authorship = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
@@ -81,7 +81,7 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-thiserror = "1.0.58"
+thiserror = "1.0.59"
 tokio = { version = "1.37.0", features = ["sync"] }
 tracing = "0.1.40"
 

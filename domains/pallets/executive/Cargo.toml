@@ -18,7 +18,7 @@ frame-executive = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d
 frame-support = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", default-features = false }
 frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", default-features = false }
 log = { version = "0.4.21", default-features = false }
-scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-executive = { version = "0.1.0", path = "../../primitives/executive", default-features = false }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed", default-features = false }

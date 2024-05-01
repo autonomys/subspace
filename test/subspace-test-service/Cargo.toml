@@ -15,19 +15,19 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 codec = { package = "parity-scale-codec", version = "3.2.1", features = ["derive"] }
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 futures = "0.3.29"
-jsonrpsee = { version = "0.22.3", features = ["server"] }
+jsonrpsee = { version = "0.22.5", features = ["server"] }
 pallet-transaction-payment = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 rand = "0.8.5"
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
-parking_lot = "0.12.1"
+parking_lot = "0.12.2"
 sc-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
