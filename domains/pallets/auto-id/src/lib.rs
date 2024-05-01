@@ -42,6 +42,9 @@ use subspace_runtime_primitives::Moment;
 /// Unique AutoId identifier.
 pub type Identifier = H256;
 
+/// Serial issued by the subject.
+pub type Serial = U256;
+
 /// X509 certificate.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct X509Certificate {
@@ -59,9 +62,7 @@ pub struct X509Certificate {
     pub raw: DerVec,
     /// A list of all certificate serials issues by the subject.
     /// Serial of root certificate is included as well.
-    pub issued_serials: BTreeSet<U256>,
-    /// Signifies if the certificate is revoked.
-    pub revoked: bool,
+    pub issued_serials: BTreeSet<Serial>,
     /// Certificate action nonce.
     pub nonce: U256,
 }
@@ -101,6 +102,18 @@ impl Certificate {
         }
     }
 
+    fn issuer_id(&self) -> Option<Identifier> {
+        match self {
+            Certificate::X509(cert) => cert.issuer_id,
+        }
+    }
+
+    fn serial(&self) -> Serial {
+        match self {
+            Certificate::X509(cert) => cert.serial,
+        }
+    }
+
     /// Checks if the certificate is valid at this time.
     pub(crate) fn is_valid_at(&self, time: Moment) -> bool {
         match self {
@@ -108,15 +121,24 @@ impl Certificate {
         }
     }
 
-    fn revoke(&mut self) {
-        match self {
-            Certificate::X509(cert) => cert.revoked = true,
-        }
-    }
+    /// Deterministically derives an identifier from the certificate.
+    ///
+    /// The identifier is derived by hashing the subject common name of the certificate.
+    /// If the certificate is a leaf certificate, the issuer identifier is combined with the subject common name.
+    fn derive_identifier(&self) -> Identifier {
+        match &self {
+            Certificate::X509(cert) => {
+                if let Some(issuer_id) = cert.issuer_id {
+                    let mut data = issuer_id.to_fixed_bytes().to_vec();
 
-    fn is_revoked(&self) -> bool {
-        match self {
-            Certificate::X509(cert) => cert.revoked,
+                    data.extend_from_slice(cert.subject_common_name.as_ref());
+
+                    blake2_256(&data).into()
+                } else {
+                    // Root certificate
+                    blake2_256(cert.subject_common_name.as_ref()).into()
+                }
+            }
         }
     }
 
@@ -144,29 +166,6 @@ impl Certificate {
 pub struct AutoId {
     /// Certificate associated with this AutoId.
     pub certificate: Certificate,
-}
-
-impl AutoId {
-    /// Deterministically derives an identifier for the `AutoId`.
-    ///
-    /// The identifier is derived by hashing the subject common name of the certificate.
-    /// If the certificate is a leaf certificate, the issuer identifier is combined with the subject common name.
-    fn derive_identifier(&self) -> Identifier {
-        match &self.certificate {
-            Certificate::X509(cert) => {
-                if let Some(issuer_id) = cert.issuer_id {
-                    let mut data = issuer_id.to_fixed_bytes().to_vec();
-
-                    data.extend_from_slice(cert.subject_common_name.as_ref());
-
-                    blake2_256(&data).into()
-                } else {
-                    // Root certificate
-                    blake2_256(cert.subject_common_name.as_ref()).into()
-                }
-            }
-        }
-    }
 }
 
 /// Type holds X509 certificate details used to register an AutoId.
@@ -208,14 +207,18 @@ pub enum CertificateActionType {
 /// Signing data used to verify the certificate action.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct CertificateAction {
+    /// On which AutoId the action is taken.
     pub id: Identifier,
+    /// Current nonce of the certificate.
     pub nonce: U256,
+    /// Type of action taken.
     pub action_type: CertificateActionType,
 }
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{AutoId, Identifier, RegisterAutoId, Signature};
+    use super::*;
+    use crate::{AutoId, Identifier, RegisterAutoId, Serial, Signature};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Time;
     use frame_system::pallet_prelude::*;
@@ -234,10 +237,20 @@ mod pallet {
     #[pallet::storage]
     pub(super) type AutoIds<T> = StorageMap<_, Identity, Identifier, AutoId, OptionQuery>;
 
+    /// Stores list of revoked certificates.
+    ///
+    /// It maps the issuer's identifier to the list of revoked serial numbers of certificates. Before accepting
+    /// the certificate, external entities should check if the certificate or its issuer has been revoked.
+    #[pallet::storage]
+    pub(super) type CertificateRevocationList<T> =
+        StorageMap<_, Identity, Identifier, BTreeSet<Serial>, OptionQuery>;
+
     #[pallet::error]
     pub enum Error<T> {
         /// Issuer auto id does not exist.
         UnknownIssuer,
+        /// Unknown AutoId identifier.
+        UnknownAutoId,
         /// Certificate is invalid,
         InvalidCertificate,
         /// Invalid signature.
@@ -248,6 +261,8 @@ mod pallet {
         ExpiredCertificate,
         /// Certificate revoked.
         CertificateRevoked,
+        /// Certificate already revoked.
+        CertificateAlreadyRevoked,
         /// Nonce overflow.
         NonceOverflow,
         /// Identifier already exists.
@@ -278,8 +293,10 @@ mod pallet {
         }
 
         /// Revokes a certificate associated with given AutoId.
-        #[pallet::call_index(1)]
+        ///
+        /// The signature is verified against the issuer's public key.
         // TODO: benchmark
+        #[pallet::call_index(1)]
         #[pallet::weight({10_000})]
         pub fn revoke_certificate(
             origin: OriginFor<T>,
@@ -340,7 +357,6 @@ impl<T: Config> Pallet<T> {
                         validity: tbs_certificate.validity,
                         raw: certificate,
                         issued_serials: BTreeSet::from([tbs_certificate.serial]),
-                        revoked: false,
                         nonce: U256::zero(),
                     })
                 }
@@ -360,11 +376,6 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::ExpiredCertificate
                     );
 
-                    ensure!(
-                        !issuer_auto_id.certificate.is_revoked(),
-                        Error::<T>::CertificateRevoked
-                    );
-
                     let tbs_certificate = decode_tbs_certificate(certificate.clone())
                         .ok_or(Error::<T>::InvalidCertificate)?;
 
@@ -378,6 +389,16 @@ impl<T: Config> Pallet<T> {
                     ensure!(
                         tbs_certificate.validity.is_valid_at(current_time),
                         Error::<T>::ExpiredCertificate
+                    );
+
+                    ensure!(
+                        !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                            serials.iter().any(|s| {
+                                *s == issuer_auto_id.certificate.serial()
+                                    || *s == tbs_certificate.serial
+                            })
+                        }),
+                        Error::<T>::CertificateRevoked
                     );
 
                     issuer_auto_id
@@ -394,15 +415,14 @@ impl<T: Config> Pallet<T> {
                         validity: tbs_certificate.validity,
                         raw: certificate,
                         issued_serials: BTreeSet::from([tbs_certificate.serial]),
-                        revoked: false,
                         nonce: U256::zero(),
                     })
                 }
             },
         };
 
+        let auto_id_identifier = certificate.derive_identifier();
         let auto_id = AutoId { certificate };
-        let auto_id_identifier = auto_id.derive_identifier();
 
         ensure!(
             !AutoIds::<T>::contains_key(auto_id_identifier),
@@ -439,26 +459,44 @@ impl<T: Config> Pallet<T> {
         auto_id_identifier: Identifier,
         signature: Signature,
     ) -> DispatchResult {
-        let mut auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownIssuer)?;
+        let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownAutoId)?;
+
+        let (issuer_id, mut issuer_auto_id) = match auto_id.certificate.issuer_id() {
+            Some(issuer_id) => (
+                issuer_id,
+                AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?,
+            ),
+            // self revoke
+            None => (auto_id_identifier, auto_id.clone()),
+        };
+
+        ensure!(
+            !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                serials.iter().any(|s| {
+                    *s == auto_id.certificate.serial() || *s == issuer_auto_id.certificate.serial()
+                })
+            }),
+            Error::<T>::CertificateAlreadyRevoked
+        );
+
         Self::do_verify_signature(
-            &auto_id,
+            &issuer_auto_id,
             CertificateAction {
                 id: auto_id_identifier,
-                nonce: auto_id.certificate.nonce(),
+                nonce: issuer_auto_id.certificate.nonce(),
                 action_type: CertificateActionType::RevokeCertificate,
             },
             signature,
         )?;
-        ensure!(
-            !auto_id.certificate.is_revoked(),
-            Error::<T>::CertificateRevoked
-        );
 
-        auto_id.certificate.revoke();
-        auto_id.certificate.inc_nonce::<T>()?;
+        CertificateRevocationList::<T>::mutate(issuer_id, |serials| {
+            serials
+                .get_or_insert_with(BTreeSet::new)
+                .insert(auto_id.certificate.serial());
+        });
 
-        // TODO: revoke all the issued leaf certificates if this is an issuer certificate.
-        AutoIds::<T>::insert(auto_id_identifier, auto_id);
+        issuer_auto_id.certificate.inc_nonce::<T>()?;
+        AutoIds::<T>::insert(issuer_id, issuer_auto_id);
 
         Self::deposit_event(Event::<T>::CertificateRevoked(auto_id_identifier));
         Ok(())
