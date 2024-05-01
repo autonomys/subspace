@@ -12,7 +12,7 @@ description = "Common primitives of subspace domain runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4354330f71535a5459b8e3c7e7ed0c0d612b5e0e" }
+fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "1fe202805f3a3158b278386200ca6761f22b271e" }
 frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
 parity-scale-codec = { version = "3.6.9", default-features = false, features = ["derive"] }
