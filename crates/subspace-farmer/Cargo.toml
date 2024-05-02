@@ -14,6 +14,7 @@ include = [
 [dependencies]
 anyhow = "1.0.82"
 async-lock = "3.3.0"
+async-nats = "0.34.0"
 async-trait = "0.1.80"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
@@ -36,6 +37,7 @@ mimalloc = "0.1.41"
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.2"
+pin-project = "1.1.5"
 prometheus-client = "0.22.2"
 rand = "0.8.5"
 rayon = "1.10.0"
