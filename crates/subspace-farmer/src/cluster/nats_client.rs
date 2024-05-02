@@ -279,11 +279,7 @@ impl NatsClient {
     where
         Request: GenericRequest,
     {
-        let subject = if let Some(instance) = instance {
-            Subject::from(Request::SUBJECT.replace('*', instance))
-        } else {
-            Subject::from_static(Request::SUBJECT)
-        };
+        let subject = subject_with_instance(Request::SUBJECT, instance);
         let message = self
             .client
             .request(subject.clone(), request.encode().into())
@@ -321,14 +317,11 @@ impl NatsClient {
             .subscribe(stream_request.response_subject.clone())
             .await?;
 
-        let subject = if let Some(instance) = instance {
-            Subject::from(Request::SUBJECT.replace('*', instance))
-        } else {
-            Subject::from_static(Request::SUBJECT)
-        };
-
         self.client
-            .publish(subject, stream_request.encode().into())
+            .publish(
+                subject_with_instance(Request::SUBJECT, instance),
+                stream_request.encode().into(),
+            )
             .await?;
 
         Ok(StreamResponseSubscriber {
@@ -347,14 +340,11 @@ impl NatsClient {
     where
         Notification: GenericNotification,
     {
-        let subject = if let Some(instance) = instance {
-            Subject::from(Notification::SUBJECT.replace('*', instance))
-        } else {
-            Subject::from_static(Notification::SUBJECT)
-        };
-
         self.client
-            .publish(subject, notification.encode().into())
+            .publish(
+                subject_with_instance(Notification::SUBJECT, instance),
+                notification.encode().into(),
+            )
             .await
     }
 
@@ -391,12 +381,7 @@ impl NatsClient {
     where
         Notification: GenericNotification,
     {
-        self.simple_subscribe(if let Some(instance) = instance {
-            Subject::from(Notification::SUBJECT.replace('*', instance))
-        } else {
-            Subject::from_static(Notification::SUBJECT)
-        })
-        .await
+        self.simple_subscribe(Notification::SUBJECT, instance).await
     }
 
     /// Simple subscription that will produce decoded broadcasts, while skipping messages that
@@ -408,26 +393,33 @@ impl NatsClient {
     where
         Broadcast: GenericBroadcast,
     {
-        self.simple_subscribe(if let Some(instance) = instance {
-            Subject::from(Broadcast::SUBJECT.replace('*', instance))
-        } else {
-            Subject::from_static(Broadcast::SUBJECT)
-        })
-        .await
+        self.simple_subscribe(Broadcast::SUBJECT, instance).await
     }
 
     /// Simple subscription that will produce decoded messages, while skipping messages that fail to
     /// decode
     async fn simple_subscribe<Message>(
         &self,
-        subject: Subject,
+        subject: &'static str,
+        instance: Option<&str>,
     ) -> Result<SubscriberWrapper<Message>, SubscribeError>
     where
         Message: Decode,
     {
         Ok(SubscriberWrapper {
-            subscriber: self.client.subscribe(subject).await?,
+            subscriber: self
+                .client
+                .subscribe(subject_with_instance(subject, instance))
+                .await?,
             _phantom: PhantomData,
         })
+    }
+}
+
+fn subject_with_instance(subject: &'static str, instance: Option<&str>) -> Subject {
+    if let Some(instance) = instance {
+        Subject::from(subject.replace('*', instance))
+    } else {
+        Subject::from_static(subject)
     }
 }
