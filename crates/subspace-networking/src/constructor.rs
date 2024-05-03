@@ -35,7 +35,6 @@ use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::borrow::Cow;
 use std::iter::Empty;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
@@ -66,7 +65,7 @@ const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
 //  use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
-const TEMPORARY_BANS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const TEMPORARY_BANS_CACHE_SIZE: u32 = 10_000;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
@@ -224,7 +223,7 @@ pub struct Config<LocalRecordProvider> {
     /// Pending outgoing swarm connection limit.
     pub max_pending_outgoing_connections: u32,
     /// How many temporarily banned unreachable peers to keep in memory.
-    pub temporary_bans_cache_size: NonZeroUsize,
+    pub temporary_bans_cache_size: u32,
     /// Backoff policy for temporary banning of unreachable peers.
     pub temporary_ban_backoff: ExponentialBackoff,
     /// Optional libp2p prometheus metrics. None will disable metrics gathering.

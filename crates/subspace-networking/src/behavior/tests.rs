@@ -8,11 +8,10 @@ use futures::channel::oneshot;
 use futures::future::pending;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
-use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use schnellru::{ByLength, LruMap};
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -30,14 +29,14 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let expiration = Duration::from_nanos(1);
     let expiration_kademlia = Duration::from_nanos(1);
 
-    let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
-    let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+    let mut peers_cache = LruMap::new(ByLength::new(100));
+    let mut addresses_cache = LruMap::new(ByLength::new(100));
 
     for addr in addresses.clone() {
-        addresses_cache.push(addr, None);
+        addresses_cache.insert(addr, None);
     }
 
-    peers_cache.push(peer_id, addresses_cache);
+    peers_cache.insert(peer_id, addresses_cache);
 
     //Precondition-check
     assert_eq!(peers_cache.len(), 1);
@@ -96,12 +95,12 @@ async fn test_different_removal_timing_from_known_peers_cache() {
     let expiration = Duration::from_secs(3);
     let expiration_kademlia = Duration::from_secs(1);
 
-    let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
-    let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+    let mut peers_cache = LruMap::new(ByLength::new(100));
+    let mut addresses_cache = LruMap::new(ByLength::new(100));
 
     let addresses = vec![addr.clone()];
-    addresses_cache.push(addr, None);
-    peers_cache.push(peer_id, addresses_cache);
+    addresses_cache.insert(addr, None);
+    peers_cache.insert(peer_id, addresses_cache);
 
     //Precondition-check
     assert_eq!(peers_cache.len(), 1);
@@ -281,7 +280,7 @@ async fn test_address_p2p_prefix_addition() {
 async fn test_known_peers_removal_address_after_specified_interval() {
     let config = KnownPeersManagerConfig {
         enable_known_peers_source: false,
-        cache_size: NonZeroUsize::new(100).unwrap(),
+        cache_size: 100,
         ignore_peer_list: Default::default(),
         path: None,
         failed_address_cache_removal_interval: Duration::from_millis(100),
