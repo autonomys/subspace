@@ -12193,6 +12193,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-fake-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "frame-support",
+ "frame-system-rpc-runtime-api",
+ "pallet-mmr",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-domains",
+ "sp-domains-fraud-proof",
+ "sp-genesis-builder",
+ "sp-inherents",
+ "sp-messenger",
+ "sp-objects",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
 name = "subspace-farmer"
 version = "0.1.0"
 dependencies = [
