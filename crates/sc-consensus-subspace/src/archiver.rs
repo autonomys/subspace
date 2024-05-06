@@ -542,6 +542,8 @@ where
     for distance in 1..=(confirmation_depth_k + 1) {
         let block_number_candidate = best_block_number.saturating_sub(distance.into());
         if client.hash(block_number_candidate).ok().flatten().is_some()
+            // We might add the block on the fast sync and we need to check for the parent block
+            // availability as well to continue iteration.
             && client
                 .hash(block_number_candidate.saturating_sub(1u32.into()))
                 .ok()
@@ -809,14 +811,12 @@ where
         None
     };
 
-    let block_importing_notification_stream = subspace_link
+    let mut block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
         .subscribe();
 
     Ok(async move {
         let mut saved_block_import_notification: Option<BlockImportingNotification<Block>> = None;
-
-        let mut block_importing_notification_stream = block_importing_notification_stream;
 
         'initialization_recovery: loop {
             let archived_segment_notification_sender =
@@ -897,7 +897,7 @@ where
 
                 if !success {
                     debug!(
-                        "Archiver detected an error. \
+                        "Archiver detected possible fast-sync case. \
                         Attempting recovery with block number = {}...",
                         block_import_notification.block_number
                     );
@@ -952,7 +952,7 @@ where
         return Ok(true);
     }
 
-    if block_number_to_archive > *best_archived_block_number + 1u32.into() {
+    if block_number_to_archive != *best_archived_block_number + 1u32.into() {
         // There is a gap between the best archived block and the block to archive.
         // It's likely a fast sync.
         return Ok(false);
@@ -960,11 +960,11 @@ where
 
     let block_hash = client
         .hash(block_number_to_archive)?
-        .expect("Older block by number must always exist.");
+        .expect("Older block by number must always exist");
 
     let block = client
         .block(block_hash)?
-        .expect("Older block by hash must always exist.");
+        .expect("Older block by hash must always exist");
 
     let parent_block_hash = *block.block.header().parent_hash();
     let block_hash_to_archive = block.block.hash();
