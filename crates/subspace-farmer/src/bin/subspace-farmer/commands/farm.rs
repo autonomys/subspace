@@ -197,6 +197,11 @@ pub(crate) struct FarmingArgs {
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
     disable_farm_locking: bool,
+    /// Whether to create missing farms during start.
+    ///
+    /// If set to `false` farmer will exit with error if one of the farms doesn't already exist.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    create: bool,
     /// Exit on farm error.
     ///
     /// By default, farmer will continue running if there are still other working farms.
@@ -244,6 +249,7 @@ where
         plotting_thread_priority,
         plot_cache,
         disable_farm_locking,
+        create,
         exit_on_farm_error,
     } = farming_args;
 
@@ -305,8 +311,19 @@ where
         .expect("Disk farm collection is not be empty as checked above; qed")
         .directory;
 
-    let identity = Identity::open_or_create(first_farm_directory)
-        .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
+    let identity = if create {
+        Identity::open_or_create(first_farm_directory)
+            .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?
+    } else {
+        Identity::open(first_farm_directory)
+            .map_err(|error| anyhow!("Failed to open identity of the first farm: {error}"))?
+            .ok_or_else(|| {
+                anyhow!(
+                    "Failed to open identity of the first farm: Farm doesn't exist and creation \
+                    was explicitly disabled"
+                )
+            })?
+    };
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
@@ -541,6 +558,7 @@ where
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
                             plotter,
+                            create,
                         },
                         farm_index,
                     );

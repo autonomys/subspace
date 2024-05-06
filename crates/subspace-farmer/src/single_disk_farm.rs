@@ -297,6 +297,8 @@ pub struct SingleDiskFarmOptions<NC, P> {
     pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
     /// Limit concurrency of internal benchmarking between different farms
     pub faster_read_sector_record_chunks_mode_concurrency: Arc<Semaphore>,
+    /// Whether to create a farm if it doesn't yet exist
+    pub create: bool,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -1063,6 +1065,7 @@ impl SingleDiskFarm {
             max_pieces_in_sector,
             cache_percentage,
             disable_farm_locking,
+            create,
             ..
         } = options;
 
@@ -1071,7 +1074,16 @@ impl SingleDiskFarm {
 
         fs::create_dir_all(directory)?;
 
-        let identity = Identity::open_or_create(directory)?;
+        let identity = if *create {
+            Identity::open_or_create(directory)?
+        } else {
+            Identity::open(directory)?.ok_or_else(|| {
+                IdentityError::Io(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Farm does not exist and creation was explicitly disabled",
+                ))
+            })?
+        };
         let public_key = identity.public_key().to_bytes().into();
 
         let single_disk_farm_info = match SingleDiskFarmInfo::load_from(directory)? {
