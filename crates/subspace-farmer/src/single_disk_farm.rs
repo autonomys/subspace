@@ -702,7 +702,6 @@ impl SingleDiskFarm {
         let public_key = *single_disk_farm_info.public_key();
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
-        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
 
         let SingleDiskFarmOptions {
             directory,
@@ -824,8 +823,6 @@ impl SingleDiskFarm {
                         public_key,
                         node_client: &node_client,
                         pieces_in_sector,
-                        sector_size,
-                        sector_metadata_size,
                         plot_file: &plot_file,
                         metadata_file,
                         sectors_metadata: &sectors_metadata,

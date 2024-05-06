@@ -122,7 +122,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         println!("Plotting one sector...");
 
         let mut plotted_sector_bytes = Vec::new();
-        let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
             public_key,
@@ -133,7 +132,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             erasure_coding,
             pieces_in_sector,
             sector_output: &mut plotted_sector_bytes,
-            sector_metadata_output: &mut plotted_sector_metadata_bytes,
             downloading_semaphore: black_box(None),
             encoding_semaphore: black_box(None),
             table_generators: slice::from_mut(&mut table_generator),

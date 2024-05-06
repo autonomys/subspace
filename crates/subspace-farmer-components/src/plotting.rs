@@ -70,14 +70,6 @@ pub enum PlottingError {
         /// Expected size
         expected: usize,
     },
-    /// Bad sector metadata output size
-    #[error("Bad sector metadata output size: provided {provided}, expected {expected}")]
-    BadSectorMetadataOutputSize {
-        /// Actual size
-        provided: usize,
-        /// Expected size
-        expected: usize,
-    },
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
@@ -136,9 +128,6 @@ where
     /// Where plotted sector should be written, vector must either be empty (in which case it'll be
     /// resized to correct size automatically) or correctly sized from the beginning
     pub sector_output: &'a mut Vec<u8>,
-    /// Where plotted sector metadata should be written, vector must either be empty (in which case
-    /// it'll be resized to correct size automatically) or correctly sized from the beginning
-    pub sector_metadata_output: &'a mut Vec<u8>,
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub downloading_semaphore: Option<Arc<Semaphore>>,
@@ -173,7 +162,6 @@ where
         erasure_coding,
         pieces_in_sector,
         sector_output,
-        sector_metadata_output,
         downloading_semaphore,
         encoding_semaphore,
         table_generators,
@@ -206,7 +194,6 @@ where
             erasure_coding,
             pieces_in_sector,
             sector_output,
-            sector_metadata_output,
             table_generators,
             abort_early,
             global_mutex: &Default::default(),
@@ -339,9 +326,6 @@ where
     /// Where plotted sector should be written, vector must either be empty (in which case it'll be
     /// resized to correct size automatically) or correctly sized from the beginning
     pub sector_output: &'a mut Vec<u8>,
-    /// Where plotted sector metadata should be written, vector must either be empty (in which case
-    /// it'll be resized to correct size automatically) or correctly sized from the beginning
-    pub sector_metadata_output: &'a mut Vec<u8>,
     /// Proof of space table generators
     pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
@@ -370,7 +354,6 @@ where
         erasure_coding,
         pieces_in_sector,
         sector_output,
-        sector_metadata_output,
         table_generators,
         abort_early,
         global_mutex,
@@ -390,15 +373,6 @@ where
         return Err(PlottingError::BadSectorOutputSize {
             provided: sector_output.len(),
             expected: sector_size,
-        });
-    }
-
-    if !sector_metadata_output.is_empty()
-        && sector_metadata_output.len() != SectorMetadataChecksummed::encoded_size()
-    {
-        return Err(PlottingError::BadSectorMetadataOutputSize {
-            provided: sector_metadata_output.len(),
-            expected: SectorMetadataChecksummed::encoded_size(),
         });
     }
 
@@ -454,7 +428,6 @@ where
     }
 
     sector_output.resize(sector_size, 0);
-    sector_metadata_output.resize(SectorMetadataChecksummed::encoded_size(), 0);
 
     // Write sector to disk in form of following regions:
     // * sector contents map
@@ -525,8 +498,6 @@ where
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
         history_size: farmer_protocol_info.history_size,
     });
-
-    sector_metadata_output.copy_from_slice(&sector_metadata.encode());
 
     Ok(PlottedSector {
         sector_id,

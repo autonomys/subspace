@@ -416,7 +416,6 @@ pub fn create_signed_vote(
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = Vec::new();
-        let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
             public_key: &public_key,
@@ -427,7 +426,6 @@ pub fn create_signed_vote(
             erasure_coding,
             pieces_in_sector,
             sector_output: &mut plotted_sector_bytes,
-            sector_metadata_output: &mut plotted_sector_metadata_bytes,
             downloading_semaphore: None,
             encoding_semaphore: None,
             table_generators: slice::from_mut(&mut table_generator),

@@ -33,8 +33,6 @@ pub enum SectorPlottingProgress {
         time: Duration,
         /// All plotted sector bytes
         sector: Vec<u8>,
-        /// All plotted sector metadata bytes
-        sector_metadata: Vec<u8>,
     },
     /// Plotting failed
     Error {

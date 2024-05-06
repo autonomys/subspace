@@ -175,13 +175,12 @@ where
                 };
 
                 // Plotting
-                let (sector, sector_metadata, plotted_sector) = {
+                let (sector, plotted_sector) = {
                     let thread_pools = plotting_thread_pool_manager.get_thread_pools().await;
 
                     let plotting_fn = || {
                         tokio::task::block_in_place(|| {
                             let mut sector = Vec::new();
-                            let mut sector_metadata = Vec::new();
 
                             let plotted_sector = encode_sector::<PosTable>(
                                 downloaded_sector,
@@ -190,7 +189,6 @@ where
                                     erasure_coding: &erasure_coding,
                                     pieces_in_sector,
                                     sector_output: &mut sector,
-                                    sector_metadata_output: &mut sector_metadata,
                                     table_generators: &mut (0..record_encoding_concurrency.get())
                                         .map(|_| PosTable::generator())
                                         .collect::<Vec<_>>(),
@@ -199,7 +197,7 @@ where
                                 },
                             )?;
 
-                            Ok((sector, sector_metadata, plotted_sector))
+                            Ok((sector, plotted_sector))
                         })
                     };
 
@@ -265,7 +263,6 @@ where
                             plotted_sector,
                             time: start.elapsed(),
                             sector,
-                            sector_metadata,
                         },
                     )
                     .await;

@@ -224,7 +224,6 @@ where
         .expect("First block is always producing one segment; qed");
     let history_size = HistorySize::from(SegmentIndex::ZERO);
     let mut sector = Vec::new();
-    let mut sector_metadata = Vec::new();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
@@ -247,7 +246,6 @@ where
         erasure_coding,
         pieces_in_sector,
         sector_output: &mut sector,
-        sector_metadata_output: &mut sector_metadata,
         downloading_semaphore: None,
         encoding_semaphore: None,
         table_generators: slice::from_mut(&mut table_generator),
