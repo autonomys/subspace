@@ -3,6 +3,7 @@
     array_windows,
     assert_matches,
     const_option,
+    duration_constructors,
     exact_size_is_empty,
     hash_extract_if,
     impl_trait_in_assoc_type,

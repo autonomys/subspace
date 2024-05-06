@@ -6,6 +6,7 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -17,6 +18,7 @@ const RPC_MAX_CONCURRENT_REQUESTS: usize = 1_000_000;
 /// Node is having a hard time responding for many piece requests
 // TODO: Remove this once https://github.com/paritytech/jsonrpsee/issues/1189 is resolved
 const MAX_CONCURRENT_PIECE_REQUESTS: usize = 10;
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// `WsClient` wrapper.
 #[derive(Debug, Clone)]
@@ -32,6 +34,7 @@ impl NodeRpcClient {
             WsClientBuilder::default()
                 .max_concurrent_requests(RPC_MAX_CONCURRENT_REQUESTS)
                 .max_request_size(20 * 1024 * 1024)
+                .request_timeout(REQUEST_TIMEOUT)
                 .build(url)
                 .await?,
         );
