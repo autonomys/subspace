@@ -88,6 +88,7 @@ pub(super) struct SectorPlottingOptions<'a, NC, P> {
     pub(super) public_key: PublicKey,
     pub(super) node_client: &'a NC,
     pub(super) pieces_in_sector: u16,
+    pub(super) sector_size: usize,
     #[cfg(not(windows))]
     pub(super) plot_file: &'a File,
     #[cfg(windows)]
@@ -231,6 +232,7 @@ where
         public_key,
         node_client,
         pieces_in_sector,
+        sector_size,
         plot_file,
         metadata_file,
         sectors_metadata,
@@ -362,7 +364,7 @@ where
             Err("Plotting progress stream ended before plotting finished".to_string())
         };
 
-        let (plotted_sector, sector) = progress_processor_fut
+        let (plotted_sector, mut sector) = progress_processor_fut
             .await
             .map_err(PlottingError::LowLevel)?;
 
@@ -380,8 +382,17 @@ where
 
             let start = Instant::now();
 
-            plot_file.write_all_at(&sector, (sector_index as usize * sector.len()) as u64)?;
-            drop(sector);
+            {
+                let mut sector_write_offset = u64::from(sector_index) * *sector_size as u64;
+                while let Some(maybe_sector_chunk) = sector.next().await {
+                    let sector_chunk = maybe_sector_chunk.map_err(|error| {
+                        PlottingError::LowLevel(format!("Sector chunk receive error: {error}"))
+                    })?;
+                    plot_file.write_all_at(&sector_chunk, sector_write_offset)?;
+                    sector_write_offset += sector_chunk.len() as u64;
+                }
+                drop(sector);
+            }
             {
                 let encoded_sector_metadata = plotted_sector.sector_metadata.encode();
                 metadata_file.write_all_at(
