@@ -7,9 +7,10 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use rayon::prelude::*;
-use std::io;
 use std::mem::ManuallyDrop;
 use std::simd::Simd;
+use std::str::FromStr;
+use std::{fmt, io};
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{Piece, PieceOffset, Record, SBucket, SectorId};
 use subspace_erasure_coding::ErasureCoding;
@@ -100,6 +101,31 @@ pub enum ReadSectorRecordChunksMode {
     /// Read the whole sector at once and extract chunks from in-memory buffer, which uses more
     /// memory, but only requires linear read speed from the disk to be decent
     WholeSector,
+}
+
+impl fmt::Display for ReadSectorRecordChunksMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConcurrentChunks => {
+                write!(f, "ConcurrentChunks")
+            }
+            Self::WholeSector => {
+                write!(f, "WholeSector")
+            }
+        }
+    }
+}
+
+impl FromStr for ReadSectorRecordChunksMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ConcurrentChunks" => Ok(Self::ConcurrentChunks),
+            "WholeSector" => Ok(Self::WholeSector),
+            s => Err(format!("Can't parse {s} as `ReadSectorRecordChunksMode`")),
+        }
+    }
 }
 
 /// Read sector record chunks, only plotted s-buckets are returned (in decoded form).
