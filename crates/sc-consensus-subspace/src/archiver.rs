@@ -79,7 +79,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
@@ -521,7 +521,6 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-    overridden_last_archived_block: Option<NumberFor<Block>>,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
     Block: BlockT,
@@ -538,12 +537,22 @@ where
         .chain_constants(best_block_hash)?
         .confirmation_depth_k();
 
-    let best_block_to_archive =
-        if let Some(overridden_last_archived_block) = overridden_last_archived_block {
-            overridden_last_archived_block
+    // Trying to get the "best block to archive" in both cases: regular and fast sync.
+    let mut best_block_to_archive = best_block_number + 1u32.into();
+    for distance in 1..=(confirmation_depth_k + 1) {
+        let block_number_candidate = best_block_number.saturating_sub(distance.into());
+        if client.hash(block_number_candidate).ok().flatten().is_some()
+            && client
+                .hash(block_number_candidate.saturating_sub(1u32.into()))
+                .ok()
+                .flatten()
+                .is_some()
+        {
+            best_block_to_archive = block_number_candidate;
         } else {
-            best_block_number.saturating_sub(confirmation_depth_k.into())
-        };
+            break;
+        }
+    }
 
     let maybe_last_archived_block =
         find_last_archived_block(client, segment_headers_store, best_block_to_archive)?;
@@ -795,7 +804,6 @@ where
             &segment_headers_store,
             &subspace_link,
             client.as_ref(),
-            None,
         )?)
     } else {
         None
@@ -806,25 +814,19 @@ where
         .subscribe();
 
     Ok(async move {
-        let mut saved_block_import_notification = None;
+        let mut saved_block_import_notification: Option<BlockImportingNotification<Block>> = None;
 
         let mut block_importing_notification_stream = block_importing_notification_stream;
 
         'initialization_recovery: loop {
-            let overridden_last_archived_block = saved_block_import_notification
-                .as_ref()
-                .map(|notification: &BlockImportingNotification<Block>| notification.block_number);
             let archived_segment_notification_sender =
                 subspace_link.archived_segment_notification_sender.clone();
 
             let archiver = match maybe_archiver.take() {
                 Some(archiver) => archiver,
-                None => initialize_archiver(
-                    &segment_headers_store,
-                    &subspace_link,
-                    client.as_ref(),
-                    overridden_last_archived_block,
-                )?,
+                None => {
+                    initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?
+                }
             };
 
             let InitializedArchiver {
@@ -852,14 +854,12 @@ where
                 .await?;
 
                 if !success {
-                    let error = format!(
-                        "Failed to recover the archiver for block number: {}",
-                        block_import_notification.block_number
-                    );
-                    error!(error);
-
                     return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
-                        error.into(),
+                        format!(
+                            "Failed to recover the archiver for block number: {}",
+                            block_import_notification.block_number
+                        )
+                        .into(),
                     )));
                 } else {
                     debug!(
@@ -896,7 +896,7 @@ where
                 .await?;
 
                 if !success {
-                    warn!(
+                    debug!(
                         "Archiver detected an error. \
                         Attempting recovery with block number = {}...",
                         block_import_notification.block_number
@@ -952,17 +952,19 @@ where
         return Ok(true);
     }
 
-    let maybe_block_hash = client.hash(block_number_to_archive)?;
-
-    let Some(block_hash) = maybe_block_hash else {
-        warn!("Archiver detected an error: older block by number must always exist. ");
-
+    if block_number_to_archive > *best_archived_block_number + 1u32.into() {
+        // There is a gap between the best archived block and the block to archive.
+        // It's likely a fast sync.
         return Ok(false);
-    };
+    }
+
+    let block_hash = client
+        .hash(block_number_to_archive)?
+        .expect("Older block by number must always exist.");
 
     let block = client
         .block(block_hash)?
-        .expect("Older block by number must always exist");
+        .expect("Older block by hash must always exist.");
 
     let parent_block_hash = *block.block.header().parent_hash();
     let block_hash_to_archive = block.block.hash();
