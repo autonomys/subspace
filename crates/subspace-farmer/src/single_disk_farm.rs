@@ -290,6 +290,9 @@ pub struct SingleDiskFarmOptions<NC, P> {
     pub global_mutex: Arc<AsyncMutex<()>>,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
+    /// Explicit mode to use for reading of sector record chunks instead of doing internal
+    /// benchmarking
+    pub read_sector_record_chunks_mode: Option<ReadSectorRecordChunksMode>,
     /// Barrier before internal benchmarking between different farms
     pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
     /// Limit concurrency of internal benchmarking between different farms
@@ -710,6 +713,7 @@ impl SingleDiskFarm {
             farming_thread_pool_size,
             plotting_delay,
             global_mutex,
+            read_sector_record_chunks_mode,
             faster_read_sector_record_chunks_mode_barrier,
             faster_read_sector_record_chunks_mode_concurrency,
             ..
@@ -766,32 +770,35 @@ impl SingleDiskFarm {
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 
-        let (read_sector_record_chunks_mode, farming_plot, farming_thread_pool) = {
-            // Error doesn't matter here
-            let _permit = faster_read_sector_record_chunks_mode_concurrency
-                .acquire()
-                .await;
-            let span = span.clone();
-            let plot_file = Arc::clone(&plot_file);
+        let (read_sector_record_chunks_mode, farming_plot, farming_thread_pool) =
+            if let Some(mode) = read_sector_record_chunks_mode {
+                (mode, farming_plot, farming_thread_pool)
+            } else {
+                // Error doesn't matter here
+                let _permit = faster_read_sector_record_chunks_mode_concurrency
+                    .acquire()
+                    .await;
+                let span = span.clone();
+                let plot_file = Arc::clone(&plot_file);
 
-            let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
-                farming_thread_pool
-                    .install(move || {
-                        let _span_guard = span.enter();
+                let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                    farming_thread_pool
+                        .install(move || {
+                            let _span_guard = span.enter();
 
-                        faster_read_sector_record_chunks_mode(
-                            &*plot_file,
-                            &farming_plot,
-                            sector_size,
-                            metadata_header.plotted_sector_count,
-                        )
-                        .map(|mode| (mode, farming_plot))
-                    })
-                    .map(|(mode, farming_plot)| (mode, farming_plot, farming_thread_pool))
-            });
+                            faster_read_sector_record_chunks_mode(
+                                &*plot_file,
+                                &farming_plot,
+                                sector_size,
+                                metadata_header.plotted_sector_count,
+                            )
+                            .map(|mode| (mode, farming_plot))
+                        })
+                        .map(|(mode, farming_plot)| (mode, farming_plot, farming_thread_pool))
+                });
 
-            AsyncJoinOnDrop::new(read_sector_record_chunks_mode_fut, false).await??
-        };
+                AsyncJoinOnDrop::new(read_sector_record_chunks_mode_fut, false).await??
+            };
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 

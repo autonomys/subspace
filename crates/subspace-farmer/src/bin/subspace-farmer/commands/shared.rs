@@ -7,6 +7,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use thread_priority::ThreadPriority;
 use zeroize::Zeroizing;
@@ -61,6 +62,8 @@ pub(in super::super) struct DiskFarm {
     pub(in super::super) directory: PathBuf,
     /// How much space in bytes can farm use for plots (metadata space is not included)
     pub(in super::super) allocated_plotting_space: u64,
+    /// Which mode to use for reading of sector record chunks
+    pub(in super::super) read_sector_record_chunks_mode: Option<ReadSectorRecordChunksMode>,
 }
 
 impl FromStr for DiskFarm {
@@ -68,12 +71,13 @@ impl FromStr for DiskFarm {
 
     fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
         let parts = s.split(',').collect::<Vec<_>>();
-        if parts.len() != 2 {
-            return Err("Must contain 2 coma-separated components".to_string());
+        if parts.len() < 2 {
+            return Err("Must contain 2 or more coma-separated components".to_string());
         }
 
         let mut plot_directory = None;
         let mut allocated_plotting_space = None;
+        let mut read_sector_record_chunks_mode = None;
 
         for part in parts {
             let part = part.splitn(2, '=').collect::<Vec<_>>();
@@ -98,9 +102,19 @@ impl FromStr for DiskFarm {
                             .as_u64(),
                     );
                 }
+                "record-chunks-mode" => {
+                    read_sector_record_chunks_mode.replace(
+                        value
+                            .parse::<ReadSectorRecordChunksMode>()
+                            .map_err(|error| {
+                                format!("Failed to parse `record-chunks-mode` \"{value}\": {error}")
+                            })?,
+                    );
+                }
                 key => {
                     return Err(format!(
-                        "Key \"{key}\" is not supported, only `path` or `size`"
+                        "Key \"{key}\" is not supported, only `path`, `size` or \
+                        `record-chunks-mode` are allowed"
                     ));
                 }
             }
@@ -113,6 +127,7 @@ impl FromStr for DiskFarm {
             allocated_plotting_space: allocated_plotting_space.ok_or({
                 "`size` key is required with path to directory where plots will be stored"
             })?,
+            read_sector_record_chunks_mode,
         })
     }
 }

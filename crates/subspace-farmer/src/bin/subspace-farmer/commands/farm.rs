@@ -73,7 +73,9 @@ pub(crate) struct FarmingArgs {
     ///
     /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
     /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
-    /// ensure it will not run out of space in runtime).
+    /// ensure it will not run out of space in runtime). Also optionally `record-chunks-mode` can be
+    /// set to `ConcurrentChunks` or `WholeSector` in order to avoid internal benchmarking during
+    /// startup.
     disk_farms: Vec<DiskFarm>,
     /// WebSocket RPC URL of the Subspace node to connect to
     #[arg(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
@@ -265,6 +267,7 @@ where
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
             allocated_plotting_space: plot_size.as_u64(),
+            read_sector_record_chunks_mode: None,
         }];
 
         Some(tmp_directory)
@@ -533,6 +536,8 @@ where
                             plotting_delay: Some(plotting_delay_receiver),
                             global_mutex,
                             disable_farm_locking,
+                            read_sector_record_chunks_mode: disk_farm
+                                .read_sector_record_chunks_mode,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
                             plotter,
