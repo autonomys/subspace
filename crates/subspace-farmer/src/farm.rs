@@ -42,7 +42,7 @@ pub struct PieceCacheOffset(pub(crate) u32);
 #[async_trait]
 pub trait PieceCache: Send + Sync + fmt::Debug {
     /// Max number of elements in this cache
-    fn max_num_elements(&self) -> usize;
+    fn max_num_elements(&self) -> u32;
 
     /// Contents of this piece cache.
     ///
@@ -50,7 +50,15 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     /// doesn't happen for the same piece being accessed!
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_>;
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<PieceIndex>), FarmError>>
+                + Unpin
+                + Send
+                + '_,
+        >,
+        FarmError,
+    >;
 
     /// Store piece in cache at specified offset, replacing existing piece if there is any.
     ///
@@ -432,4 +440,56 @@ pub trait Farm {
 
     /// Run and wait for background threads to exit or return an error
     fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
+}
+
+#[async_trait]
+impl<T> Farm for Box<T>
+where
+    T: Farm + ?Sized,
+{
+    fn id(&self) -> &FarmId {
+        self.as_ref().id()
+    }
+
+    fn total_sectors_count(&self) -> SectorIndex {
+        self.as_ref().total_sectors_count()
+    }
+
+    fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
+        self.as_ref().plotted_sectors()
+    }
+
+    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
+        self.as_ref().piece_cache()
+    }
+
+    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
+        self.as_ref().plot_cache()
+    }
+
+    fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
+        self.as_ref().piece_reader()
+    }
+
+    fn on_sector_update(
+        &self,
+        callback: HandlerFn<(SectorIndex, SectorUpdate)>,
+    ) -> Box<dyn HandlerId> {
+        self.as_ref().on_sector_update(callback)
+    }
+
+    fn on_farming_notification(
+        &self,
+        callback: HandlerFn<FarmingNotification>,
+    ) -> Box<dyn HandlerId> {
+        self.as_ref().on_farming_notification(callback)
+    }
+
+    fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn HandlerId> {
+        self.as_ref().on_solution(callback)
+    }
+
+    fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
+        (*self).run()
+    }
 }
