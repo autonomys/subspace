@@ -68,7 +68,7 @@ use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification}
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, Zero};
-use sp_runtime::{Justifications, Saturating};
+use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
 use std::slice;
@@ -528,7 +528,10 @@ where
     AS: AuxStore,
 {
     let client_info = client.info();
-    let best_block_number = client_info.best_number;
+    let best_block_number = TryInto::<BlockNumber>::try_into(client_info.best_number)
+        .unwrap_or_else(|_| {
+            unreachable!("Block number fits into block number; qed");
+        });
     let best_block_hash = client_info.best_hash;
 
     let confirmation_depth_k = client
@@ -536,11 +539,19 @@ where
         .chain_constants(best_block_hash)?
         .confirmation_depth_k();
 
-    let maybe_last_archived_block = find_last_archived_block(
-        client,
-        segment_headers_store,
-        best_block_number.saturating_sub(confirmation_depth_k.into()),
-    )?;
+    let mut best_block_to_archive = best_block_number.saturating_sub(confirmation_depth_k);
+    if (best_block_to_archive..best_block_number)
+        .any(|block_number| client.hash(block_number.into()).ok().flatten().is_none())
+    {
+        // If there are blocks missing blocks between best block to archive and best block of the
+        // blockchain it means newer block was inserted in some special way and as such is by
+        // definition valid, so we can simply assume that is our best block to archive instead
+        best_block_to_archive = best_block_number;
+    }
+
+    let maybe_last_archived_block =
+        find_last_archived_block(client, segment_headers_store, best_block_to_archive.into())?;
+
     let have_last_segment_header = maybe_last_archived_block.is_some();
     let mut best_archived_block = None;
 
@@ -581,29 +592,23 @@ where
 
     let mut older_archived_segments = Vec::new();
 
-    // Process blocks since last fully archived block (or genesis) up to the current head minus K
+    // Process blocks since last fully archived block up to the current head minus K
     {
         let blocks_to_archive_from = archiver
             .last_archived_block_number()
             .map(|n| n + 1)
             .unwrap_or_default();
-        let blocks_to_archive_to =
-            TryInto::<BlockNumber>::try_into(best_block_number)
-                .unwrap_or_else(|_| {
-                    panic!(
-                        "Best block number {best_block_number} can't be converted into BlockNumber",
-                    );
-                })
-                .checked_sub(confirmation_depth_k)
-                .filter(|&blocks_to_archive_to| blocks_to_archive_to >= blocks_to_archive_from)
-                .or({
-                    if have_last_segment_header {
-                        None
-                    } else {
-                        // If not continuation, archive genesis block
-                        Some(0)
-                    }
-                });
+        let blocks_to_archive_to = best_block_number
+            .checked_sub(confirmation_depth_k)
+            .filter(|&blocks_to_archive_to| blocks_to_archive_to >= blocks_to_archive_from)
+            .or({
+                if have_last_segment_header {
+                    None
+                } else {
+                    // If not continuation, archive genesis block
+                    Some(0)
+                }
+            });
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
