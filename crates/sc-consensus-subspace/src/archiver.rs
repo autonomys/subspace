@@ -67,7 +67,7 @@ use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
@@ -812,8 +812,9 @@ where
             confirmation_depth_k,
             mut archiver,
             older_archived_segments,
-            mut best_archived_block,
+            best_archived_block,
         } = archiver;
+        let (mut best_archived_block_hash, mut best_archived_block_number) = best_archived_block;
 
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
@@ -830,16 +831,64 @@ where
         while let Some(ref block_import_notification) =
             block_importing_notification_stream.next().await
         {
-            best_archived_block = archive_block(
+            let block_number_to_archive = match block_import_notification
+                .block_number
+                .checked_sub(&confirmation_depth_k.into())
+            {
+                Some(block_number_to_archive) => block_number_to_archive,
+                None => {
+                    // Too early to archive blocks
+                    continue;
+                }
+            };
+
+            if best_archived_block_number >= block_number_to_archive {
+                // This block was already archived, skip
+                continue;
+            }
+
+            // In case there was a block gap re-initialize archiver and continue with current
+            // block number (rather than block number at some depth) to allow for special sync
+            // modes where pre-verified blocks are inserted at some point in the future comparing to
+            // previously existing blocks
+            if best_archived_block_number + One::one() != block_number_to_archive {
+                InitializedArchiver {
+                    confirmation_depth_k: _,
+                    archiver,
+                    older_archived_segments: _,
+                    best_archived_block: (best_archived_block_hash, best_archived_block_number),
+                } = initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?;
+
+                if best_archived_block_number + One::one() == block_number_to_archive {
+                    // As expected, can continue now
+                } else if best_archived_block_number >= block_number_to_archive {
+                    // Special sync mode where verified blocks were inserted into blockchain
+                    // directly, archiving of this block will naturally happen later
+                    continue;
+                } else {
+                    let error = format!(
+                        "There was a gap in blockchain history and the last contiguous series of \
+                        blocks starting with doesn't start with archived segment (best archived \
+                        block number {best_archived_block_number}, block number to archive \
+                        {block_number_to_archive}), block about to be imported {}), archiver can't \
+                        continue",
+                        block_import_notification.block_number
+                    );
+                    return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
+                        error.into(),
+                    )));
+                }
+            }
+
+            (best_archived_block_hash, best_archived_block_number) = archive_block(
                 &mut archiver,
                 segment_headers_store.clone(),
                 client.clone(),
                 &sync_oracle,
                 telemetry.clone(),
                 archived_segment_notification_sender.clone(),
-                confirmation_depth_k,
-                best_archived_block,
-                block_import_notification.block_number,
+                best_archived_block_hash,
+                block_number_to_archive,
             )
             .await?;
         }
@@ -857,9 +906,8 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     sync_oracle: &SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
-    confirmation_depth_k: BlockNumber,
-    best_archived_block: (Block::Hash, NumberFor<Block>),
-    block_number: NumberFor<Block>,
+    best_archived_block_hash: Block::Hash,
+    block_number_to_archive: NumberFor<Block>,
 ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)>
 where
     Block: BlockT,
@@ -877,20 +925,6 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
-    let block_number_to_archive = match block_number.checked_sub(&confirmation_depth_k.into()) {
-        Some(block_number_to_archive) => block_number_to_archive,
-        None => {
-            return Ok(best_archived_block);
-        }
-    };
-
-    let (best_archived_block_hash, best_archived_block_number) = best_archived_block;
-
-    if best_archived_block_number >= block_number_to_archive {
-        // This block was already archived, skip
-        return Ok(best_archived_block);
-    }
-
     let block = client
         .block(
             client
