@@ -23,7 +23,7 @@ use subspace_farmer_components::plotting::{
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_proof_of_space::Table;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::warn;
 
@@ -64,8 +64,176 @@ where
     PG: PieceGetter + Clone + Send + Sync + 'static,
     PosTable: Table,
 {
+    async fn has_free_capacity(&self) -> Result<bool, String> {
+        Ok(self.downloading_semaphore.available_permits() > 0)
+    }
+
     async fn plot_sector<PS>(
         &self,
+        public_key: PublicKey,
+        sector_index: SectorIndex,
+        farmer_protocol_info: FarmerProtocolInfo,
+        pieces_in_sector: u16,
+        replotting: bool,
+        mut progress_sender: PS,
+    ) where
+        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
+        PS::Error: Error,
+    {
+        let start = Instant::now();
+
+        // Done outside the future below as a backpressure, ensuring that it is not possible to
+        // schedule unbounded number of plotting tasks
+        let downloading_permit = match Arc::clone(&self.downloading_semaphore)
+            .acquire_owned()
+            .await
+        {
+            Ok(downloading_permit) => downloading_permit,
+            Err(error) => {
+                warn!(%error, "Failed to acquire downloading permit");
+
+                let progress_updater = ProgressUpdater {
+                    public_key,
+                    sector_index,
+                    handlers: Arc::clone(&self.handlers),
+                };
+
+                progress_updater
+                    .update_progress_and_events(
+                        &mut progress_sender,
+                        SectorPlottingProgress::Error {
+                            error: format!("Failed to acquire downloading permit: {error}"),
+                        },
+                    )
+                    .await;
+
+                return;
+            }
+        };
+
+        self.plot_sector_internal(
+            start,
+            downloading_permit,
+            public_key,
+            sector_index,
+            farmer_protocol_info,
+            pieces_in_sector,
+            replotting,
+            progress_sender,
+        )
+        .await
+    }
+
+    async fn try_plot_sector<PS>(
+        &self,
+        public_key: PublicKey,
+        sector_index: SectorIndex,
+        farmer_protocol_info: FarmerProtocolInfo,
+        pieces_in_sector: u16,
+        replotting: bool,
+        progress_sender: PS,
+    ) -> bool
+    where
+        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
+        PS::Error: Error,
+    {
+        let start = Instant::now();
+
+        let Ok(downloading_permit) = Arc::clone(&self.downloading_semaphore).try_acquire_owned()
+        else {
+            return false;
+        };
+
+        self.plot_sector_internal(
+            start,
+            downloading_permit,
+            public_key,
+            sector_index,
+            farmer_protocol_info,
+            pieces_in_sector,
+            replotting,
+            progress_sender,
+        )
+        .await;
+
+        true
+    }
+}
+
+impl<PG, PosTable> CpuPlotter<PG, PosTable>
+where
+    PG: PieceGetter + Clone + Send + Sync + 'static,
+    PosTable: Table,
+{
+    /// Create new instance
+    pub fn new(
+        piece_getter: PG,
+        downloading_semaphore: Arc<Semaphore>,
+        plotting_thread_pool_manager: PlottingThreadPoolManager,
+        record_encoding_concurrency: NonZeroUsize,
+        global_mutex: Arc<AsyncMutex<()>>,
+        kzg: Kzg,
+        erasure_coding: ErasureCoding,
+    ) -> Self {
+        let (tasks_sender, mut tasks_receiver) = mpsc::channel(1);
+
+        // Basically runs plotting tasks in the background and allows to abort on drop
+        let background_tasks = AsyncJoinOnDrop::new(
+            tokio::spawn(async move {
+                let background_tasks = FuturesUnordered::new();
+                let mut background_tasks = pin!(background_tasks);
+                // Just so that `FuturesUnordered` will never end
+                background_tasks.push(AsyncJoinOnDrop::new(tokio::spawn(pending::<()>()), true));
+
+                loop {
+                    select! {
+                        maybe_background_task = tasks_receiver.next().fuse() => {
+                            let Some(background_task) = maybe_background_task else {
+                                break;
+                            };
+
+                            background_tasks.push(background_task);
+                        },
+                        _ = background_tasks.select_next_some() => {
+                            // Nothing to do
+                        }
+                    }
+                }
+            }),
+            true,
+        );
+
+        let abort_early = Arc::new(AtomicBool::new(false));
+
+        Self {
+            piece_getter,
+            downloading_semaphore,
+            plotting_thread_pool_manager,
+            record_encoding_concurrency,
+            global_mutex,
+            kzg,
+            erasure_coding,
+            handlers: Arc::default(),
+            tasks_sender,
+            _background_tasks: background_tasks,
+            abort_early,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Subscribe to plotting progress notifications
+    pub fn on_plotting_progress(
+        &self,
+        callback: HandlerFn3<PublicKey, SectorIndex, SectorPlottingProgress>,
+    ) -> HandlerId {
+        self.handlers.plotting_progress.add(callback)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn plot_sector_internal<PS>(
+        &self,
+        start: Instant,
+        downloading_permit: OwnedSemaphorePermit,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
@@ -80,31 +248,6 @@ where
             public_key,
             sector_index,
             handlers: Arc::clone(&self.handlers),
-        };
-
-        let start = Instant::now();
-
-        // Done outside the future below as a backpressure, ensuring that it is not possible to
-        // schedule unbounded number of plotting tasks
-        let downloading_permit = match Arc::clone(&self.downloading_semaphore)
-            .acquire_owned()
-            .await
-        {
-            Ok(downloading_permit) => downloading_permit,
-            Err(error) => {
-                warn!(%error, "Failed to acquire downloading permit");
-
-                progress_updater
-                    .update_progress_and_events(
-                        &mut progress_sender,
-                        SectorPlottingProgress::Error {
-                            error: format!("Failed to acquire downloading permit: {error}"),
-                        },
-                    )
-                    .await;
-
-                return;
-            }
         };
 
         let plotting_fut = {
@@ -132,7 +275,7 @@ where
                     // Take mutex briefly to make sure plotting is allowed right now
                     global_mutex.lock().await;
 
-                    let start = Instant::now();
+                    let downloading_start = Instant::now();
 
                     let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                         public_key: &public_key,
@@ -164,7 +307,7 @@ where
                     if !progress_updater
                         .update_progress_and_events(
                             &mut progress_sender,
-                            SectorPlottingProgress::Downloaded(start.elapsed()),
+                            SectorPlottingProgress::Downloaded(downloading_start.elapsed()),
                         )
                         .await
                     {
@@ -220,7 +363,7 @@ where
                         return;
                     }
 
-                    let start = Instant::now();
+                    let encoding_start = Instant::now();
 
                     let plotting_result = thread_pool.install(plotting_fn);
 
@@ -229,7 +372,7 @@ where
                             if !progress_updater
                                 .update_progress_and_events(
                                     &mut progress_sender,
-                                    SectorPlottingProgress::Encoded(start.elapsed()),
+                                    SectorPlottingProgress::Encoded(encoding_start.elapsed()),
                                 )
                                 .await
                             {
@@ -284,76 +427,6 @@ where
                 .plotting_progress
                 .call_simple(&public_key, &sector_index, &progress);
         }
-    }
-}
-
-impl<PG, PosTable> CpuPlotter<PG, PosTable>
-where
-    PG: PieceGetter + Clone + Send + Sync + 'static,
-    PosTable: Table,
-{
-    /// Create new instance
-    pub fn new(
-        piece_getter: PG,
-        downloading_semaphore: Arc<Semaphore>,
-        plotting_thread_pool_manager: PlottingThreadPoolManager,
-        record_encoding_concurrency: NonZeroUsize,
-        global_mutex: Arc<AsyncMutex<()>>,
-        kzg: Kzg,
-        erasure_coding: ErasureCoding,
-    ) -> Self {
-        let (tasks_sender, mut tasks_receiver) = mpsc::channel(1);
-
-        // Basically runs plotting tasks in the background and allows to abort on drop
-        let background_tasks = AsyncJoinOnDrop::new(
-            tokio::spawn(async move {
-                let background_tasks = FuturesUnordered::new();
-                let mut background_tasks = pin!(background_tasks);
-                // Just so that `FuturesUnordered` will never end
-                background_tasks.push(AsyncJoinOnDrop::new(tokio::spawn(pending::<()>()), true));
-
-                loop {
-                    select! {
-                        maybe_background_task = tasks_receiver.next().fuse() => {
-                            if let Some(background_task) = maybe_background_task {
-                                background_tasks.push(background_task);
-                            } else {
-                                break;
-                            }
-                        },
-                        _ = background_tasks.select_next_some() => {
-                            // Nothing to do
-                        }
-                    }
-                }
-            }),
-            true,
-        );
-
-        let abort_early = Arc::new(AtomicBool::new(false));
-
-        Self {
-            piece_getter,
-            downloading_semaphore,
-            plotting_thread_pool_manager,
-            record_encoding_concurrency,
-            global_mutex,
-            kzg,
-            erasure_coding,
-            handlers: Arc::default(),
-            tasks_sender,
-            _background_tasks: background_tasks,
-            abort_early,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Subscribe to plotting progress notifications
-    pub fn on_plotting_progress(
-        &self,
-        callback: HandlerFn3<PublicKey, SectorIndex, SectorPlottingProgress>,
-    ) -> HandlerId {
-        self.handlers.plotting_progress.add(callback)
     }
 }
 
