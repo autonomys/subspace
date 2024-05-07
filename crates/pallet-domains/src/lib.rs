@@ -207,8 +207,8 @@ mod pallet {
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        OperatorPublicKey, RuntimeId, RuntimeObject, RuntimeType,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnDomainInstantiated,
+        OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -389,6 +389,9 @@ mod pallet {
 
         /// Post hook to notify accepted domain bundles in previous block.
         type DomainBundleSubmitted: DomainBundleSubmitted;
+
+        /// A hook to call after a domain is instantiated
+        type OnDomainInstantiated: OnDomainInstantiated;
     }
 
     #[pallet::pallet]
@@ -528,6 +531,7 @@ mod pallet {
 
     /// Stores the next domain id.
     #[pallet::storage]
+    #[pallet::getter(fn next_domain_id)]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
 
     /// The domain registry

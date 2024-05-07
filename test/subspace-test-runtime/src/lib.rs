@@ -741,6 +741,7 @@ impl pallet_domains::Config for Runtime {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type DomainBundleSubmitted = Messenger;
+    type OnDomainInstantiated = Messenger;
     type Balance = Balance;
 }
 

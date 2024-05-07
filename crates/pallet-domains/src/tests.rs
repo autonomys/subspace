@@ -292,6 +292,7 @@ impl pallet_domains::Config for Test {
     type BundleLongevity = BundleLongevity;
     type ConsensusSlotProbability = SlotProbability;
     type DomainBundleSubmitted = ();
+    type OnDomainInstantiated = ();
     type Balance = Balance;
 }
 

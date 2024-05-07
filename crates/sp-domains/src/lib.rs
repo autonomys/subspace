@@ -1248,6 +1248,15 @@ impl DomainBundleSubmitted for () {
     fn domain_bundle_submitted(_domain_id: DomainId) {}
 }
 
+/// A hook to call after a domain is instantiated
+pub trait OnDomainInstantiated {
+    fn on_domain_instantiated(domain_id: DomainId);
+}
+
+impl OnDomainInstantiated for () {
+    fn on_domain_instantiated(_domain_id: DomainId) {}
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
