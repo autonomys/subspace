@@ -517,10 +517,12 @@ where
     SignedBlock::<Block>::decode(&mut encoded_block)
 }
 
+// TODO: Consider removing `overridden_last_archived_block`.
 fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
+    overridden_last_archived_block: Option<NumberFor<Block>>,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
     Block: BlockT,
@@ -538,23 +540,12 @@ where
         .confirmation_depth_k();
 
     // Trying to get the "best block to archive" in both cases: regular and fast sync.
-    let mut best_block_to_archive = best_block_number + 1u32.into();
-    for distance in 1..=(confirmation_depth_k + 1) {
-        let block_number_candidate = best_block_number.saturating_sub(distance.into());
-        if client.hash(block_number_candidate).ok().flatten().is_some()
-            // We might add the block on the fast sync and we need to check for the parent block
-            // availability as well to continue iteration.
-            && client
-                .hash(block_number_candidate.saturating_sub(1u32.into()))
-                .ok()
-                .flatten()
-                .is_some()
-        {
-            best_block_to_archive = block_number_candidate;
+    let best_block_to_archive =
+        if let Some(overridden_last_archived_block) = overridden_last_archived_block {
+            overridden_last_archived_block
         } else {
-            break;
-        }
-    }
+            best_block_number.saturating_sub(confirmation_depth_k.into())
+        };
 
     let maybe_last_archived_block =
         find_last_archived_block(client, segment_headers_store, best_block_to_archive)?;
@@ -806,6 +797,7 @@ where
             &segment_headers_store,
             &subspace_link,
             client.as_ref(),
+            None,
         )?)
     } else {
         None
@@ -819,14 +811,21 @@ where
         let mut saved_block_import_notification: Option<BlockImportingNotification<Block>> = None;
 
         'initialization_recovery: loop {
+            let overridden_last_archived_block = saved_block_import_notification
+                .as_ref()
+                .map(|notification: &BlockImportingNotification<Block>| notification.block_number);
+
             let archived_segment_notification_sender =
                 subspace_link.archived_segment_notification_sender.clone();
 
             let archiver = match maybe_archiver.take() {
                 Some(archiver) => archiver,
-                None => {
-                    initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?
-                }
+                None => initialize_archiver(
+                    &segment_headers_store,
+                    &subspace_link,
+                    client.as_ref(),
+                    overridden_last_archived_block,
+                )?,
             };
 
             let InitializedArchiver {
@@ -835,8 +834,6 @@ where
                 older_archived_segments,
                 best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
             } = archiver;
-
-            debug!(%best_archived_block_number, ?best_archived_block_hash,  "Archiver initialized.");
 
             if let Some(block_import_notification) = saved_block_import_notification.take() {
                 let success = archive_block(
