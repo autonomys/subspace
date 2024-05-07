@@ -1213,6 +1213,10 @@ mod pallet {
         ) -> Option<DomainAllowlistUpdates> {
             DomainChainAllowlistUpdate::<T>::get(domain_id)
         }
+
+        pub fn domain_allow_list_update_storage_key(domain_id: DomainId) -> Vec<u8> {
+            DomainChainAllowlistUpdate::<T>::hashed_key_for(domain_id)
+        }
     }
 }
 

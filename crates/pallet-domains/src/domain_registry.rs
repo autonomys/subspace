@@ -8,8 +8,8 @@ use crate::pallet::{DomainStakingSummary, NextEVMChainId};
 use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
-    BalanceOf, Config, DomainHashingFor, DomainRegistry, ExecutionReceiptOf, HoldIdentifier,
-    NextDomainId, RuntimeRegistry,
+    into_complete_raw_genesis, BalanceOf, Config, DomainHashingFor, DomainRegistry,
+    ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -236,14 +236,14 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     let genesis_receipt = {
         let state_version = runtime_obj.version.state_version();
-        let raw_genesis = runtime_obj
-            .into_complete_raw_genesis::<T>(
-                domain_id,
-                domain_runtime_info,
-                total_issuance,
-                domain_config.initial_balances.clone(),
-            )
-            .map_err(Error::FailedToGenerateRawGenesis)?;
+        let raw_genesis = into_complete_raw_genesis::<T>(
+            runtime_obj,
+            domain_id,
+            domain_runtime_info,
+            total_issuance,
+            domain_config.initial_balances.clone(),
+        )
+        .map_err(Error::FailedToGenerateRawGenesis)?;
         let state_root = raw_genesis.state_root::<DomainHashingFor<T>>(state_version);
         let genesis_block_hash = derive_domain_block_hash::<T::DomainHeader>(
             Zero::zero(),
@@ -347,13 +347,13 @@ pub(crate) fn calculate_max_bundle_weight_and_size(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
     use hex_literal::hex;
     use sp_domains::storage::RawGenesis;
+    use sp_domains::RuntimeObject;
     use sp_runtime::traits::Convert;
     use sp_std::vec;
     use sp_version::RuntimeVersion;

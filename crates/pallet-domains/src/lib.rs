@@ -37,6 +37,7 @@ extern crate alloc;
 use crate::block_tree::verify_execution_receipt;
 use crate::bundle_storage_fund::storage_fund_account;
 use crate::domain_registry::Error as DomainRegistryError;
+use crate::runtime_registry::into_complete_raw_genesis;
 use crate::staking::OperatorStatus;
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
@@ -169,8 +170,7 @@ mod pallet {
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
-        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
-        ScheduledRuntimeUpgrade,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_reward_operators;
@@ -208,7 +208,7 @@ mod pallet {
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
         DomainsTransfersTracker, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        OperatorPublicKey, RuntimeId, RuntimeType,
+        OperatorPublicKey, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -398,7 +398,7 @@ mod pallet {
 
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
-    pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
+    pub type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
     /// Fraud proofs submitted successfully in current block.
     #[pallet::storage]
@@ -425,7 +425,7 @@ mod pallet {
     pub(super) type NextEVMChainId<T> = StorageValue<_, EVMChainId, ValueQuery, StartingEVMChainId>;
 
     #[pallet::storage]
-    pub(super) type RuntimeRegistry<T: Config> =
+    pub type RuntimeRegistry<T: Config> =
         StorageMap<_, Identity, RuntimeId, RuntimeObject<BlockNumberFor<T>, T::Hash>, OptionQuery>;
 
     #[pallet::storage]
@@ -1661,14 +1661,14 @@ impl<T: Config> Pallet<T> {
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
         let total_issuance = domain_obj.domain_config.total_issuance()?;
-        let raw_genesis = runtime_object
-            .into_complete_raw_genesis::<T>(
-                domain_id,
-                domain_obj.domain_runtime_info,
-                total_issuance,
-                domain_obj.domain_config.initial_balances,
-            )
-            .ok()?;
+        let raw_genesis = into_complete_raw_genesis::<T>(
+            runtime_object,
+            domain_id,
+            domain_obj.domain_runtime_info,
+            total_issuance,
+            domain_obj.domain_config.initial_balances,
+        )
+        .ok()?;
         Some((
             DomainInstanceData {
                 runtime_type,

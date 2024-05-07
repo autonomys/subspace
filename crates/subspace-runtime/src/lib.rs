@@ -63,7 +63,7 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
     ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier,
+    StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -100,11 +100,6 @@ sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
-
-// The domain storage fee multiplier used to charge a higher storage fee to the domain
-// transaction to even out the duplicated/illegal domain transaction storage cost, which
-// can not be eliminated right now.
-const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 3;
 
 /// How many pieces one sector is supposed to contain (max)
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
@@ -174,9 +169,6 @@ const_assert!(POT_ENTROPY_INJECTION_DELAY > BLOCK_AUTHORING_DELAY + 1);
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
-
-/// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
-const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
