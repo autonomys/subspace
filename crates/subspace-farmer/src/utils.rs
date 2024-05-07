@@ -25,6 +25,7 @@ use tracing::{debug, warn};
 const MAX_DEFAULT_FARMING_THREADS: usize = 32;
 
 /// Joins async join handle on drop
+#[derive(Debug)]
 pub struct AsyncJoinOnDrop<T> {
     handle: Option<task::JoinHandle<T>>,
     abort_on_drop: bool,

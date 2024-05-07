@@ -90,8 +90,8 @@ pub(crate) struct FarmingArgs {
     #[arg(long)]
     dev: bool,
     /// Run temporary farmer with specified plot size in human-readable format (e.g. 10GB, 2TiB) or
-    /// just bytes (e.g. 4096), this will create a temporary directory for storing farmer data that
-    /// will be deleted at the end of the process.
+    /// just bytes (e.g. 4096), this will create a temporary directory that will be deleted at the
+    /// end of the process.
     #[arg(long, conflicts_with = "disk_farms")]
     tmp: Option<ByteSize>,
     /// Maximum number of pieces in sector (can override protocol value to something lower).
@@ -257,7 +257,7 @@ where
         !cfg!(windows)
             || disk_farms
                 .iter()
-                .map(|farm| farm.allocated_plotting_space)
+                .map(|farm| farm.allocated_space)
                 .sum::<u64>()
                 <= MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS
     });
@@ -272,7 +272,7 @@ where
 
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
-            allocated_plotting_space: plot_size.as_u64(),
+            allocated_space: plot_size.as_u64(),
             read_sector_record_chunks_mode: None,
         }];
 
@@ -304,7 +304,7 @@ where
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
-        .map_err(|error| anyhow!(error))?;
+        .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
 
     let first_farm_directory = &disk_farms
         .first()
@@ -370,7 +370,7 @@ where
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
-    .map_err(|error| anyhow!(error))?;
+    .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
     let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
         node_client.clone(),
@@ -542,7 +542,7 @@ where
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
                             farmer_app_info,
-                            allocated_space: disk_farm.allocated_plotting_space,
+                            allocated_space: disk_farm.allocated_space,
                             max_pieces_in_sector,
                             node_client,
                             reward_address,
@@ -679,7 +679,7 @@ where
 
         plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
-        let total_sector_count = farm.total_sectors_count();
+        let total_sectors_count = farm.total_sectors_count();
         let mut plotted_sectors_count = 0;
         let plotted_sectors = farm.plotted_sectors();
         let mut plotted_sectors = plotted_sectors.get().await.map_err(|error| {
@@ -698,7 +698,7 @@ where
             )
         }
 
-        total_and_plotted_sectors.push((total_sector_count, plotted_sectors_count));
+        total_and_plotted_sectors.push((total_sectors_count, plotted_sectors_count));
     }
 
     info!("Finished collecting already plotted pieces successfully");

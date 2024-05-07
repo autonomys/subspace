@@ -58,10 +58,10 @@ impl From<PlottingThreadPriority> for Option<ThreadPriority> {
 
 #[derive(Debug, Clone)]
 pub(in super::super) struct DiskFarm {
-    /// Path to directory where data is stored.
+    /// Path to directory where farm is stored
     pub(in super::super) directory: PathBuf,
-    /// How much space in bytes can farm use for plots (metadata space is not included)
-    pub(in super::super) allocated_plotting_space: u64,
+    /// How much space in bytes can farm use
+    pub(in super::super) allocated_space: u64,
     /// Which mode to use for reading of sector record chunks
     pub(in super::super) read_sector_record_chunks_mode: Option<ReadSectorRecordChunksMode>,
 }
@@ -76,7 +76,7 @@ impl FromStr for DiskFarm {
         }
 
         let mut plot_directory = None;
-        let mut allocated_plotting_space = None;
+        let mut allocated_space = None;
         let mut read_sector_record_chunks_mode = None;
 
         for part in parts {
@@ -93,7 +93,7 @@ impl FromStr for DiskFarm {
                     plot_directory.replace(PathBuf::from(value));
                 }
                 "size" => {
-                    allocated_plotting_space.replace(
+                    allocated_space.replace(
                         value
                             .parse::<ByteSize>()
                             .map_err(|error| {
@@ -121,12 +121,10 @@ impl FromStr for DiskFarm {
         }
 
         Ok(DiskFarm {
-            directory: plot_directory.ok_or({
-                "`path` key is required with path to directory where plots will be stored"
-            })?,
-            allocated_plotting_space: allocated_plotting_space.ok_or({
-                "`size` key is required with path to directory where plots will be stored"
-            })?,
+            directory: plot_directory
+                .ok_or("`path` key is required with path to directory where farm will be stored")?,
+            allocated_space: allocated_space
+                .ok_or("`size` key is required with allocated amount of disk space")?,
             read_sector_record_chunks_mode,
         })
     }
