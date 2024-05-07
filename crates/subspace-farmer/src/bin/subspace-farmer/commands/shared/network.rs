@@ -137,8 +137,7 @@ where
 
                         let read_piece_fut = match weak_plotted_pieces.upgrade() {
                             Some(plotted_pieces) => plotted_pieces
-                                .read()
-                                .await
+                                .try_read()?
                                 .read_piece(piece_index)?
                                 .in_current_span(),
                             None => {
