@@ -807,7 +807,7 @@ where
             confirmation_depth_k,
             mut archiver,
             older_archived_segments,
-            best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
+            mut best_archived_block,
         } = archiver;
 
         let archived_segment_notification_sender =
@@ -825,7 +825,7 @@ where
         while let Some(ref block_import_notification) =
             block_importing_notification_stream.next().await
         {
-            archive_block(
+            best_archived_block = archive_block(
                 &mut archiver,
                 segment_headers_store.clone(),
                 client.clone(),
@@ -833,8 +833,7 @@ where
                 telemetry.clone(),
                 archived_segment_notification_sender.clone(),
                 confirmation_depth_k,
-                &mut best_archived_block_number,
-                &mut best_archived_block_hash,
+                best_archived_block,
                 block_import_notification.block_number,
             )
             .await?;
@@ -844,6 +843,7 @@ where
     })
 }
 
+/// Tries to archive `block_number` and returns new (or old if not changed) best archived block
 #[allow(clippy::too_many_arguments)]
 async fn archive_block<Block, Backend, Client, AS, SO>(
     archiver: &mut Archiver,
@@ -853,10 +853,9 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     telemetry: Option<TelemetryHandle>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     confirmation_depth_k: BlockNumber,
-    best_archived_block_number: &mut NumberFor<Block>,
-    best_archived_block_hash: &mut Block::Hash,
+    best_archived_block: (Block::Hash, NumberFor<Block>),
     block_number: NumberFor<Block>,
-) -> sp_blockchain::Result<()>
+) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)>
 where
     Block: BlockT,
     Backend: BackendT<Block>,
@@ -876,16 +875,16 @@ where
     let block_number_to_archive = match block_number.checked_sub(&confirmation_depth_k.into()) {
         Some(block_number_to_archive) => block_number_to_archive,
         None => {
-            return Ok(());
+            return Ok(best_archived_block);
         }
     };
 
-    if *best_archived_block_number >= block_number_to_archive {
-        // This block was already archived, skip
-        return Ok(());
-    }
+    let (best_archived_block_hash, best_archived_block_number) = best_archived_block;
 
-    *best_archived_block_number = block_number_to_archive;
+    if best_archived_block_number >= block_number_to_archive {
+        // This block was already archived, skip
+        return Ok(best_archived_block);
+    }
 
     let block = client
         .block(
@@ -903,7 +902,7 @@ where
         block_number_to_archive, block_hash_to_archive
     );
 
-    if parent_block_hash != *best_archived_block_hash {
+    if parent_block_hash != best_archived_block_hash {
         let error = format!(
             "Attempt to switch to a different fork beyond archiving depth, \
             can't do it: parent block hash {}, best archived block hash {}",
@@ -913,8 +912,6 @@ where
             error.into(),
         )));
     }
-
-    *best_archived_block_hash = block_hash_to_archive;
 
     let block_object_mappings = client
         .runtime_api()
@@ -966,7 +963,7 @@ where
             .map(|segment_header| segment_header.last_archived_block().number)
             // Make sure not to finalize block number that does not yet exist (segment
             // headers store may contain future blocks during initial sync)
-            .map(|block_number| (*best_archived_block_number).min(block_number.into()))
+            .map(|block_number| block_number_to_archive.min(block_number.into()))
             // Do not finalize blocks twice
             .filter(|block_number| *block_number > client.info().finalized_number);
 
@@ -983,7 +980,7 @@ where
         }
     }
 
-    Ok(())
+    Ok((block_hash_to_archive, block_number_to_archive))
 }
 
 async fn send_archived_segment_notification(
