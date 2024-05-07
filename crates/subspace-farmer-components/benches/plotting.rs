@@ -69,7 +69,6 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let sector_size = sector_size(pieces_in_sector);
     let mut sector_bytes = Vec::new();
-    let mut sector_metadata_bytes = Vec::new();
 
     let mut group = c.benchmark_group("plotting");
     group.throughput(Throughput::Bytes(sector_size as u64));
@@ -84,7 +83,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 erasure_coding: black_box(&erasure_coding),
                 pieces_in_sector: black_box(pieces_in_sector),
                 sector_output: black_box(&mut sector_bytes),
-                sector_metadata_output: black_box(&mut sector_metadata_bytes),
                 downloading_semaphore: black_box(None),
                 encoding_semaphore: black_box(None),
                 table_generators: black_box(&mut table_generators),

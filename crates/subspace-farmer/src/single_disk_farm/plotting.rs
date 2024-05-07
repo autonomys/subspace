@@ -89,7 +89,6 @@ pub(super) struct SectorPlottingOptions<'a, NC, P> {
     pub(super) node_client: &'a NC,
     pub(super) pieces_in_sector: u16,
     pub(super) sector_size: usize,
-    pub(super) sector_metadata_size: usize,
     #[cfg(not(windows))]
     pub(super) plot_file: &'a File,
     #[cfg(windows)]
@@ -234,7 +233,6 @@ where
         node_client,
         pieces_in_sector,
         sector_size,
-        sector_metadata_size,
         plot_file,
         metadata_file,
         sectors_metadata,
@@ -350,9 +348,8 @@ where
                         plotted_sector,
                         time: _,
                         sector,
-                        sector_metadata,
                     } => {
-                        return Ok((plotted_sector, sector, sector_metadata));
+                        return Ok((plotted_sector, sector));
                     }
                     SectorPlottingProgress::Error { error } => {
                         handlers.sector_update.call_simple(&(
@@ -367,7 +364,7 @@ where
             Err("Plotting progress stream ended before plotting finished".to_string())
         };
 
-        let (plotted_sector, sector, sector_metadata) = progress_processor_fut
+        let (plotted_sector, mut sector) = progress_processor_fut
             .await
             .map_err(PlottingError::LowLevel)?;
 
@@ -385,11 +382,25 @@ where
 
             let start = Instant::now();
 
-            plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
-            metadata_file.write_all_at(
-                &sector_metadata,
-                RESERVED_PLOT_METADATA + (u64::from(sector_index) * *sector_metadata_size as u64),
-            )?;
+            {
+                let mut sector_write_offset = u64::from(sector_index) * *sector_size as u64;
+                while let Some(maybe_sector_chunk) = sector.next().await {
+                    let sector_chunk = maybe_sector_chunk.map_err(|error| {
+                        PlottingError::LowLevel(format!("Sector chunk receive error: {error}"))
+                    })?;
+                    plot_file.write_all_at(&sector_chunk, sector_write_offset)?;
+                    sector_write_offset += sector_chunk.len() as u64;
+                }
+                drop(sector);
+            }
+            {
+                let encoded_sector_metadata = plotted_sector.sector_metadata.encode();
+                metadata_file.write_all_at(
+                    &encoded_sector_metadata,
+                    RESERVED_PLOT_METADATA
+                        + (u64::from(sector_index) * encoded_sector_metadata.len() as u64),
+                )?;
+            }
 
             handlers.sector_update.call_simple(&(
                 sector_index,

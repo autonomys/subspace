@@ -1,21 +1,17 @@
 pub mod cpu;
 
 use async_trait::async_trait;
-use futures::Sink;
-use parity_scale_codec::{Decode, Encode};
+use futures::{Sink, Stream};
 use std::error::Error;
+use std::fmt;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::FarmerProtocolInfo;
 
-// TODO: It is a bit awkward that this mimics `SectorPlottingDetails` with slight differences, maybe
-//  `SectorPlottingDetails` should be a bit generic and support customization of
-//  `Starting`/`Finished` contents
 /// Sector plotting progress
-#[derive(Debug, Clone, Encode, Decode)]
-#[allow(clippy::large_enum_variant)]
 pub enum SectorPlottingProgress {
     /// Downloading sector pieces
     Downloading,
@@ -31,16 +27,44 @@ pub enum SectorPlottingProgress {
         plotted_sector: PlottedSector,
         /// How much time it took to plot a sector
         time: Duration,
-        /// All plotted sector bytes
-        sector: Vec<u8>,
-        /// All plotted sector metadata bytes
-        sector_metadata: Vec<u8>,
+        /// Stream of all plotted sector bytes
+        sector: Pin<Box<dyn Stream<Item = Result<Vec<u8>, String>> + Send + Sync>>,
     },
     /// Plotting failed
     Error {
         /// Error message
         error: String,
     },
+}
+
+impl fmt::Debug for SectorPlottingProgress {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SectorPlottingProgress::Downloading => fmt::Formatter::write_str(f, "Downloading"),
+            SectorPlottingProgress::Downloaded(time) => {
+                f.debug_tuple_field1_finish("Downloaded", &time)
+            }
+            SectorPlottingProgress::Encoding => fmt::Formatter::write_str(f, "Encoding"),
+            SectorPlottingProgress::Encoded(time) => f.debug_tuple_field1_finish("Encoded", &time),
+            SectorPlottingProgress::Finished {
+                plotted_sector,
+                time,
+                sector: _,
+            } => f.debug_struct_field3_finish(
+                "Finished",
+                "plotted_sector",
+                plotted_sector,
+                "time",
+                time,
+                "sector",
+                &"<stream>",
+            ),
+            SectorPlottingProgress::Error { error } => {
+                f.debug_struct_field1_finish("Error", "error", &error)
+            }
+        }
+    }
 }
 
 /// Abstract plotter implementation
