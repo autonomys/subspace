@@ -66,6 +66,9 @@ use sp_domains::{
     StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::storage_proof::{
+    FraudProofStorageKeyProvider, FraudProofStorageKeyRequest,
+};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
@@ -891,6 +894,36 @@ impl From<RewardAddress> for AccountId32 {
     }
 }
 
+pub struct StorageKeyProvider;
+impl FraudProofStorageKeyProvider for StorageKeyProvider {
+    fn storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+        match req {
+            FraudProofStorageKeyRequest::BlockRandomness => {
+                pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
+            }
+            FraudProofStorageKeyRequest::Timestamp => {
+                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
+            }
+            FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
+                pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
+            }
+            FraudProofStorageKeyRequest::TransactionByteFee => {
+                TransactionFees::transaction_byte_fee_storage_key()
+            }
+            FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
+                Messenger::domain_allow_list_update_storage_key(domain_id)
+            }
+            FraudProofStorageKeyRequest::BlockDigest => sp_domains::system_digest_final_key(),
+            FraudProofStorageKeyRequest::RuntimeRegistry(runtime_id) => {
+                pallet_domains::RuntimeRegistry::<Runtime>::hashed_key_for(runtime_id)
+            }
+            FraudProofStorageKeyRequest::DynamicCostOfStorage => {
+                pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
+            }
+        }
+    }
+}
+
 #[cfg(feature = "runtime-benchmarks")]
 mod benches {
     frame_benchmarking::define_benchmarks!(
@@ -1308,6 +1341,10 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
             crate::domains::extract_fraud_proofs(domain_id, extrinsics)
+        }
+
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+            <StorageKeyProvider as FraudProofStorageKeyProvider>::storage_key(req)
         }
     }
 

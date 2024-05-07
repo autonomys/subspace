@@ -1276,7 +1276,6 @@ impl DomainAllowlistUpdates {
     }
 }
 
-
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct RuntimeObject<Number, Hash> {
     pub runtime_name: String,
