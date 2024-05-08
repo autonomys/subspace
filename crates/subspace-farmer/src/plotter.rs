@@ -70,7 +70,10 @@ impl fmt::Debug for SectorPlottingProgress {
 /// Abstract plotter implementation
 #[async_trait]
 pub trait Plotter {
-    /// Plot one sector, returns a stream of sector plotting events.
+    /// Whether plotter has free capacity to encode more sectors
+    async fn has_free_capacity(&self) -> Result<bool, String>;
+
+    /// Plot one sector, sending sector plotting events via provided stream.
     ///
     /// Future returns once plotting is successfully scheduled (for backpressure purposes).
     async fn plot_sector<PS>(
@@ -84,6 +87,23 @@ pub trait Plotter {
     ) where
         PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
         PS::Error: Error;
+
+    /// Try to plot one sector, sending sector plotting events via provided stream.
+    ///
+    /// Returns `true` if plotting started successfully and `false` if there is no capacity to start
+    /// plotting immediately.
+    async fn try_plot_sector<PS>(
+        &self,
+        public_key: PublicKey,
+        sector_index: SectorIndex,
+        farmer_protocol_info: FarmerProtocolInfo,
+        pieces_in_sector: u16,
+        replotting: bool,
+        progress_sender: PS,
+    ) -> bool
+    where
+        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
+        PS::Error: Error;
 }
 
 #[async_trait]
@@ -91,6 +111,10 @@ impl<P> Plotter for Arc<P>
 where
     P: Plotter + Send + Sync,
 {
+    async fn has_free_capacity(&self) -> Result<bool, String> {
+        self.as_ref().has_free_capacity().await
+    }
+
     async fn plot_sector<PS>(
         &self,
         public_key: PublicKey,
@@ -105,6 +129,31 @@ where
     {
         self.as_ref()
             .plot_sector(
+                public_key,
+                sector_index,
+                farmer_protocol_info,
+                pieces_in_sector,
+                replotting,
+                progress_sender,
+            )
+            .await
+    }
+
+    async fn try_plot_sector<PS>(
+        &self,
+        public_key: PublicKey,
+        sector_index: SectorIndex,
+        farmer_protocol_info: FarmerProtocolInfo,
+        pieces_in_sector: u16,
+        replotting: bool,
+        progress_sender: PS,
+    ) -> bool
+    where
+        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
+        PS::Error: Error,
+    {
+        self.as_ref()
+            .try_plot_sector(
                 public_key,
                 sector_index,
                 farmer_protocol_info,

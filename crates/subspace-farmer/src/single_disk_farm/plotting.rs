@@ -134,34 +134,35 @@ where
     loop {
         select! {
             maybe_sector_to_plot = sectors_to_plot_receiver.next() => {
-                if let Some(sector_to_plot) = maybe_sector_to_plot {
-                    let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
-                    let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
+                let Some(sector_to_plot) = maybe_sector_to_plot else {
+                    break;
+                };
 
-                    // Wait for plotting of new sector to start (backpressure), while also waiting
-                    // for sectors that already started plotting to finish plotting and then update
-                    // metadata header
-                    loop {
-                        select! {
-                            sector_plotting_init_result = sector_plotting_init_fut => {
-                                sectors_being_plotted.push_back(sector_plotting_init_result?);
-                                break;
-                            }
-                            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
-                                process_plotting_result(
-                                    maybe_sector_plotting_result?,
-                                    &mut metadata_header,
-                                    &sector_plotting_options.metadata_file
-                                )?;
-                            }
+                let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
+                let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
+
+                // Wait for plotting of new sector to start (backpressure), while also waiting
+                // for sectors that already started plotting to finish plotting and then update
+                // metadata header
+                loop {
+                    select! {
+                        sector_plotting_init_result = sector_plotting_init_fut => {
+                            sectors_being_plotted.push_back(sector_plotting_init_result?);
+                            break;
+                        }
+                        maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+                            process_plotting_result(
+                                maybe_sector_plotting_result?,
+                                &mut metadata_header,
+                                &sector_plotting_options.metadata_file
+                            )?;
                         }
                     }
-                } else {
-                    break;
                 }
             }
             maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
                 process_plotting_result(
+                    // TODO: Retry plotting on error instead of error out completely
                     maybe_sector_plotting_result?,
                     &mut metadata_header,
                     &sector_plotting_options.metadata_file

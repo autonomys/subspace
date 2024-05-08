@@ -114,7 +114,7 @@ fn audit(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
-    .map_err(|error| anyhow::anyhow!(error))?;
+    .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
     let table_generator = Mutex::new(PosTable::generator());
 
     let sectors_metadata = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)
@@ -276,7 +276,7 @@ fn prove(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
-    .map_err(|error| anyhow::anyhow!(error))?;
+    .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
     let table_generator = Mutex::new(PosTable::generator());
 
     let mut sectors_metadata = SingleDiskFarm::read_all_sectors_metadata(&disk_farm)

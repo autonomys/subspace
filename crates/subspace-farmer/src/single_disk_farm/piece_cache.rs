@@ -14,7 +14,7 @@ pub struct DiskPieceCache {
 
 #[async_trait]
 impl farm::PieceCache for DiskPieceCache {
-    fn max_num_elements(&self) -> usize {
+    fn max_num_elements(&self) -> u32 {
         if let Some(piece_cache) = &self.maybe_piece_cache {
             piece_cache.max_num_elements()
         } else {
@@ -24,11 +24,19 @@ impl farm::PieceCache for DiskPieceCache {
 
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_> {
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<PieceIndex>), FarmError>>
+                + Unpin
+                + Send
+                + '_,
+        >,
+        FarmError,
+    > {
         if let Some(piece_cache) = &self.maybe_piece_cache {
             farm::PieceCache::contents(piece_cache).await
         } else {
-            Box::new(stream::empty())
+            Ok(Box::new(stream::empty()))
         }
     }
 
