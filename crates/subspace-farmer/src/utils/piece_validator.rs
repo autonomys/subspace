@@ -1,4 +1,4 @@
-use crate::NodeClient;
+use crate::node_client::NodeClient;
 use async_trait::async_trait;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;

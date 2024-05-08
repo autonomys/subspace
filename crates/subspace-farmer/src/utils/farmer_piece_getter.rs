@@ -1,6 +1,6 @@
 use crate::farmer_cache::FarmerCache;
+use crate::node_client::NodeClient;
 use crate::utils::plotted_pieces::PlottedPieces;
-use crate::NodeClient;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;

@@ -1,4 +1,4 @@
-pub(crate) mod node_rpc_client;
+pub mod node_rpc_client;
 
 use async_trait::async_trait;
 use futures::Stream;

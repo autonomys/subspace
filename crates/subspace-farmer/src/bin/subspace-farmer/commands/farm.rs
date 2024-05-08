@@ -26,6 +26,8 @@ use subspace_farmer::farm::{
     Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
 };
 use subspace_farmer::farmer_cache::FarmerCache;
+use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
+use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
@@ -39,7 +41,7 @@ use subspace_farmer::utils::{
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
-use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer::Identity;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
@@ -73,7 +75,7 @@ pub(crate) struct FarmingArgs {
     ///
     /// `size` is max allocated size in human-readable format (e.g. 10GB, 2TiB) or just bytes that
     /// farmer will make sure to not exceed (and will pre-allocated all the space on startup to
-    /// ensure it will not run out of space in runtime). Also optionally `record-chunks-mode` can be
+    /// ensure it will not run out of space in runtime). Optionally, `record-chunks-mode` can be
     /// set to `ConcurrentChunks` or `WholeSector` in order to avoid internal benchmarking during
     /// startup.
     disk_farms: Vec<DiskFarm>,

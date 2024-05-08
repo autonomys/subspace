@@ -52,11 +52,9 @@ pub mod single_disk_farm;
 pub mod thread_pool_manager;
 pub mod utils;
 
-/// Size of the LRU cache for peers.
-pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
-
 pub use identity::Identity;
 pub use jsonrpsee;
-pub use node_client::node_rpc_client::NodeRpcClient;
-pub use node_client::{Error as RpcClientError, NodeClient};
 use std::num::NonZeroUsize;
+
+/// Size of the LRU cache for peers.
+pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
