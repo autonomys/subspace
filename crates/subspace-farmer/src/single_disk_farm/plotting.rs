@@ -1,11 +1,11 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
+use crate::node_client::{Error as NodeClientError, NodeClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use crate::{node_client, NodeClient};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
@@ -53,13 +53,13 @@ pub enum PlottingError {
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Failed to get segment header
     #[error("Failed to get segment header: {error}")]
     FailedToGetSegmentHeader {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Missing archived segment header
     #[error("Missing archived segment header: {segment_index}")]
@@ -71,7 +71,7 @@ pub enum PlottingError {
     #[error("Failed to subscribe to archived segments: {error}")]
     FailedToSubscribeArchivedSegments {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
@@ -134,34 +134,35 @@ where
     loop {
         select! {
             maybe_sector_to_plot = sectors_to_plot_receiver.next() => {
-                if let Some(sector_to_plot) = maybe_sector_to_plot {
-                    let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
-                    let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
+                let Some(sector_to_plot) = maybe_sector_to_plot else {
+                    break;
+                };
 
-                    // Wait for plotting of new sector to start (backpressure), while also waiting
-                    // for sectors that already started plotting to finish plotting and then update
-                    // metadata header
-                    loop {
-                        select! {
-                            sector_plotting_init_result = sector_plotting_init_fut => {
-                                sectors_being_plotted.push_back(sector_plotting_init_result?);
-                                break;
-                            }
-                            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
-                                process_plotting_result(
-                                    maybe_sector_plotting_result?,
-                                    &mut metadata_header,
-                                    &sector_plotting_options.metadata_file
-                                )?;
-                            }
+                let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
+                let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
+
+                // Wait for plotting of new sector to start (backpressure), while also waiting
+                // for sectors that already started plotting to finish plotting and then update
+                // metadata header
+                loop {
+                    select! {
+                        sector_plotting_init_result = sector_plotting_init_fut => {
+                            sectors_being_plotted.push_back(sector_plotting_init_result?);
+                            break;
+                        }
+                        maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+                            process_plotting_result(
+                                maybe_sector_plotting_result?,
+                                &mut metadata_header,
+                                &sector_plotting_options.metadata_file
+                            )?;
                         }
                     }
-                } else {
-                    break;
                 }
             }
             maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
                 process_plotting_result(
+                    // TODO: Retry plotting on error instead of error out completely
                     maybe_sector_plotting_result?,
                     &mut metadata_header,
                     &sector_plotting_options.metadata_file

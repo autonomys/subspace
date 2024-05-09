@@ -1,6 +1,6 @@
 use crate::farmer_cache::FarmerCache;
+use crate::node_client::NodeClient;
 use crate::utils::plotted_pieces::PlottedPieces;
-use crate::NodeClient;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
@@ -212,7 +212,10 @@ where
         let inner = &self.inner;
 
         trace!(%piece_index, "Getting piece from local plot");
-        let maybe_read_piece_fut = inner.plotted_pieces.read().await.read_piece(piece_index);
+        let maybe_read_piece_fut = inner
+            .plotted_pieces
+            .try_read()
+            .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {

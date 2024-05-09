@@ -48,8 +48,8 @@ pub enum PieceCacheError {
         /// Max offset
         max: u32,
     },
-    /// Cache size has zero capacity, this is not supported
-    #[error("Cache size has zero capacity, this is not supported")]
+    /// Cache size has zero capacity, this is not supported, cache size needs to be larger
+    #[error("Cache size has zero capacity, this is not supported, cache size needs to be larger")]
     ZeroCapacity,
     /// Checksum mismatch
     #[error("Checksum mismatch")]
@@ -62,7 +62,7 @@ struct Inner {
     file: File,
     #[cfg(windows)]
     file: UnbufferedIoFileWindows,
-    num_elements: u32,
+    max_num_elements: u32,
 }
 
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
@@ -74,20 +74,28 @@ pub struct PieceCache {
 
 #[async_trait]
 impl farm::PieceCache for PieceCache {
-    fn max_num_elements(&self) -> usize {
-        self.inner.num_elements as usize
+    fn max_num_elements(&self) -> u32 {
+        self.inner.max_num_elements
     }
 
     async fn contents(
         &self,
-    ) -> Box<dyn Stream<Item = (PieceCacheOffset, Option<PieceIndex>)> + Unpin + Send + '_> {
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<PieceIndex>), FarmError>>
+                + Unpin
+                + Send
+                + '_,
+        >,
+        FarmError,
+    > {
         let this = self.clone();
         let (mut sender, receiver) = mpsc::channel(1);
         let read_contents = task::spawn_blocking(move || {
             let contents = this.contents();
             for (piece_cache_offset, maybe_piece) in contents {
                 if let Err(error) =
-                    Handle::current().block_on(sender.send((piece_cache_offset, maybe_piece)))
+                    Handle::current().block_on(sender.send(Ok((piece_cache_offset, maybe_piece))))
                 {
                     debug!(%error, "Aborting contents iteration due to receiver dropping");
                     break;
@@ -98,7 +106,7 @@ impl farm::PieceCache for PieceCache {
         // Change order such that in closure below `receiver` is dropped before `read_contents`
         let mut receiver = receiver;
 
-        Box::new(stream::poll_fn(move |ctx| {
+        Ok(Box::new(stream::poll_fn(move |ctx| {
             let poll_result = receiver.poll_next_unpin(ctx);
 
             if matches!(poll_result, Poll::Ready(None)) {
@@ -106,7 +114,7 @@ impl farm::PieceCache for PieceCache {
             }
 
             poll_result
-        }))
+        })))
     }
 
     async fn write_piece(
@@ -133,7 +141,8 @@ impl farm::PieceCache for PieceCache {
 impl PieceCache {
     pub(crate) const FILE_NAME: &'static str = "piece_cache.bin";
 
-    pub(crate) fn open(directory: &Path, capacity: u32) -> Result<Self, PieceCacheError> {
+    /// Open cache, capacity is measured in elements of [`PieceCache::element_size()`] size
+    pub fn open(directory: &Path, capacity: u32) -> Result<Self, PieceCacheError> {
         if capacity == 0 {
             return Err(PieceCacheError::ZeroCapacity);
         }
@@ -168,12 +177,12 @@ impl PieceCache {
         Ok(Self {
             inner: Arc::new(Inner {
                 file,
-                num_elements: capacity,
+                max_num_elements: capacity,
             }),
         })
     }
 
-    pub(crate) const fn element_size() -> u32 {
+    pub const fn element_size() -> u32 {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }
 
@@ -188,7 +197,7 @@ impl PieceCache {
         let mut current_skip = 0;
 
         // TODO: Parallelize or read in larger batches
-        (0..self.inner.num_elements).map(move |offset| {
+        (0..self.inner.max_num_elements).map(move |offset| {
             if current_skip > CONTENTS_READ_SKIP_LIMIT {
                 return (PieceCacheOffset(offset), None);
             }
@@ -225,10 +234,10 @@ impl PieceCache {
         piece: &Piece,
     ) -> Result<(), PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
-        if offset >= self.inner.num_elements {
+        if offset >= self.inner.max_num_elements {
             return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
-                max: self.inner.num_elements - 1,
+                max: self.inner.max_num_elements - 1,
             });
         }
 
@@ -260,11 +269,11 @@ impl PieceCache {
         offset: PieceCacheOffset,
     ) -> Result<Option<PieceIndex>, PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
-        if offset >= self.inner.num_elements {
+        if offset >= self.inner.max_num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
-                max: self.inner.num_elements - 1,
+                max: self.inner.max_num_elements - 1,
             });
         }
 
@@ -282,11 +291,11 @@ impl PieceCache {
         offset: PieceCacheOffset,
     ) -> Result<Option<Piece>, PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
-        if offset >= self.inner.num_elements {
+        if offset >= self.inner.max_num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return Err(PieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
-                max: self.inner.num_elements - 1,
+                max: self.inner.max_num_elements - 1,
             });
         }
 

@@ -237,11 +237,42 @@ where
             .map(
                 |(index, ((mut stored_pieces, mut free_offsets), new_cache))| {
                     run_future_in_dedicated_thread(
-                        move || async {
-                            let mut contents = new_cache.contents().await;
-                            stored_pieces.reserve(new_cache.max_num_elements());
+                        move || async move {
+                            // Hack with first collecting into `Option` with `Option::take()` call
+                            // later is to satisfy compiler that gets confused about ownership
+                            // otherwise
+                            let mut maybe_contents = match new_cache.contents().await {
+                                Ok(contents) => Some(contents),
+                                Err(error) => {
+                                    warn!(%index, %error, "Failed to get cache contents");
 
-                            while let Some((offset, maybe_piece_index)) = contents.next().await {
+                                    None
+                                }
+                            };
+                            let Some(mut contents) = maybe_contents.take() else {
+                                drop(maybe_contents);
+
+                                return PieceCacheState {
+                                    stored_pieces,
+                                    free_offsets,
+                                    backend: new_cache,
+                                };
+                            };
+
+                            stored_pieces.reserve(new_cache.max_num_elements() as usize);
+
+                            while let Some(maybe_element_details) = contents.next().await {
+                                let (offset, maybe_piece_index) = match maybe_element_details {
+                                    Ok(element_details) => element_details,
+                                    Err(error) => {
+                                        warn!(
+                                            %index,
+                                            %error,
+                                            "Failed to get cache contents element details"
+                                        );
+                                        break;
+                                    }
+                                };
                                 match maybe_piece_index {
                                     Some(piece_index) => {
                                         stored_pieces.insert(
@@ -258,6 +289,7 @@ where
                                 yield_now().await;
                             }
 
+                            drop(maybe_contents);
                             drop(contents);
 
                             PieceCacheState {

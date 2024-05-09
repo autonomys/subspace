@@ -8,9 +8,10 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::node_client::NodeClientExt;
+use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
+use subspace_farmer::node_client::{NodeClient, NodeClientExt};
 use subspace_farmer::utils::plotted_pieces::PlottedPieces;
-use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
+use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -137,8 +138,7 @@ where
 
                         let read_piece_fut = match weak_plotted_pieces.upgrade() {
                             Some(plotted_pieces) => plotted_pieces
-                                .read()
-                                .await
+                                .try_read()?
                                 .read_piece(piece_index)?
                                 .in_current_span(),
                             None => {
