@@ -1,7 +1,6 @@
 use crate::farmer_cache::FarmerCache;
-use crate::node_client::Error;
+use crate::node_client::{Error, NodeClient};
 use crate::piece_cache::PieceCache;
-use crate::NodeClient;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};

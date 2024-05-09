@@ -1,11 +1,11 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
+use crate::node_client::{Error as NodeClientError, NodeClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use crate::{node_client, NodeClient};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
@@ -53,13 +53,13 @@ pub enum PlottingError {
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Failed to get segment header
     #[error("Failed to get segment header: {error}")]
     FailedToGetSegmentHeader {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Missing archived segment header
     #[error("Missing archived segment header: {segment_index}")]
@@ -71,7 +71,7 @@ pub enum PlottingError {
     #[error("Failed to subscribe to archived segments: {error}")]
     FailedToSubscribeArchivedSegments {
         /// Lower-level error
-        error: node_client::Error,
+        error: NodeClientError,
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
