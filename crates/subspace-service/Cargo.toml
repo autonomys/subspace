@@ -29,6 +29,7 @@ pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-s
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.2"
 prometheus-client = "0.22.2"
+prost = "0.12"
 sc-basic-authorship = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
@@ -52,6 +53,7 @@ sc-telemetry = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269
 sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 schnorrkel = "0.11.4"
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }

@@ -1,3 +1,4 @@
+mod fast_sync_engine;
 mod import_blocks;
 pub(super) mod piece_validator;
 mod segment_header_downloader;
