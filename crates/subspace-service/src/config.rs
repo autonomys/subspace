@@ -1,5 +1,5 @@
 use crate::dsn::DsnConfig;
-use crate::sync_from_dsn::DsnSyncPieceGetter;
+use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
@@ -14,10 +14,12 @@ use sc_service::{
 };
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
+use std::fmt;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
@@ -263,12 +265,48 @@ pub struct SubspaceConfiguration {
     pub subspace_networking: SubspaceNetworking,
     /// DSN piece getter
     pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
-    /// Enables DSN-sync on startup.
-    pub sync_from_dsn: bool,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
     pub timekeeper_cpu_cores: HashSet<usize>,
+    /// Defines blockchain sync mode
+    pub sync: ChainSyncMode,
+}
+
+/// Syncing mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChainSyncMode {
+    /// Full sync. Download and verify all blocks from DSN.
+    Full,
+    /// Download latest state and related blocks only. Run full DSN-sync afterwards.
+    Snap,
+}
+
+impl FromStr for ChainSyncMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "full" => Ok(Self::Full),
+            "snap" => Ok(Self::Snap),
+            _ => Err("Unsupported sync type".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for ChainSyncMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Full => f.write_str("full"),
+            Self::Snap => f.write_str("snap"),
+        }
+    }
+}
+
+impl Default for ChainSyncMode {
+    fn default() -> Self {
+        Self::Full
+    }
 }
 
 impl Deref for SubspaceConfiguration {
