@@ -16,12 +16,12 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-frame-support = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-frame-system = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-sp-io = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
+frame-support = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+frame-system = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-io = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [features]

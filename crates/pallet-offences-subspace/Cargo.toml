@@ -14,16 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = ["derive"] }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 
 [dev-dependencies]
-sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "44d742b90e7852aed1f08ab5299d5d88cfa1c6ed" }
+sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 schnorrkel = "0.11.4"
 
 [features]
