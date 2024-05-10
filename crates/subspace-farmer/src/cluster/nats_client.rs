@@ -20,14 +20,17 @@ use async_nats::{
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use derive_more::{Deref, DerefMut};
+use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
 use std::fmt;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use thiserror::Error;
@@ -254,7 +257,8 @@ where
 
 #[derive(Debug)]
 struct Inner {
-    client: Client,
+    clients: Vec<Client>,
+    next_client: AtomicUsize,
     request_retry_backoff_policy: ExponentialBackoff,
     approximate_max_message_size: usize,
 }
@@ -268,8 +272,9 @@ pub struct NatsClient {
 impl Deref for NatsClient {
     type Target = Client;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner.client
+        self.client()
     }
 }
 
@@ -278,23 +283,37 @@ impl NatsClient {
     pub async fn new<A: ToServerAddrs>(
         addrs: A,
         request_retry_backoff_policy: ExponentialBackoff,
+        nats_pool_size: NonZeroUsize,
     ) -> Result<Self, async_nats::Error> {
-        Self::from_client(
-            async_nats::connect_with_options(
-                addrs,
-                ConnectOptions::default().request_timeout(None),
-            )
-            .await?,
+        let servers = addrs.to_server_addrs()?.collect::<Vec<_>>();
+        Self::from_clients(
+            (0..nats_pool_size.get())
+                .map(|_| async {
+                    async_nats::connect_with_options(
+                        &servers,
+                        ConnectOptions::default().request_timeout(None),
+                    )
+                    .await
+                })
+                .collect::<FuturesUnordered<_>>()
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()?,
             request_retry_backoff_policy,
         )
     }
 
     /// Create new client from existing NATS instance
-    pub fn from_client(
-        client: Client,
+    pub fn from_clients(
+        clients: Vec<Client>,
         request_retry_backoff_policy: ExponentialBackoff,
     ) -> Result<Self, async_nats::Error> {
-        let max_payload = client.server_info().max_payload;
+        let max_payload = clients
+            .first()
+            .ok_or("Empty list of NATS clients is not supported; qed")?
+            .server_info()
+            .max_payload;
         if max_payload < EXPECTED_MESSAGE_SIZE {
             return Err(format!(
                 "Max payload {max_payload} is smaller than expected {EXPECTED_MESSAGE_SIZE}, \
@@ -304,7 +323,8 @@ impl NatsClient {
         }
 
         let inner = Inner {
-            client,
+            clients,
+            next_client: AtomicUsize::default(),
             request_retry_backoff_policy,
             // Allow up to 90%, the rest will be wrapper data structures, etc.
             approximate_max_message_size: max_payload * 9 / 10,
@@ -334,8 +354,7 @@ impl NatsClient {
         let mut maybe_retry_backoff = None;
         let message = loop {
             match self
-                .inner
-                .client
+                .client()
                 .request(subject.clone(), request.encode().into())
                 .await
             {
@@ -404,13 +423,11 @@ impl NatsClient {
         let stream_request = StreamRequest::new(request);
 
         let subscriber = self
-            .inner
-            .client
+            .client()
             .subscribe(stream_request.response_subject.clone())
             .await?;
 
-        self.inner
-            .client
+        self.client()
             .publish(
                 subject_with_instance(Request::SUBJECT, instance),
                 stream_request.encode().into(),
@@ -433,8 +450,7 @@ impl NatsClient {
     where
         Notification: GenericNotification,
     {
-        self.inner
-            .client
+        self.client()
             .publish(
                 subject_with_instance(Notification::SUBJECT, instance),
                 notification.encode().into(),
@@ -451,8 +467,7 @@ impl NatsClient {
     where
         Broadcast: GenericBroadcast,
     {
-        self.inner
-            .client
+        self.client()
             .publish_with_headers(
                 Broadcast::SUBJECT.replace('*', instance),
                 {
@@ -495,6 +510,12 @@ impl NatsClient {
             .await
     }
 
+    /// Get NATS client from a pool
+    fn client(&self) -> &Client {
+        let client = self.inner.next_client.fetch_add(1, Ordering::Relaxed);
+        &self.inner.clients[client % self.inner.clients.len()]
+    }
+
     /// Simple subscription that will produce decoded messages, while skipping messages that fail to
     /// decode
     async fn simple_subscribe<Message>(
@@ -508,13 +529,11 @@ impl NatsClient {
     {
         Ok(SubscriberWrapper {
             subscriber: if let Some(queue_group) = queue_group {
-                self.inner
-                    .client
+                self.client()
                     .queue_subscribe(subject_with_instance(subject, instance), queue_group)
                     .await?
             } else {
-                self.inner
-                    .client
+                self.client()
                     .subscribe(subject_with_instance(subject, instance))
                     .await?
             },
