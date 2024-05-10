@@ -36,6 +36,7 @@ use tracing::{debug, info, trace, warn};
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
+const PLOTTING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub(super) struct SectorToPlot {
     sector_index: SectorIndex,
@@ -162,7 +163,6 @@ where
             }
             maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
                 process_plotting_result(
-                    // TODO: Retry plotting on error instead of error out completely
                     maybe_sector_plotting_result?,
                     &mut metadata_header,
                     &sector_plotting_options.metadata_file
@@ -296,7 +296,7 @@ where
         break farmer_app_info;
     };
 
-    let (progress_sender, progress_receiver) = mpsc::channel(0);
+    let (progress_sender, mut progress_receiver) = mpsc::channel(0);
 
     // Initiate plotting
     plotter
@@ -317,17 +317,54 @@ where
     }
 
     Ok(async move {
-        let plotted_sector = plot_single_sector_internal(
-            sector_index,
-            *sector_size,
-            plot_file,
-            metadata_file,
-            handlers,
-            sectors_being_modified,
-            global_mutex,
-            progress_receiver,
-        )
-        .await?;
+        let plotted_sector = loop {
+            match plot_single_sector_internal(
+                sector_index,
+                *sector_size,
+                plot_file,
+                metadata_file,
+                handlers,
+                sectors_being_modified,
+                global_mutex,
+                progress_receiver,
+            )
+            .await?
+            {
+                Ok(plotted_sector) => {
+                    break plotted_sector;
+                }
+                Err(error) => {
+                    warn!(
+                        %sector_index,
+                        %error,
+                        "Failed to plot sector, retrying in {PLOTTING_RETRY_DELAY:?}"
+                    );
+
+                    tokio::time::sleep(PLOTTING_RETRY_DELAY).await;
+                }
+            }
+
+            let (retry_progress_sender, retry_progress_receiver) = mpsc::channel(0);
+            progress_receiver = retry_progress_receiver;
+
+            // Initiate plotting
+            plotter
+                .plot_sector(
+                    *public_key,
+                    sector_index,
+                    farmer_app_info.protocol_info,
+                    *pieces_in_sector,
+                    replotting,
+                    retry_progress_sender,
+                )
+                .await;
+
+            if replotting {
+                info!(%sector_index, "Replotting sector retry");
+            } else {
+                info!(%sector_index, "Plotting sector retry");
+            }
+        };
 
         {
             let mut sectors_metadata = sectors_metadata.write().await;
@@ -392,6 +429,8 @@ where
     })
 }
 
+/// Outer error is used to indicate irrecoverable plotting errors, while inner result is for
+/// recoverable errors
 #[allow(clippy::too_many_arguments)]
 async fn plot_single_sector_internal(
     sector_index: SectorIndex,
@@ -404,7 +443,7 @@ async fn plot_single_sector_internal(
     sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     global_mutex: &AsyncMutex<()>,
     mut progress_receiver: mpsc::Receiver<SectorPlottingProgress>,
-) -> Result<PlottedSector, PlottingError> {
+) -> Result<Result<PlottedSector, PlottingError>, PlottingError> {
     // Process plotting progress notifications
     let progress_processor_fut = async {
         while let Some(progress) = progress_receiver.next().await {
@@ -453,9 +492,12 @@ async fn plot_single_sector_internal(
         Err("Plotting progress stream ended before plotting finished".to_string())
     };
 
-    let (plotted_sector, mut sector) = progress_processor_fut
-        .await
-        .map_err(PlottingError::LowLevel)?;
+    let (plotted_sector, mut sector) = match progress_processor_fut.await {
+        Ok(result) => result,
+        Err(error) => {
+            return Ok(Err(PlottingError::LowLevel(error)));
+        }
+    };
 
     // Inform others that this sector is being modified
     sectors_being_modified.write().await.insert(sector_index);
@@ -472,15 +514,28 @@ async fn plot_single_sector_internal(
         let start = Instant::now();
 
         {
-            let mut sector_write_offset = u64::from(sector_index) * sector_size as u64;
+            let sector_write_base_offset = u64::from(sector_index) * sector_size as u64;
+            let mut sector_write_offset = sector_write_base_offset;
             while let Some(maybe_sector_chunk) = sector.next().await {
-                let sector_chunk = maybe_sector_chunk.map_err(|error| {
-                    PlottingError::LowLevel(format!("Sector chunk receive error: {error}"))
-                })?;
+                let sector_chunk = match maybe_sector_chunk {
+                    Ok(sector_chunk) => sector_chunk,
+                    Err(error) => {
+                        return Ok(Err(PlottingError::LowLevel(format!(
+                            "Sector chunk receive error: {error}"
+                        ))));
+                    }
+                };
                 plot_file.write_all_at(&sector_chunk, sector_write_offset)?;
                 sector_write_offset += sector_chunk.len() as u64;
             }
             drop(sector);
+
+            if (sector_write_offset - sector_write_base_offset) != sector_size as u64 {
+                return Ok(Err(PlottingError::LowLevel(format!(
+                    "Received only {sector_write_offset} sector bytes out of {sector_size} \
+                    expected bytes"
+                ))));
+            }
         }
         {
             let encoded_sector_metadata = plotted_sector.sector_metadata.encode();
@@ -497,7 +552,7 @@ async fn plot_single_sector_internal(
         ));
     }
 
-    Ok(plotted_sector)
+    Ok(Ok(plotted_sector))
 }
 
 pub(super) struct PlottingSchedulerOptions<NC> {
