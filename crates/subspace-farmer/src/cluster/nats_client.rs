@@ -765,6 +765,20 @@ impl NatsClient {
             .await
     }
 
+    /// Simple subscription that will produce decoded stream requests, while skipping messages that
+    /// fail to decode
+    pub async fn subscribe_to_stream_requests<Request>(
+        &self,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+    ) -> Result<SubscriberWrapper<StreamRequest<Request>>, SubscribeError>
+    where
+        Request: GenericStreamRequest,
+    {
+        self.simple_subscribe(Request::SUBJECT, instance, queue_group)
+            .await
+    }
+
     /// Simple subscription that will produce decoded notifications, while skipping messages that
     /// fail to decode
     pub async fn subscribe_to_notifications<Notification>(
