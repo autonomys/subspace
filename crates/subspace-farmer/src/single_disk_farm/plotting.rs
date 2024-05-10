@@ -296,7 +296,7 @@ where
         break farmer_app_info;
     };
 
-    let (progress_sender, mut progress_receiver) = mpsc::channel(0);
+    let (progress_sender, progress_receiver) = mpsc::channel(0);
 
     // Initiate plotting
     plotter
@@ -317,97 +317,17 @@ where
     }
 
     Ok(async move {
-        // Process plotting progress notifications
-        let progress_processor_fut = async {
-            while let Some(progress) = progress_receiver.next().await {
-                match progress {
-                    SectorPlottingProgress::Downloading => {
-                        handlers.sector_update.call_simple(&(
-                            sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
-                        ));
-                    }
-                    SectorPlottingProgress::Downloaded(time) => {
-                        handlers.sector_update.call_simple(&(
-                            sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)),
-                        ));
-                    }
-                    SectorPlottingProgress::Encoding => {
-                        handlers.sector_update.call_simple(&(
-                            sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
-                        ));
-                    }
-                    SectorPlottingProgress::Encoded(time) => {
-                        handlers.sector_update.call_simple(&(
-                            sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)),
-                        ));
-                    }
-                    SectorPlottingProgress::Finished {
-                        plotted_sector,
-                        time: _,
-                        sector,
-                    } => {
-                        return Ok((plotted_sector, sector));
-                    }
-                    SectorPlottingProgress::Error { error } => {
-                        handlers.sector_update.call_simple(&(
-                            sector_index,
-                            SectorUpdate::Plotting(SectorPlottingDetails::Error(error.clone())),
-                        ));
-                        return Err(error);
-                    }
-                }
-            }
-
-            Err("Plotting progress stream ended before plotting finished".to_string())
-        };
-
-        let (plotted_sector, mut sector) = progress_processor_fut
-            .await
-            .map_err(PlottingError::LowLevel)?;
-
-        // Inform others that this sector is being modified
-        sectors_being_modified.write().await.insert(sector_index);
-
-        {
-            // Take mutex briefly to make sure writing is allowed right now
-            global_mutex.lock().await;
-
-            handlers.sector_update.call_simple(&(
-                sector_index,
-                SectorUpdate::Plotting(SectorPlottingDetails::Writing),
-            ));
-
-            let start = Instant::now();
-
-            {
-                let mut sector_write_offset = u64::from(sector_index) * *sector_size as u64;
-                while let Some(maybe_sector_chunk) = sector.next().await {
-                    let sector_chunk = maybe_sector_chunk.map_err(|error| {
-                        PlottingError::LowLevel(format!("Sector chunk receive error: {error}"))
-                    })?;
-                    plot_file.write_all_at(&sector_chunk, sector_write_offset)?;
-                    sector_write_offset += sector_chunk.len() as u64;
-                }
-                drop(sector);
-            }
-            {
-                let encoded_sector_metadata = plotted_sector.sector_metadata.encode();
-                metadata_file.write_all_at(
-                    &encoded_sector_metadata,
-                    RESERVED_PLOT_METADATA
-                        + (u64::from(sector_index) * encoded_sector_metadata.len() as u64),
-                )?;
-            }
-
-            handlers.sector_update.call_simple(&(
-                sector_index,
-                SectorUpdate::Plotting(SectorPlottingDetails::Written(start.elapsed())),
-            ));
-        }
+        let plotted_sector = plot_single_sector_internal(
+            sector_index,
+            *sector_size,
+            plot_file,
+            metadata_file,
+            handlers,
+            sectors_being_modified,
+            global_mutex,
+            progress_receiver,
+        )
+        .await?;
 
         {
             let mut sectors_metadata = sectors_metadata.write().await;
@@ -470,6 +390,114 @@ where
             last_queued,
         })
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn plot_single_sector_internal(
+    sector_index: SectorIndex,
+    sector_size: usize,
+    #[cfg(not(windows))] plot_file: &File,
+    #[cfg(windows)] plot_file: &UnbufferedIoFileWindows,
+    #[cfg(not(windows))] metadata_file: &File,
+    #[cfg(windows)] metadata_file: &UnbufferedIoFileWindows,
+    handlers: &Handlers,
+    sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
+    global_mutex: &AsyncMutex<()>,
+    mut progress_receiver: mpsc::Receiver<SectorPlottingProgress>,
+) -> Result<PlottedSector, PlottingError> {
+    // Process plotting progress notifications
+    let progress_processor_fut = async {
+        while let Some(progress) = progress_receiver.next().await {
+            match progress {
+                SectorPlottingProgress::Downloading => {
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
+                    ));
+                }
+                SectorPlottingProgress::Downloaded(time) => {
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)),
+                    ));
+                }
+                SectorPlottingProgress::Encoding => {
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
+                    ));
+                }
+                SectorPlottingProgress::Encoded(time) => {
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)),
+                    ));
+                }
+                SectorPlottingProgress::Finished {
+                    plotted_sector,
+                    time: _,
+                    sector,
+                } => {
+                    return Ok((plotted_sector, sector));
+                }
+                SectorPlottingProgress::Error { error } => {
+                    handlers.sector_update.call_simple(&(
+                        sector_index,
+                        SectorUpdate::Plotting(SectorPlottingDetails::Error(error.clone())),
+                    ));
+                    return Err(error);
+                }
+            }
+        }
+
+        Err("Plotting progress stream ended before plotting finished".to_string())
+    };
+
+    let (plotted_sector, mut sector) = progress_processor_fut
+        .await
+        .map_err(PlottingError::LowLevel)?;
+
+    // Inform others that this sector is being modified
+    sectors_being_modified.write().await.insert(sector_index);
+
+    {
+        // Take mutex briefly to make sure writing is allowed right now
+        global_mutex.lock().await;
+
+        handlers.sector_update.call_simple(&(
+            sector_index,
+            SectorUpdate::Plotting(SectorPlottingDetails::Writing),
+        ));
+
+        let start = Instant::now();
+
+        {
+            let mut sector_write_offset = u64::from(sector_index) * sector_size as u64;
+            while let Some(maybe_sector_chunk) = sector.next().await {
+                let sector_chunk = maybe_sector_chunk.map_err(|error| {
+                    PlottingError::LowLevel(format!("Sector chunk receive error: {error}"))
+                })?;
+                plot_file.write_all_at(&sector_chunk, sector_write_offset)?;
+                sector_write_offset += sector_chunk.len() as u64;
+            }
+            drop(sector);
+        }
+        {
+            let encoded_sector_metadata = plotted_sector.sector_metadata.encode();
+            metadata_file.write_all_at(
+                &encoded_sector_metadata,
+                RESERVED_PLOT_METADATA
+                    + (u64::from(sector_index) * encoded_sector_metadata.len() as u64),
+            )?;
+        }
+
+        handlers.sector_update.call_simple(&(
+            sector_index,
+            SectorUpdate::Plotting(SectorPlottingDetails::Written(start.elapsed())),
+        ));
+    }
+
+    Ok(plotted_sector)
 }
 
 pub(super) struct PlottingSchedulerOptions<NC> {
