@@ -74,6 +74,7 @@ pub struct PieceCache {
 
 #[async_trait]
 impl farm::PieceCache for PieceCache {
+    #[inline]
     fn max_num_elements(&self) -> u32 {
         self.inner.max_num_elements
     }

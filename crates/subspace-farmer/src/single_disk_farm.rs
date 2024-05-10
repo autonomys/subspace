@@ -599,6 +599,7 @@ pub struct SingleDiskFarm {
 }
 
 impl Drop for SingleDiskFarm {
+    #[inline]
     fn drop(&mut self) {
         self.piece_reader.close_all_readers();
         // Make background threads that are waiting to do something exit immediately
