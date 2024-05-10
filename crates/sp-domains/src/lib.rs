@@ -1243,12 +1243,23 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
 >;
 
 /// Domain chains allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
 pub struct DomainAllowlistUpdates {
     /// Chains that are allowed to open channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
     /// Chains that are not allowed to open channel with this chain.
     pub remove_chains: BTreeSet<ChainId>,
+}
+
+impl DomainAllowlistUpdates {
+    pub fn is_empty(&self) -> bool {
+        self.allow_chains.is_empty() && self.remove_chains.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.allow_chains.clear();
+        self.remove_chains.clear();
+    }
 }
 
 //TODO: remove there key generations from here and instead use the fraud proof host function to fetch them

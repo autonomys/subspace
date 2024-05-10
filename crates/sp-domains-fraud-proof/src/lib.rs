@@ -47,15 +47,15 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainAllowlistUpdates, DomainId, OperatorId};
 use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_trie::StorageProof;
-use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Balance;
+use subspace_core_primitives::{Randomness, U256};
+use subspace_runtime_primitives::{Balance, Moment};
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
@@ -346,6 +346,51 @@ impl FraudProofVerificationInfoResponse {
             _ => None,
         }
     }
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct DomainInherentExtrinsicData {
+    pub timestamp: Moment,
+    pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
+    pub consensus_transaction_byte_fee: Balance,
+    pub domain_chain_allowlist: DomainAllowlistUpdates,
+}
+
+impl PassBy for DomainInherentExtrinsicData {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct DomainInherentExtrinsic {
+    domain_timestamp_extrinsic: Vec<u8>,
+    maybe_domain_chain_allowlist_extrinsic: Option<Vec<u8>>,
+    consensus_chain_byte_fee_extrinsic: Vec<u8>,
+    maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum DomainStorageKeyRequest {
+    BlockFees,
+    Transfers,
+}
+
+impl PassBy for DomainStorageKeyRequest {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum StatelessDomainRuntimeCall {
+    IsTxInRange {
+        opaque_extrinsic: OpaqueExtrinsic,
+        domain_tx_range: U256,
+        bundle_vrf_hash: U256,
+    },
+    IsInherentExtrinsic(OpaqueExtrinsic),
+    IsDecodableExtrinsic(OpaqueExtrinsic),
+}
+
+impl PassBy for StatelessDomainRuntimeCall {
+    type PassBy = pass_by::Codec<Self>;
 }
 
 sp_api::decl_runtime_apis! {

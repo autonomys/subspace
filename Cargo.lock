@@ -2674,6 +2674,7 @@ dependencies = [
  "sp-executive",
  "sp-externalities",
  "sp-inherents",
+ "sp-io",
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
