@@ -33,11 +33,15 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, warn};
 use ulid::Ulid;
 
 const EXPECTED_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
+/// Requests should time out eventually, but we should set a larger timeout to allow for spikes in
+/// load to be absorbed gracefully
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Generic request with associated response.
 ///
@@ -291,7 +295,7 @@ impl NatsClient {
                 .map(|_| async {
                     async_nats::connect_with_options(
                         &servers,
-                        ConnectOptions::default().request_timeout(None),
+                        ConnectOptions::default().request_timeout(Some(REQUEST_TIMEOUT)),
                     )
                     .await
                 })
