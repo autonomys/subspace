@@ -17,12 +17,17 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 pub mod fees;
 
 pub use pallet::*;
 
 #[frame_support::pallet]
 mod pallet {
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use codec::{Codec, MaxEncodedLen};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -192,6 +197,11 @@ mod pallet {
         /// - The `DomainChainByteFee` for the domain chain storage cost
         pub fn final_domain_transaction_byte_fee() -> T::Balance {
             ConsensusChainByteFee::<T>::get().saturating_add(T::DomainChainByteFee::get())
+        }
+
+        pub fn block_fees_storage_key() -> Vec<u8> {
+            use frame_support::storage::generator::StorageValue;
+            CollectedBlockFees::<T>::storage_value_final_key().to_vec()
         }
     }
 }

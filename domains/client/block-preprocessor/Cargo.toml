@@ -26,6 +26,7 @@ sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-executive = { version = "0.1.0", path = "../../primitives/executive" }
 sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }

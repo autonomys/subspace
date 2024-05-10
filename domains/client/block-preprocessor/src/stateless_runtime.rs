@@ -3,9 +3,9 @@ use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, Core};
+use sp_api::{ApiError, Core, RuntimeApiInfo};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
-use sp_core::Hasher;
+use sp_core::{Decode, Hasher};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::messages::MessageKey;
@@ -281,5 +281,20 @@ where
 
     pub fn transfers_storage_key(&self) -> Result<Vec<u8>, ApiError> {
         <Self as DomainCoreApi<Block>>::transfers_storage_key(self, Default::default())
+    }
+
+    pub fn block_fees_storage_key(&self) -> Result<Vec<u8>, ApiError> {
+        let has_runtime_api = sp_io::misc::runtime_version(&self.runtime_code)
+            .and_then(|v| RuntimeVersion::decode(&mut &v[..]).ok())
+            .and_then(|runtime_version| {
+                runtime_version.api_version(&<dyn DomainCoreApi<Block>>::ID)
+            })
+            .map_or(false, |runtime_api_version| runtime_api_version >= 2);
+
+        if has_runtime_api {
+            <Self as DomainCoreApi<Block>>::block_fees_storage_key(self, Default::default())
+        } else {
+            Ok(sp_domains::operator_block_fees_final_key())
+        }
     }
 }

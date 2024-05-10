@@ -1251,6 +1251,15 @@ pub struct DomainAllowlistUpdates {
     pub remove_chains: BTreeSet<ChainId>,
 }
 
+//TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
+
+/// This is a representation of actual Block Fees storage in pallet-block-fees.
+/// Any change in key or value there should be changed here accordingly.
+pub fn operator_block_fees_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
+        .to_vec()
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     #[api_version(3)]

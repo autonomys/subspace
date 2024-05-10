@@ -932,7 +932,7 @@ fn generate_invalid_block_fees_fraud_proof<T: Config>(
     bad_receipt_hash: ReceiptHashFor<T>,
     block_fees: sp_domains::BlockFees<BalanceOf<T>>,
 ) -> (FraudProofFor<T>, T::Hash) {
-    let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
+    let storage_key = sp_domains::operator_block_fees_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {

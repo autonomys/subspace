@@ -140,7 +140,7 @@ where
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
-        let key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
+        let key = sp_domains::operator_block_fees_final_key();
         let proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
