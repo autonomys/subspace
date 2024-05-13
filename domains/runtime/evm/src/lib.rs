@@ -450,9 +450,9 @@ type MmrHash = <Keccak256 as sp_runtime::traits::Hash>::Output;
 pub struct MmrProofVerifier;
 
 impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrProofVerifier {
-    fn verify_proof_and_extract_consensus_state_root(
+    fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, MmrHash>,
-    ) -> Option<Hash> {
+    ) -> Option<MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash>> {
         let ConsensusChainMmrLeafProof {
             opaque_mmr_leaf: opaque_leaf,
             proof,
@@ -461,9 +461,9 @@ impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrP
 
         let leaf: MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash> =
             opaque_leaf.into_opaque_leaf().try_decode()?;
-        let state_root = leaf.state_root();
+
         verify_mmr_proof(vec![EncodableOpaqueLeaf::from_leaf(&leaf)], proof.encode())
-            .then_some(state_root)
+            .then_some(leaf)
     }
 }
 

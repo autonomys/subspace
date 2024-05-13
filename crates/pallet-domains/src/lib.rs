@@ -78,6 +78,7 @@ use sp_domains_fraud_proof::verification::{
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::transaction_validity::TransactionPriority;
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
+use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
 
@@ -214,6 +215,7 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
+    use sp_subspace_mmr::MmrProofVerifier;
     use subspace_core_primitives::U256;
     use subspace_runtime_primitives::StorageFee;
 
@@ -386,6 +388,16 @@ mod pallet {
 
         /// A hook to call after a domain is instantiated
         type OnDomainInstantiated: OnDomainInstantiated;
+
+        /// Hash type of MMR
+        type MmrHash: Parameter + Member + Default + Clone;
+
+        /// MMR proof verifier
+        type MmrProofVerifier: MmrProofVerifier<
+            Self::MmrHash,
+            BlockNumberFor<Self>,
+            StateRootOf<Self>,
+        >;
     }
 
     #[pallet::pallet]
@@ -719,6 +731,10 @@ mod pallet {
         UnexpectedFraudProof,
         /// The bad receipt already reported by a previous fraud proof
         BadReceiptAlreadyReported,
+        /// Bad MMR proof, it may due to the proof is expired or it is generated against a different fork.
+        BadMmrProof,
+        /// Unexpected MMR proof
+        UnexpectedMmrProof,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -2247,6 +2263,21 @@ impl<T: Config> Pallet<T> {
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
         let storage_fund_acc = storage_fund_account::<T>(operator_id);
         T::Currency::reducible_balance(&storage_fund_acc, Preservation::Preserve, Fortitude::Polite)
+    }
+
+    pub fn verify_mmr_proof_and_extract_state_root(
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<BlockNumberFor<T>, T::Hash, T::MmrHash>,
+        expected_block_number: BlockNumberFor<T>,
+    ) -> Result<T::Hash, FraudProofError> {
+        let leaf_data = T::MmrProofVerifier::verify_proof_and_extract_leaf(mmr_leaf_proof)
+            .ok_or(FraudProofError::BadMmrProof)?;
+
+        // Ensure it is a proof of the exact block that we expected
+        if expected_block_number != leaf_data.block_number() {
+            return Err(FraudProofError::UnexpectedMmrProof);
+        }
+
+        Ok(leaf_data.state_root())
     }
 }
 

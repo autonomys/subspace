@@ -294,6 +294,8 @@ impl pallet_domains::Config for Test {
     type DomainBundleSubmitted = ();
     type OnDomainInstantiated = ();
     type Balance = Balance;
+    type MmrHash = H256;
+    type MmrProofVerifier = ();
 }
 
 pub struct ExtrinsicStorageFees;

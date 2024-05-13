@@ -4414,11 +4414,9 @@ async fn test_verify_mmr_proof_stateless() {
         let res = ferdie
             .client
             .runtime_api()
-            .verify_proof_and_extract_consensus_state_root(
-                ferdie.client.info().best_hash,
-                proof.clone(),
-            )
-            .unwrap();
+            .verify_proof_and_extract_leaf(ferdie.client.info().best_hash, proof.clone())
+            .unwrap()
+            .map(|leaf| leaf.state_root());
 
         produce_blocks!(ferdie, alice, 1).await.unwrap();
 
@@ -4436,11 +4434,9 @@ async fn test_verify_mmr_proof_stateless() {
         let res = ferdie
             .client
             .runtime_api()
-            .verify_proof_and_extract_consensus_state_root(
-                ferdie.client.info().best_hash,
-                proof.clone(),
-            )
-            .unwrap();
+            .verify_proof_and_extract_leaf(ferdie.client.info().best_hash, proof.clone())
+            .unwrap()
+            .map(|leaf| leaf.state_root());
 
         assert_eq!(res, Some(expected_state_root));
         produce_blocks!(ferdie, alice, 1).await.unwrap();
