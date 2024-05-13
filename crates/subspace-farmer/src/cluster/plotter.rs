@@ -710,11 +710,14 @@ where
             )
             .await
             .map_err(|error| anyhow!("Failed to subscribe to free instance requests: {error}"))?;
+        debug!(?subscription, "Free instance subscription");
 
         while let Some(message) = subscription.next().await {
             let Some(reply_subject) = message.reply else {
                 continue;
             };
+
+            debug!(%reply_subject, "Free instance request");
 
             let has_free_capacity = cpu_plotter.has_free_capacity().await.unwrap_or_default();
             let response: <ClusterPlotterFreeInstanceRequest as GenericRequest>::Response =
@@ -750,11 +753,12 @@ where
     let mut processing = FuturesUnordered::from_iter([
         Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
     ]);
-    let mut subscription = nats_client
+    let subscription = nats_client
         .subscribe_to_stream_requests(Some(&plotter_id_string), Some(plotter_id_string.clone()))
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to plot sector requests: {}", error))?
-        .fuse();
+        .map_err(|error| anyhow!("Failed to subscribe to plot sector requests: {}", error))?;
+    debug!(?subscription, "Plot sector subscription");
+    let mut subscription = subscription.fuse();
 
     loop {
         select! {

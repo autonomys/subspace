@@ -752,7 +752,7 @@ async fn read_piece_responder(
                 FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
                     Box::pin(pending()) as Pin<Box<_>>,
                 ]);
-            let mut subscription = nats_client
+            let subscription = nats_client
                 .queue_subscribe(
                     ClusterFarmerReadPieceRequest::SUBJECT
                         .replace('*', &farm_details.farm_id_string),
@@ -765,8 +765,9 @@ async fn read_piece_responder(
                         farm_details.farm_id,
                         error
                     )
-                })?
-                .fuse();
+                })?;
+            debug!(?subscription, "Read piece requests subscription");
+            let mut subscription = subscription.fuse();
 
             loop {
                 select! {
@@ -819,6 +820,8 @@ async fn process_read_piece_request(
             return;
         }
     };
+
+    trace!(%sector_index, %piece_offset, %reply_subject, "Read piece request");
 
     let response: <ClusterFarmerReadPieceRequest as GenericRequest>::Response = farm_details
         .piece_reader

@@ -543,6 +543,7 @@ where
         )
         .await
         .map_err(|error| anyhow!("Failed to subscribe to farmer app info requests: {error}"))?;
+    debug!(?subscription, "Farmer app info requests subscription");
 
     let mut last_farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response = node_client
         .farmer_app_info()
@@ -594,6 +595,7 @@ where
         )
         .await
         .map_err(|error| anyhow!("Failed to subscribe to segment headers requests: {error}"))?;
+    debug!(?subscription, "Segment headers requests subscription");
 
     let mut last_request_response = None::<(
         ClusterControllerSegmentHeadersRequest,
@@ -660,14 +662,15 @@ where
         Box::pin(pending()) as Pin<Box<_>>,
     ]);
 
-    let mut subscription = nats_client
+    let subscription = nats_client
         .queue_subscribe(
             ClusterControllerPieceRequest::SUBJECT,
             "subspace.controller".to_string(),
         )
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to piece requests: {error}"))?
-        .fuse();
+        .map_err(|error| anyhow!("Failed to subscribe to piece requests: {error}"))?;
+    debug!(?subscription, "Piece requests subscription");
+    let mut subscription = subscription.fuse();
 
     loop {
         select! {

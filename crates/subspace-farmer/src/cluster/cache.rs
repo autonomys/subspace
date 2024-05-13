@@ -378,7 +378,7 @@ where
                 FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
                     Box::pin(pending()) as Pin<Box<_>>,
                 ]);
-            let mut subscription = nats_client
+            let subscription = nats_client
                 .queue_subscribe(
                     ClusterCacheWritePieceRequest::SUBJECT
                         .replace('*', &cache_details.cache_id_string),
@@ -391,8 +391,9 @@ where
                         cache_details.cache_id,
                         error
                     )
-                })?
-                .fuse();
+                })?;
+            debug!(?subscription, "Write piece requests subscription");
+            let mut subscription = subscription.fuse();
 
             loop {
                 select! {
@@ -449,6 +450,8 @@ async fn process_write_piece_request<C>(
         }
     };
 
+    trace!(%offset, %piece_index, %reply_subject, "Write piece request");
+
     let response: <ClusterCacheWritePieceRequest as GenericRequest>::Response = cache_details
         .cache
         .write_piece(offset, piece_index, &piece)
@@ -478,7 +481,7 @@ where
                 FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
                     Box::pin(pending()) as Pin<Box<_>>,
                 ]);
-            let mut subscription = nats_client
+            let subscription = nats_client
                 .queue_subscribe(
                     ClusterCacheReadPieceIndexRequest::SUBJECT
                         .replace('*', &cache_details.cache_id_string),
@@ -491,8 +494,9 @@ where
                         cache_details.cache_id,
                         error
                     )
-                })?
-                .fuse();
+                })?;
+            debug!(?subscription, "Read piece index requests subscription");
+            let mut subscription = subscription.fuse();
 
             loop {
                 select! {
@@ -546,6 +550,8 @@ async fn process_read_piece_index_request<C>(
             }
         };
 
+    trace!(%offset, %reply_subject, "Read piece index request");
+
     let response: <ClusterCacheReadPieceIndexRequest as GenericRequest>::Response = cache_details
         .cache
         .read_piece_index(offset)
@@ -575,7 +581,7 @@ where
                 FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
                     Box::pin(pending()) as Pin<Box<_>>,
                 ]);
-            let mut subscription = nats_client
+            let subscription = nats_client
                 .queue_subscribe(
                     ClusterCacheReadPieceRequest::SUBJECT
                         .replace('*', &cache_details.cache_id_string),
@@ -588,8 +594,9 @@ where
                         cache_details.cache_id,
                         error
                     )
-                })?
-                .fuse();
+                })?;
+            debug!(?subscription, "Read piece requests subscription");
+            let mut subscription = subscription.fuse();
 
             loop {
                 select! {
@@ -642,6 +649,8 @@ async fn process_read_piece_request<C>(
                 return;
             }
         };
+
+    trace!(%offset, %reply_subject, "Read piece request");
 
     let response: <ClusterCacheReadPieceRequest as GenericRequest>::Response = cache_details
         .cache
