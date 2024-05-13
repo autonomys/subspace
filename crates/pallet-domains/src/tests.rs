@@ -280,6 +280,7 @@ impl pallet_domains::Config for Test {
     type Balance = Balance;
     type MmrHash = H256;
     type MmrProofVerifier = ();
+    type FraudProofStorageKeyProvider = ();
 }
 
 pub struct ExtrinsicStorageFees;

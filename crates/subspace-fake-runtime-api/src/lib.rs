@@ -402,14 +402,14 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<DomainHeader>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
             unreachable!()
         }
 
         fn extract_fraud_proofs(
             _domain_id: DomainId,
             _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<DomainHeader>> {
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
             unreachable!()
         }
 

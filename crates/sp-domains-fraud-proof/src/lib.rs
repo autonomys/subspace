@@ -49,7 +49,7 @@ pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::{DomainAllowlistUpdates, DomainId, OperatorId};
-use sp_runtime::traits::Header as HeaderT;
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
@@ -395,15 +395,16 @@ impl PassBy for StatelessDomainRuntimeCall {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for fraud proof.
+    #[api_version(2)]
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<DomainHeader>);
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
         /// Extract the fraud proof handled successfully from the given extrinsics.
         fn extract_fraud_proofs(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<FraudProof<DomainHeader>>;
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>>;
 
         /// Reture the storage key used in fraud proof
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8>;

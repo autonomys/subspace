@@ -713,6 +713,7 @@ impl pallet_domains::Config for Runtime {
     type Balance = Balance;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
+    type FraudProofStorageKeyProvider = StorageKeyProvider;
 }
 
 parameter_types! {
@@ -1361,14 +1362,14 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<DomainHeader>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn extract_fraud_proofs(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<DomainHeader>> {
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
             crate::domains::extract_fraud_proofs(domain_id, extrinsics)
         }
 

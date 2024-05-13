@@ -225,9 +225,6 @@ impl ExecutionPhase {
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError<DomainHash> {
-    /// Hash of the consensus block being challenged not found.
-    #[cfg_attr(feature = "thiserror", error("consensus block hash not found"))]
-    ConsensusBlockHashNotFound,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",
@@ -259,59 +256,9 @@ pub enum VerificationError<DomainHash> {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(codec::Error),
-    /// Transaction validity check passes.
-    #[cfg_attr(feature = "thiserror", error("Valid transaction"))]
-    ValidTransaction,
-    /// State not found in the storage proof.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("State under storage key ({0:?}) not found in the storage proof")
-    )]
-    StateNotFound(Vec<u8>),
-    /// Decode error.
-    #[cfg(feature = "std")]
-    #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
-    Decode(#[from] codec::Error),
-    /// Runtime api error.
-    #[cfg(feature = "std")]
-    #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
-    RuntimeApi(#[from] sp_api::ApiError),
-    /// Runtime api error.
-    #[cfg(feature = "std")]
-    #[cfg_attr(feature = "thiserror", error("Client error: {0}"))]
-    Client(#[from] sp_blockchain::Error),
     /// Invalid storage proof.
     #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
     InvalidStorageProof,
-    /// Can not find signer from the domain extrinsic.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Can not find signer from the domain extrinsic")
-    )]
-    SignerNotFound,
-    /// Domain state root not found.
-    #[cfg_attr(feature = "thiserror", error("Domain state root not found"))]
-    DomainStateRootNotFound,
-    /// Fail to get runtime code.
-    // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
-    // error, but it will be improper to use `WasmError` directly here since it will make
-    // `sp-domain` (a runtime crate) depend on `sc_executor_common` (a client crate).
-    #[cfg(feature = "std")]
-    #[cfg_attr(feature = "thiserror", error("Failed to get runtime code: {0}"))]
-    RuntimeCode(String),
-    #[cfg_attr(feature = "thiserror", error("Failed to get domain runtime code"))]
-    FailedToGetDomainRuntimeCode,
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to get domain transfers storage key")
-    )]
-    FailedToGetDomainTransfersStorageKey,
-    #[cfg(feature = "std")]
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Oneshot error when verifying fraud proof in tx pool: {0}")
-    )]
-    Oneshot(String),
     #[cfg_attr(
         feature = "thiserror",
         error("The receipt's execution_trace have less than 2 traces")
@@ -326,33 +273,6 @@ pub enum VerificationError<DomainHash> {
     /// Invalid bundle digest
     #[cfg_attr(feature = "thiserror", error("Invalid Bundle Digest"))]
     InvalidBundleDigest,
-    /// Failed to get block randomness
-    #[cfg_attr(feature = "thiserror", error("Failed to get block randomness"))]
-    FailedToGetBlockRandomness,
-    /// Failed to derive domain timestamp extrinsic
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive domain timestamp extrinsic")
-    )]
-    FailedToDeriveDomainTimestampExtrinsic,
-    /// Failed to derive consensus chain byte fee extrinsic
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive consensus chain byte fee extrinsic")
-    )]
-    FailedToDeriveConsensusChainByteFeeExtrinsic,
-    /// Failed to derive domain set code extrinsic
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive domain set code extrinsic")
-    )]
-    FailedToDeriveDomainSetCodeExtrinsic,
-    /// Failed to derive domain chain allowlist extrinsic
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive domain chain allowlist extrinsic")
-    )]
-    FailedToDeriveDomainChainAllowlistExtrinsic,
     /// Bundle with requested index not found in execution receipt
     #[cfg_attr(
         feature = "thiserror",
@@ -369,15 +289,6 @@ pub enum VerificationError<DomainHash> {
         fraud_proof_invalid_type_of_proof: InvalidBundleType,
         targeted_entry_bundle: BundleValidity<DomainHash>,
     },
-    /// Tx range host function did not return response (returned None)
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Tx range host function did not return a response (returned None)")
-    )]
-    FailedToGetResponseFromTxRangeHostFn,
-    /// Failed to get the bundle body
-    #[cfg_attr(feature = "thiserror", error("Failed to get the bundle body"))]
-    FailedToGetDomainBundleBody,
     /// Failed to derive bundle digest
     #[cfg_attr(feature = "thiserror", error("Failed to derive bundle digest"))]
     FailedToDeriveBundleDigest,
@@ -387,37 +298,53 @@ pub enum VerificationError<DomainHash> {
         error("The target valid bundle not found from the target bad receipt")
     )]
     TargetValidBundleNotFound,
-    /// Failed to check if a given extrinsic is inherent or not.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to check if a given extrinsic is inherent or not")
-    )]
-    FailedToCheckInherentExtrinsic,
-    /// Failed to check if a given extrinsic is inherent or not.
-    #[cfg_attr(feature = "thiserror", error("Failed to validate given XDM"))]
-    FailedToValidateXDM,
-    /// Failed to check if a given extrinsic is decodable or not.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to check if a given extrinsic is decodable or not")
-    )]
-    FailedToCheckExtrinsicDecodable,
     /// Failed to check extrinsics in single context
     #[cfg_attr(
         feature = "thiserror",
         error("Failed to check extrinsics in single context")
     )]
     FailedToCheckExtrinsicsInSingleContext,
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Bad MMR proof, the proof is probably expired or is generated against a different fork"
+        )
+    )]
+    BadMmrProof,
+    #[cfg_attr(feature = "thiserror", error("Unexpected MMR proof"))]
+    UnexpectedMmrProof,
+    #[cfg_attr(feature = "thiserror", error("Failed to verify storage proof"))]
+    StorageProof(storage_proof::VerificationError),
+    /// Failed to derive domain inherent extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive domain inherent extrinsic")
+    )]
+    FailedToDeriveDomainInherentExtrinsic,
+    /// Failed to derive domain storage key
+    #[cfg_attr(feature = "thiserror", error("Failed to derive domain storage key"))]
+    FailedToGetDomainStorageKey,
+    /// Unexpected invalid bundle proof data
+    #[cfg_attr(feature = "thiserror", error("Unexpected invalid bundle proof data"))]
+    UnexpectedInvalidBundleProofData,
+    /// Extrinsic with requested index not found in bundle
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Extrinsic with requested index not found in bundle")
+    )]
+    ExtrinsicNotFound,
+    /// Failed to get domain runtime call response
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to get domain runtime call response")
+    )]
+    FailedToGetDomainRuntimeCallResponse,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidBundlesFraudProof<ReceiptHash> {
-    pub bad_receipt_hash: ReceiptHash,
-    pub domain_id: DomainId,
-    pub bundle_index: u32,
-    pub invalid_bundle_type: InvalidBundleType,
-    pub proof_data: StorageProof,
-    pub is_true_invalid_fraud_proof: bool,
+impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<DomainHash> {
+    fn from(err: storage_proof::VerificationError) -> Self {
+        Self::StorageProof(err)
+    }
 }
 
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]

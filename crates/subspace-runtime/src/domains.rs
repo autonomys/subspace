@@ -5,6 +5,7 @@ use crate::{Balance, Block, Domains, RuntimeCall, UncheckedExtrinsic};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
+use sp_core::H256;
 use sp_domains::DomainId;
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -44,7 +45,7 @@ pub(crate) fn extract_bundle(
 pub(crate) fn extract_fraud_proofs(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<FraudProof<DomainHeader>> {
+) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
     let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
     extrinsics
         .into_iter()
