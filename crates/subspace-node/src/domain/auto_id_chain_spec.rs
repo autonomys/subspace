@@ -64,7 +64,6 @@ pub fn development_config(
     .build())
 }
 
-#[allow(dead_code)]
 pub fn gemini_3h_config(
     runtime_genesis_config: RuntimeGenesisConfig,
 ) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
