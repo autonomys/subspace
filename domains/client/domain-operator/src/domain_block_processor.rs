@@ -853,7 +853,7 @@ where
     pub fn generate_fraud_proof(
         &self,
         mismatched_receipts: MismatchedReceipts<Block, CBlock>,
-    ) -> sp_blockchain::Result<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header>> {
+    ) -> sp_blockchain::Result<FraudProof<Block::Header>> {
         let MismatchedReceipts {
             local_receipt,
             bad_receipt,
