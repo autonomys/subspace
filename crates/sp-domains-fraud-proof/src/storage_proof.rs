@@ -33,14 +33,15 @@ pub enum GenerationError {
 pub enum VerificationError {
     InvalidBundleStorageProof,
     RuntimeCodeNotFound,
-    StorageProof(StorageProofVerificationError),
     UnexpectedDomainRuntimeUpgrade,
-}
-
-impl From<StorageProofVerificationError> for VerificationError {
-    fn from(err: StorageProofVerificationError) -> Self {
-        Self::StorageProof(err)
-    }
+    BlockRandomnessStorageProof(StorageProofVerificationError),
+    TimestampStorageProof(StorageProofVerificationError),
+    SuccessfulBundlesStorageProof(StorageProofVerificationError),
+    TransactionByteFeeStorageProof(StorageProofVerificationError),
+    DomainAllowlistUpdatesStorageProof(StorageProofVerificationError),
+    BlockDigestStorageProof(StorageProofVerificationError),
+    RuntimeRegistryStorageProof(StorageProofVerificationError),
+    DynamicCostOfStorageStorageProof(StorageProofVerificationError),
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
@@ -53,6 +54,23 @@ pub enum FraudProofStorageKeyRequest {
     BlockDigest,
     RuntimeRegistry(RuntimeId),
     DynamicCostOfStorage,
+}
+
+impl FraudProofStorageKeyRequest {
+    fn into_error(self, err: StorageProofVerificationError) -> VerificationError {
+        match self {
+            Self::BlockRandomness => VerificationError::BlockRandomnessStorageProof(err),
+            Self::Timestamp => VerificationError::TimestampStorageProof(err),
+            Self::SuccessfulBundles(_) => VerificationError::SuccessfulBundlesStorageProof(err),
+            Self::TransactionByteFee => VerificationError::TransactionByteFeeStorageProof(err),
+            Self::DomainAllowlistUpdates(_) => {
+                VerificationError::DomainAllowlistUpdatesStorageProof(err)
+            }
+            Self::BlockDigest => VerificationError::BlockDigestStorageProof(err),
+            Self::RuntimeRegistry(_) => VerificationError::RuntimeRegistryStorageProof(err),
+            Self::DynamicCostOfStorage => VerificationError::DynamicCostOfStorageStorageProof(err),
+        }
+    }
 }
 
 /// Trait to get storage keys in the runtime i.e. when verifying the storage proof
@@ -115,14 +133,14 @@ pub trait BasicStorageProof<Block: BlockT>:
         key: Self::Key,
         state_root: &Block::Hash,
     ) -> Result<Self::StorageValue, VerificationError> {
-        let storage_key = SKP::storage_key(Self::storage_key_request(key));
-        Ok(
-            StorageProofVerifier::<HashingFor<Block>>::get_decoded_value::<Self::StorageValue>(
-                state_root,
-                self.into(),
-                StorageKey(storage_key),
-            )?,
+        let storage_key_req = Self::storage_key_request(key);
+        let storage_key = SKP::storage_key(storage_key_req.clone());
+        StorageProofVerifier::<HashingFor<Block>>::get_decoded_value::<Self::StorageValue>(
+            state_root,
+            self.into(),
+            StorageKey(storage_key),
         )
+        .map_err(|err| storage_key_req.into_error(err))
     }
 }
 
