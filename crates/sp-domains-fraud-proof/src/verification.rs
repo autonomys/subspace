@@ -658,43 +658,6 @@ where
             }
             Ok(())
         }
-        InvalidBundleType::InvalidXDM(extrinsic_index) => {
-            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
-                *extrinsic_index,
-                invalid_bundle_entry.extrinsics_root,
-                invalid_bundles_fraud_proof.proof_data.clone(),
-            )?;
-
-            let maybe_is_valid_xdm = get_fraud_proof_verification_info(
-                H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
-                FraudProofVerificationInfoRequest::XDMValidationCheck {
-                    domain_id: invalid_bundles_fraud_proof.domain_id,
-                    opaque_extrinsic: extrinsic,
-                },
-            )
-            .and_then(FraudProofVerificationInfoResponse::into_xdm_validation_check);
-
-            if let Some(is_valid_xdm) = maybe_is_valid_xdm {
-                // Proof to be considered valid only,
-                // If it is true invalid fraud proof then extrinsic must be an invalid xdm and
-                // If it is false invalid fraud proof then extrinsic must be a valid xdm
-                if is_valid_xdm != invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
-                    Ok(())
-                } else {
-                    Err(VerificationError::InvalidProof)
-                }
-            } else {
-                // If this extrinsic is not an XDM,
-                // If it is false invalid, then bad receipt marked this extrinsic as InvalidXDM
-                // even though it is not an XDM, if so accept the fraud proof
-                if !invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
-                    Ok(())
-                } else {
-                    // If this is a true invalid but the extrinsic is not an XDM, then reject fraud proof.
-                    // this can happen if there is a bug in the challenger node implementation.
-                    Err(VerificationError::InvalidProof)
-                }
-            }
-        }
+        InvalidBundleType::InvalidXDM(_) => Err(VerificationError::InvalidProof),
     }
 }

@@ -1172,12 +1172,17 @@ mod tests {
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::InvalidXDM(3)),
+                mismatch_type: BundleMismatchType::FalseInvalid(
+                    InvalidBundleType::InherentExtrinsic(3)
+                ),
                 bundle_index: 1,
             })
         );
@@ -1186,7 +1191,10 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
@@ -1195,7 +1203,9 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::InvalidXDM(3)),
+                mismatch_type: BundleMismatchType::TrueInvalid(
+                    InvalidBundleType::InherentExtrinsic(3)
+                ),
                 bundle_index: 1,
             })
         );
@@ -1205,7 +1215,10 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(H256::random(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(H256::random(), Default::default()),
