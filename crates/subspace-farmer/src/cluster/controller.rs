@@ -118,7 +118,7 @@ pub struct ClusterControllerRewardSignatureNotification {
 }
 
 impl GenericNotification for ClusterControllerRewardSignatureNotification {
-    const SUBJECT: &'static str = "subspace.controller.*.reward-signature";
+    const SUBJECT: &'static str = "subspace.controller.reward-signature";
 }
 
 /// Request farmer app info from controller
@@ -264,12 +264,11 @@ impl NodeClient for ClusterNodeClient {
         &self,
         reward_signature: RewardSignatureResponse,
     ) -> Result<(), NodeClientError> {
-        let last_slot_info_instance = self.last_slot_info_instance.lock().clone();
         Ok(self
             .nats_client
             .notification(
                 &ClusterControllerRewardSignatureNotification { reward_signature },
-                Some(&last_slot_info_instance),
+                None,
             )
             .await?)
     }
@@ -507,7 +506,7 @@ where
 {
     let mut subscription = nats_client
         .subscribe_to_notifications::<ClusterControllerRewardSignatureNotification>(
-            Some(instance),
+            None,
             Some(instance.to_string()),
         )
         .await
