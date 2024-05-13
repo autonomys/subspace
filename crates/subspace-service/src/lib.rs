@@ -74,7 +74,7 @@ use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
+use sc_service::{ClientExt, Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
@@ -228,18 +228,19 @@ pub type FullClient<RuntimeApi> = sc_service::TFullClient<Block, RuntimeApi, Run
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
+struct SubspaceExtensionsFactory<PosTable, Block: BlockT, Client, DomainBlock> {
     kzg: Kzg,
     client: Arc<Client>,
     backend: Arc<FullBackend>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
     domains_executor: Arc<sc_domains::RuntimeExecutor>,
+    fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
 impl<PosTable, Block, Client, DomainBlock> ExtensionsFactory<Block>
-    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock>
+    for SubspaceExtensionsFactory<PosTable, Block, Client, DomainBlock>
 where
     PosTable: Table,
     Block: BlockT,
@@ -269,6 +270,7 @@ where
         exts.register(PotExtension::new({
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
+            let fast_sync_state = self.fast_sync_state.clone();
 
             Box::new(
                 move |parent_hash, slot, proof_of_time, quick_verification| {
@@ -298,6 +300,7 @@ where
                             return false;
                         }
                     };
+
                     let parent_pre_digest = match extract_pre_digest(&parent_header) {
                         Ok(parent_pre_digest) => parent_pre_digest,
                         Err(error) => {
@@ -316,6 +319,22 @@ where
                     let parent_slot = parent_pre_digest.slot();
                     if slot <= *parent_slot {
                         return false;
+                    }
+
+                    // Check for fast-sync state
+                    {
+                        if let Some(state_block_number) = fast_sync_state.lock().as_ref() {
+                            let parent_block_number = *parent_header.number();
+                            if parent_block_number < *state_block_number {
+                                debug!(
+                                    %parent_block_number,
+                                    %state_block_number,
+                                    "Skipped PoT verification because of the fast sync state block."
+                                );
+
+                                return true;
+                            }
+                        }
                     }
 
                     let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
@@ -423,6 +442,8 @@ where
     pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
+    /// The first block with state enabled by fast-sync.
+    pub fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>>,
 }
 
 type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
@@ -490,17 +511,21 @@ where
 
     let executor = Arc::new(executor);
 
+    let fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>> = Default::default();
     client
         .execution_extensions()
-        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock> {
-            kzg: kzg.clone(),
-            client: Arc::clone(&client),
-            pot_verifier: pot_verifier.clone(),
-            executor: executor.clone(),
-            domains_executor: Arc::new(domains_executor),
-            backend: backend.clone(),
-            _pos_table: PhantomData,
-        });
+        .set_extensions_factory(
+            SubspaceExtensionsFactory::<PosTable, Block, _, DomainBlock> {
+                kzg: kzg.clone(),
+                client: Arc::clone(&client),
+                pot_verifier: pot_verifier.clone(),
+                executor: executor.clone(),
+                domains_executor: Arc::new(domains_executor),
+                backend: backend.clone(),
+                fast_sync_state: fast_sync_state.clone(),
+                _pos_table: PhantomData,
+            },
+        );
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -598,6 +623,7 @@ where
         pot_verifier,
         sync_target_block_number,
         telemetry,
+        fast_sync_state,
     };
 
     Ok(PartialComponents {
@@ -709,7 +735,18 @@ where
         pot_verifier,
         sync_target_block_number,
         mut telemetry,
+        fast_sync_state,
     } = other;
+
+    // Clear block gap after fast sync on reruns.
+    // Substrate detects a gap and inserts on each sync.
+    if config.fast_sync_enabled {
+        let finalized_hash_existed = client.info().finalized_hash != client.info().genesis_hash;
+        if finalized_hash_existed {
+            debug!(client_info=?client.info(), "Clear block gap after fast-sync.");
+            client.clear_block_gap();
+        }
+    }
 
     let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
     let (node, bootstrap_nodes) = match config.subspace_networking {
@@ -806,7 +843,7 @@ where
         }
     };
 
-    let import_queue_service = import_queue.service();
+    let import_queue_service = Arc::new(tokio::sync::Mutex::new(import_queue.service()));
     let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = Some(
         build_consensus_relay(
@@ -890,6 +927,7 @@ where
         );
 
     network_wrapper.set(network_service.clone());
+
     if config.sync_from_dsn {
         let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
             Arc::new(PieceProvider::new(
@@ -916,6 +954,9 @@ where
             sync_target_block_number,
             pause_sync,
             dsn_sync_piece_getter,
+            config.fast_sync_enabled,
+            fast_sync_state,
+            sync_service.clone(),
         );
         task_manager
             .spawn_handle()
