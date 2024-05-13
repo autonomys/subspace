@@ -300,6 +300,10 @@ sp_api::impl_runtime_apis! {
         fn storage_fund_account_balance(_operator_id: OperatorId) -> Balance {
             unreachable!()
         }
+
+        fn is_domain_runtime_updraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
+            unreachable!()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

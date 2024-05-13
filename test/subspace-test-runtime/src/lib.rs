@@ -1427,6 +1427,10 @@ impl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance {
             Domains::storage_fund_account_balance(operator_id)
         }
+
+        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+            Domains::is_domain_runtime_updraded_since(domain_id, at)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

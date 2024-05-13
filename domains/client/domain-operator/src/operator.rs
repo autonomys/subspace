@@ -19,6 +19,7 @@ use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
@@ -92,7 +93,8 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock>
         + BundleProducerElectionApi<CBlock, Balance>
-        + FraudProofApi<CBlock, Block::Header>,
+        + FraudProofApi<CBlock, Block::Header>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
         + 'static,

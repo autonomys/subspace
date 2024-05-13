@@ -2265,6 +2265,15 @@ impl<T: Config> Pallet<T> {
         T::Currency::reducible_balance(&storage_fund_acc, Preservation::Preserve, Fortitude::Polite)
     }
 
+    pub fn is_domain_runtime_updraded_since(
+        domain_id: DomainId,
+        at: BlockNumberFor<T>,
+    ) -> Option<bool> {
+        Self::runtime_id(domain_id)
+            .and_then(RuntimeRegistry::<T>::get)
+            .map(|runtime_obj| runtime_obj.updated_at >= at)
+    }
+
     pub fn verify_mmr_proof_and_extract_state_root(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         expected_block_number: BlockNumberFor<T>,
