@@ -29,6 +29,7 @@ pub struct PlottingThreadPoolsGuard {
 impl Deref for PlottingThreadPoolsGuard {
     type Target = PlottingThreadPoolPair;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.thread_pool_pair
             .as_ref()
@@ -37,6 +38,7 @@ impl Deref for PlottingThreadPoolsGuard {
 }
 
 impl Drop for PlottingThreadPoolsGuard {
+    #[inline]
     fn drop(&mut self) {
         let (mutex, event) = &*self.inner;
         mutex.lock().thread_pool_pairs.push(

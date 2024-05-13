@@ -146,6 +146,7 @@ pub enum ProvingResult {
 }
 
 impl fmt::Display for ProvingResult {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             ProvingResult::Success => "Success",
@@ -174,6 +175,7 @@ pub struct DecodedFarmingError {
 }
 
 impl fmt::Display for DecodedFarmingError {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.error.fmt(f)
     }
@@ -212,6 +214,7 @@ pub enum FarmingError {
 }
 
 impl Encode for FarmingError {
+    #[inline]
     fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
         let error = DecodedFarmingError {
             error: self.to_string(),
@@ -223,6 +226,7 @@ impl Encode for FarmingError {
 }
 
 impl Decode for FarmingError {
+    #[inline]
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         DecodedFarmingError::decode(input).map(FarmingError::Decoded)
     }
@@ -230,6 +234,7 @@ impl Decode for FarmingError {
 
 impl FarmingError {
     /// String variant of the error, primarily for monitoring purposes
+    #[inline]
     pub fn str_variant(&self) -> &str {
         match self {
             FarmingError::FailedToSubscribeSlotInfo { .. } => "FailedToSubscribeSlotInfo",
@@ -346,6 +351,7 @@ pub trait HandlerId: Send + Sync + fmt::Debug {
 }
 
 impl HandlerId for event_listener_primitives::HandlerId {
+    #[inline]
     fn detach(&self) {
         self.detach();
     }
@@ -362,12 +368,15 @@ pub enum FarmId {
 }
 
 impl Encode for FarmId {
+    #[inline]
     fn size_hint(&self) -> usize {
         1_usize
             + match self {
                 FarmId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
             }
     }
+
+    #[inline]
     fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
         match self {
             FarmId::Ulid(ulid) => {
@@ -381,6 +390,7 @@ impl Encode for FarmId {
 impl EncodeLike for FarmId {}
 
 impl Decode for FarmId {
+    #[inline]
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         match input
             .read_byte()
@@ -397,6 +407,7 @@ impl Decode for FarmId {
 #[allow(clippy::new_without_default)]
 impl FarmId {
     /// Creates new ID
+    #[inline]
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
     }
@@ -447,30 +458,37 @@ impl<T> Farm for Box<T>
 where
     T: Farm + ?Sized,
 {
+    #[inline]
     fn id(&self) -> &FarmId {
         self.as_ref().id()
     }
 
+    #[inline]
     fn total_sectors_count(&self) -> SectorIndex {
         self.as_ref().total_sectors_count()
     }
 
+    #[inline]
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
         self.as_ref().plotted_sectors()
     }
 
+    #[inline]
     fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
         self.as_ref().piece_cache()
     }
 
+    #[inline]
     fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
         self.as_ref().plot_cache()
     }
 
+    #[inline]
     fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
         self.as_ref().piece_reader()
     }
 
+    #[inline]
     fn on_sector_update(
         &self,
         callback: HandlerFn<(SectorIndex, SectorUpdate)>,
@@ -478,6 +496,7 @@ where
         self.as_ref().on_sector_update(callback)
     }
 
+    #[inline]
     fn on_farming_notification(
         &self,
         callback: HandlerFn<FarmingNotification>,
@@ -485,10 +504,12 @@ where
         self.as_ref().on_farming_notification(callback)
     }
 
+    #[inline]
     fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> Box<dyn HandlerId> {
         self.as_ref().on_solution(callback)
     }
 
+    #[inline]
     fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
         (*self).run()
     }

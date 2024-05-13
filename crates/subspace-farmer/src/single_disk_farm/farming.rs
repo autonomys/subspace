@@ -88,6 +88,7 @@ impl<'a, 'b, PosTable> Clone for PlotAuditOptions<'a, 'b, PosTable>
 where
     PosTable: Table,
 {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }

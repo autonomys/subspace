@@ -26,6 +26,7 @@ pub(in super::super) enum PlottingThreadPriority {
 impl FromStr for PlottingThreadPriority {
     type Err = String;
 
+    #[inline]
     fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
         match s {
             "min" => Ok(Self::Min),
@@ -37,6 +38,7 @@ impl FromStr for PlottingThreadPriority {
 }
 
 impl fmt::Display for PlottingThreadPriority {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Min => "min",
@@ -47,6 +49,7 @@ impl fmt::Display for PlottingThreadPriority {
 }
 
 impl From<PlottingThreadPriority> for Option<ThreadPriority> {
+    #[inline]
     fn from(value: PlottingThreadPriority) -> Self {
         match value {
             PlottingThreadPriority::Min => Some(ThreadPriority::Min),
@@ -69,6 +72,7 @@ pub(in super::super) struct DiskFarm {
 impl FromStr for DiskFarm {
     type Err = String;
 
+    #[inline]
     fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
         let parts = s.split(',').collect::<Vec<_>>();
         if parts.len() < 2 {

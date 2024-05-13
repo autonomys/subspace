@@ -111,10 +111,12 @@ impl<P> Plotter for Arc<P>
 where
     P: Plotter + Send + Sync,
 {
+    #[inline]
     async fn has_free_capacity(&self) -> Result<bool, String> {
         self.as_ref().has_free_capacity().await
     }
 
+    #[inline]
     async fn plot_sector<PS>(
         &self,
         public_key: PublicKey,
@@ -139,6 +141,7 @@ where
             .await
     }
 
+    #[inline]
     async fn try_plot_sector<PS>(
         &self,
         public_key: PublicKey,

@@ -32,6 +32,7 @@ pub struct AsyncJoinOnDrop<T> {
 }
 
 impl<T> Drop for AsyncJoinOnDrop<T> {
+    #[inline]
     fn drop(&mut self) {
         if let Some(handle) = self.handle.take() {
             if self.abort_on_drop {
@@ -49,6 +50,7 @@ impl<T> Drop for AsyncJoinOnDrop<T> {
 
 impl<T> AsyncJoinOnDrop<T> {
     /// Create new instance.
+    #[inline]
     pub fn new(handle: task::JoinHandle<T>, abort_on_drop: bool) -> Self {
         Self {
             handle: Some(handle),
@@ -60,6 +62,7 @@ impl<T> AsyncJoinOnDrop<T> {
 impl<T> Future for AsyncJoinOnDrop<T> {
     type Output = Result<T, task::JoinError>;
 
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(
             self.handle
@@ -74,6 +77,7 @@ impl<T> Future for AsyncJoinOnDrop<T> {
 pub(crate) struct JoinOnDrop(Option<thread::JoinHandle<()>>);
 
 impl Drop for JoinOnDrop {
+    #[inline]
     fn drop(&mut self) {
         self.0
             .take()
@@ -85,6 +89,7 @@ impl Drop for JoinOnDrop {
 
 impl JoinOnDrop {
     // Create new instance
+    #[inline]
     pub(crate) fn new(handle: thread::JoinHandle<()>) -> Self {
         Self(Some(handle))
     }

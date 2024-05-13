@@ -18,6 +18,7 @@ pub(in super::super) enum SectorState {
 }
 
 impl fmt::Display for SectorState {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::NotPlotted => "NotPlotted",

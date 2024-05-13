@@ -33,6 +33,7 @@ pub struct DiskPieceReader {
 
 #[async_trait]
 impl PieceReader for DiskPieceReader {
+    #[inline]
     async fn read_piece(
         &self,
         sector_index: SectorIndex,
