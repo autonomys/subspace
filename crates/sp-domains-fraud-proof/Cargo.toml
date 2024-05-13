@@ -31,6 +31,7 @@ sp-messenger = { version = "0.1.0", default-features = false, path = "../../doma
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-state-machine = { optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../sp-subspace-mmr" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
@@ -90,6 +91,7 @@ std = [
     "sp-runtime-interface/std",
     "sp-std/std",
     "sp-state-machine/std",
+    "sp-subspace-mmr/std",
     "sp-trie/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",

@@ -28,6 +28,7 @@ sp-domains-fraud-proof = { version = "0.1.0", default-features = false, path = "
 sp-io = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../sp-subspace-mmr" }
 sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d", features = ["serde"] }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
@@ -38,8 +39,6 @@ hex-literal = "0.4.1"
 pallet-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 pallet-block-fees = { version = "0.1.0", default-features = false, path = "../../domains/pallets/block-fees" }
 sp-externalities = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-trie = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
 
 [features]
 default = ["std"]
@@ -60,6 +59,7 @@ std = [
     "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",
+    "sp-subspace-mmr/std",
     "sp-version/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
