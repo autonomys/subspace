@@ -406,13 +406,6 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn extract_fraud_proofs(
-            _domain_id: DomainId,
-            _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
-            unreachable!()
-        }
-
         fn fraud_proof_storage_key(_req: FraudProofStorageKeyRequest) -> Vec<u8> {
             unreachable!()
         }

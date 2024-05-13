@@ -1366,13 +1366,6 @@ impl_runtime_apis! {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
-        fn extract_fraud_proofs(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
-            crate::domains::extract_fraud_proofs(domain_id, extrinsics)
-        }
-
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
             <StorageKeyProvider as FraudProofStorageKeyProvider>::storage_key(req)
         }

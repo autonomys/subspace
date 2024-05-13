@@ -1068,25 +1068,6 @@ fn extract_bundle(
     }
 }
 
-pub(crate) fn extract_fraud_proofs(
-    domain_id: DomainId,
-    extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
-    let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id
-                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
-            {
-                Some(*fraud_proof)
-            }
-            _ => None,
-        })
-        .collect()
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
@@ -1532,13 +1513,6 @@ impl_runtime_apis! {
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn extract_fraud_proofs(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>> {
-            extract_fraud_proofs(domain_id, extrinsics)
         }
 
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {

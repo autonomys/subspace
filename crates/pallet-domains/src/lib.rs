@@ -423,10 +423,6 @@ mod pallet {
     #[pallet::storage]
     pub type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
-    /// Fraud proofs submitted successfully in current block.
-    #[pallet::storage]
-    pub(super) type SuccessfulFraudProofs<T: Config> =
-        StorageMap<_, Identity, DomainId, Vec<T::DomainHash>, ValueQuery>;
     /// Stores the next runtime id.
     #[pallet::storage]
     pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
@@ -1183,8 +1179,6 @@ mod pallet {
                 new_head_receipt_number: Some(new_head_receipt_number),
             });
 
-            SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
-
             Ok(Some(actual_weight).into())
         }
 
@@ -1537,8 +1531,6 @@ mod pallet {
                 T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
             }
 
-            let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
-
             Weight::zero()
         }
 
@@ -1660,10 +1652,6 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
         SuccessfulBundles::<T>::get(domain_id)
-    }
-
-    pub fn successful_fraud_proofs(domain_id: DomainId) -> Vec<T::DomainHash> {
-        SuccessfulFraudProofs::<T>::get(domain_id)
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {

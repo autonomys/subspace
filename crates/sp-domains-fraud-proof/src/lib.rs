@@ -400,12 +400,6 @@ sp_api::decl_runtime_apis! {
         /// Submit the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
-        /// Extract the fraud proof handled successfully from the given extrinsics.
-        fn extract_fraud_proofs(
-            domain_id: DomainId,
-            extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>>;
-
         /// Reture the storage key used in fraud proof
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8>;
     }
