@@ -135,8 +135,8 @@ fn identifier_from_x509_cert(
         .next()
         .unwrap()
         .attr_value()
-        .to_der_vec()
-        .unwrap();
+        .as_bytes()
+        .to_vec();
 
     if let Some(issuer_id) = issuer_id {
         let mut data = issuer_id.to_fixed_bytes().to_vec();
@@ -173,9 +173,8 @@ fn register_issuer_auto_id() -> Identifier {
             .next()
             .unwrap()
             .attr_value()
-            .to_der_vec()
-            .unwrap()
-            .into()
+            .as_bytes()
+            .to_vec()
     );
 
     auto_id_identifier
@@ -207,9 +206,8 @@ fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
             .next()
             .unwrap()
             .attr_value()
-            .to_der_vec()
-            .unwrap()
-            .into(),
+            .as_bytes()
+            .to_vec()
     );
 
     auto_id_identifier
@@ -411,7 +409,7 @@ fn test_auto_id_identifier_is_deterministic() {
         let auto_id = crate::AutoId {
             certificate: Certificate::X509(X509Certificate {
                 issuer_id: None,
-                subject_common_name: vec![0].into(),
+                subject_common_name: b"Test".to_vec(),
                 validity: Validity {
                     not_before: 0,
                     not_after: 0,
@@ -425,7 +423,7 @@ fn test_auto_id_identifier_is_deterministic() {
         };
 
         let expected_auto_id_identifier =
-            "0x3170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314";
+            "0x8d2143d76615c515b5cc88fa7806aef268edeea87571c8f8b21a19f77b9993ba";
         assert_eq!(
             to_hex(
                 &auto_id.certificate.derive_identifier().to_fixed_bytes(),
@@ -437,7 +435,7 @@ fn test_auto_id_identifier_is_deterministic() {
         let auto_id_child = crate::AutoId {
             certificate: Certificate::X509(X509Certificate {
                 issuer_id: Some(auto_id.certificate.derive_identifier()),
-                subject_common_name: vec![0].into(),
+                subject_common_name: b"child".to_vec(),
                 validity: Validity {
                     not_before: 0,
                     not_after: 0,
@@ -451,7 +449,7 @@ fn test_auto_id_identifier_is_deterministic() {
         };
 
         let expected_auto_id_child_identifier =
-            "0x1f6c133e7bca8c7714c5c9df36562e5cd51304530cc85e583351167bb75e072f";
+            "0xb273167fb0c55e2df1fcd5c44fcf90e497bd826e2eb4be2f167ff1c46b4d686d";
         assert_eq!(
             to_hex(
                 &auto_id_child

@@ -53,8 +53,8 @@ pub struct X509Certificate {
     /// Serial number for this certificate
     pub serial: U256,
     /// Subject common name of the certificate.
-    pub subject_common_name: DerVec,
-    /// Der encoded certificate's subject's public key info
+    pub subject_common_name: Vec<u8>,
+    /// Der encoded certificate's subject's public key info.
     pub subject_public_key_info: DerVec,
     /// Validity of the certificate
     pub validity: Validity,
@@ -76,7 +76,7 @@ pub enum Certificate {
 impl Certificate {
     /// Returns the subject distinguished name.
     #[cfg(test)]
-    fn subject_common_name(&self) -> DerVec {
+    fn subject_common_name(&self) -> Vec<u8> {
         match self {
             Certificate::X509(cert) => cert.subject_common_name.clone(),
         }
