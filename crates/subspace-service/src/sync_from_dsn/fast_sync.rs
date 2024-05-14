@@ -1,6 +1,7 @@
 use crate::sync_from_dsn::fast_sync_engine::FastSyncingEngine;
-use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
-use crate::sync_from_dsn::raw_block_import::{import_raw_block, RawBlockData};
+use crate::sync_from_dsn::import_blocks::{
+    download_and_reconstruct_blocks, import_raw_block, RawBlockData,
+};
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_client_api::{AuxStore, BlockBackend, LockImportRun, ProofProvider};
@@ -8,7 +9,6 @@ use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkService, PeerId};
-use sc_network_sync::service::network::NetworkServiceProvider;
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
@@ -552,46 +552,33 @@ where
                 .expect("Length is checked within the loop.");
             tried_peers.insert(current_peer_id);
 
-            let (network_service_worker, network_service_handle) = NetworkServiceProvider::new();
-
-            let networking_fut = network_service_worker.run(network_service);
-
-            let (sync_worker, sync_engine) = FastSyncingEngine::<Block, IQS>::new(
+            let sync_engine = FastSyncingEngine::<Block, IQS>::new(
                 self.client.clone(),
                 self.import_queue_service.clone(),
-                network_service_handle,
                 None,
                 header.clone(),
                 Some(extrinsics.clone()),
                 justifications.clone(),
                 true,
                 (current_peer_id, state_block_number),
+                network_service,
             )
             .map_err(Error::Client)?;
 
-            let sync_fut = sync_worker.run();
-
-            let net_fut = tokio::spawn(networking_fut);
-            let sync_worker_fut = tokio::spawn(sync_fut);
-
-            // Start syncing..
-            let _ = sync_engine.start().await;
-            let last_block_from_sync_result = sync_worker_fut.await;
-
-            net_fut.abort();
+            let last_block_from_sync_result = sync_engine.download_state().await;
 
             match last_block_from_sync_result {
-                Ok(Ok(last_block_from_sync)) => {
+                Ok(Some(last_block_from_sync)) => {
                     debug!("Sync worker handle result: {:?}", last_block_from_sync,);
 
                     // State block import delay
                     // TODO: Replace this hack with actual watching of block import
                     self.wait_for_block_import(state_block_number).await;
 
-                    return Ok(last_block_from_sync);
+                    return Ok(Some(last_block_from_sync));
                 }
-                Ok(Err(error)) => {
-                    error!(?error, "State sync error.");
+                Ok(None) => {
+                    error!("State sync error (state download failed).");
                     continue;
                 }
                 Err(error) => {

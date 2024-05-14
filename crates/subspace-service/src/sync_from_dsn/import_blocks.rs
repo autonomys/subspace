@@ -18,15 +18,19 @@ use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
+use sc_client_api::{backend, AuxStore, BlockBackend, HeaderBackend, LockImportRun, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::IncomingBlock;
+use sc_consensus::{BlockImportParams, ForkChoiceStrategy, IncomingBlock, StateAction};
 use sc_consensus_subspace::archiver::{decode_block, encode_block, SegmentHeadersStore};
+use sc_service::ClientExt;
 use sc_tracing::tracing::{debug, trace, warn};
+use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
-use sp_runtime::Saturating;
+use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
@@ -37,6 +41,7 @@ use subspace_core_primitives::{
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tokio::sync::Semaphore;
+use tracing::error;
 
 /// Trait representing a way to get pieces for DSN sync purposes
 #[async_trait]
@@ -374,4 +379,62 @@ where
     trace!(%segment_index, "Segment reconstructed successfully");
 
     Ok(reconstructed_contents.blocks)
+}
+
+#[derive(Clone, Debug)]
+/// Data container to insert the block into the BlockchainDb without checks.
+pub struct RawBlockData<Block: BlockT> {
+    /// Block hash
+    pub hash: Block::Hash,
+    /// Block header
+    pub header: Block::Header,
+    /// Extrinsics of the block
+    pub block_body: Option<Vec<Block::Extrinsic>>,
+    /// Justifications of the block
+    pub justifications: Option<Justifications>,
+}
+
+/// Insert block in the blockchain bypassing checks. Implies that absent block weight is
+/// handled gracefully.
+#[allow(dead_code)] // TODO: remove on usage
+pub fn import_raw_block<B, Block, Client>(
+    client: &Client,
+    raw_block: RawBlockData<Block>,
+) -> Result<(), sp_blockchain::Error>
+where
+    B: backend::Backend<Block>,
+    Block: BlockT,
+    Client: HeaderBackend<Block>
+        + ClientExt<Block, B>
+        + BlockBackend<Block>
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + LockImportRun<Block, B>
+        + Send
+        + Sync,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+{
+    let hash = raw_block.hash;
+    let number = *raw_block.header.number();
+    debug!("Importing raw block: {number:?}  - {hash:?} ");
+
+    let mut import_block =
+        BlockImportParams::new(BlockOrigin::NetworkInitialSync, raw_block.header);
+    import_block.justifications = raw_block.justifications;
+    import_block.body = raw_block.block_body;
+    import_block.state_action = StateAction::Skip;
+    import_block.finalized = true;
+    import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+    import_block.import_existing = false;
+
+    let result = client
+        .lock_import_and_run(|operation| client.apply_block(operation, import_block, None))
+        .map_err(|e| {
+            error!("Error during importing of the raw block: {}", e);
+            sp_consensus::Error::ClientImport(e.to_string())
+        })?;
+
+    debug!("Raw block imported: {number:?}  - {hash:?}. Result: {result:?}");
+
+    Ok(())
 }

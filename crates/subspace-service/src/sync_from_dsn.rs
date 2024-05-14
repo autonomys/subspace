@@ -2,7 +2,6 @@ pub(crate) mod fast_sync;
 pub(crate) mod fast_sync_engine;
 pub(crate) mod import_blocks;
 pub(crate) mod piece_validator;
-pub(crate) mod raw_block_import;
 pub(crate) mod segment_header_downloader;
 
 use crate::sync_from_dsn::import_blocks::{import_blocks_from_dsn, DsnSyncPieceGetter};
