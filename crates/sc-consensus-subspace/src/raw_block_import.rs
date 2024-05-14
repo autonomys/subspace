@@ -1,32 +1,17 @@
-use parity_scale_codec::Encode;
+//! This module enables "raw block import" - import blocks in the blockchain bypassing checks.
+
+use crate::aux_schema::write_block_weight;
 use sc_client_api::{backend, BlockBackend, LockImportRun, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
 use sc_service::{ClientExt, Error};
 use sp_api::ProvideRuntimeApi;
-use sp_api::__private::BlockT;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::traits::Header;
+use sp_runtime::traits::{Block as BlockT, Header};
 use sp_runtime::Justifications;
 use tracing::{debug, error};
-
-pub type BlockWeight = u128;
-
-/// Write the cumulative chain-weight of a block ot aux storage.
-fn write_block_weight<H: Encode, F, R>(block_hash: H, block_weight: BlockWeight, write_aux: F) -> R
-where
-    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
-{
-    let key = block_weight_key(block_hash);
-    block_weight.using_encoded(|s| write_aux(&[(key, s)]))
-}
-
-/// The aux storage key used to store the block weight of the given block hash.
-fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
-    (b"block_weight", block_hash).encode()
-}
 
 #[derive(Clone, Debug)]
 /// Data container to insert the block into the BlockchainDb without checks.
@@ -41,8 +26,8 @@ pub struct RawBlockData<Block: BlockT> {
     pub justifications: Option<Justifications>,
 }
 
-#[allow(dead_code)] // TODO: remove after adding the usage
-pub(crate) fn import_raw_block<B, Block, Client>(
+/// Insert block in the blockchain bypassing checks.
+pub fn import_raw_block<B, Block, Client>(
     client: &Client,
     raw_block: RawBlockData<Block>,
 ) -> Result<(), Error>
@@ -56,8 +41,7 @@ where
         + ProofProvider<Block>
         + LockImportRun<Block, B>
         + Send
-        + Sync
-        + 'static,
+        + Sync,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
     let hash = raw_block.hash;

@@ -9849,6 +9849,7 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-slots",
  "sc-proof-of-time",
+ "sc-service",
  "sc-telemetry",
  "sc-transaction-pool-api",
  "sc-utils",

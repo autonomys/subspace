@@ -1,7 +1,6 @@
 mod fast_sync_engine;
 mod import_blocks;
 pub(super) mod piece_validator;
-mod raw_block_import;
 mod segment_header_downloader;
 
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
