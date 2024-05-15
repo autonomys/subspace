@@ -30,6 +30,7 @@ mod pallet {
     use alloc::vec::Vec;
     use codec::{Codec, MaxEncodedLen};
     use frame_support::pallet_prelude::*;
+    use frame_support::storage::generator::StorageValue as _;
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
     use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
@@ -200,7 +201,6 @@ mod pallet {
         }
 
         pub fn block_fees_storage_key() -> Vec<u8> {
-            use frame_support::storage::generator::StorageValue;
             CollectedBlockFees::<T>::storage_value_final_key().to_vec()
         }
     }

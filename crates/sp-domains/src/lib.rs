@@ -1262,7 +1262,7 @@ impl DomainAllowlistUpdates {
     }
 }
 
-//TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
+//TODO: This is used to keep compatible with gemini-3h, remove before next network
 
 /// This is a representation of actual Block Fees storage in pallet-block-fees.
 /// Any change in key or value there should be changed here accordingly.
