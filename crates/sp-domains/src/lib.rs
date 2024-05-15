@@ -1243,12 +1243,32 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
 >;
 
 /// Domain chains allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
 pub struct DomainAllowlistUpdates {
     /// Chains that are allowed to open channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
     /// Chains that are not allowed to open channel with this chain.
     pub remove_chains: BTreeSet<ChainId>,
+}
+
+impl DomainAllowlistUpdates {
+    pub fn is_empty(&self) -> bool {
+        self.allow_chains.is_empty() && self.remove_chains.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.allow_chains.clear();
+        self.remove_chains.clear();
+    }
+}
+
+//TODO: This is used to keep compatible with gemini-3h, remove before next network
+
+/// This is a representation of actual Block Fees storage in pallet-block-fees.
+/// Any change in key or value there should be changed here accordingly.
+pub fn operator_block_fees_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
+        .to_vec()
 }
 
 sp_api::decl_runtime_apis! {

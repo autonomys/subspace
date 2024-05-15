@@ -808,6 +808,10 @@ impl_runtime_apis! {
         fn transfers_storage_key() -> Vec<u8> {
             Transporter::transfers_storage_key()
         }
+
+        fn block_fees_storage_key() -> Vec<u8> {
+            BlockFees::block_fees_storage_key()
+        }
     }
 
     impl sp_messenger::MessengerApi<Block> for Runtime {
