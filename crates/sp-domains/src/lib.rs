@@ -1305,7 +1305,6 @@ pub fn system_digest_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
 }
 
-
 // TODO: This is used to keep compatible with gemini-3h, remove before next network
 /// This is a representation of actual Block Fees storage in pallet-block-fees.
 /// Any change in key or value there should be changed here accordingly.
