@@ -5,9 +5,9 @@ extern crate alloc;
 
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
-    Deposits, DomainRegistry, DomainStakingSummary, LatestSubmittedER, NextOperatorId,
-    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches,
-    PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
+    OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches, PendingSlashes,
+    PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -642,82 +642,6 @@ pub(crate) fn hold_deposit<T: Config>(
     T::Currency::hold(&pending_deposit_hold_id, who, amount).map_err(|_| Error::BalanceFreeze)?;
 
     Ok(())
-}
-
-// TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
-#[allow(dead_code)]
-fn do_switch_operator_domain<T: Config>(
-    operator_owner: T::AccountId,
-    operator_id: OperatorId,
-    new_domain_id: DomainId,
-) -> Result<DomainId, Error> {
-    let domain_obj = DomainRegistry::<T>::get(new_domain_id).ok_or(Error::DomainNotInitialized)?;
-    ensure!(
-        domain_obj
-            .domain_config
-            .operator_allow_list
-            .is_operator_allowed(&operator_owner),
-        Error::OperatorNotAllowed
-    );
-
-    ensure!(
-        OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
-        Error::NotOperatorOwner
-    );
-
-    ensure!(
-        DomainStakingSummary::<T>::contains_key(new_domain_id),
-        Error::DomainNotInitialized
-    );
-
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
-
-        note_pending_staking_operation::<T>(operator.current_domain_id)?;
-
-        ensure!(
-            *operator.status::<T>(operator_id) == OperatorStatus::Registered,
-            Error::OperatorNotRegistered
-        );
-
-        // Reject switching domain if there is unconfirmed ER submitted by this operator
-        // on the `current_domain_id`
-        ensure!(
-            !LatestSubmittedER::<T>::contains_key((operator.current_domain_id, operator_id)),
-            Error::UnconfirmedER
-        );
-
-        // noop when switch is for same domain
-        if operator.current_domain_id == new_domain_id {
-            return Ok(operator.current_domain_id);
-        }
-
-        // check if there is any ongoing pending switch, if so reject
-        ensure!(
-            operator.current_domain_id == operator.next_domain_id,
-            Error::PendingOperatorSwitch
-        );
-
-        operator.next_domain_id = new_domain_id;
-
-        // remove operator from next_operators from current domains.
-        // operator is added to the next_operators of the new domain once the
-        // current domain epoch is finished.
-        DomainStakingSummary::<T>::try_mutate(
-            operator.current_domain_id,
-            |maybe_domain_stake_summary| {
-                let stake_summary = maybe_domain_stake_summary
-                    .as_mut()
-                    .ok_or(Error::DomainNotInitialized)?;
-                stake_summary.next_operators.remove(&operator_id);
-                Ok(())
-            },
-        )?;
-
-        PendingOperatorSwitches::<T>::append(operator.current_domain_id, operator_id);
-
-        Ok(operator.current_domain_id)
-    })
 }
 
 pub(crate) fn do_deregister_operator<T: Config>(

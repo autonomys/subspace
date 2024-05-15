@@ -103,8 +103,8 @@ pub struct TbsCertificate {
     /// Certificate serial number.
     pub serial: U256,
     /// Certificate subject common name.
-    pub subject_common_name: DerVec,
-    /// Certificate subject public key info.
+    pub subject_common_name: Vec<u8>,
+    /// Certificate subject public key info, der encoded.
     pub subject_public_key_info: DerVec,
     /// Certificate validity.
     pub validity: Validity,

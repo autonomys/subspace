@@ -5,7 +5,7 @@ use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core, RuntimeApiInfo};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
-use sp_core::{Decode, Hasher};
+use sp_core::Hasher;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::messages::MessageKey;
@@ -284,11 +284,24 @@ where
     }
 
     pub fn block_fees_storage_key(&self) -> Result<Vec<u8>, ApiError> {
-        let has_runtime_api = sp_io::misc::runtime_version(&self.runtime_code)
-            .and_then(|v| RuntimeVersion::decode(&mut &v[..]).ok())
-            .and_then(|runtime_version| {
-                runtime_version.api_version(&<dyn DomainCoreApi<Block>>::ID)
-            })
+        let runtime_version = {
+            let mut ext = BasicExternalities::new(self.storage.clone());
+            let ext_extensions = ext.extensions();
+            ext_extensions.merge(
+                self.extension_factory
+                    .extensions_for(Default::default(), Default::default()),
+            );
+            let runtime_code = self.runtime_code();
+            self.executor
+                .runtime_version(&mut ext, &runtime_code)
+                .map_err(|err| {
+                    ApiError::Application(Box::from(format!(
+                        "failed to read domain runtime version: {err}"
+                    )))
+                })?
+        };
+        let has_runtime_api = runtime_version
+            .api_version(&<dyn DomainCoreApi<Block>>::ID)
             .map_or(false, |runtime_api_version| runtime_api_version >= 2);
 
         if has_runtime_api {

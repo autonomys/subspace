@@ -17,6 +17,7 @@ struct DummyReader;
 
 #[async_trait]
 impl PieceReader for DummyReader {
+    #[inline]
     async fn read_piece(
         &self,
         _sector_index: SectorIndex,

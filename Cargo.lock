@@ -2674,7 +2674,6 @@ dependencies = [
  "sp-executive",
  "sp-externalities",
  "sp-inherents",
- "sp-io",
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
@@ -5607,7 +5606,7 @@ dependencies = [
  "libp2p-plaintext",
  "libp2p-quic 0.10.2",
  "libp2p-request-response 0.26.1",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "libp2p-tcp 0.41.0",
  "libp2p-upnp",
  "libp2p-yamux 0.45.1",
@@ -5637,7 +5636,7 @@ checksum = "107b238b794cb83ab53b74ad5dcf7cca3200899b72fe662840cfb52f5b0a32e6"
 dependencies = [
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "void",
 ]
 
@@ -5655,7 +5654,7 @@ dependencies = [
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
  "libp2p-request-response 0.26.1",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "quick-protobuf",
  "quick-protobuf-codec 0.2.0",
  "rand",
@@ -5682,7 +5681,7 @@ checksum = "c7cd50a78ccfada14de94cbacd3ce4b0138157f376870f13d3a8422cd075b4fd"
 dependencies = [
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "void",
 ]
 
@@ -5792,7 +5791,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "prometheus-client 0.22.2",
  "quick-protobuf",
  "quick-protobuf-codec 0.3.1",
@@ -5840,7 +5839,7 @@ dependencies = [
  "futures-timer",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "lru 0.12.3",
  "quick-protobuf",
  "quick-protobuf-codec 0.3.1",
@@ -5932,7 +5931,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "quick-protobuf",
  "quick-protobuf-codec 0.3.1",
  "rand",
@@ -5978,7 +5977,7 @@ dependencies = [
  "if-watch",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "rand",
  "smallvec",
  "socket2 0.5.7",
@@ -6015,7 +6014,7 @@ dependencies = [
  "libp2p-identity 0.2.8",
  "libp2p-kad 0.45.3",
  "libp2p-ping 0.44.0",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "pin-project",
  "prometheus-client 0.22.2",
 ]
@@ -6098,7 +6097,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "rand",
  "tracing",
  "void",
@@ -6195,7 +6194,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "rand",
  "smallvec",
  "tracing",
@@ -6225,9 +6224,9 @@ dependencies = [
 
 [[package]]
 name = "libp2p-swarm"
-version = "0.44.1"
+version = "0.44.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e92532fc3c4fb292ae30c371815c9b10103718777726ea5497abc268a4761866"
+checksum = "80cae6cb75f89dbca53862f9ebe0b9f463aa7b302762fcfaafb9e51dcc9b0f7e"
 dependencies = [
  "async-std",
  "either",
@@ -6237,7 +6236,8 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-swarm-derive 0.34.1",
+ "libp2p-swarm-derive 0.34.2",
+ "lru 0.12.3",
  "multistream-select 0.13.0",
  "once_cell",
  "rand",
@@ -6260,11 +6260,11 @@ dependencies = [
 
 [[package]]
 name = "libp2p-swarm-derive"
-version = "0.34.1"
+version = "0.34.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b644268b4acfdaa6a6100b31226ee7a36d96ab4c43287d113bfd2308607d8b6f"
+checksum = "5daceb9dd908417b6dfcfe8e94098bc4aac54500c282e78120b885dadc09b999"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.60",
@@ -6282,7 +6282,7 @@ dependencies = [
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
  "libp2p-plaintext",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "libp2p-tcp 0.41.0",
  "libp2p-yamux 0.45.1",
  "rand",
@@ -6371,7 +6371,7 @@ dependencies = [
  "futures-timer",
  "igd-next",
  "libp2p-core 0.41.2",
- "libp2p-swarm 0.44.1",
+ "libp2p-swarm 0.44.2",
  "tokio",
  "tracing",
  "void",

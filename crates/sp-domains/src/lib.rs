@@ -1305,8 +1305,8 @@ pub fn system_digest_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
 }
 
-//TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
 
+// TODO: This is used to keep compatible with gemini-3h, remove before next network
 /// This is a representation of actual Block Fees storage in pallet-block-fees.
 /// Any change in key or value there should be changed here accordingly.
 pub fn operator_block_fees_final_key() -> Vec<u8> {

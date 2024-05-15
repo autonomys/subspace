@@ -552,7 +552,6 @@ mod pallet {
         /// A new Channel is initiated with a foreign chain.
         /// Next Channel ID is used to assign the new channel.
         /// Channel is set to initiated and do not accept or receive any messages.
-        /// Only a root user can create the channel.
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::initiate_channel())]
         pub fn initiate_channel(
@@ -592,7 +591,6 @@ mod pallet {
 
         /// An open channel is closed with a foreign chain.
         /// Channel is set to Closed and do not accept or receive any messages.
-        /// Only a root user can close an open channel.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::close_channel())]
         pub fn close_channel(
@@ -1001,7 +999,6 @@ mod pallet {
                     // if there is no channel config, this must the Channel open request.
                     // so nonce is 0
                     should_init_channel = true;
-                    // TODO(ved): collect fees to open channel
                     log::debug!(
                         "Initiating new channel: {:?} to chain: {:?}",
                         xdm.channel_id,
