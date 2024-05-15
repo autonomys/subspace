@@ -498,6 +498,14 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
     ) -> Option<bool> {
         None
     }
+
+    fn bundle_weight(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<Weight> {
+        None
+    }
 }
 
 pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {

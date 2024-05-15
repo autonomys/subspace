@@ -17,6 +17,7 @@ use sp_domains::DomainId;
 use sp_externalities::ExternalitiesExt;
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::runtime_interface;
+use sp_weights::Weight;
 
 /// Domain fraud proof related runtime interface
 #[runtime_interface]
@@ -157,5 +158,16 @@ pub trait FraudProofRuntimeInterface {
         self.extension::<FraudProofExtension>()
             .expect("No `FraudProofExtension` associated for the current context!")
             .domain_runtime_call(domain_runtime_code, call)
+    }
+
+    #[version(1, register_only)]
+    fn bundle_weight(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<Weight> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .bundle_weight(domain_runtime_code, bundle_body)
     }
 }

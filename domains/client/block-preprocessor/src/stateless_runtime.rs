@@ -14,6 +14,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
 use sp_version::RuntimeVersion;
+use sp_weights::Weight;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -309,5 +310,12 @@ where
         } else {
             Ok(sp_domains::operator_block_fees_final_key())
         }
+    }
+
+    pub fn extrinsic_weight(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<Weight, ApiError> {
+        <Self as DomainCoreApi<Block>>::extrinsic_weight(self, Default::default(), extrinsic)
     }
 }
