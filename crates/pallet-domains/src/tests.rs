@@ -34,8 +34,10 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidExtrinsicsRootProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
-    DomainChainAllowlistUpdateExtrinsic, FraudProofExtension, FraudProofHostFunctions,
+    DomainChainAllowlistUpdateExtrinsic, DomainInherentExtrinsic, DomainInherentExtrinsicData,
+    DomainStorageKeyRequest, FraudProofExtension, FraudProofHostFunctions,
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+    StatelessDomainRuntimeCall,
 };
 use sp_runtime::traits::{
     AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One,
@@ -442,6 +444,14 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
         Some(H256::random())
     }
 
+    fn derive_bundle_digest_v2(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
+        Some(H256::random())
+    }
+
     fn execution_proof_check(
         &self,
         _domain_id: (u32, H256),
@@ -451,6 +461,41 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
         _call_data: &[u8],
         _domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn check_extrinsics_in_single_context(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _domain_block_id: (u32, H256),
+        _domain_block_state_root: H256,
+        _bundle_extrinsics: Vec<OpaqueExtrinsic>,
+        _encoded_proof: Vec<u8>,
+    ) -> Option<Option<u32>> {
+        None
+    }
+
+    fn construct_domain_inherent_extrinsic(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _domain_inherent_extrinsic_data: DomainInherentExtrinsicData,
+    ) -> Option<DomainInherentExtrinsic> {
+        None
+    }
+
+    fn domain_storage_key(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _req: DomainStorageKeyRequest,
+    ) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn domain_runtime_call(
+        &self,
+        _domain_runtime_code: Vec<u8>,
+        _call: StatelessDomainRuntimeCall,
+    ) -> Option<bool> {
         None
     }
 }
@@ -932,7 +977,7 @@ fn generate_invalid_block_fees_fraud_proof<T: Config>(
     bad_receipt_hash: ReceiptHashFor<T>,
     block_fees: sp_domains::BlockFees<BalanceOf<T>>,
 ) -> (FraudProofFor<T>, T::Hash) {
-    let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
+    let storage_key = sp_domains::operator_block_fees_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {

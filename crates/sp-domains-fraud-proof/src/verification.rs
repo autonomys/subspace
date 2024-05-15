@@ -370,7 +370,7 @@ where
     Balance: PartialEq + Decode,
     DomainHashing: Hasher<Out = DomainHash>,
 {
-    let storage_key = StorageKey(crate::fraud_proof::operator_block_fees_final_key());
+    let storage_key = StorageKey(sp_domains::operator_block_fees_final_key());
     let storage_proof = storage_proof.clone();
 
     let block_fees =

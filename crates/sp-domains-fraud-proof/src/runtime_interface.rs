@@ -3,7 +3,11 @@ extern crate alloc;
 
 #[cfg(feature = "std")]
 use crate::FraudProofExtension;
-use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
+use crate::{
+    DomainInherentExtrinsic, DomainInherentExtrinsicData, DomainStorageKeyRequest,
+    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
+    StatelessDomainRuntimeCall,
+};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use domain_runtime_primitives::BlockNumber;
@@ -29,6 +33,7 @@ pub trait FraudProofRuntimeInterface {
     }
 
     /// Derive the bundle digest for the given bundle body.
+    #[version(1)]
     fn derive_bundle_digest(
         &mut self,
         consensus_block_hash: H256,
@@ -38,6 +43,18 @@ pub trait FraudProofRuntimeInterface {
         self.extension::<FraudProofExtension>()
             .expect("No `FraudProofExtension` associated for the current context!")
             .derive_bundle_digest(consensus_block_hash, domain_id, bundle_body)
+    }
+
+    /// Derive the bundle digest for the given bundle body.
+    #[version(2, register_only)]
+    fn derive_bundle_digest(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .derive_bundle_digest_v2(domain_runtime_code, bundle_body)
     }
 
     /// Check the execution proof
@@ -84,5 +101,61 @@ pub trait FraudProofRuntimeInterface {
                 call_data,
                 domain_runtime_code,
             )
+    }
+
+    #[version(1, register_only)]
+    fn check_extrinsics_in_single_context(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        domain_block_id: (BlockNumber, H256),
+        domain_block_state_root: H256,
+        bundle_extrinsics: Vec<OpaqueExtrinsic>,
+        encoded_proof: Vec<u8>,
+    ) -> Option<Option<u32>> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .check_extrinsics_in_single_context(
+                domain_runtime_code,
+                domain_block_id,
+                domain_block_state_root,
+                bundle_extrinsics,
+                encoded_proof,
+            )
+    }
+
+    #[version(1, register_only)]
+    fn construct_domain_inherent_extrinsic(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        domain_inherent_extrinsic_data: DomainInherentExtrinsicData,
+    ) -> Option<DomainInherentExtrinsic> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .construct_domain_inherent_extrinsic(
+                domain_runtime_code,
+                domain_inherent_extrinsic_data,
+            )
+    }
+
+    #[version(1, register_only)]
+    fn domain_storage_key(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        req: DomainStorageKeyRequest,
+    ) -> Option<Vec<u8>> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .domain_storage_key(domain_runtime_code, req)
+    }
+
+    #[version(1, register_only)]
+    fn domain_runtime_call(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        call: StatelessDomainRuntimeCall,
+    ) -> Option<bool> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .domain_runtime_call(domain_runtime_code, call)
     }
 }

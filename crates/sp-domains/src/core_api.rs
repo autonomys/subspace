@@ -16,6 +16,7 @@ use subspace_runtime_primitives::Moment;
 
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
+    #[api_version(2)]
     pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
@@ -85,5 +86,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the storage key for the Transfers on Domain.
         fn transfers_storage_key() -> Vec<u8>;
+
+        /// Returns the storage key for the `CollectedBlockFees` on Domain.
+        fn block_fees_storage_key() -> Vec<u8>;
     }
 }
