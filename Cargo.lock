@@ -9840,7 +9840,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
- "lru 0.12.3",
  "parity-scale-codec",
  "parking_lot 0.12.2",
  "rand",
@@ -9853,6 +9852,7 @@ dependencies = [
  "sc-telemetry",
  "sc-transaction-pool-api",
  "sc-utils",
+ "schnellru",
  "schnorrkel",
  "sp-api",
  "sp-block-builder",
@@ -9881,7 +9881,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "jsonrpsee",
- "lru 0.12.3",
  "parity-scale-codec",
  "parking_lot 0.12.2",
  "sc-client-api",
@@ -9889,6 +9888,7 @@ dependencies = [
  "sc-rpc",
  "sc-rpc-api",
  "sc-utils",
+ "schnellru",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -9917,6 +9917,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
  "sp-messenger-host-functions",
@@ -10266,7 +10267,6 @@ dependencies = [
  "core_affinity",
  "derive_more",
  "futures",
- "lru 0.12.3",
  "parity-scale-codec",
  "parking_lot 0.12.2",
  "rayon",
@@ -10274,6 +10274,7 @@ dependencies = [
  "sc-consensus-slots",
  "sc-network",
  "sc-network-gossip",
+ "schnellru",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -10690,9 +10691,9 @@ dependencies = [
 
 [[package]]
 name = "schnellru"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "772575a524feeb803e5b0fcbc6dd9f367e579488197c94c6e4023aad2305774d"
+checksum = "c9a8ef13a93c54d20580de1e5c413e624e53121d42fc7e2c11d10ef7f8b02367"
 dependencies = [
  "ahash 0.8.11",
  "cfg-if",
@@ -12348,7 +12349,6 @@ dependencies = [
  "hex",
  "hwlocality",
  "jsonrpsee",
- "lru 0.12.3",
  "mimalloc",
  "num_cpus",
  "parity-scale-codec",
@@ -12357,6 +12357,7 @@ dependencies = [
  "prometheus-client 0.22.2",
  "rand",
  "rayon",
+ "schnellru",
  "schnorrkel",
  "serde",
  "serde_json",
@@ -12505,7 +12506,6 @@ dependencies = [
  "hex",
  "libp2p 0.53.2",
  "libp2p-swarm-test",
- "lru 0.12.3",
  "memmap2 0.9.4",
  "nohash-hasher",
  "parity-scale-codec",
@@ -12513,6 +12513,7 @@ dependencies = [
  "pin-project",
  "prometheus-client 0.22.2",
  "rand",
+ "schnellru",
  "serde",
  "serde_json",
  "subspace-core-primitives",
@@ -12702,6 +12703,8 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -12846,6 +12849,7 @@ dependencies = [
  "pallet-mmr",
  "pallet-offences-subspace",
  "pallet-rewards",
+ "pallet-runtime-configs",
  "pallet-subspace",
  "pallet-subspace-mmr",
  "pallet-sudo",

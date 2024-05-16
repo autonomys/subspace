@@ -1,7 +1,6 @@
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::fs;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::{identity, Multiaddr};
@@ -15,7 +14,7 @@ use thiserror::Error;
 use tracing::{error, trace};
 
 /// Size of the LRU cache for peers.
-pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: u32 = 100;
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]

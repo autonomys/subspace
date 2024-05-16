@@ -2,7 +2,7 @@ use crate::verifier::PotVerifier;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::mem;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use subspace_core_primitives::{Blake3Hash, PotSeed};
 
 const SEED: [u8; 16] = [
@@ -15,7 +15,7 @@ fn test_basic() {
     let slot_iterations = NonZeroU32::new(512).unwrap();
     let checkpoints_1 = subspace_proof_of_time::prove(genesis_seed, slot_iterations).unwrap();
 
-    let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
+    let verifier = PotVerifier::new(genesis_seed, 1000);
 
     // Expected to be valid
     assert!(verifier.is_output_valid(
@@ -139,7 +139,7 @@ fn parameters_change() {
     let checkpoints_3 =
         subspace_proof_of_time::prove(checkpoints_2.output().seed(), slot_iterations_2).unwrap();
 
-    let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
+    let verifier = PotVerifier::new(genesis_seed, 1000);
 
     // Changing parameters after first slot
     assert!(verifier.is_output_valid(

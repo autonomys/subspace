@@ -10,14 +10,13 @@ use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
-use lru::LruCache;
 use parity_scale_codec::Encode;
+use schnellru::{ByLength, LruMap};
 use std::collections::{HashMap, HashSet};
 #[cfg(not(windows))]
 use std::fs::File;
 use std::future::{pending, Future};
 use std::io;
-use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::pin::pin;
 use std::sync::Arc;
@@ -35,7 +34,8 @@ use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
-const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
+
+const ARCHIVED_SEGMENTS_CACHE_SIZE: u32 = 1000;
 const PLOTTING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub(super) struct SectorToPlot {
@@ -715,7 +715,8 @@ where
 
     let mut sectors_to_replot = Vec::new();
     let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
-    let mut archived_segment_commitments_cache = LruCache::new(ARCHIVED_SEGMENTS_CACHE_SIZE);
+    let mut archived_segment_commitments_cache =
+        LruMap::new(ByLength::new(ARCHIVED_SEGMENTS_CACHE_SIZE));
 
     loop {
         let archived_segment_header = *archived_segments_receiver.borrow_and_update();
@@ -798,7 +799,7 @@ where
                                 let segment_commitment = segment_header.segment_commitment();
 
                                 archived_segment_commitments_cache
-                                    .push(expiration_check_segment_index, segment_commitment);
+                                    .insert(expiration_check_segment_index, segment_commitment);
                                 segment_commitment
                             })
                     };

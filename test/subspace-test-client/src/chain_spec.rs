@@ -153,6 +153,7 @@ fn create_genesis_config(
                     .collect(),
             }],
         },
+        runtime_configs: Default::default(),
     })
 }
 
