@@ -526,11 +526,21 @@ where
     while let Some(notification) = subscription.next().await {
         debug!(?notification, "Solution notification");
 
+        let slot = notification.solution_response.slot_number;
+        let public_key = notification.solution_response.solution.public_key;
+        let sector_index = notification.solution_response.solution.sector_index;
+
         if let Err(error) = node_client
             .submit_solution_response(notification.solution_response)
             .await
         {
-            warn!(%error, "Failed to send solution response");
+            warn!(
+                %error,
+                %slot,
+                %public_key,
+                %sector_index,
+                "Failed to send solution response"
+            );
         }
     }
 
