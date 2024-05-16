@@ -511,7 +511,7 @@ where
 
     let executor = Arc::new(executor);
 
-    let fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>> = Default::default();
+    let fast_sync_state = Arc::<Mutex<Option<NumberFor<Block>>>>::default();
     client
         .execution_extensions()
         .set_extensions_factory(

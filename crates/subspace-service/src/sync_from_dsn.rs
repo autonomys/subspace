@@ -241,7 +241,7 @@ async fn create_substrate_network_observer<Block>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Block, AS, IQS, Client, PG, B>(
+async fn create_worker<Backend, Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: Arc<Client>,
@@ -257,20 +257,20 @@ async fn create_worker<Block, AS, IQS, Client, PG, B>(
     sync_service: Arc<SyncingService<Block>>,
 ) -> Result<(), sc_service::Error>
 where
-    B: sc_client_api::Backend<Block>,
+    Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
+    IQS: ImportQueueService<Block> + ?Sized + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
-        + ClientExt<Block, B>
+        + ClientExt<Block, Backend>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
-        + LockImportRun<Block, B>
+        + LockImportRun<Block, Backend>
         + Send
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
-    IQS: ImportQueueService<Block> + ?Sized + 'static,
     PG: DsnSyncPieceGetter,
 {
     let info = client.info();
@@ -344,6 +344,8 @@ where
 
     while let Some(reason) = notifications.next().await {
         info!(?reason, "Received notification to sync from DSN");
+        pause_sync.store(true, Ordering::Release);
+
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_froms_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,

@@ -597,6 +597,7 @@ pub(super) fn create_consensus_chain_configuration(
         informant_output_format: OutputFormat { enable_color },
     };
     let mut consensus_chain_config = Configuration::from(consensus_chain_config);
+    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
     if fast_sync {
         consensus_chain_config.network.sync_mode = SyncMode::LightState {
             skip_proofs: true,

@@ -131,8 +131,8 @@ where
             .download_segment_headers(&segment_header_downloader)
             .await
         {
-            error!(?error, "Failed to download segment headers.");
-            return Err(error);
+            let error = format!("Failed to download segment headers: {}", error);
+            return Err(Error::Other(error));
         };
 
         let Some(last_segment_index) = self.segment_headers_store.max_segment_index() else {
@@ -147,9 +147,9 @@ where
         let last_segment_header = self
             .segment_headers_store
             .get_segment_header(last_segment_index)
-            .expect("We get segment index from the same storage. It should be present.");
+            .expect("Last segment index exists; qed");
 
-        let second_last_segment_index = last_segment_header.segment_index() - 1.into();
+        let second_last_segment_index = last_segment_header.segment_index() - SegmentIndex::ONE;
 
         let second_last_segment_blocks = download_and_reconstruct_blocks(
             second_last_segment_index,
@@ -160,7 +160,7 @@ where
 
         let blocks_in_second_last_segment = second_last_segment_blocks.len();
 
-        if blocks_in_second_last_segment < 1 {
+        if blocks_in_second_last_segment < 2 {
             return Err(Error::Other(
                 "Unexpected block array length for the second last segment.".into(),
             ));
