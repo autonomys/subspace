@@ -21,10 +21,15 @@
 
 mod default_weights;
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
 use frame_support::sp_runtime::SaturatedConversion;
-use frame_support::traits::{tokens, Currency, Get};
+use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -45,30 +50,13 @@ struct CollectedFees<Balance: Codec> {
     tips: Balance,
 }
 
-#[derive(Encode, Decode, TypeInfo)]
-struct BlockTransactionByteFee<Balance: Codec> {
-    // The value of `transaction_byte_fee` for the current block
-    current: Balance,
-    // The value of `transaction_byte_fee` for the next block
-    next: Balance,
-}
-
-impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balance> {
-    fn default() -> Self {
-        BlockTransactionByteFee {
-            current: Balance::max_value(),
-            next: Balance::max_value(),
-        }
-    }
-}
-
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, BlockTransactionByteFee, CollectedFees, WeightInfo};
+    use super::{BalanceOf, CollectedFees, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
-    use subspace_runtime_primitives::FindBlockRewardAddress;
+    use subspace_runtime_primitives::{BlockTransactionByteFee, FindBlockRewardAddress};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -252,6 +240,10 @@ where
         } else {
             TransactionByteFee::<T>::get().next
         }
+    }
+
+    pub fn transaction_byte_fee_storage_key() -> Vec<u8> {
+        TransactionByteFee::<T>::hashed_key().to_vec()
     }
 
     pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {

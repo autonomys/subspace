@@ -324,7 +324,7 @@ where
     DomainHeader: HeaderT,
 {
     let state_root = bad_receipt.final_state_root;
-    let digest_storage_key = StorageKey(crate::fraud_proof::system_digest_final_key());
+    let digest_storage_key = StorageKey(sp_domains::system_digest_final_key());
 
     let digest = StorageProofVerifier::<DomainHeader::Hashing>::get_decoded_value::<Digest>(
         &state_root,

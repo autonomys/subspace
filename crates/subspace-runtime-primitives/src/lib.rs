@@ -23,7 +23,10 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use codec::{Codec, Decode, Encode};
+use frame_support::traits::tokens;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
+use scale_info::TypeInfo;
 use sp_core::parameter_types;
 use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};
 use sp_runtime::{FixedPointNumber, MultiSignature, Perquintill};
@@ -125,6 +128,23 @@ pub type SlowAdjustingFeeUpdate<R> = TargetedFeeAdjustment<
     MinimumMultiplier,
     MaximumMultiplier,
 >;
+
+#[derive(Encode, Decode, TypeInfo)]
+pub struct BlockTransactionByteFee<Balance: Codec> {
+    // The value of `transaction_byte_fee` for the current block
+    pub current: Balance,
+    // The value of `transaction_byte_fee` for the next block
+    pub next: Balance,
+}
+
+impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balance> {
+    fn default() -> Self {
+        BlockTransactionByteFee {
+            current: Balance::max_value(),
+            next: Balance::max_value(),
+        }
+    }
+}
 
 #[cfg(feature = "testing")]
 pub mod tests_utils {

@@ -18,7 +18,7 @@ use scale_info::TypeInfo;
 use sp_core::crypto::AccountId32;
 use sp_core::Hasher;
 use sp_domains::storage::{RawGenesis, StorageData, StorageKey};
-use sp_domains::{DomainId, DomainsDigestItem, RuntimeId, RuntimeType};
+use sp_domains::{DomainId, DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Get, Zero};
 use sp_runtime::DigestItem;
 use sp_std::vec;
@@ -37,20 +37,6 @@ pub enum Error {
     FailedToDecodeRawGenesis,
     RuntimeCodeNotFoundInRawGenesis,
     InvalidAccountIdType,
-}
-
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct RuntimeObject<Number, Hash> {
-    pub runtime_name: String,
-    pub runtime_type: RuntimeType,
-    pub runtime_upgrades: u32,
-    pub hash: Hash,
-    // The raw gensis storage that contains the runtime code.
-    // NOTE: don't use this field directly but `into_complete_raw_genesis` instead
-    pub raw_genesis: RawGenesis,
-    pub version: RuntimeVersion,
-    pub created_at: Number,
-    pub updated_at: Number,
 }
 
 /// Domain runtime specific information to create domain raw genesis.
@@ -91,63 +77,59 @@ fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
     initial_storages
 }
 
-impl<Number, Hash> RuntimeObject<Number, Hash> {
-    // Return a complete raw genesis with runtime code and domain id set properly
-    pub fn into_complete_raw_genesis<T: Config>(
-        self,
-        domain_id: DomainId,
-        domain_runtime_info: DomainRuntimeInfo,
-        total_issuance: BalanceOf<T>,
-        initial_balances: Vec<(MultiAccountId, BalanceOf<T>)>,
-    ) -> Result<RawGenesis, Error> {
-        let RuntimeObject {
-            mut raw_genesis, ..
-        } = self;
-        raw_genesis.set_domain_id(domain_id);
-        match domain_runtime_info {
-            DomainRuntimeInfo::EVM { chain_id } => {
-                raw_genesis.set_evm_chain_id(chain_id);
-                let initial_balances = initial_balances.into_iter().try_fold(
-                    Vec::<(AccountId20, BalanceOf<T>)>::new(),
-                    |mut balances, (account_id, balance)| {
-                        let account_id =
-                            domain_runtime_primitives::AccountId20Converter::try_convert_back(
-                                account_id,
-                            )
-                            .ok_or(Error::InvalidAccountIdType)?;
+// Return a complete raw genesis with runtime code and domain id set properly
+pub fn into_complete_raw_genesis<T: Config>(
+    runtime_obj: RuntimeObject<BlockNumberFor<T>, T::Hash>,
+    domain_id: DomainId,
+    domain_runtime_info: DomainRuntimeInfo,
+    total_issuance: BalanceOf<T>,
+    initial_balances: Vec<(MultiAccountId, BalanceOf<T>)>,
+) -> Result<RawGenesis, Error> {
+    let RuntimeObject {
+        mut raw_genesis, ..
+    } = runtime_obj;
+    raw_genesis.set_domain_id(domain_id);
+    match domain_runtime_info {
+        DomainRuntimeInfo::EVM { chain_id } => {
+            raw_genesis.set_evm_chain_id(chain_id);
+            let initial_balances = initial_balances.into_iter().try_fold(
+                Vec::<(AccountId20, BalanceOf<T>)>::new(),
+                |mut balances, (account_id, balance)| {
+                    let account_id =
+                        domain_runtime_primitives::AccountId20Converter::try_convert_back(
+                            account_id,
+                        )
+                        .ok_or(Error::InvalidAccountIdType)?;
 
-                        balances.push((account_id, balance));
-                        Ok(balances)
-                    },
-                )?;
-                raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
-                    total_issuance,
-                    initial_balances,
-                ));
-            }
-            DomainRuntimeInfo::AutoId => {
-                let initial_balances = initial_balances.into_iter().try_fold(
-                    Vec::<(AccountId32, BalanceOf<T>)>::new(),
-                    |mut balances, (account_id, balance)| {
-                        let account_id =
-                            domain_runtime_primitives::AccountIdConverter::try_convert_back(
-                                account_id,
-                            )
-                            .ok_or(Error::InvalidAccountIdType)?;
-
-                        balances.push((account_id, balance));
-                        Ok(balances)
-                    },
-                )?;
-                raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
-                    total_issuance,
-                    initial_balances,
-                ));
-            }
+                    balances.push((account_id, balance));
+                    Ok(balances)
+                },
+            )?;
+            raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
+                total_issuance,
+                initial_balances,
+            ));
         }
+        DomainRuntimeInfo::AutoId => {
+            let initial_balances = initial_balances.into_iter().try_fold(
+                Vec::<(AccountId32, BalanceOf<T>)>::new(),
+                |mut balances, (account_id, balance)| {
+                    let account_id =
+                        domain_runtime_primitives::AccountIdConverter::try_convert_back(account_id)
+                            .ok_or(Error::InvalidAccountIdType)?;
 
-        Ok(raw_genesis)
+                    balances.push((account_id, balance));
+                    Ok(balances)
+                },
+            )?;
+            raw_genesis.set_top_storages(derive_initial_balances_storages::<T, _>(
+                total_issuance,
+                initial_balances,
+            ));
+        }
     }
+
+    Ok(raw_genesis)
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -318,7 +300,7 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
 #[cfg(test)]
 mod tests {
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
-    use crate::runtime_registry::{Error as RuntimeRegistryError, RuntimeObject};
+    use crate::runtime_registry::Error as RuntimeRegistryError;
     use crate::tests::{
         new_test_ext, DomainRuntimeUpgradeDelay, Domains, ReadRuntimeVersion, System, Test,
     };
@@ -328,7 +310,7 @@ mod tests {
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
     use sp_domains::storage::RawGenesis;
-    use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
+    use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
     use sp_version::RuntimeVersion;
