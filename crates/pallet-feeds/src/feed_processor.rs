@@ -58,7 +58,7 @@ impl FeedObjectMapping {
             }
             // For content, we try to extract the content to derive the key
             FeedObjectMapping::Content { offset } => {
-                // If offset is 0, then then we want to map the entire object.
+                // If offset is 0, then we want to map the entire object.
                 // Since the object is already decoded, no need to decode it further
                 let key = if offset == 0 {
                     hasher(object)
