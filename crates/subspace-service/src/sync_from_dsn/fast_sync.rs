@@ -120,6 +120,10 @@ where
     ///     - clear the block gap to prevent Substrate sync to download blocks from the start.
     ///     - restart the Substrate sync with SyncMode::Full to enable it downloading full blocks.
     ///  Note: retry for fast sync will degrade reputation if we have already announced blocks.
+    // TODO: fast-sync specification contains a special case for a segment that have the
+    // complete last archived block, this will remove the necessity to download the second last
+    // segment, we need to implement this case when the blockchain will contain at least one such
+    // a segment to verify the solution.
     pub(crate) async fn sync(&self) -> Result<FastSyncResult<Block>, Error> {
         debug!("Starting fast sync...");
 
@@ -159,13 +163,6 @@ where
         .await?;
 
         let blocks_in_second_last_segment = second_last_segment_blocks.len();
-
-        if blocks_in_second_last_segment < 2 {
-            return Err(Error::Other(
-                "Unexpected block array length for the second last segment.".into(),
-            ));
-        }
-
         debug!(
             "Second last segment blocks downloaded (SegmentId={}): {}-{}",
             second_last_segment_index,
@@ -181,13 +178,6 @@ where
         .await?;
 
         let blocks_in_last_segment = blocks.len();
-
-        if blocks_in_last_segment < 2 {
-            return Err(Error::Other(
-                "Unexpected block array length for the last segment.".into(),
-            ));
-        }
-
         debug!(
             "Blocks downloaded (SegmentId={}): {}-{}",
             last_segment_index,
