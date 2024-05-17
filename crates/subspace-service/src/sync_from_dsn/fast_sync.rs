@@ -507,14 +507,18 @@ where
 
             // TODO: add loop timeout
             let peer_candidates = loop {
-                let open_peers = network_service
-                    .connected_peers()
+                let connected_full_peers = self
+                    .sync_service
+                    .peers_info()
                     .await
-                    .expect("Network service must be available.");
+                    .expect("Network service must be available.")
+                    .iter()
+                    .filter_map(|(peer_id, info)| info.roles.is_full().then_some(*peer_id))
+                    .collect::<Vec<_>>();
 
-                debug!(?tried_peers, "Sync peers: {}", open_peers.len());
+                debug!(?tried_peers, "Sync peers: {}", connected_full_peers.len());
 
-                let active_peers_set = HashSet::from_iter(open_peers.into_iter());
+                let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
 
                 let diff = active_peers_set
                     .difference(&tried_peers)
