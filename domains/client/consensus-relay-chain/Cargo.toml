@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.80"
-sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "808269708cf5375526755797e8f9a9986016727d" }
+sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
