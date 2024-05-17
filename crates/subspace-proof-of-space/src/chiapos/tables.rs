@@ -124,9 +124,19 @@ where
                 .try_into()
                 .expect("Challenge is known to statically have enough bytes; qed"),
         ) >> (u32::BITS as usize - usize::from(K));
-        let first_matching_element = ys
+        let mut first_matching_element = ys
             .binary_search_by(|&y| y.first_k_bits::<K>().cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
+
+        // We only compare first K bits above, which is why `binary_search_by` is not guaranteed to
+        // find the very first match in case there are multiple
+        for index in (0..first_matching_element).rev() {
+            if ys[index].first_k_bits::<K>() == first_k_challenge_bits {
+                first_matching_element = index;
+            } else {
+                break;
+            }
+        }
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
         ys[first_matching_element..]
@@ -197,9 +207,19 @@ where
                 .try_into()
                 .expect("Challenge is known to statically have enough bytes; qed"),
         ) >> (u32::BITS as usize - usize::from(K));
-        let first_matching_element = ys
+        let mut first_matching_element = ys
             .binary_search_by(|&y| y.first_k_bits::<K>().cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
+
+        // We only compare first K bits above, which is why `binary_search_by` is not guaranteed to
+        // find the very first match in case there are multiple
+        for index in (0..first_matching_element).rev() {
+            if ys[index].first_k_bits::<K>() == first_k_challenge_bits {
+                first_matching_element = index;
+            } else {
+                break;
+            }
+        }
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
         ys[first_matching_element..]
