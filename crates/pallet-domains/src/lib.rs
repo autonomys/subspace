@@ -464,6 +464,17 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// The highest slot of the bundle submitted by an operator
+    #[pallet::storage]
+    pub(super) type OperatorHighestSlot<T: Config> =
+        StorageMap<_, Identity, OperatorId, u64, ValueQuery>;
+
+    /// The set of slot of the bundle submitted by an operator in the current block, cleared at the
+    /// next block initialization
+    #[pallet::storage]
+    pub(super) type OperatorBundleSlot<T: Config> =
+        StorageMap<_, Identity, OperatorId, BTreeSet<u64>, ValueQuery>;
+
     /// Temporary hold of all the operators who decided to switch to another domain.
     /// Once epoch is complete, these operators are added to new domains under next_operators.
     #[pallet::storage]
@@ -686,6 +697,11 @@ mod pallet {
         UnableToCalculateBundleLimit,
         /// Bundle weight exceeds the max bundle weight limit
         BundleTooHeavy,
+        /// The bundle slot is smaller then the highest slot from previous slot
+        /// thus potential equivocated bundle
+        SlotSmallerThanPreviousBlockBundle,
+        /// Equivocated bundle in current block
+        EquivocatedBundle,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -931,6 +947,7 @@ mod pallet {
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let bundle_size = opaque_bundle.size();
+            let slot_number = opaque_bundle.slot_number();
             let receipt = opaque_bundle.into_receipt();
             #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
             let receipt_block_number = receipt.domain_block_number;
@@ -1059,6 +1076,8 @@ mod pallet {
             InboxedBundleAuthor::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
+
+            OperatorBundleSlot::<T>::mutate(operator_id, |slot_set| slot_set.insert(slot_number));
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -1494,6 +1513,13 @@ mod pallet {
                 T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
             }
 
+            for (operator_id, slot_set) in OperatorBundleSlot::<T>::drain() {
+                // NOTE: `OperatorBundleSlot` use `BTreeSet` so `last` will return the maximum value in the set
+                if let Some(highest_slot) = slot_set.last() {
+                    OperatorHighestSlot::<T>::insert(operator_id, highest_slot);
+                }
+            }
+
             let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
 
             Weight::zero()
@@ -1576,6 +1602,7 @@ mod pallet {
                         return InvalidTransactionCode::BundleStorageFeePayment.into();
                     }
 
+                    let tag = (opaque_bundle.operator_id(), opaque_bundle.slot_number());
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         // Bundle have a bit higher priority than normal extrinsic but must less than
                         // fraud proof
@@ -1583,7 +1610,7 @@ mod pallet {
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
-                        .and_provides(opaque_bundle.hash())
+                        .and_provides(tag)
                         .propagate(true)
                         .build()
                 }
@@ -1695,18 +1722,6 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
-    fn check_bundle_duplication(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
-        // NOTE: it is important to use the hash that not incliude the signature, otherwise
-        // the malicious operator may update its `signing_key` (this may support in the future)
-        // and sign an existing bundle thus creating a duplicated bundle and pass the check.
-        let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
-        ensure!(
-            !InboxedBundleAuthor::<T>::contains_key(bundle_header_hash),
-            BundleError::DuplicatedBundle
-        );
-        Ok(())
-    }
-
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
@@ -1795,6 +1810,7 @@ impl<T: Config> Pallet<T> {
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
+        let slot_number = opaque_bundle.slot_number();
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
@@ -1811,7 +1827,18 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        Self::check_bundle_duplication(opaque_bundle)?;
+        // Ensure this is not equivocated bundle that reuse `ProofOfElection` from the previous block
+        ensure!(
+            slot_number
+                > Self::operator_highest_slot_from_previous_block(operator_id, pre_dispatch),
+            BundleError::SlotSmallerThanPreviousBlockBundle,
+        );
+
+        // Ensure there is not equivocated/duplicated bundle in the same block
+        ensure!(
+            !OperatorBundleSlot::<T>::get(operator_id).contains(&slot_number),
+            BundleError::EquivocatedBundle,
+        );
 
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
@@ -2247,6 +2274,27 @@ impl<T: Config> Pallet<T> {
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
         let storage_fund_acc = storage_fund_account::<T>(operator_id);
         T::Currency::reducible_balance(&storage_fund_acc, Preservation::Preserve, Fortitude::Polite)
+    }
+
+    // Get the highest slot of the bundle submitted by a given operator from the previous block
+    //
+    // Return 0 if the operator not submit any bundle before
+    pub fn operator_highest_slot_from_previous_block(
+        operator_id: OperatorId,
+        pre_dispatch: bool,
+    ) -> u64 {
+        if pre_dispatch {
+            OperatorHighestSlot::<T>::get(operator_id)
+        } else {
+            // The `OperatorBundleSlot` is lazily move to `OperatorHighestSlot` in the `on_initialize` hook
+            // so when validating tx in the pool we should check `OperatorBundleSlot` first (which is from the
+            // parent block) then `OperatorHighestSlot`
+            //
+            // NOTE: `OperatorBundleSlot` use `BTreeSet` so `last` will return the maximum value in the set
+            *OperatorBundleSlot::<T>::get(operator_id)
+                .last()
+                .unwrap_or(&OperatorHighestSlot::<T>::get(operator_id))
+        }
     }
 }
 
