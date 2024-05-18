@@ -119,9 +119,9 @@ fn calculate_left_targets() -> LeftTargets {
     LeftTargets { left_targets }
 }
 
-fn calculate_left_target_on_demand(parity: usize, r: usize, m: usize) -> usize {
-    let param_b = usize::from(PARAM_B);
-    let param_c = usize::from(PARAM_C);
+fn calculate_left_target_on_demand(parity: u32, r: u32, m: u32) -> u32 {
+    let param_b = u32::from(PARAM_B);
+    let param_c = u32::from(PARAM_C);
 
     let c = r / param_c;
 
@@ -344,11 +344,11 @@ fn find_matches<'a>(
 
 /// Simplified version of [`find_matches`] for verification purposes.
 pub(super) fn has_match(left_y: Y, right_y: Y) -> bool {
-    let right_r = usize::from(right_y) % usize::from(PARAM_BC);
-    let parity = (usize::from(left_y) / usize::from(PARAM_BC)) % 2;
-    let left_r = usize::from(left_y) % usize::from(PARAM_BC);
+    let right_r = u32::from(right_y) % u32::from(PARAM_BC);
+    let parity = (u32::from(left_y) / u32::from(PARAM_BC)) % 2;
+    let left_r = u32::from(left_y) % u32::from(PARAM_BC);
 
-    for m in 0..usize::from(PARAM_M) {
+    for m in 0..u32::from(PARAM_M) {
         let r_target = calculate_left_target_on_demand(parity, left_r, m);
         if r_target == right_r {
             return true;
