@@ -18,11 +18,13 @@ use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
 use core::simd::num::SimdUint;
 use core::simd::Simd;
-#[cfg(any(feature = "parallel", test))]
-use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(all(feature = "std", any(feature = "parallel", test)))]
+use parking_lot::Mutex;
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;
+#[cfg(all(not(feature = "std"), any(feature = "parallel", test)))]
+use spin::Mutex;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
@@ -739,60 +741,72 @@ where
     where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
-        let buckets = &mut cache.buckets;
         let left_targets = &cache.left_targets;
 
-        let mut bucket = Bucket {
-            bucket_index: 0,
+        let mut first_bucket = Bucket {
+            bucket_index: u32::from(last_table.ys()[0]) / u32::from(PARAM_BC),
             start_position: Position::ZERO,
             size: Position::ZERO,
         };
+        for &y in last_table.ys() {
+            let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
-        let last_y = *last_table
-            .ys()
-            .last()
-            .expect("List of y values is never empty; qed");
-        buckets.clear();
-        buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
-        last_table
-            .ys()
-            .iter()
-            .zip(Position::ZERO..)
-            .for_each(|(&y, position)| {
-                let bucket_index = u32::from(y) / u32::from(PARAM_BC);
+            if bucket_index == first_bucket.bucket_index {
+                first_bucket.size += Position::ONE;
+            } else {
+                break;
+            }
+        }
 
-                if bucket_index == bucket.bucket_index {
-                    bucket.size += Position::ONE;
-                    return;
-                }
-
-                buckets.push(bucket);
-
-                bucket = Bucket {
-                    bucket_index,
-                    start_position: position,
-                    size: Position::ONE,
-                };
-            });
-        // Iteration stopped, but we did not store the last bucket yet
-        buckets.push(bucket);
-
-        let counter = AtomicUsize::new(0);
+        let previous_bucket = Mutex::new(first_bucket);
 
         let t_n = rayon::broadcast(|_ctx| {
             let mut entries = Vec::new();
             let mut rmap_scratch = Vec::new();
 
             loop {
-                let offset = counter.fetch_add(1, Ordering::Relaxed);
-                if offset >= buckets.len() - 1 {
-                    break;
+                let left_bucket;
+                let right_bucket;
+                {
+                    let mut previous_bucket = previous_bucket.lock();
+
+                    let right_bucket_start_position =
+                        previous_bucket.start_position + previous_bucket.size;
+                    let right_bucket_index = match last_table
+                        .ys()
+                        .get(usize::from(right_bucket_start_position))
+                    {
+                        Some(&y) => u32::from(y) / u32::from(PARAM_BC),
+                        None => {
+                            break;
+                        }
+                    };
+                    let mut right_bucket_size = Position::ZERO;
+
+                    for &y in &last_table.ys()[usize::from(right_bucket_start_position)..] {
+                        let bucket_index = u32::from(y) / u32::from(PARAM_BC);
+
+                        if bucket_index == right_bucket_index {
+                            right_bucket_size += Position::ONE;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    right_bucket = Bucket {
+                        bucket_index: right_bucket_index,
+                        start_position: right_bucket_start_position,
+                        size: right_bucket_size,
+                    };
+
+                    left_bucket = *previous_bucket;
+                    *previous_bucket = right_bucket;
                 }
 
                 match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
                     last_table,
-                    buckets[offset],
-                    buckets[offset + 1],
+                    left_bucket,
+                    right_bucket,
                     &mut rmap_scratch,
                     left_targets,
                     &mut entries,
