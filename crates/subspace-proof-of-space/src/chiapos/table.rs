@@ -91,27 +91,30 @@ pub(super) fn partial_y<const K: u8>(
     (output, skip_bits)
 }
 
-fn calculate_left_targets() -> Vec<Vec<Vec<Position>>> {
+#[derive(Debug, Clone)]
+struct LeftTargets {
+    left_targets: Vec<Position>,
+}
+
+fn calculate_left_targets() -> LeftTargets {
+    let mut left_targets = Vec::with_capacity(2 * usize::from(PARAM_BC) * usize::from(PARAM_M));
+
     let param_b = u32::from(PARAM_B);
     let param_c = u32::from(PARAM_C);
 
-    (0..=1u32)
-        .map(|parity| {
-            (0..u32::from(PARAM_BC))
-                .map(|r| {
-                    let c = r / param_c;
+    for parity in 0..=1u32 {
+        for r in 0..u32::from(PARAM_BC) {
+            let c = r / param_c;
 
-                    (0..u32::from(PARAM_M))
-                        .map(|m| {
-                            let target = ((c + m) % param_b) * param_c
-                                + (((2 * m + parity) * (2 * m + parity) + r) % param_c);
-                            Position::from(target)
-                        })
-                        .collect()
-                })
-                .collect()
-        })
-        .collect()
+            for m in 0..u32::from(PARAM_M) {
+                let target = ((c + m) % param_b) * param_c
+                    + (((2 * m + parity) * (2 * m + parity) + r) % param_c);
+                left_targets.push(Position::from(target));
+            }
+        }
+    }
+
+    LeftTargets { left_targets }
 }
 
 fn calculate_left_target_on_demand(parity: usize, r: usize, m: usize) -> usize {
@@ -128,7 +131,7 @@ fn calculate_left_target_on_demand(parity: usize, r: usize, m: usize) -> usize {
 pub struct TablesCache<const K: u8> {
     buckets: Vec<Bucket>,
     rmap_scratch: Vec<RmapItem>,
-    left_targets: Vec<Vec<Vec<Position>>>,
+    left_targets: LeftTargets,
 }
 
 impl<const K: u8> Default for TablesCache<K> {
@@ -268,7 +271,7 @@ fn find_matches<'a>(
     right_bucket_ys: &'a [Y],
     right_bucket_start_position: Position,
     rmap_scratch: &'a mut Vec<RmapItem>,
-    left_targets: &'a [Vec<Vec<Position>>],
+    left_targets: &'a LeftTargets,
 ) -> Option<impl Iterator<Item = Match> + 'a> {
     // Clear and set to correct size with zero values
     rmap_scratch.clear();
@@ -299,7 +302,16 @@ fn find_matches<'a>(
     // `PARAM_BC` away from the previous one in terms of divisor by `PARAM_BC`
     let base = base - usize::from(PARAM_BC);
     let parity = (usize::from(first_left_bucket_y) / usize::from(PARAM_BC)) % 2;
-    let left_targets = &left_targets[parity];
+    let left_targets_parity = {
+        let (a, b) = left_targets
+            .left_targets
+            .split_at(left_targets.left_targets.len() / 2);
+        if parity == 0 {
+            a
+        } else {
+            b
+        }
+    };
 
     Some(
         left_bucket_ys
@@ -307,10 +319,13 @@ fn find_matches<'a>(
             .zip(left_bucket_start_position..)
             .flat_map(move |(&y, left_position)| {
                 let r = usize::from(y) - base;
-                let left_targets = &left_targets[r];
+                let left_targets_r = left_targets_parity
+                    .chunks_exact(left_targets_parity.len() / usize::from(PARAM_BC))
+                    .nth(r)
+                    .expect("r is valid");
 
                 (0..usize::from(PARAM_M)).flat_map(move |m| {
-                    let r_target = left_targets[m];
+                    let r_target = left_targets_r[m];
                     let rmap_item = rmap[usize::from(r_target)];
 
                     (rmap_item.start_position..rmap_item.start_position + rmap_item.count).map(
@@ -455,7 +470,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     left_bucket: Bucket,
     right_bucket: Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
-    left_targets: &'a [Vec<Vec<Position>>],
+    left_targets: &'a LeftTargets,
     results_table: &mut Vec<(Y, [Position; 2], Metadata<K, TABLE_NUMBER>)>,
 ) where
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
