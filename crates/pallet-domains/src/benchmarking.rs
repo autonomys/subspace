@@ -651,31 +651,6 @@ mod benchmarks {
         assert!(!operator.deposits_in_epoch.is_zero());
     }
 
-    // TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
-    // enable this test when `switch_domain` is ready
-    // #[benchmark]
-    // fn switch_domain() {
-    //     let domain1_id = register_domain::<T>();
-    //     let domain2_id = register_domain::<T>();
-
-    //     let (operator_owner, operator_id) =
-    //         register_helper_operator::<T>(domain1_id, T::Currency::minimum_balance());
-
-    //     #[extrinsic_call]
-    //     _(
-    //         RawOrigin::Signed(operator_owner.clone()),
-    //         operator_id,
-    //         domain2_id,
-    //     );
-
-    //     let operator = Operators::<T>::get(operator_id).expect("operator must exist");
-    //     assert_eq!(operator.next_domain_id, domain2_id);
-
-    //     let pending_switch =
-    //         PendingOperatorSwitches::<T>::get(domain1_id).expect("pending switch must exist");
-    //     assert!(pending_switch.contains(&operator_id));
-    // }
-
     #[benchmark]
     fn deregister_operator() {
         let domain_id = register_domain::<T>();

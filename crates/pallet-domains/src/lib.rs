@@ -488,12 +488,6 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// Temporary hold of all the operators who decided to switch to another domain.
-    /// Once epoch is complete, these operators are added to new domains under next_operators.
-    #[pallet::storage]
-    pub(super) type PendingOperatorSwitches<T: Config> =
-        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
-
     /// Share price for the operator pool at the end of Domain epoch.
     // TODO: currently unbounded storage.
     #[pallet::storage]

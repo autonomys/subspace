@@ -2,8 +2,7 @@
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     AccumulatedTreasuryFunds, Deposits, DomainStakingSummary, LastEpochStakingDistribution,
-    OperatorIdOwner, Operators, PendingOperatorSwitches, PendingSlashes,
-    PendingStakingOperationCount, Withdrawals,
+    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
@@ -29,7 +28,6 @@ use sp_std::collections::btree_set::BTreeSet;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
-    FinalizeSwitchOperatorDomain(TransitionError),
     FinalizeDomainEpochStaking(TransitionError),
     OperatorRewardStaking(TransitionError),
     SlashOperator(TransitionError),
@@ -56,9 +54,6 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     // slash the operators
     let slashed_nominator_count =
         do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
-
-    // finalize any operator switches
-    do_finalize_switch_operator_domain::<T>(domain_id)?;
 
     // finalize any withdrawals and then deposits
     let (completed_epoch_index, finalized_operator_count) =
@@ -157,57 +152,6 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
     .map_err(Error::OperatorRewardStaking)?;
 
     Ok(rewarded_operator_count)
-}
-
-/// Add all the switched operators to new domain as next operators.
-/// Once the new domain's epoch is complete, operators are included in the next epoch.
-fn do_finalize_switch_operator_domain<T: Config>(domain_id: DomainId) -> Result<(), Error> {
-    if let Some(operators) = PendingOperatorSwitches::<T>::take(domain_id) {
-        operators.into_iter().try_for_each(|operator_id| {
-            switch_operator::<T>(domain_id, operator_id)
-                .map_err(Error::FinalizeSwitchOperatorDomain)
-        })?;
-    }
-
-    Ok(())
-}
-
-fn switch_operator<T: Config>(
-    domain_id: DomainId,
-    operator_id: OperatorId,
-) -> Result<(), TransitionError> {
-    let previous_domain_summary =
-        DomainStakingSummary::<T>::get(domain_id).ok_or(TransitionError::DomainNotInitialized)?;
-
-    // finalize operator staking before moving to next domain
-    // this also sets the operator epoch price.
-    do_finalize_operator_epoch_staking::<T>(
-        domain_id,
-        operator_id,
-        previous_domain_summary.current_epoch_index,
-    )?;
-
-    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator
-            .as_mut()
-            .ok_or(TransitionError::UnknownOperator)?;
-
-        // operator is not registered, just no-op
-        if *operator.status::<T>(operator_id) != OperatorStatus::Registered {
-            return Ok(());
-        }
-
-        operator.current_domain_id = operator.next_domain_id;
-        DomainStakingSummary::<T>::try_mutate(operator.current_domain_id, |maybe_stake_summary| {
-            let stake_summary = maybe_stake_summary
-                .as_mut()
-                .ok_or(TransitionError::DomainNotInitialized)?;
-
-            stake_summary.next_operators.insert(operator_id);
-
-            Ok(())
-        })
-    })
 }
 
 pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(

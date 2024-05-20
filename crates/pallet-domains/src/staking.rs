@@ -6,8 +6,8 @@ extern crate alloc;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
-    OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches, PendingSlashes,
-    PendingStakingOperationCount, Withdrawals,
+    OperatorIdOwner, OperatorSigningKey, Operators, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -1244,16 +1244,6 @@ pub(crate) fn do_slash_operators<T: Config>(
                     operator.update_status(OperatorStatus::Slashed);
                     stake_summary.next_operators.remove(operator_id);
 
-                    // remove any current operator switches
-                    PendingOperatorSwitches::<T>::mutate(
-                        operator.current_domain_id,
-                        |maybe_switching_operators| {
-                            if let Some(switching_operators) = maybe_switching_operators.as_mut() {
-                                switching_operators.remove(operator_id);
-                            }
-                        },
-                    );
-
                     pending_slashes.insert(*operator_id);
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Pallet::<T>::deposit_event(Event::OperatorSlashed {
@@ -1772,7 +1762,7 @@ pub(crate) mod tests {
                 )
             );
 
-            // domain switch will not work since the operator is frozen
+            // operator nomination will not work since the operator is already de-registered
             let new_domain_id = DomainId::new(1);
             let domain_config = DomainConfig {
                 domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
