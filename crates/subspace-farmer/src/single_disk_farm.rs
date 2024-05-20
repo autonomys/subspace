@@ -257,7 +257,10 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<NC, P> {
+pub struct SingleDiskFarmOptions<NC, P>
+where
+    NC: Clone,
+{
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -669,7 +672,7 @@ impl SingleDiskFarm {
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
-        NC: NodeClient,
+        NC: NodeClient + Clone,
         P: Plotter + Send + 'static,
         PosTable: Table,
     {
@@ -1056,7 +1059,10 @@ impl SingleDiskFarm {
 
     fn init<NC, P>(
         options: &SingleDiskFarmOptions<NC, P>,
-    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
+    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError>
+    where
+        NC: Clone,
+    {
         let SingleDiskFarmOptions {
             directory,
             farmer_app_info,
