@@ -777,9 +777,9 @@ mod benchmarks {
         assert!(Deposits::<T>::get(operator_id, nominator).is_none());
     }
 
-    /// Benchmark `unlock_operator` extrinsic based on the number of nominator of the unlocked operator
+    /// Benchmark `unlock_nominator` extrinsic based on the number of nominator of the unlocked operator
     #[benchmark]
-    fn unlock_operator(n: Linear<0, { T::MaxNominators::get() }>) {
+    fn unlock_nominator() {
         let domain_id = register_domain::<T>();
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
@@ -791,24 +791,6 @@ mod benchmarks {
             &T::TreasuryAccount::get(),
             T::Currency::minimum_balance() + 1u32.into(),
         );
-
-        for i in 0..n {
-            let nominator = account("nominator", i, SEED);
-            T::Currency::set_balance(
-                &nominator,
-                T::MinNominatorStake::get() + T::Currency::minimum_balance(),
-            );
-            assert_ok!(Domains::<T>::nominate_operator(
-                RawOrigin::Signed(nominator).into(),
-                operator_id,
-                T::MinNominatorStake::get(),
-            ));
-        }
-        if n != 0 {
-            assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 1);
-        }
-        do_finalize_domain_current_epoch::<T>(domain_id)
-            .expect("finalize domain staking should success");
 
         // Deregister operator
         assert_ok!(Domains::<T>::deregister_operator(

@@ -185,7 +185,7 @@ mod pallet {
     use crate::staking::do_slash_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_unlock_funds,
-        do_unlock_operator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
+        do_unlock_nominator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
         Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
@@ -1360,25 +1360,19 @@ mod pallet {
             Ok(())
         }
 
-        /// Unlocks the operator given the unlocking period is complete.
-        /// Anyone can initiate the operator unlock.
+        /// Unlocks the nominator under given operator given the unlocking period is complete.
+        /// A nominator can initiate their unlock given operator is already deregistered.
         #[pallet::call_index(11)]
         #[pallet::weight(T::WeightInfo::unlock_operator(T::MaxNominators::get()))]
-        pub fn unlock_operator(
-            origin: OriginFor<T>,
-            operator_id: OperatorId,
-        ) -> DispatchResultWithPostInfo {
-            ensure_signed(origin)?;
+        pub fn unlock_nominator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+            let nominator = ensure_signed(origin)?;
 
-            let nominator_count =
-                do_unlock_operator::<T>(operator_id).map_err(crate::pallet::Error::<T>::from)?;
+            do_unlock_nominator::<T>(operator_id, nominator)
+                .map_err(crate::pallet::Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorUnlocked { operator_id });
 
-            Ok(Some(T::WeightInfo::unlock_operator(
-                (nominator_count as u32).min(T::MaxNominators::get()),
-            ))
-            .into())
+            Ok(())
         }
 
         /// Extrinsic to update domain's operator allow list.

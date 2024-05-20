@@ -496,7 +496,7 @@ mod tests {
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_operator,
+        do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_nominator,
         do_withdraw_stake,
     };
     use crate::staking_epoch::{
@@ -518,80 +518,7 @@ mod tests {
 
     type Balances = pallet_balances::Pallet<Test>;
 
-    // TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
-    // enable this test when `switch_domain` is ready
-    // #[test]
-    // fn finalize_operator_domain_switch() {
-    //     let old_domain_id = DomainId::new(0);
-    //     let new_domain_id = DomainId::new(1);
-    //     let operator_account = 1;
-    //     let operator_free_balance = 200 * SSC;
-    //     let operator_stake = 100 * SSC;
-    //     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-
-    //     let mut ext = new_test_ext();
-    //     ext.execute_with(|| {
-    //         let (operator_id, _) = register_operator(
-    //             old_domain_id,
-    //             operator_account,
-    //             operator_free_balance,
-    //             operator_stake,
-    //             100 * SSC,
-    //             pair.public(),
-    //             BTreeMap::new(),
-    //         );
-
-    //         let domain_config = DomainConfig {
-    //             domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
-    //             runtime_id: 0,
-    //             max_block_size: u32::MAX,
-    //             max_block_weight: Weight::MAX,
-    //             bundle_slot_probability: (0, 0),
-    //             target_bundles_per_block: 0,
-    //             operator_allow_list: OperatorAllowList::Anyone,
-    //             initial_balances: Default::default(),
-    //         };
-
-    //         let domain_obj = DomainObject {
-    //             owner_account_id: 0,
-    //             created_at: 0,
-    //             genesis_receipt_hash: Default::default(),
-    //             domain_config,
-    //             domain_runtime_info: Default::default(),
-    //         };
-
-    //         DomainRegistry::<Test>::insert(new_domain_id, domain_obj);
-
-    //         DomainStakingSummary::<Test>::insert(
-    //             new_domain_id,
-    //             StakingSummary {
-    //                 current_epoch_index: 0,
-    //                 current_total_stake: 0,
-    //                 current_operators: BTreeMap::new(),
-    //                 next_operators: BTreeSet::new(),
-    //                 current_epoch_rewards: BTreeMap::new(),
-    //             },
-    //         );
-    //         let res = Domains::switch_domain(
-    //             RuntimeOrigin::signed(operator_account),
-    //             operator_id,
-    //             new_domain_id,
-    //         );
-    //         assert_ok!(res);
-
-    //         assert!(do_finalize_switch_operator_domain::<Test>(old_domain_id).is_ok());
-
-    //         let operator = Operators::<Test>::get(operator_id).unwrap();
-    //         assert_eq!(operator.current_domain_id, new_domain_id);
-    //         assert_eq!(operator.next_domain_id, new_domain_id);
-    //         assert_eq!(PendingOperatorSwitches::<Test>::get(old_domain_id), None);
-
-    //         let domain_stake_summary = DomainStakingSummary::<Test>::get(new_domain_id).unwrap();
-    //         assert!(domain_stake_summary.next_operators.contains(&operator_id));
-    //     });
-    // }
-
-    fn unlock_operator(
+    fn unlock_nominator(
         nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
         pending_deposits: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
         withdrawals: Vec<(NominatorId<Test>, Share)>,
@@ -685,7 +612,11 @@ mod tests {
                 },
             );
 
-            assert_ok!(do_unlock_operator::<Test>(operator_id));
+            for (nominator_id, _) in nominators {
+                assert_ok!(do_unlock_nominator::<Test>(operator_id, nominator_id));
+            }
+
+            assert_ok!(do_unlock_nominator::<Test>(operator_id, operator_account));
 
             let hold_id = crate::tests::HoldIdentifier::staking_staked(operator_id);
             for (nominator_id, mut expected_usable_balance) in expected_usable_balances {
@@ -711,7 +642,7 @@ mod tests {
 
     #[test]
     fn unlock_operator_with_no_rewards() {
-        unlock_operator(
+        unlock_nominator(
             vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
             vec![(2, 10 * SSC), (4, 10 * SSC)],
             vec![(1, 20 * SSC), (2, 10 * SSC)],
@@ -722,7 +653,7 @@ mod tests {
 
     #[test]
     fn unlock_operator_with_rewards() {
-        unlock_operator(
+        unlock_nominator(
             vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
             vec![(2, 10 * SSC), (4, 10 * SSC)],
             vec![(1, 20 * SSC), (2, 10 * SSC)],
