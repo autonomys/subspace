@@ -1313,6 +1313,14 @@ pub fn operator_block_fees_final_key() -> Vec<u8> {
         .to_vec()
 }
 
+/// Preimage to verify the proof of ownership of Operator Signing key.
+/// Operator owner is used to ensure the signature is used by anyone except
+/// the owner of the Signing key pair.
+#[derive(Debug, Encode)]
+pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
+    pub operator_owner: AccountId,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     #[api_version(3)]

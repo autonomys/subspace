@@ -38,6 +38,8 @@ use crate::block_tree::verify_execution_receipt;
 use crate::bundle_storage_fund::storage_fund_account;
 use crate::domain_registry::Error as DomainRegistryError;
 use crate::runtime_registry::into_complete_raw_genesis;
+#[cfg(feature = "runtime-benchmarks")]
+pub use crate::staking::do_register_operator;
 use crate::staking::OperatorStatus;
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
@@ -208,7 +210,8 @@ mod pallet {
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
         DomainsTransfersTracker, EpochIndex, GenesisDomain, OnDomainInstantiated,
-        OperatorAllowList, OperatorId, OperatorPublicKey, RuntimeId, RuntimeObject, RuntimeType,
+        OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
+        RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -1225,12 +1228,18 @@ mod pallet {
             domain_id: DomainId,
             amount: BalanceOf<T>,
             config: OperatorConfig<BalanceOf<T>>,
+            signing_key_proof_of_ownership: OperatorSignature,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
-            let (operator_id, current_epoch_index) =
-                do_register_operator::<T>(owner, domain_id, amount, config)
-                    .map_err(Error::<T>::from)?;
+            let (operator_id, current_epoch_index) = do_register_operator::<T>(
+                owner,
+                domain_id,
+                amount,
+                config,
+                Some(signing_key_proof_of_ownership),
+            )
+            .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
@@ -1490,6 +1499,8 @@ mod pallet {
                         domain_id,
                         operator_stake,
                         operator_config,
+                        // safe to not check the signing key ownership during genesis
+                        None,
                     )
                     .expect("Genesis operator registration must succeed");
 
