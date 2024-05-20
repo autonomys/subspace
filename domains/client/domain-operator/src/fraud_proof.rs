@@ -177,7 +177,7 @@ where
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
-        let digest_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
+        let digest_key = sp_domains::system_digest_final_key();
         let digest_storage_proof = self
             .client
             .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;

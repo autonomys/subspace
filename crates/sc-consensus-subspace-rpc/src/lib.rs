@@ -25,7 +25,6 @@ use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
 use jsonrpsee::PendingSubscriptionSink;
-use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
@@ -40,6 +39,7 @@ use sc_rpc::utils::pipe_from_stream;
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::{DenyUnsafe, UnsafeRpcError};
 use sc_utils::mpsc::TracingUnboundedSender;
+use schnellru::{ByLength, LruMap};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -53,7 +53,6 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -231,7 +230,7 @@ where
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     #[allow(clippy::type_complexity)]
     solution_response_senders:
-        Arc<Mutex<LruCache<SlotNumber, mpsc::Sender<Solution<PublicKey, PublicKey>>>>>,
+        Arc<Mutex<LruMap<SlotNumber, mpsc::Sender<Solution<PublicKey, PublicKey>>>>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -278,8 +277,8 @@ where
         let block_authoring_delay = u64::from(chain_constants.block_authoring_delay());
         let block_authoring_delay = usize::try_from(block_authoring_delay)
             .expect("Block authoring delay will never exceed usize on any platform; qed");
-        let solution_response_senders_capacity =
-            NonZeroUsize::try_from(block_authoring_delay).unwrap_or(NonZeroUsize::MIN);
+        let solution_response_senders_capacity = u32::try_from(block_authoring_delay)
+            .expect("Always a tiny constant in the protocol; qed");
 
         Ok(Self {
             client: config.client,
@@ -287,9 +286,9 @@ where
             new_slot_notification_stream: config.new_slot_notification_stream,
             reward_signing_notification_stream: config.reward_signing_notification_stream,
             archived_segment_notification_stream: config.archived_segment_notification_stream,
-            solution_response_senders: Arc::new(Mutex::new(LruCache::new(
+            solution_response_senders: Arc::new(Mutex::new(LruMap::new(ByLength::new(
                 solution_response_senders_capacity,
-            ))),
+            )))),
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
             segment_headers_store: config.segment_headers_store,
@@ -400,7 +399,7 @@ where
                     let (response_sender, mut response_receiver) =
                         mpsc::channel(SOLUTION_SENDER_CHANNEL_CAPACITY);
 
-                    solution_response_senders.push(slot_number, response_sender);
+                    solution_response_senders.insert(slot_number, response_sender);
 
                     // Wait for solutions and transform proposed proof of space solutions
                     // into data structure `sc-consensus-subspace` expects

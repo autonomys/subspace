@@ -259,7 +259,7 @@ pub(super) fn compute_f1_simd<const K: u8>(
 
 /// `rmap_scratch` is just an optimization to reuse allocations between calls.
 ///
-/// For verification purposes use [`num_matches`] instead.
+/// For verification purposes use [`has_match`] instead.
 ///
 /// Returns `None` if either of buckets is empty.
 fn find_matches<'a>(
@@ -326,20 +326,19 @@ fn find_matches<'a>(
 }
 
 /// Simplified version of [`find_matches`] for verification purposes.
-pub(super) fn num_matches(left_y: Y, right_y: Y) -> usize {
+pub(super) fn has_match(left_y: Y, right_y: Y) -> bool {
     let right_r = usize::from(right_y) % usize::from(PARAM_BC);
     let parity = (usize::from(left_y) / usize::from(PARAM_BC)) % 2;
     let left_r = usize::from(left_y) % usize::from(PARAM_BC);
 
-    let mut matches = 0;
     for m in 0..usize::from(PARAM_M) {
         let r_target = calculate_left_target_on_demand(parity, left_r, m);
         if r_target == right_r {
-            matches += 1;
+            return true;
         }
     }
 
-    matches
+    false
 }
 
 pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(

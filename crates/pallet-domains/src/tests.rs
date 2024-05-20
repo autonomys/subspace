@@ -292,6 +292,7 @@ impl pallet_domains::Config for Test {
     type BundleLongevity = BundleLongevity;
     type ConsensusSlotProbability = SlotProbability;
     type DomainBundleSubmitted = ();
+    type OnDomainInstantiated = ();
     type Balance = Balance;
 }
 
@@ -1280,7 +1281,7 @@ fn test_invalid_domain_block_hash_fraud_proof() {
 fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
     digest: Digest,
 ) -> (T::Hash, StorageProof) {
-    let digest_storage_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
+    let digest_storage_key = sp_domains::system_digest_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
