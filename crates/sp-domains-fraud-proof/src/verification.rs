@@ -658,6 +658,5 @@ where
             }
             Ok(())
         }
-        InvalidBundleType::InvalidXDM(_) => Err(VerificationError::InvalidProof),
     }
 }

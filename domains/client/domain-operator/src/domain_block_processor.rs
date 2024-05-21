@@ -654,7 +654,7 @@ where
                 Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
                 // If both the `local_invalid_type` and `external_invalid_type` point to the same extrinsic,
                 // the extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
-                // can be `OutOfRangeTx` and `InvalidXDM` at the same time) thus use the checking order and
+                // can be `OutOfRangeTx` and `IllegalTx` at the same time) thus use the checking order and
                 // consider the first check as the mismatch.
                 Ordering::Equal => match local_invalid_type
                     .checking_order()
