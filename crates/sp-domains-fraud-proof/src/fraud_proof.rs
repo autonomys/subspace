@@ -1,7 +1,6 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::verification::InvalidBundleEquivocationError;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
@@ -13,7 +12,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
     BundleValidity, DomainId, ExecutionReceiptFor, ExtrinsicDigest, HeaderHashFor,
-    HeaderHashingFor, InvalidBundleType, OperatorId, SealedBundleHeader,
+    HeaderHashingFor, InvalidBundleType, SealedBundleHeader,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
@@ -402,24 +401,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is decodable or not")
     )]
     FailedToCheckExtrinsicDecodable,
-    /// Invalid bundle equivocation fraud proof.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Invalid bundle equivocation fraud proof: {0}")
-    )]
-    InvalidBundleEquivocationFraudProof(InvalidBundleEquivocationError),
     /// Failed to check extrinsics in single context
     #[cfg_attr(
         feature = "thiserror",
         error("Failed to check extrinsics in single context")
     )]
     FailedToCheckExtrinsicsInSingleContext,
-}
-
-impl<DomainHash> From<InvalidBundleEquivocationError> for VerificationError<DomainHash> {
-    fn from(err: InvalidBundleEquivocationError) -> Self {
-        Self::InvalidBundleEquivocationFraudProof(err)
-    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -456,10 +443,9 @@ impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
 #[derive(Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
+pub enum FraudProof<DomainHeader: HeaderT> {
     InvalidStateTransition(InvalidStateTransitionProof<HeaderHashFor<DomainHeader>>),
     InvalidTransaction(InvalidTransactionProof<HeaderHashFor<DomainHeader>>),
-    BundleEquivocation(BundleEquivocationProof<Number, Hash, DomainHeader>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof<HeaderHashFor<DomainHeader>>),
     InvalidBlockFees(InvalidBlockFeesProof<HeaderHashFor<DomainHeader>>),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
@@ -480,12 +466,11 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     },
 }
 
-impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader> {
+impl<DomainHeader: HeaderT> FraudProof<DomainHeader> {
     pub fn domain_id(&self) -> DomainId {
         match self {
             Self::InvalidStateTransition(proof) => proof.domain_id,
             Self::InvalidTransaction(proof) => proof.domain_id,
-            Self::BundleEquivocation(proof) => proof.domain_id,
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
@@ -503,7 +488,6 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::InvalidStateTransition(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidTransaction(proof) => Some(proof.bad_receipt_hash),
             Self::ImproperTransactionSortition(proof) => Some(proof.bad_receipt_hash),
-            Self::BundleEquivocation(_) => None,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy {
                 bad_receipt_hash, ..
@@ -517,23 +501,11 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
         }
     }
 
-    pub fn targeted_bad_operator_and_slot_for_bundle_equivocation(
-        &self,
-    ) -> Option<(OperatorId, Slot)> {
-        match self {
-            Self::BundleEquivocation(proof) => Some((
-                proof.first_header.header.proof_of_election.operator_id,
-                proof.slot,
-            )),
-            _ => None,
-        }
-    }
-
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy_fraud_proof(
         domain_id: DomainId,
         bad_receipt_hash: HeaderHashFor<DomainHeader>,
-    ) -> FraudProof<Number, Hash, DomainHeader> {
+    ) -> FraudProof<DomainHeader> {
         FraudProof::Dummy {
             domain_id,
             bad_receipt_hash,
@@ -541,21 +513,16 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
     }
 }
 
-impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
-where
-    Number: Encode,
-    Hash: Encode,
-{
+impl<DomainHeader: HeaderT> FraudProof<DomainHeader> {
     pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
         HeaderHashingFor::<DomainHeader>::hash(&self.encode())
     }
 }
 
-impl<Number, Hash, DomainHeader: HeaderT> fmt::Debug for FraudProof<Number, Hash, DomainHeader> {
+impl<DomainHeader: HeaderT> fmt::Debug for FraudProof<DomainHeader> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let domain_id = self.domain_id();
         let bad_receipt_hash = self.targeted_bad_receipt_hash();
-        let bad_operator = self.targeted_bad_operator_and_slot_for_bundle_equivocation();
         match self {
             Self::InvalidStateTransition(_) => {
                 write!(
@@ -573,12 +540,6 @@ impl<Number, Hash, DomainHeader: HeaderT> fmt::Debug for FraudProof<Number, Hash
                 write!(
                     f,
                     "ImproperTransactionSortitionFraudProof({domain_id:?}#{bad_receipt_hash:?})"
-                )
-            }
-            Self::BundleEquivocation(_) => {
-                write!(
-                    f,
-                    "BundleEquivocationFraudProof({domain_id:?}#{bad_operator:?})"
                 )
             }
             Self::InvalidExtrinsicsRoot(_) => {

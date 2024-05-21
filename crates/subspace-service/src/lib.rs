@@ -565,7 +565,6 @@ where
         config.prometheus_registry(),
         &task_manager,
         client.clone(),
-        sync_target_block_number.clone(),
     )?;
 
     let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {

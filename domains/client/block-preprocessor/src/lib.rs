@@ -18,7 +18,7 @@ use crate::inherents::is_runtime_upgraded;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use sc_client_api::BlockBackend;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -295,21 +295,6 @@ where
                 return Ok(BundleValidity::Invalid(
                     InvalidBundleType::InherentExtrinsic(index as u32),
                 ));
-            }
-
-            // TODO: remove version check before next network
-            let messenger_api_version = runtime_api
-                .api_version::<dyn MessengerApi<Block>>(at)?
-                // safe to return default version as 1 since there will always be version 1.
-                .unwrap_or(1);
-
-            if messenger_api_version >= 2 {
-                // check if the extrinsic is an XDM and is valid
-                if let Some(false) = runtime_api.is_xdm_valid(at, extrinsic.encode())? {
-                    return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
-                        index as u32,
-                    )));
-                }
             }
 
             // Using one instance of runtime_api throughout the loop in order to maintain context

@@ -1355,14 +1355,14 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<DomainHeader>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn extract_fraud_proofs(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+        ) -> Vec<FraudProof<DomainHeader>> {
             crate::domains::extract_fraud_proofs(domain_id, extrinsics)
         }
 

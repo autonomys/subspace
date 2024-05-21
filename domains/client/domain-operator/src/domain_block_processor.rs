@@ -654,7 +654,7 @@ where
                 Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
                 // If both the `local_invalid_type` and `external_invalid_type` point to the same extrinsic,
                 // the extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
-                // can be `OutOfRangeTx` and `InvalidXDM` at the same time) thus use the checking order and
+                // can be `OutOfRangeTx` and `IllegalTx` at the same time) thus use the checking order and
                 // consider the first check as the mismatch.
                 Ordering::Equal => match local_invalid_type
                     .checking_order()
@@ -853,7 +853,7 @@ where
     pub fn generate_fraud_proof(
         &self,
         mismatched_receipts: MismatchedReceipts<Block, CBlock>,
-    ) -> sp_blockchain::Result<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header>> {
+    ) -> sp_blockchain::Result<FraudProof<Block::Header>> {
         let MismatchedReceipts {
             local_receipt,
             bad_receipt,
@@ -1172,12 +1172,17 @@ mod tests {
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::InvalidXDM(3)),
+                mismatch_type: BundleMismatchType::FalseInvalid(
+                    InvalidBundleType::InherentExtrinsic(3)
+                ),
                 bundle_index: 1,
             })
         );
@@ -1186,7 +1191,10 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(Default::default(), Default::default()),
@@ -1195,7 +1203,9 @@ mod tests {
             )
             .unwrap(),
             Some(InboxedBundleMismatchInfo {
-                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::InvalidXDM(3)),
+                mismatch_type: BundleMismatchType::TrueInvalid(
+                    InvalidBundleType::InherentExtrinsic(3)
+                ),
                 bundle_index: 1,
             })
         );
@@ -1205,7 +1215,10 @@ mod tests {
             find_inboxed_bundles_mismatch::<Block, CBlock>(
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(H256::random(), Default::default()),
-                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                    InboxedBundle::invalid(
+                        InvalidBundleType::InherentExtrinsic(3),
+                        Default::default()
+                    ),
                 ]),
                 &create_test_execution_receipt(vec![
                     InboxedBundle::valid(H256::random(), Default::default()),

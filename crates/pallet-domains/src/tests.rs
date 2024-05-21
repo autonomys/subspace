@@ -970,14 +970,11 @@ fn test_invalid_block_fees_fraud_proof() {
     });
 }
 
-type FraudProofFor<T> =
-    FraudProof<BlockNumberFor<T>, <T as frame_system::Config>::Hash, <T as Config>::DomainHeader>;
-
 fn generate_invalid_block_fees_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHashFor<T>,
     block_fees: sp_domains::BlockFees<BalanceOf<T>>,
-) -> (FraudProofFor<T>, T::Hash) {
+) -> (FraudProof<<T as Config>::DomainHeader>, T::Hash) {
     let storage_key = sp_domains::operator_block_fees_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
@@ -1074,7 +1071,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHashFor<T>,
-) -> FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader> {
+) -> FraudProof<T::DomainHeader> {
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
@@ -1228,7 +1225,7 @@ fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
     bundle_extrinsic_index: u32,
     bundle_extrinsics: Vec<Vec<u8>>,
     is_true_invalid_fraud_proof: bool,
-) -> FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader> {
+) -> FraudProof<T::DomainHeader> {
     let extrinsic_inclusion_proof =
         StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
             bundle_extrinsics.as_slice(),

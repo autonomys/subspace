@@ -21,7 +21,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::LayoutV1;
 use std::marker::PhantomData;
@@ -92,9 +92,6 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
-type FraudProofFor<CBlock, DomainHeader> =
-    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader>;
-
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
@@ -138,7 +135,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let key = sp_domains::operator_block_fees_final_key();
         let proof = self
@@ -156,7 +153,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let runtime_api = self.client.runtime_api();
         let key = runtime_api.transfers_storage_key(block_hash)?;
@@ -175,7 +172,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let digest_key = sp_domains::system_digest_final_key();
         let digest_storage_proof = self
@@ -197,7 +194,7 @@ where
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
             .consensus_client
@@ -335,7 +332,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
             .consensus_client
@@ -407,7 +404,7 @@ where
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_trace_length: usize,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+    ) -> Result<FraudProof<Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let block_number = local_receipt.domain_block_number;
         let header = self.header(block_hash)?;
