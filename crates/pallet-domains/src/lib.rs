@@ -37,6 +37,9 @@ extern crate alloc;
 use crate::block_tree::verify_execution_receipt;
 use crate::bundle_storage_fund::storage_fund_account;
 use crate::domain_registry::Error as DomainRegistryError;
+use crate::runtime_registry::into_complete_raw_genesis;
+#[cfg(feature = "runtime-benchmarks")]
+pub use crate::staking::do_register_operator;
 use crate::staking::OperatorStatus;
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
@@ -69,8 +72,8 @@ use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidBlockFeesProof, InvalidDomainBlockHashProof,
 };
 use sp_domains_fraud_proof::verification::{
-    verify_bundle_equivocation_fraud_proof, verify_invalid_block_fees_fraud_proof,
-    verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
+    verify_invalid_block_fees_fraud_proof, verify_invalid_bundles_fraud_proof,
+    verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_transfers_fraud_proof, verify_valid_bundle_fraud_proof,
 };
@@ -79,7 +82,6 @@ use sp_runtime::transaction_validity::TransactionPriority;
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
-use subspace_runtime_primitives::Balance;
 
 pub(crate) type BalanceOf<T> = <T as Config>::Balance;
 
@@ -124,12 +126,6 @@ pub(crate) struct ElectionVerificationParams<Balance> {
     total_domain_stake: Balance,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub(crate) enum FraudProofTag {
-    BadER(DomainId),
-    BundleEquivocation(OperatorId),
-}
-
 pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Number;
 pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
@@ -169,15 +165,16 @@ mod pallet {
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
-        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
-        ScheduledRuntimeUpgrade,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_reward_operators;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::staking::do_slash_operators;
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit, DomainEpoch,
-        Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
+        do_deregister_operator, do_nominate_operator, do_register_operator, do_unlock_funds,
+        do_unlock_operator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
+        Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
@@ -202,13 +199,13 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
-    use sp_consensus_slots::Slot;
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        OperatorPublicKey, RuntimeId, RuntimeType,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnDomainInstantiated,
+        OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
+        RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -389,6 +386,9 @@ mod pallet {
 
         /// Post hook to notify accepted domain bundles in previous block.
         type DomainBundleSubmitted: DomainBundleSubmitted;
+
+        /// A hook to call after a domain is instantiated
+        type OnDomainInstantiated: OnDomainInstantiated;
     }
 
     #[pallet::pallet]
@@ -398,7 +398,7 @@ mod pallet {
 
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
-    pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
+    pub type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
     /// Fraud proofs submitted successfully in current block.
     #[pallet::storage]
@@ -425,7 +425,7 @@ mod pallet {
     pub(super) type NextEVMChainId<T> = StorageValue<_, EVMChainId, ValueQuery, StartingEVMChainId>;
 
     #[pallet::storage]
-    pub(super) type RuntimeRegistry<T: Config> =
+    pub type RuntimeRegistry<T: Config> =
         StorageMap<_, Identity, RuntimeId, RuntimeObject<BlockNumberFor<T>, T::Hash>, OptionQuery>;
 
     #[pallet::storage]
@@ -528,6 +528,7 @@ mod pallet {
 
     /// Stores the next domain id.
     #[pallet::storage]
+    #[pallet::getter(fn next_domain_id)]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
 
     /// The domain registry
@@ -719,8 +720,6 @@ mod pallet {
         MissingOperator,
         /// Unexpected fraud proof.
         UnexpectedFraudProof,
-        /// Bad/Invalid bundle equivocation fraud proof.
-        BadBundleEquivocationFraudProof,
         /// The bad receipt already reported by a previous fraud proof
         BadReceiptAlreadyReported,
     }
@@ -803,8 +802,6 @@ mod pallet {
         InvalidBundle(DomainBlock),
         /// Operator submitted bad Execution receipt.
         BadExecutionReceipt(ReceiptHash),
-        /// Operator caused Bundle equivocation
-        BundleEquivocation(Slot),
     }
 
     #[pallet::event]
@@ -1086,13 +1083,17 @@ mod pallet {
         ))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
+            fraud_proof: Box<FraudProof<T::DomainHeader>>,
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
             let domain_id = fraud_proof.domain_id();
+
+            #[cfg(not(feature = "runtime-benchmarks"))]
             let mut actual_weight = T::WeightInfo::submit_fraud_proof();
+            #[cfg(feature = "runtime-benchmarks")]
+            let actual_weight = T::WeightInfo::submit_fraud_proof();
 
             if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
                 let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
@@ -1140,21 +1141,6 @@ mod pallet {
                     domain_id,
                     new_head_receipt_number: Some(new_head_receipt_number),
                 });
-            } else if let Some((targeted_bad_operator, slot)) =
-                fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
-            {
-                Self::deposit_event(Event::FraudProofProcessed {
-                    domain_id,
-                    new_head_receipt_number: None,
-                });
-
-                do_slash_operators::<T>(
-                    vec![targeted_bad_operator].into_iter(),
-                    SlashedReason::BundleEquivocation(slot),
-                )
-                .map_err(Error::<T>::from)?;
-
-                actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(1));
             }
 
             SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
@@ -1221,12 +1207,18 @@ mod pallet {
             domain_id: DomainId,
             amount: BalanceOf<T>,
             config: OperatorConfig<BalanceOf<T>>,
+            signing_key_proof_of_ownership: OperatorSignature,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
-            let (operator_id, current_epoch_index) =
-                do_register_operator::<T>(owner, domain_id, amount, config)
-                    .map_err(Error::<T>::from)?;
+            let (operator_id, current_epoch_index) = do_register_operator::<T>(
+                owner,
+                domain_id,
+                amount,
+                config,
+                Some(signing_key_proof_of_ownership),
+            )
+            .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
@@ -1486,6 +1478,8 @@ mod pallet {
                         domain_id,
                         operator_stake,
                         operator_config,
+                        // safe to not check the signing key ownership during genesis
+                        None,
                     )
                     .expect("Genesis operator registration must succeed");
 
@@ -1661,14 +1655,14 @@ impl<T: Config> Pallet<T> {
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
         let total_issuance = domain_obj.domain_config.total_issuance()?;
-        let raw_genesis = runtime_object
-            .into_complete_raw_genesis::<T>(
-                domain_id,
-                domain_obj.domain_runtime_info,
-                total_issuance,
-                domain_obj.domain_config.initial_balances,
-            )
-            .ok()?;
+        let raw_genesis = into_complete_raw_genesis::<T>(
+            runtime_object,
+            domain_id,
+            domain_obj.domain_runtime_info,
+            total_issuance,
+            domain_obj.domain_config.initial_balances,
+        )
+        .ok()?;
         Some((
             DomainInstanceData {
                 runtime_type,
@@ -1803,6 +1797,8 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    // TODO: as bundle equivocation fraud proof is removed, add check to rejected bundle with the
+    // same `(operator_id, slot)`
     fn validate_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
         pre_dispatch: bool,
@@ -1875,8 +1871,8 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_fraud_proof(
-        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
-    ) -> Result<(FraudProofTag, TransactionPriority), FraudProofError> {
+        fraud_proof: &FraudProof<T::DomainHeader>,
+    ) -> Result<(DomainId, TransactionPriority), FraudProofError> {
         let tag_and_priority = if let Some(bad_receipt_hash) =
             fraud_proof.targeted_bad_receipt_hash()
         {
@@ -2035,43 +2031,7 @@ impl<T: Config> Pallet<T> {
 
             // Use the domain id as tag thus the consensus node only accept one fraud proof for a
             // specific domain at a time
-            let tag = FraudProofTag::BadER(fraud_proof.domain_id());
-
-            (tag, priority)
-        } else if let Some((bad_operator_id, _)) =
-            fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
-        {
-            let operator =
-                Operators::<T>::get(bad_operator_id).ok_or(FraudProofError::MissingOperator)?;
-            match fraud_proof {
-                FraudProof::BundleEquivocation(proof) => {
-                    let operator_signing_key = operator.signing_key;
-                    verify_bundle_equivocation_fraud_proof::<T::Block, T::DomainHeader, Balance>(
-                        &operator_signing_key,
-                        &proof.first_header,
-                        &proof.second_header,
-                    )
-                    .map_err(|err| {
-                        log::error!(
-                            target: "runtime::domains",
-                            "Bundle equivocation proof verification failed: {err:?}"
-                        );
-                        FraudProofError::BadBundleEquivocationFraudProof
-                    })?;
-                }
-
-                _ => return Err(FraudProofError::UnexpectedFraudProof),
-            }
-
-            // Bundle equivocation fraud proof doesn't target bad ER thus we give it the lowest priority
-            // compared to other fraud proofs
-            let priority = TransactionPriority::MAX
-                - T::BlockTreePruningDepth::get().saturated_into::<u64>()
-                - 1;
-
-            // Use the operator id as tag thus the consensus node only accept one bundle equivacotion fraud proof
-            // for a specific operator at a time
-            let tag = FraudProofTag::BundleEquivocation(bad_operator_id);
+            let tag = fraud_proof.domain_id();
 
             (tag, priority)
         } else {
@@ -2336,9 +2296,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(
-        fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
-    ) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::DomainHeader>) {
         let call = Call::submit_fraud_proof {
             fraud_proof: Box::new(fraud_proof),
         };

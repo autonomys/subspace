@@ -532,6 +532,7 @@ impl NatsClient {
             .client()
             .subscribe(stream_request.response_subject.clone())
             .await?;
+        debug!(request_type = %type_name::<Request>(), ?subscriber, "Stream request subscription");
 
         self.client()
             .publish(
@@ -604,6 +605,12 @@ impl NatsClient {
                 return;
             }
         };
+        debug!(
+            request_type = %type_name::<Request>(),
+            response_type = %type_name::<Request::Response>(),
+            ?ack_subscription,
+            "Ack subscription subscription"
+        );
         let mut index = 0;
 
         loop {
@@ -830,16 +837,24 @@ impl NatsClient {
     where
         Message: Decode,
     {
+        let subscriber = if let Some(queue_group) = queue_group {
+            self.client()
+                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
+                .await?
+        } else {
+            self.client()
+                .subscribe(subject_with_instance(subject, instance))
+                .await?
+        };
+        debug!(
+            %subject,
+            message_type = %type_name::<Message>(),
+            ?subscriber,
+            "Simple subscription"
+        );
+
         Ok(SubscriberWrapper {
-            subscriber: if let Some(queue_group) = queue_group {
-                self.client()
-                    .queue_subscribe(subject_with_instance(subject, instance), queue_group)
-                    .await?
-            } else {
-                self.client()
-                    .subscribe(subject_with_instance(subject, instance))
-                    .await?
-            },
+            subscriber,
             _phantom: PhantomData,
         })
     }

@@ -3,11 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use lru::LruCache;
 use parking_lot::Mutex;
+use schnellru::{ByLength, LruMap};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
 
@@ -26,14 +26,14 @@ struct CacheValue {
 #[derive(Debug, Clone)]
 pub struct PotVerifier {
     genesis_seed: PotSeed,
-    cache: Arc<Mutex<LruCache<CacheKey, CacheValue>>>,
+    cache: Arc<Mutex<LruMap<CacheKey, CacheValue>>>,
 }
 
 impl PotVerifier {
-    pub fn new(genesis_seed: PotSeed, cache_size: NonZeroUsize) -> Self {
+    pub fn new(genesis_seed: PotSeed, cache_size: u32) -> Self {
         Self {
             genesis_seed,
-            cache: Arc::new(Mutex::new(LruCache::new(cache_size))),
+            cache: Arc::new(Mutex::new(LruMap::new(ByLength::new(cache_size)))),
         }
     }
 
@@ -44,7 +44,7 @@ impl PotVerifier {
         slot_iterations: NonZeroU32,
         checkpoints: PotCheckpoints,
     ) {
-        self.cache.lock().push(
+        self.cache.lock().insert(
             CacheKey {
                 seed,
                 slot_iterations,
@@ -196,7 +196,7 @@ impl PotVerifier {
                 .try_lock()
                 .expect("No one can access this mutex yet; qed");
             // Store pending verification entry in cache
-            cache.push(cache_key, cache_value);
+            cache.insert(cache_key, cache_value);
             // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
@@ -207,13 +207,13 @@ impl PotVerifier {
                 drop(checkpoints);
 
                 // Proving failed, remove pending entry from cache such that retries can happen
-                let maybe_removed_cache_value = self.cache.lock().pop(&cache_key);
+                let maybe_removed_cache_value = self.cache.lock().remove(&cache_key);
                 if let Some(removed_cache_value) = maybe_removed_cache_value {
                     // It is possible that we have removed a verified value that we have not
                     // inserted, check for this and restore if that was the case
                     let removed_verified_value = removed_cache_value.checkpoints.lock().is_some();
                     if removed_verified_value {
-                        self.cache.lock().push(cache_key, removed_cache_value);
+                        self.cache.lock().insert(cache_key, removed_cache_value);
                     }
                 }
                 return None;
@@ -267,7 +267,7 @@ impl PotVerifier {
                 .try_lock()
                 .expect("No one can access this mutex yet; qed");
             // Store pending verification entry in cache
-            cache.push(cache_key, cache_value);
+            cache.insert(cache_key, cache_value);
             // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
@@ -280,13 +280,13 @@ impl PotVerifier {
                 drop(correct_checkpoints);
 
                 // Verification failed, remove pending entry from cache such that retries can happen
-                let maybe_removed_cache_value = self.cache.lock().pop(&cache_key);
+                let maybe_removed_cache_value = self.cache.lock().remove(&cache_key);
                 if let Some(removed_cache_value) = maybe_removed_cache_value {
                     // It is possible that we have removed a verified value that we have not
                     // inserted, check for this and restore if that was the case
                     let removed_verified_value = removed_cache_value.checkpoints.lock().is_some();
                     if removed_verified_value {
-                        self.cache.lock().push(cache_key, removed_cache_value);
+                        self.cache.lock().insert(cache_key, removed_cache_value);
                     }
                 }
                 return false;

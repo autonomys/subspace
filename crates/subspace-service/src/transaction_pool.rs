@@ -1,26 +1,22 @@
 use async_trait::async_trait;
-use futures::future::{Future, FutureExt, Ready};
+use futures::future::{Future, Ready};
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, UsageProvider};
 use sc_service::{TaskManager, TransactionPoolOptions};
-use sc_transaction_pool::error::{Error as TxPoolError, Result as TxPoolResult};
+use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool::{
     BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction, ValidatedTransaction,
 };
 use sc_transaction_pool_api::{
     ChainEvent, ImportNotificationStream, LocalTransactionPool, MaintainedTransactionPool,
-    OffchainTransactionPoolFactory, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
-    TransactionPool, TransactionSource, TransactionStatusStreamFor, TxHash,
+    PoolFuture, PoolStatus, ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
+    TransactionStatusStreamFor, TxHash,
 };
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
-use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainsApi;
-use sp_domains_fraud_proof::bundle_equivocation::check_equivocation;
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_domains_fraud_proof::{FraudProofApi, InvalidTransactionCode};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
@@ -29,12 +25,8 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
-use tracing::log::error;
 
 /// Block hash type for a pool.
 type BlockHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
@@ -62,10 +54,6 @@ pub type BlockExtrinsicOf<Block> = <Block as BlockT>::Extrinsic;
 pub struct FullChainApiWrapper<Client, Block: BlockT, DomainHeader: HeaderT> {
     inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
-    sync_target_block_number: Arc<AtomicU32>,
-    chain_constants: ChainConstants,
-    fraud_proof_submit_sink:
-        UnboundedSender<FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>>,
     marker: PhantomData<DomainHeader>,
 }
 
@@ -87,14 +75,7 @@ where
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
         task_manager: &TaskManager,
-        sync_target_block_number: Arc<AtomicU32>,
-        fraud_proof_submit_sink: UnboundedSender<
-            FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>,
-        >,
     ) -> sp_blockchain::Result<Self> {
-        let chain_constants = client
-            .runtime_api()
-            .chain_constants(client.info().best_hash)?;
         Ok(Self {
             inner: Arc::new(FullChainApi::new(
                 client.clone(),
@@ -102,9 +83,6 @@ where
                 &task_manager.spawn_essential_handle(),
             )),
             client,
-            sync_target_block_number,
-            chain_constants,
-            fraud_proof_submit_sink,
             marker: Default::default(),
         })
     }
@@ -150,76 +128,10 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let chain_api = self.inner.clone();
-        let client = self.client.clone();
-        let best_block_number = TryInto::<u32>::try_into(client.info().best_number)
-            .expect("Block number will always fit into u32; qed");
-        let diff_in_blocks = self
-            .sync_target_block_number
-            .load(Ordering::Relaxed)
-            .saturating_sub(best_block_number);
-        let slot_probability = self.chain_constants.slot_probability();
-        let fraud_proof_submit_sink = self.fraud_proof_submit_sink.clone();
-        async move {
-            // TODO: after https://github.com/paritytech/polkadot-sdk/issues/3705 is resolved, check if
-            // there is already a fraud proof with the same tag and higher priority in the tx pool, if so
-            // drop the incoming fraud proof before validating it.
-
-            let uxt_validity = chain_api
-                .validate_transaction(at, source, uxt.clone())
-                .await?;
-
-            if uxt_validity.is_ok() {
-                // Transaction is successfully validated.
-                // If the transaction is `submit_bundle`, then extract the bundle
-                // and check for equivocation.
-                let runtime_api = client.runtime_api();
-                let maybe_opaque_bundle = runtime_api
-                    .extract_bundle(at, uxt)
-                    .map_err(|err| TxPoolError::RuntimeApi(err.to_string()))?;
-                if let Some(opaque_bundle) = maybe_opaque_bundle {
-                    let slot = opaque_bundle
-                        .sealed_header
-                        .header
-                        .proof_of_election
-                        .slot_number
-                        .into();
-
-                    let slot_now = if diff_in_blocks > 0 {
-                        slot + Slot::from(
-                            u64::from(diff_in_blocks) * slot_probability.1 / slot_probability.0,
-                        )
-                    } else {
-                        slot
-                    };
-
-                    let maybe_equivocation_fraud_proof = check_equivocation::<_, Block, _>(
-                        &client,
-                        slot_now,
-                        opaque_bundle.sealed_header,
-                    )?;
-
-                    if let Some(equivocation_fraud_proof) = maybe_equivocation_fraud_proof {
-                        let sent_result = fraud_proof_submit_sink.send(equivocation_fraud_proof);
-                        if let Err(err) = sent_result {
-                            error!(
-                                target: "consensus-fraud-proof-sender",
-                                "failed to send fraud proof to be submitted: {err:?}"
-                            );
-                        }
-
-                        return Err(TxPoolError::Pool(
-                            sc_transaction_pool_api::error::Error::InvalidTransaction(
-                                InvalidTransactionCode::BundleEquivocation.into(),
-                            ),
-                        ));
-                    }
-                }
-            }
-
-            Ok(uxt_validity)
-        }
-        .boxed()
+        // TODO: after https://github.com/paritytech/polkadot-sdk/issues/3705 is resolved, check if
+        // there is already a fraud proof with the same tag and higher priority in the tx pool, if so
+        // drop the incoming fraud proof before validating it.
+        self.inner.validate_transaction(at, source, uxt.clone())
     }
 
     fn block_id_to_number(
@@ -324,7 +236,6 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + FraudProofApi<Block, DomainHeader>
         + DomainsApi<Block, DomainHeader>,
 {
     type Block = Block;
@@ -460,7 +371,6 @@ pub fn new_full<Client, Block, DomainHeader>(
     prometheus_registry: Option<&PrometheusRegistry>,
     task_manager: &TaskManager,
     client: Arc<Client>,
-    sync_target_block_number: Arc<AtomicU32>,
 ) -> sp_blockchain::Result<Arc<FullPool<Client, Block, DomainHeader>>>
 where
     Block: BlockT,
@@ -479,16 +389,12 @@ where
     DomainHeader: HeaderT,
     Client::Api: TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + FraudProofApi<Block, DomainHeader>
         + DomainsApi<Block, DomainHeader>,
 {
-    let (fraud_proof_submit_sink, mut fraud_proof_submit_stream) = mpsc::unbounded_channel();
     let pool_api = Arc::new(FullChainApiWrapper::new(
         client.clone(),
         prometheus_registry,
         task_manager,
-        sync_target_block_number,
-        fraud_proof_submit_sink,
     )?);
 
     let basic_pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
@@ -499,38 +405,6 @@ where
         task_manager.spawn_essential_handle(),
         client.clone(),
     ));
-
-    let offchain_tx_pool_factory = OffchainTransactionPoolFactory::new(basic_pool.clone());
-
-    // run a separate task to submit fraud proof since chain api cannot depend on Basic pool since
-    // Basic pool would require chain api to be instantiated first.
-    // Ofcourse, there are other approaches that inject this into chain Api but it feels more like
-    // a hack and prefer to run a separate task that submits the fraud proof when equivocation is detected
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking(
-            "consensus-fraud-proof-submitter",
-            None,
-            Box::pin(async move {
-                loop {
-                    if let Some(fraud_proof) = fraud_proof_submit_stream.recv().await {
-                        let mut runtime_api = client.runtime_api();
-                        let best_hash = client.info().best_hash;
-                        runtime_api.register_extension(
-                            offchain_tx_pool_factory.offchain_transaction_pool(best_hash),
-                        );
-                        let result =
-                            runtime_api.submit_fraud_proof_unsigned(best_hash, fraud_proof);
-                        if let Err(err) = result {
-                            error!(
-                                target: "consensus-fraud-proof-submitter",
-                                "failed to submit fraud proof: {err:?}"
-                            );
-                        }
-                    }
-                }
-            }),
-        );
 
     Ok(basic_pool)
 }

@@ -1504,7 +1504,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_invalid_xdm_proof_creation_and_verification() {
+async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -1626,7 +1626,7 @@ async fn test_invalid_xdm_proof_creation_and_verification() {
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
@@ -1927,122 +1927,6 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(!proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 1);
-                return true;
-            }
-        }
-        false
-    });
-
-    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
-    // be added to the consensus chain block tree
-    produce_block_with!(
-        ferdie.produce_block_with_slot_at(
-            slot,
-            ferdie.client.info().best_hash,
-            Some(vec![bad_submit_bundle_tx])
-        ),
-        alice
-    )
-    .await
-    .unwrap();
-    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
-
-    let _ = wait_for_fraud_proof_fut.await;
-
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // and executed, thus pruned the bad receipt from the block tree
-    ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_false_invalid_xdm_extrinsic_proof_creation_and_verification() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
-        )
-        .into()
-    };
-
-    produce_blocks!(ferdie, alice, 5).await.unwrap();
-
-    // transfer some balance from alice
-    let alice_balance = alice.free_balance(Alice.to_account_id());
-    let alice_nonce = alice.account_nonce();
-
-    let transfer_to_charlie_with_tip = alice.construct_extrinsic_with_tip(
-        alice_nonce,
-        alice_balance / 3,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 1,
-        },
-    );
-
-    alice
-        .send_extrinsic(transfer_to_charlie_with_tip)
-        .await
-        .expect("Failed to send extrinsic");
-
-    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(target_bundle.extrinsics.len(), 1);
-    let bundle_extrinsic_root = target_bundle.extrinsics_root();
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-
-    // produce another bundle that marks the previous valid extrinsic as invalid.
-    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-
-    let (bad_receipt_hash, bad_submit_bundle_tx) = {
-        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        // bad receipt marks this particular bundle as invalid even though the call is not XDM
-        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
-            InvalidBundleType::InvalidXDM(0),
-            bundle_extrinsic_root,
-        )];
-
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
-        (
-            opaque_bundle.receipt().hash::<BlakeTwo256>(),
-            bundle_to_tx(opaque_bundle),
-        )
-    };
-
-    // Wait for the fraud proof that target the bad ER
-    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
-                assert!(!proof.is_true_invalid_fraud_proof);
-                assert_eq!(extrinsic_index, 0);
                 return true;
             }
         }
@@ -2462,97 +2346,6 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_bundle_equivocation_fraud_proof() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    produce_blocks!(ferdie, alice, 3).await.unwrap();
-
-    let bundle_to_tx = |opaque_bundle| {
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
-        )
-        .into()
-    };
-
-    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let original_submit_bundle_tx = bundle_to_tx(opaque_bundle.clone());
-
-    // Remove the original bundle submission and resubmit it again.
-    // This is done since when the bundle is submitted through offchain transaction submission
-    // the validation is skipped for local transactions and this bundle slot is not stored in the Aux storage
-    // so when we resubmit the transaction through `submit_transaction`, it will go through validation
-    // process and the first bundle after validating will go through the validation and Aux storage
-    // updated. When the equivocated bundle is submitted next, the Aux storage is used to check equivocation.
-    //
-    // In the production behaviour will not cause any issues, since we trust the local transactions
-    // and will only check equivocations for the transactions coming from the network.
-    ferdie
-        .prune_tx_from_pool(&original_submit_bundle_tx)
-        .await
-        .unwrap();
-    assert!(ferdie.get_bundle_from_tx_pool(slot).is_none());
-
-    ferdie
-        .submit_transaction(original_submit_bundle_tx)
-        .await
-        .unwrap();
-
-    // change the bundle contents such that we derive a new bundle
-    // with same slot and proof of election such that this leads to bundle equivocation.
-    let equivocated_bundle_tx = {
-        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.domain_block_extrinsic_root = Default::default();
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
-        bundle_to_tx(opaque_bundle)
-    };
-
-    let wait_for_fraud_proof_fut =
-        ferdie.wait_for_fraud_proof(move |fp| matches!(fp, FraudProof::BundleEquivocation(_)));
-
-    match ferdie
-        .submit_transaction(equivocated_bundle_tx)
-        .await
-        .unwrap_err()
-    {
-        sc_transaction_pool::error::Error::Pool(
-            sc_transaction_pool_api::error::Error::InvalidTransaction(_),
-        ) => {}
-        e => panic!("Unexpected error while submitting fraud proof: {e}"),
-    }
-
-    let _ = wait_for_fraud_proof_fut.await;
-
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
-    // on the runtime itself
-    ferdie.produce_blocks(1).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

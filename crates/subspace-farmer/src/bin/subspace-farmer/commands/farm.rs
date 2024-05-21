@@ -131,7 +131,7 @@ pub(crate) struct FarmingArgs {
     /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_encoding_concurrency: Option<NonZeroUsize>,
-    /// Defines how many record farmer will encode in a single sector concurrently, defaults to one
+    /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
@@ -184,7 +184,8 @@ pub(crate) struct FarmingArgs {
     #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
     /// Plotting thread priority, by default de-prioritizes plotting threads in order to make sure
-    /// farming is successful and computer can be used comfortably for other things
+    /// farming is successful and computer can be used comfortably for other things.  Can be set to
+    /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
     plotting_thread_priority: PlottingThreadPriority,
     /// Enable plot cache.

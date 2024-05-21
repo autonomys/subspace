@@ -30,6 +30,7 @@ use sp_domains::{
     OperatorId, OperatorPublicKey,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
 };
@@ -397,14 +398,18 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+        fn submit_fraud_proof_unsigned(_fraud_proof: FraudProof<DomainHeader>) {
             unreachable!()
         }
 
         fn extract_fraud_proofs(
             _domain_id: DomainId,
             _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+        ) -> Vec<FraudProof<DomainHeader>> {
+            unreachable!()
+        }
+
+        fn fraud_proof_storage_key(_req: FraudProofStorageKeyRequest) -> Vec<u8> {
             unreachable!()
         }
     }

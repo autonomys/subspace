@@ -44,7 +44,7 @@ pub(crate) fn extract_bundle(
 pub(crate) fn extract_fraud_proofs(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+) -> Vec<FraudProof<DomainHeader>> {
     let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
     extrinsics
         .into_iter()

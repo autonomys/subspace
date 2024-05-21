@@ -16,15 +16,15 @@
 
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(associated_type_defaults)]
 
-#[cfg(feature = "std")]
-pub mod bundle_equivocation;
 #[cfg(feature = "std")]
 pub mod execution_prover;
 pub mod fraud_proof;
 #[cfg(feature = "std")]
 mod host_functions;
 mod runtime_interface;
+pub mod storage_proof;
 #[cfg(test)]
 pub mod test_ethereum_tx;
 #[cfg(test)]
@@ -35,6 +35,7 @@ pub mod verification;
 extern crate alloc;
 
 use crate::fraud_proof::FraudProof;
+use crate::storage_proof::FraudProofStorageKeyRequest;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
@@ -48,7 +49,7 @@ pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::{DomainAllowlistUpdates, DomainId, OperatorId};
-use sp_runtime::traits::{Header as HeaderT, NumberFor};
+use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
@@ -60,12 +61,11 @@ use subspace_runtime_primitives::{Balance, Moment};
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
-    BundleEquivocation = 101,
-    TransactionProof = 102,
-    ExecutionReceipt = 103,
-    Bundle = 104,
-    FraudProof = 105,
-    BundleStorageFeePayment = 106,
+    TransactionProof = 101,
+    ExecutionReceipt = 102,
+    Bundle = 103,
+    FraudProof = 104,
+    BundleStorageFeePayment = 105,
 }
 
 impl From<InvalidTransactionCode> for InvalidTransaction {
@@ -397,12 +397,15 @@ sp_api::decl_runtime_apis! {
     /// API necessary for fraud proof.
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>);
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<DomainHeader>);
 
         /// Extract the fraud proof handled successfully from the given extrinsics.
         fn extract_fraud_proofs(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>>;
+        ) -> Vec<FraudProof<DomainHeader>>;
+
+        /// Reture the storage key used in fraud proof
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8>;
     }
 }
