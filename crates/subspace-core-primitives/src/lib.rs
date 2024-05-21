@@ -179,13 +179,13 @@ pub const fn solution_range_to_sectors(
 
 // Quick test to ensure functions above are the inverse of each other
 const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(1, (1, 1), 1000), (1, 1), 1000) == 1
+    solution_range_to_sectors(sectors_to_solution_range(1, (1, 6), 1000), (1, 6), 1000) == 1
 );
 const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(3, (1, 1), 1000), (1, 1), 1000) == 3
+    solution_range_to_sectors(sectors_to_solution_range(3, (1, 6), 1000), (1, 6), 1000) == 3
 );
 const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(5, (1, 1), 1000), (1, 1), 1000) == 5
+    solution_range_to_sectors(sectors_to_solution_range(5, (1, 6), 1000), (1, 6), 1000) == 5
 );
 
 /// BlockWeight type for fork choice rules.
