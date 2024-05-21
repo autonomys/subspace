@@ -207,7 +207,6 @@ where
         let (second_last_block_number, _) = blocks[blocks_in_last_segment - 2].clone();
         let last_block = blocks[blocks_in_last_segment - 1].clone();
         let last_block_number = last_block.0;
-        let last_block_bytes = last_block.1;
 
         // Raw import state block and download state.
         // Add the first block of the last segment as raw
@@ -276,24 +275,40 @@ where
 
         debug!("Started importing blocks from last segment.");
 
-        for (block_number, block_bytes) in blocks.into_iter() {
-            let current_block_number = NumberFor::<Block>::from(block_number);
+        let mut blocks_to_import = blocks
+            .into_iter()
+            .map(|(_block_number, block_bytes)| {
+                let (header, extrinsics, justifications) = Self::deconstruct_block(block_bytes)?;
 
-            // Skip the last block import. We'll import it later with execution.
-            if current_block_number == NumberFor::<Block>::from(last_block_number) {
-                break;
-            }
+                Ok(IncomingBlock {
+                    hash: header.hash(),
+                    header: Some(header),
+                    body: Some(extrinsics),
+                    indexed_body: None,
+                    justifications,
+                    origin: None,
+                    allow_missing_state: false,
+                    import_existing: false,
+                    skip_execution: false,
+                    state: None,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
-            self.import_deconstructed_block(
-                block_bytes,
-                current_block_number,
-                BlockOrigin::NetworkInitialSync,
-            )
-            .await?;
+        let block_to_import = blocks_to_import
+            .pop()
+            .expect("At least one block is present; qed");
+
+        if !blocks_to_import.is_empty() {
+            self.import_queue_service
+                .lock()
+                .await
+                .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
         }
 
         // Block import delay
         // We wait to import for all the blocks from the segment except the last one
+        // TODO: Replace this hack with actual watching of block import
         self.wait_for_block_import(second_last_block_number.into())
             .await;
 
@@ -305,12 +320,10 @@ where
         );
 
         // Import and execute the last block from the segment and setup the substrate sync
-        self.import_deconstructed_block(
-            last_block_bytes,
-            last_block_number.into(),
-            BlockOrigin::NetworkBroadcast,
-        )
-        .await?;
+        self.import_queue_service
+            .lock()
+            .await
+            .import_blocks(BlockOrigin::NetworkBroadcast, vec![block_to_import]);
 
         // Block import delay
         // We wait to import for all the blocks from the segment except the last one
@@ -429,38 +442,6 @@ where
             },
             signed_block,
         ))
-    }
-
-    async fn import_deconstructed_block(
-        &self,
-        block_bytes: Vec<u8>,
-        block_number: NumberFor<Block>,
-        block_origin: BlockOrigin,
-    ) -> Result<(), Error> {
-        let (header, extrinsics, justifications) = Self::deconstruct_block(block_bytes)?;
-        let hash = header.hash();
-
-        debug!(%block_number, ?block_origin, ?hash, "Importing block...");
-
-        let incoming_block = IncomingBlock {
-            hash: header.hash(),
-            header: Some(header),
-            body: Some(extrinsics),
-            indexed_body: None,
-            justifications,
-            origin: None,
-            allow_missing_state: false,
-            import_existing: false,
-            skip_execution: false,
-            state: None,
-        };
-
-        self.import_queue_service
-            .lock()
-            .await
-            .import_blocks(block_origin, vec![incoming_block]);
-
-        Ok(())
     }
 
     #[allow(clippy::type_complexity)]
