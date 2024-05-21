@@ -93,8 +93,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SlotNumber, SolutionRange, U256,
+    sectors_to_solution_range, solution_range_to_sectors, HistorySize, Piece, Randomness,
+    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
@@ -179,7 +179,8 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
 // We assume initial plot size starts with the a single sector.
-const INITIAL_SOLUTION_RANGE: SolutionRange = sectors_to_solution_range(1);
+const INITIAL_SOLUTION_RANGE: SolutionRange =
+    sectors_to_solution_range(1, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
 
 /// Number of votes expected per block.
 ///
@@ -206,41 +207,6 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
-/// Computes the following:
-/// ```
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
-/// ```
-const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
-    let solution_range = SolutionRange::MAX
-        // Account for slot probability
-        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
-
-    // Take number of sectors into account
-    solution_range / sectors
-}
-
-/// Computes the following:
-/// ```
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
-/// ```
-const fn solution_range_to_sectors(solution_range: SolutionRange) -> u64 {
-    let sectors = SolutionRange::MAX
-        // Account for slot probability
-        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
-
-    // Take solution range into account
-    sectors / solution_range
-}
-
-// Quick test to ensure functions above are the inverse of each other
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(1)) == 1);
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(3)) == 3);
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(5)) == 5);
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -443,7 +409,7 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
-        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
+        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
         sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
