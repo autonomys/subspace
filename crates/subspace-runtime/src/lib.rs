@@ -179,7 +179,8 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
 // We assume initial plot size starts with the a single sector.
-const INITIAL_SOLUTION_RANGE: SolutionRange = sectors_to_solution_range(1);
+const INITIAL_SOLUTION_RANGE: SolutionRange =
+    sectors_to_solution_range(1, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
 
 /// Number of votes expected per block.
 ///
@@ -408,7 +409,7 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
-        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
+        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
         sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
