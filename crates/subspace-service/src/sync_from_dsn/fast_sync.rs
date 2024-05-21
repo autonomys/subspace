@@ -503,7 +503,10 @@ where
                     .await
                     .expect("Network service must be available.")
                     .iter()
-                    .filter_map(|(peer_id, info)| info.roles.is_full().then_some(*peer_id))
+                    .filter_map(|(peer_id, info)| {
+                        (info.roles.is_full() && info.best_number > state_block_number)
+                            .then_some(*peer_id)
+                    })
                     .collect::<Vec<_>>();
 
                 debug!(?tried_peers, "Sync peers: {}", connected_full_peers.len());
