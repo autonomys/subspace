@@ -86,6 +86,9 @@ use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
 use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
 
+/// Maximum number of nominators to slash within a give operator at a time.
+pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;
+
 pub(crate) type BalanceOf<T> = <T as Config>::Balance;
 
 pub(crate) type FungibleHoldId<T> =
@@ -180,22 +183,24 @@ mod pallet {
         register_runtime_at_genesis, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::staking::do_reward_operators;
+    use crate::staking::do_mark_operators_as_slashed;
     #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::staking::do_slash_operators;
+    use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_unlock_funds,
         do_unlock_nominator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
         Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
     };
-    use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
+    use crate::staking_epoch::{
+        do_finalize_domain_current_epoch, do_slash_operator, Error as StakingEpochError,
+    };
     use crate::weights::WeightInfo;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::DomainHashingFor;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, StateRootOf,
-        MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
+        MAX_BUNLDE_PER_BLOCK, MAX_NOMINATORS_TO_SLASH, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -1003,7 +1008,7 @@ mod pallet {
                             let bad_receipt_hash = block_tree_node
                                 .execution_receipt
                                 .hash::<DomainHashingFor<T>>();
-                            do_slash_operators::<T>(
+                            do_mark_operators_as_slashed::<T>(
                                 block_tree_node.operator_ids.into_iter(),
                                 SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                             )
@@ -1046,7 +1051,7 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_slash_operators::<T>(
+                        do_mark_operators_as_slashed::<T>(
                             confirmed_block_info.invalid_bundle_authors.into_iter(),
                             SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
                         )
@@ -1097,6 +1102,12 @@ mod pallet {
             InboxedBundleAuthor::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
+
+            // slash operator who are in pending slash
+            // TODO: include this for benchmarking
+            let _slashed_nominator_count =
+                do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -1160,7 +1171,7 @@ mod pallet {
                     (block_tree_node.operator_ids.len() as u32).min(MAX_BUNLDE_PER_BLOCK),
                 ));
 
-                do_slash_operators::<T>(
+                do_mark_operators_as_slashed::<T>(
                     block_tree_node.operator_ids.into_iter(),
                     SlashedReason::BadExecutionReceipt(bad_receipt_hash),
                 )
@@ -2333,18 +2344,13 @@ impl<T: Config> Pallet<T> {
     fn actual_epoch_transition_weight(epoch_transition_res: EpochTransitionResult) -> Weight {
         let EpochTransitionResult {
             rewarded_operator_count,
-            slashed_nominator_count,
             finalized_operator_count,
-            ..
+            completed_epoch_index: _,
         } = epoch_transition_res;
 
-        T::WeightInfo::operator_reward_tax_and_restake(rewarded_operator_count)
-            .saturating_add(T::WeightInfo::finalize_slashed_operators(
-                slashed_nominator_count,
-            ))
-            .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
-                finalized_operator_count,
-            ))
+        T::WeightInfo::operator_reward_tax_and_restake(rewarded_operator_count).saturating_add(
+            T::WeightInfo::finalize_domain_epoch_staking(finalized_operator_count),
+        )
     }
 
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {

@@ -7,14 +7,14 @@ use crate::block_tree::{prune_receipt, BlockTreeNode};
 use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{
-    do_convert_previous_epoch_deposits, do_reward_operators, do_slash_operators, OperatorConfig,
-    OperatorStatus,
+    do_convert_previous_epoch_deposits, do_mark_operators_as_slashed, do_reward_operators,
+    OperatorConfig, OperatorStatus,
 };
 use crate::staking_epoch::{
-    do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking,
-    do_finalize_slashed_operators, operator_take_reward_tax_and_stake,
+    do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
+    operator_take_reward_tax_and_stake,
 };
-use crate::{DomainBlockNumberFor, Pallet as Domains};
+use crate::{DomainBlockNumberFor, Pallet as Domains, MAX_NOMINATORS_TO_SLASH};
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
 #[cfg(not(feature = "std"))]
@@ -225,7 +225,7 @@ mod benchmarks {
                 .expect("prune bad receipt should success")
                 .expect("block tree node must exist");
 
-            do_slash_operators::<T>(
+            do_mark_operators_as_slashed::<T>(
                 block_tree_node.operator_ids.into_iter(),
                 SlashedReason::BadExecutionReceipt(receipt_hash),
             )
@@ -290,7 +290,7 @@ mod benchmarks {
             )
             .expect("reward operator should success");
 
-            do_slash_operators::<T>(
+            do_mark_operators_as_slashed::<T>(
                 operator_ids[n as usize..].to_vec().into_iter(),
                 SlashedReason::InvalidBundle(1u32.into()),
             )
@@ -402,7 +402,7 @@ mod benchmarks {
         }
 
         // Slash operator
-        do_slash_operators::<T>(
+        do_mark_operators_as_slashed::<T>(
             operator_ids.into_iter(),
             SlashedReason::InvalidBundle(1u32.into()),
         )
@@ -410,14 +410,15 @@ mod benchmarks {
 
         assert_eq!(
             PendingSlashes::<T>::get(domain_id)
-                .expect("pedning slash must exist")
+                .expect("pending slash must exist")
                 .len(),
             operator_count as usize
         );
 
         #[block]
         {
-            do_finalize_slashed_operators::<T>(domain_id).expect("finalize slash should success");
+            do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
+                .expect("finalize slash should success");
         }
 
         assert!(PendingSlashes::<T>::get(domain_id).is_none());

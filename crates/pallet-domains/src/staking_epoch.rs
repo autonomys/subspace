@@ -2,16 +2,19 @@
 use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     AccumulatedTreasuryFunds, Deposits, DomainStakingSummary, LastEpochStakingDistribution,
-    OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    NominatorCount, OperatorIdOwner, Operators, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
 use crate::staking::{
-    do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal, DomainEpoch,
-    Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
+    do_cleanup_operator, do_convert_previous_epoch_deposits, do_convert_previous_epoch_withdrawal,
+    DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
 };
 use crate::{
     bundle_storage_fund, BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier,
     OperatorEpochSharePrice, Pallet,
 };
+#[cfg(not(feature = "std"))]
+use alloc::vec;
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
 use frame_support::traits::tokens::{
@@ -30,12 +33,10 @@ use sp_std::collections::btree_set::BTreeSet;
 pub enum Error {
     FinalizeDomainEpochStaking(TransitionError),
     OperatorRewardStaking(TransitionError),
-    SlashOperator(TransitionError),
 }
 
 pub(crate) struct EpochTransitionResult {
     pub rewarded_operator_count: u32,
-    pub slashed_nominator_count: u32,
     pub finalized_operator_count: u32,
     pub completed_epoch_index: EpochIndex,
 }
@@ -51,17 +52,12 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     // re stake operator's tax from the rewards
     let rewarded_operator_count = operator_take_reward_tax_and_stake::<T>(domain_id)?;
 
-    // slash the operators
-    let slashed_nominator_count =
-        do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
-
     // finalize any withdrawals and then deposits
     let (completed_epoch_index, finalized_operator_count) =
         do_finalize_domain_epoch_staking::<T>(domain_id)?;
 
     Ok(EpochTransitionResult {
         rewarded_operator_count,
-        slashed_nominator_count,
         finalized_operator_count,
         completed_epoch_index,
     })
@@ -331,160 +327,199 @@ pub(crate) fn mint_into_treasury<T: Config>(amount: BalanceOf<T>) -> Option<()> 
     Some(())
 }
 
-pub(crate) fn do_finalize_slashed_operators<T: Config>(
+/// Slashes any pending slashed operators.
+/// At max slashes the `max_nominator_count` under given operator
+pub(crate) fn do_slash_operator<T: Config>(
     domain_id: DomainId,
+    max_nominator_count: u32,
 ) -> Result<u32, TransitionError> {
-    let mut slashed_nominator_count = 0;
-    for operator_id in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
-        Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
-            // take the operator so this operator info is removed once we slash the operator.
-            let operator = maybe_operator
-                .take()
-                .ok_or(TransitionError::UnknownOperator)?;
+    let mut slashed_nominators = vec![];
+    let (operator_id, slashed_operators) = match PendingSlashes::<T>::get(domain_id) {
+        None => return Ok(0),
+        Some(mut slashed_operators) => match slashed_operators.pop_first() {
+            None => {
+                PendingSlashes::<T>::remove(domain_id);
+                return Ok(0);
+            }
+            Some(operator_id) => (operator_id, slashed_operators),
+        },
+    };
 
-            // remove OperatorOwner Details
-            OperatorIdOwner::<T>::remove(operator_id);
+    Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
+        // take the operator so this operator info is removed once we slash the operator.
+        let mut operator = maybe_operator
+            .take()
+            .ok_or(TransitionError::UnknownOperator)?;
 
-            let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
-            let mut total_stake = operator
-                .current_total_stake
-                .checked_add(&operator.current_epoch_rewards)
-                .ok_or(TransitionError::BalanceOverflow)?;
-            let total_shares = operator.current_total_shares;
-            let share_price = SharePrice::new::<T>(total_shares, total_stake);
+        let operator_owner =
+            OperatorIdOwner::<T>::get(operator_id).ok_or(TransitionError::UnknownOperator)?;
 
-            let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
-            let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
-                operator_id,
-                operator.total_storage_fee_deposit,
-            );
+        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
 
-            // transfer all the staked funds to the treasury account
-            // any gains will be minted to treasury account
-            Deposits::<T>::drain_prefix(operator_id).try_for_each(
-                |(nominator_id, mut deposit)| {
-                    let locked_amount =
-                        T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+        let mut total_stake = operator
+            .current_total_stake
+            .checked_add(&operator.current_epoch_rewards)
+            .ok_or(TransitionError::BalanceOverflow)?;
 
-                    // convert any previous epoch deposits
-                    do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
+        operator.current_epoch_rewards = Zero::zero();
+        let mut total_shares = operator.current_total_shares;
+        let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
-                    // there maybe some withdrawals that are initiated in this epoch where operator was slashed
-                    // then collect and include them to find the final stake amount
-                    let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-                        Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                            .map(|mut withdrawal| {
-                                do_convert_previous_epoch_withdrawal::<T>(
-                                    operator_id,
-                                    &mut withdrawal,
-                                )?;
-                                Ok((
-                                    withdrawal.total_withdrawal_amount,
-                                    withdrawal
-                                        .withdrawal_in_shares
-                                        .map(|WithdrawalInShares { shares, .. }| shares)
-                                        .unwrap_or_default(),
-                                ))
-                            })
-                            .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
+        let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
 
-                    // include all the known shares and shares that were withdrawn in the current epoch
-                    let nominator_shares = deposit
-                        .known
-                        .shares
-                        .checked_add(&shares_withdrew_in_current_epoch)
-                        .ok_or(TransitionError::ShareOverflow)?;
+        // transfer all the staked funds to the treasury account
+        // any gains will be minted to treasury account
+        for (nominator_id, mut deposit) in Deposits::<T>::iter_prefix(operator_id) {
+            let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
-                    // current staked amount
-                    let nominator_staked_amount =
-                        share_price.shares_to_stake::<T>(nominator_shares);
+            // convert any previous epoch deposits
+            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
 
-                    // do not slash the deposit that is not staked yet
-                    let amount_to_slash_in_holding = locked_amount
-                        .checked_sub(
-                            &deposit
-                                .pending
-                                .map(|pending_deposit| pending_deposit.amount)
+            // there maybe some withdrawals that are initiated in this epoch where operator was slashed
+            // then collect and include them to find the final stake amount
+            let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
+                Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                    .map(|mut withdrawal| {
+                        do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                        Ok((
+                            withdrawal.total_withdrawal_amount,
+                            withdrawal
+                                .withdrawal_in_shares
+                                .map(|WithdrawalInShares { shares, .. }| shares)
                                 .unwrap_or_default(),
-                        )
-                        .ok_or(TransitionError::BalanceUnderflow)?;
+                        ))
+                    })
+                    .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
 
-                    T::Currency::transfer_on_hold(
-                        &staked_hold_id,
-                        &nominator_id,
-                        &T::TreasuryAccount::get(),
-                        amount_to_slash_in_holding,
-                        Precision::Exact,
-                        Restriction::Free,
-                        Fortitude::Force,
-                    )
-                    .map_err(|_| TransitionError::RemoveLock)?;
+            // include all the known shares and shares that were withdrawn in the current epoch
+            let nominator_shares = deposit
+                .known
+                .shares
+                .checked_add(&shares_withdrew_in_current_epoch)
+                .ok_or(TransitionError::ShareOverflow)?;
 
-                    // these are nominator rewards that will be minted to treasury
-                    // include amount ready to be withdrawn to calculate the final reward
-                    let nominator_reward = nominator_staked_amount
-                        .checked_add(&amount_ready_to_withdraw)
-                        .ok_or(TransitionError::BalanceOverflow)?
-                        .checked_sub(&amount_to_slash_in_holding)
-                        .ok_or(TransitionError::BalanceUnderflow)?;
-                    mint_into_treasury::<T>(nominator_reward)
-                        .ok_or(TransitionError::MintBalance)?;
+            // current staked amount
+            let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
 
-                    total_stake = total_stake.saturating_sub(nominator_staked_amount);
+            // do not slash the deposit that is not staked yet
+            let amount_to_slash_in_holding = locked_amount
+                .checked_sub(
+                    &deposit
+                        .pending
+                        .map(|pending_deposit| pending_deposit.amount)
+                        .unwrap_or_default(),
+                )
+                .ok_or(TransitionError::BalanceUnderflow)?;
 
-                    // release rest of the deposited un staked amount back to nominator
-                    T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
-                        .map_err(|_| TransitionError::RemoveLock)?;
+            T::Currency::transfer_on_hold(
+                &staked_hold_id,
+                &nominator_id,
+                &T::TreasuryAccount::get(),
+                amount_to_slash_in_holding,
+                Precision::Exact,
+                Restriction::Free,
+                Fortitude::Force,
+            )
+            .map_err(|_| TransitionError::RemoveLock)?;
 
-                    // Transfer the deposited unstaked storage fee back to nominator
-                    if let Some(pending_deposit) = deposit.pending {
-                        let storage_fee_deposit = bundle_storage_fund::withdraw_and_hold::<T>(
-                            operator_id,
-                            &nominator_id,
-                            storage_fund_redeem_price.redeem(pending_deposit.storage_fee_deposit),
-                        )
-                        .map_err(TransitionError::BundleStorageFund)?;
-                        T::Currency::release(
-                            &storage_fund_hold_id,
-                            &nominator_id,
-                            storage_fee_deposit,
-                            Precision::Exact,
-                        )
-                        .map_err(|_| TransitionError::RemoveLock)?;
-                    }
+            // these are nominator rewards that will be minted to treasury
+            // include amount ready to be withdrawn to calculate the final reward
+            let nominator_reward = nominator_staked_amount
+                .checked_add(&amount_ready_to_withdraw)
+                .ok_or(TransitionError::BalanceOverflow)?
+                .checked_sub(&amount_to_slash_in_holding)
+                .ok_or(TransitionError::BalanceUnderflow)?;
 
-                    // Transfer all the storage fee on withdraw to the treasury
-                    let withdraw_storage_fee_on_hold =
-                        T::Currency::balance_on_hold(&storage_fund_hold_id, &nominator_id);
-                    T::Currency::transfer_on_hold(
-                        &storage_fund_hold_id,
-                        &nominator_id,
-                        &T::TreasuryAccount::get(),
-                        withdraw_storage_fee_on_hold,
-                        Precision::Exact,
-                        Restriction::Free,
-                        Fortitude::Force,
-                    )
-                    .map_err(|_| TransitionError::RemoveLock)?;
+            mint_into_treasury::<T>(nominator_reward).ok_or(TransitionError::MintBalance)?;
 
-                    slashed_nominator_count += 1;
+            total_stake = total_stake.saturating_sub(nominator_staked_amount);
+            total_shares = total_shares.saturating_sub(nominator_shares);
 
-                    Ok(())
-                },
-            )?;
+            // release rest of the deposited un staked amount back to nominator
+            T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
+                .map_err(|_| TransitionError::RemoveLock)?;
 
-            // mint any gains to treasury account
-            mint_into_treasury::<T>(total_stake).ok_or(TransitionError::MintBalance)?;
+            // Transfer the deposited non-staked storage fee back to nominator
+            if let Some(pending_deposit) = deposit.pending {
+                let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
+                    operator_id,
+                    total_storage_fee_deposit,
+                );
 
-            // Transfer all the storage fund to treasury
-            bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
+                let storage_fee_deposit = bundle_storage_fund::withdraw_and_hold::<T>(
+                    operator_id,
+                    &nominator_id,
+                    storage_fund_redeem_price.redeem(pending_deposit.storage_fee_deposit),
+                )
                 .map_err(TransitionError::BundleStorageFund)?;
 
-            Ok(())
-        })?;
-    }
+                T::Currency::release(
+                    &storage_fund_hold_id,
+                    &nominator_id,
+                    storage_fee_deposit,
+                    Precision::Exact,
+                )
+                .map_err(|_| TransitionError::RemoveLock)?;
 
-    Ok(slashed_nominator_count)
+                total_storage_fee_deposit =
+                    total_storage_fee_deposit.saturating_sub(pending_deposit.storage_fee_deposit);
+            }
+
+            // Transfer all the storage fee on withdraw to the treasury
+            let withdraw_storage_fee_on_hold =
+                T::Currency::balance_on_hold(&storage_fund_hold_id, &nominator_id);
+
+            T::Currency::transfer_on_hold(
+                &storage_fund_hold_id,
+                &nominator_id,
+                &T::TreasuryAccount::get(),
+                withdraw_storage_fee_on_hold,
+                Precision::Exact,
+                Restriction::Free,
+                Fortitude::Force,
+            )
+            .map_err(|_| TransitionError::RemoveLock)?;
+
+            // update nominator count.
+            let nominator_count = NominatorCount::<T>::get(operator_id);
+            if operator_owner != nominator_id && nominator_count > 0 {
+                NominatorCount::<T>::set(operator_id, nominator_count - 1);
+            }
+
+            slashed_nominators.push(nominator_id);
+            if slashed_nominators.len() as u32 >= max_nominator_count {
+                break;
+            }
+        }
+
+        // for all slashed nominators, remove their deposits
+        let slashed_nominator_count = slashed_nominators.len() as u32;
+        slashed_nominators.into_iter().for_each(|nominator_id| {
+            Deposits::<T>::remove(operator_id, nominator_id);
+        });
+
+        let nominator_count = NominatorCount::<T>::get(operator_id);
+        let cleanup_operator =
+            nominator_count == 0 && !Deposits::<T>::contains_key(operator_id, operator_owner);
+
+        if cleanup_operator {
+            do_cleanup_operator::<T>(operator_id, total_stake, operator.signing_key)?;
+            if slashed_operators.is_empty() {
+                PendingSlashes::<T>::remove(domain_id);
+            } else {
+                PendingSlashes::<T>::set(domain_id, Some(slashed_operators));
+            }
+        } else {
+            // set update total shares, total stake and total storage fee deposit for operator
+            operator.current_total_shares = total_shares;
+            operator.current_total_stake = total_stake;
+            operator.total_storage_fee_deposit = total_storage_fee_deposit;
+            *maybe_operator = Some(operator);
+        }
+
+        Ok(slashed_nominator_count)
+    })
 }
 
 #[cfg(test)]
