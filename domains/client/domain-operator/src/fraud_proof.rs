@@ -673,14 +673,6 @@ where
 
                 InvalidBundlesProofData::Extrinsic(extrinsic_proof)
             }
-            InvalidBundleType::InvalidXDM(_) => {
-                return Err(sp_blockchain::Error::Application(
-                    "Unexpected invalid bundle type, this should not happen"
-                        .to_string()
-                        .into(),
-                )
-                .into())
-            }
         };
 
         let mmr_proof =

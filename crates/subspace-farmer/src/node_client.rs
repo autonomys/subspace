@@ -14,7 +14,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Abstraction of the Node Client
 #[async_trait]
-pub trait NodeClient: Clone + fmt::Debug + Send + Sync + 'static {
+pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
     /// Get farmer app info
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 
