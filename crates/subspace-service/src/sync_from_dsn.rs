@@ -29,7 +29,6 @@ use std::time::{Duration, Instant};
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::SegmentIndex;
 use subspace_networking::Node;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN
@@ -58,7 +57,8 @@ pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS, B>(
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
-    import_queue_service: Arc<Mutex<Box<IQS>>>,
+    import_queue_service1: Box<IQS>,
+    import_queue_service2: Box<IQS>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
@@ -84,7 +84,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     PG: DsnSyncPieceGetter + Send + Sync + 'static,
-    IQS: ImportQueueService<Block> + ?Sized + 'static,
+    IQS: ImportQueueService<Block> + 'static + ?Sized,
 {
     let network_service_clone = network_service.clone();
     let (tx, rx) = mpsc::channel(0);
@@ -108,7 +108,8 @@ where
             segment_headers_store,
             &node,
             client.clone(),
-            import_queue_service,
+            import_queue_service1,
+            import_queue_service2,
             sync_target_block_number,
             pause_sync,
             rx,
@@ -243,7 +244,8 @@ async fn create_worker<Backend, Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: Arc<Client>,
-    import_queue_service: Arc<Mutex<Box<IQS>>>,
+    import_queue_service1: Box<IQS>,
+    mut import_queue_service2: Box<IQS>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
@@ -257,7 +259,7 @@ where
     Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
-    IQS: ImportQueueService<Block> + ?Sized + 'static,
+    IQS: ImportQueueService<Block> + 'static + ?Sized,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ClientExt<Block, Backend>
@@ -306,7 +308,7 @@ where
                 node,
                 piece_getter,
                 client.clone(),
-                import_queue_service.clone(),
+                import_queue_service1,
                 network_service.clone(),
                 sync_service,
             );
@@ -348,7 +350,7 @@ where
             &segment_header_downloader,
             client.as_ref(),
             piece_getter,
-            import_queue_service.clone(),
+            import_queue_service2.as_mut(),
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
             &mut reconstructor,

@@ -828,7 +828,8 @@ where
         }
     };
 
-    let import_queue_service = Arc::new(tokio::sync::Mutex::new(import_queue.service()));
+    let import_queue_service1 = import_queue.service();
+    let import_queue_service2 = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = Some(
         build_consensus_relay(
@@ -935,7 +936,8 @@ where
             Arc::clone(&network_service),
             node.clone(),
             Arc::clone(&client),
-            import_queue_service,
+            import_queue_service1,
+            import_queue_service2,
             sync_target_block_number,
             pause_sync,
             dsn_sync_piece_getter,

@@ -36,7 +36,7 @@ use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, PieceIndex, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 
 /// Trait representing a way to get pieces for DSN sync purposes
 #[async_trait]
@@ -88,7 +88,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     segment_header_downloader: &SegmentHeaderDownloader<'_>,
     client: &Client,
     piece_getter: &PG,
-    import_queue_service: Arc<Mutex<Box<IQS>>>,
+    import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
     reconstructor: &mut Reconstructor,
@@ -203,8 +203,6 @@ where
                 if !blocks_to_import.is_empty() {
                     // Import queue handles verification and importing it into the client
                     import_queue_service
-                        .lock()
-                        .await
                         .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
                     blocks_to_import.clear();
                 }
@@ -267,15 +265,12 @@ where
                     .pop()
                     .expect("Not empty, checked above; qed");
 
-                let mut import_queue_service = import_queue_service.lock().await;
                 import_queue_service
                     .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
                 // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
                 import_queue_service.import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block]);
             } else {
                 import_queue_service
-                    .lock()
-                    .await
                     .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
             }
         }

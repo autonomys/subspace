@@ -82,7 +82,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
-    IQS: ImportQueueService<Block> + ?Sized + 'static,
+    IQS: ImportQueueService<Block> + 'static + ?Sized,
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -90,7 +90,7 @@ where
         node: &'a Node,
         piece_getter: &'a PG,
         client: Arc<Client>,
-        import_queue_service: Arc<Mutex<Box<IQS>>>,
+        import_queue_service: Box<IQS>,
         network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
         sync_service: Arc<SyncingService<Block>>,
     ) -> Self {
@@ -99,7 +99,7 @@ where
             node,
             piece_getter,
             client,
-            import_queue_service,
+            import_queue_service: Arc::new(Mutex::new(import_queue_service)),
             network_service,
             sync_service,
             _marker: PhantomData,
