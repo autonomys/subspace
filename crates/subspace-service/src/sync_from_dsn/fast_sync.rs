@@ -62,7 +62,6 @@ where
     client: Arc<Client>,
     import_queue_service: Arc<Mutex<Box<IQS>>>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
-    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
     sync_service: Arc<SyncingService<Block>>,
     _marker: PhantomData<B>,
 }
@@ -93,7 +92,6 @@ where
         client: Arc<Client>,
         import_queue_service: Arc<Mutex<Box<IQS>>>,
         network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
-        fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
         sync_service: Arc<SyncingService<Block>>,
     ) -> Self {
         Self {
@@ -103,12 +101,12 @@ where
             client,
             import_queue_service,
             network_service,
-            fast_sync_state,
             sync_service,
             _marker: PhantomData,
         }
     }
 
+    // TODO: Fix this implementation to actually follow the spec
     /// Sync algorithm:
     /// - 1. download two last segments,
     /// - 2. add the last block the second last segment (as raw - without checks and execution),
@@ -187,21 +185,6 @@ where
 
         // 2. Raw import the last block from the second last segment.
 
-        let (last_block_number_from_second_segment, last_block_bytes_from_second_segment) =
-            second_last_segment_blocks[blocks_in_second_last_segment - 1].clone();
-
-        let (raw_block, _) = Self::create_raw_block(
-            last_block_bytes_from_second_segment,
-            last_block_number_from_second_segment.into(),
-        )?;
-        import_raw_block(self.client.as_ref(), raw_block.clone())?;
-
-        debug!(
-            hash = ?raw_block.hash,
-            number = %last_block_number_from_second_segment,
-            "Last raw block from the second last segment imported"
-        );
-
         // 3. Download state for the first block of the last segment.
 
         let (second_last_block_number, _) = blocks[blocks_in_last_segment - 2].clone();
@@ -264,13 +247,6 @@ where
             }
         };
 
-        // Notify PoT verification about the last state block
-        {
-            self.fast_sync_state
-                .lock()
-                .replace(state_block_number.into());
-        }
-
         // 4. Import and execute blocks from the last segment
 
         debug!("Started importing blocks from last segment.");
@@ -327,6 +303,7 @@ where
 
         // Block import delay
         // We wait to import for all the blocks from the segment except the last one
+        // TODO: Replace this hack with actual watching of block import
         self.wait_for_block_import(last_block_number.into()).await;
 
         // Clear the block gap to prevent Substrate sync to download blocks from the start.
@@ -545,6 +522,7 @@ where
                     debug!("Sync worker handle result: {:?}", last_block_from_sync,);
 
                     // State block import delay
+                    // TODO: Replace this hack with actual watching of block import
                     self.wait_for_block_import(state_block_number).await;
 
                     return Ok(last_block_from_sync);
