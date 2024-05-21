@@ -83,6 +83,48 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
 /// BLAKE3 hash output
 pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
 
+/// 1 in 6 slots (on average, not counting collisions) will have a block.
+/// Must match ratio between block and slot duration in constants above.
+const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+
+/// How many pieces one sector is supposed to contain (max)
+const MAX_PIECES_IN_SECTOR: u16 = 1000;
+
+/// Computes the following:
+/// ```
+/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
+/// ```
+pub const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
+    let solution_range = SolutionRange::MAX
+        // Account for slot probability
+        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+        // Now take sector size and probability of hitting occupied s-bucket in sector into account
+        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+
+    // Take number of sectors into account
+    solution_range / sectors
+}
+
+/// Computes the following:
+/// ```
+/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
+/// ```
+pub const fn solution_range_to_sectors(solution_range: SolutionRange) -> u64 {
+    let sectors = SolutionRange::MAX
+        // Account for slot probability
+        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+        // Now take sector size and probability of hitting occupied s-bucket in sector into account
+        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+
+    // Take solution range into account
+    sectors / solution_range
+}
+
+// Quick test to ensure functions above are the inverse of each other
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(1)) == 1);
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(3)) == 3);
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(5)) == 5);
+
 /// Type of randomness.
 #[derive(
     Debug,
@@ -135,6 +177,7 @@ pub type BlockHash = [u8; 32];
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 
+// TODO: Add related methods to `SolutionRange`.
 /// Type of solution range.
 pub type SolutionRange = u64;
 
