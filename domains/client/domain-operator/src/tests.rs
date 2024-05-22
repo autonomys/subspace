@@ -1972,7 +1972,7 @@ async fn test_invalid_block_fees_proof_creation() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1989,26 +1989,11 @@ async fn test_invalid_block_fees_proof_creation() {
 
     produce_blocks!(ferdie, alice, 5).await.unwrap();
 
-    alice
-        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
-            dest: Bob.to_account_id(),
-            value: 1,
-        })
-        .await
-        .expect("Failed to send extrinsic");
-
-    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
-    let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert_eq!(target_bundle.extrinsics.len(), 1);
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.block_fees = Default::default();
+        receipt.block_fees.consensus_storage_fee = 12345;
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
