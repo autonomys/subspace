@@ -30,7 +30,6 @@ pub mod archiver;
 pub mod aux_schema;
 pub mod block_import;
 pub mod notification;
-pub mod raw_block_import;
 pub mod slot_worker;
 #[cfg(test)]
 mod tests;
