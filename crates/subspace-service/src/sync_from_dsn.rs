@@ -63,7 +63,6 @@ pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS, B>(
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
     fast_sync_enabled: bool,
-    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
     sync_service: Arc<SyncingService<Block>>,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
@@ -117,7 +116,6 @@ where
             network_service,
             tx,
             fast_sync_enabled,
-            fast_sync_state,
             sync_service,
         )
         .await
@@ -253,7 +251,6 @@ async fn create_worker<Backend, Block, AS, IQS, Client, PG>(
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     mut notifications_sender: mpsc::Sender<NotificationReason>,
     fast_sync_enabled: bool,
-    fast_sync_state: Arc<parking_lot::Mutex<Option<NumberFor<Block>>>>,
     sync_service: Arc<SyncingService<Block>>,
 ) -> Result<(), sc_service::Error>
 where
@@ -311,7 +308,6 @@ where
                 client.clone(),
                 import_queue_service.clone(),
                 network_service.clone(),
-                fast_sync_state,
                 sync_service,
             );
 

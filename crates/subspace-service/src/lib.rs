@@ -228,19 +228,18 @@ pub type FullClient<RuntimeApi> = sc_service::TFullClient<Block, RuntimeApi, Run
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-struct SubspaceExtensionsFactory<PosTable, Block: BlockT, Client, DomainBlock> {
+struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     kzg: Kzg,
     client: Arc<Client>,
     backend: Arc<FullBackend>,
     pot_verifier: PotVerifier,
     executor: Arc<RuntimeExecutor>,
     domains_executor: Arc<sc_domains::RuntimeExecutor>,
-    fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
 impl<PosTable, Block, Client, DomainBlock> ExtensionsFactory<Block>
-    for SubspaceExtensionsFactory<PosTable, Block, Client, DomainBlock>
+    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock>
 where
     PosTable: Table,
     Block: BlockT,
@@ -270,7 +269,6 @@ where
         exts.register(PotExtension::new({
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
-            let fast_sync_state = self.fast_sync_state.clone();
 
             Box::new(
                 move |parent_hash, slot, proof_of_time, quick_verification| {
@@ -283,12 +281,23 @@ where
                     let parent_header = match client.header(parent_hash) {
                         Ok(Some(parent_header)) => parent_header,
                         Ok(None) => {
-                            error!(
-                                %parent_hash,
-                                "Header not found during proof of time verification"
-                            );
+                            if quick_verification {
+                                error!(
+                                    %parent_hash,
+                                    "Header not found during proof of time verification"
+                                );
 
-                            return false;
+                                return false;
+                            } else {
+                                debug!(
+                                    %parent_hash,
+                                    "Header not found during proof of time verification"
+                                );
+
+                                // This can only happen during special sync modes there are no other
+                                // cases where parent header may not be available, hence allow it
+                                return true;
+                            }
                         }
                         Err(error) => {
                             error!(
@@ -319,22 +328,6 @@ where
                     let parent_slot = parent_pre_digest.slot();
                     if slot <= *parent_slot {
                         return false;
-                    }
-
-                    // Check for fast-sync state
-                    {
-                        if let Some(state_block_number) = fast_sync_state.lock().as_ref() {
-                            let parent_block_number = *parent_header.number();
-                            if parent_block_number < *state_block_number {
-                                debug!(
-                                    %parent_block_number,
-                                    %state_block_number,
-                                    "Skipped PoT verification because of the fast sync state block."
-                                );
-
-                                return true;
-                            }
-                        }
                     }
 
                     let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
@@ -442,8 +435,6 @@ where
     pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
-    /// The first block with state enabled by fast-sync.
-    pub fast_sync_state: Arc<Mutex<Option<NumberFor<Block>>>>,
 }
 
 type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
@@ -511,21 +502,17 @@ where
 
     let executor = Arc::new(executor);
 
-    let fast_sync_state = Arc::<Mutex<Option<NumberFor<Block>>>>::default();
     client
         .execution_extensions()
-        .set_extensions_factory(
-            SubspaceExtensionsFactory::<PosTable, Block, _, DomainBlock> {
-                kzg: kzg.clone(),
-                client: Arc::clone(&client),
-                pot_verifier: pot_verifier.clone(),
-                executor: executor.clone(),
-                domains_executor: Arc::new(domains_executor),
-                backend: backend.clone(),
-                fast_sync_state: fast_sync_state.clone(),
-                _pos_table: PhantomData,
-            },
-        );
+        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock> {
+            kzg: kzg.clone(),
+            client: Arc::clone(&client),
+            pot_verifier: pot_verifier.clone(),
+            executor: executor.clone(),
+            domains_executor: Arc::new(domains_executor),
+            backend: backend.clone(),
+            _pos_table: PhantomData,
+        });
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -623,7 +610,6 @@ where
         pot_verifier,
         sync_target_block_number,
         telemetry,
-        fast_sync_state,
     };
 
     Ok(PartialComponents {
@@ -735,7 +721,6 @@ where
         pot_verifier,
         sync_target_block_number,
         mut telemetry,
-        fast_sync_state,
     } = other;
 
     // Clear block gap after fast sync on reruns.
@@ -955,7 +940,6 @@ where
             pause_sync,
             dsn_sync_piece_getter,
             config.fast_sync_enabled,
-            fast_sync_state,
             sync_service.clone(),
         );
         task_manager
