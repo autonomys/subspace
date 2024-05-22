@@ -263,14 +263,35 @@ pub struct SubspaceConfiguration {
     pub subspace_networking: SubspaceNetworking,
     /// DSN piece getter
     pub dsn_piece_getter: Option<Arc<dyn DsnSyncPieceGetter + Send + Sync + 'static>>,
-    /// Enables DSN-sync on startup.
-    pub sync_from_dsn: bool,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
     pub timekeeper_cpu_cores: HashSet<usize>,
-    /// Enables state-only sync using DSN.
-    pub fast_sync_enabled: bool,
+    /// Defines blockchain sync mode
+    pub sync: ChainSyncMode,
+}
+
+/// Syncing mode. All sync types eventually run Full sync mode as the last step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChainSyncMode {
+    /// Full sync. Download and verify all blocks.
+    Full,
+    /// Download blocks from DSN.
+    Dsn,
+    /// Download latest state and related blocks only. Can run DSN-sync afterwards.
+    Snap,
+}
+
+impl Default for ChainSyncMode {
+    fn default() -> Self {
+        Self::Full
+    }
+}
+
+impl ChainSyncMode {
+    pub fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
+    }
 }
 
 impl Deref for SubspaceConfiguration {

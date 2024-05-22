@@ -32,7 +32,7 @@ pub mod rpc;
 pub mod sync_from_dsn;
 pub mod transaction_pool;
 
-use crate::config::{SubspaceConfiguration, SubspaceNetworking};
+use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::sync_from_dsn::fast_sync::fast_sync;
@@ -726,7 +726,7 @@ where
 
     // Clear block gap after fast sync on reruns.
     // Substrate detects a gap and inserts on each sync.
-    if config.fast_sync_enabled {
+    if config.sync == ChainSyncMode::Snap {
         let finalized_hash_existed = client.info().finalized_hash != client.info().genesis_hash;
         if finalized_hash_existed {
             debug!(client_info=?client.info(), "Clear block gap after fast-sync.");
@@ -915,7 +915,7 @@ where
 
     network_wrapper.set(network_service.clone());
 
-    if config.sync_from_dsn {
+    if !config.sync.is_full() {
         let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
             Arc::new(PieceProvider::new(
                 node.clone(),
@@ -963,7 +963,7 @@ where
                 Some("sync-from-dsn"),
                 Box::pin(async move {
                     // Run fast-sync before DSN-sync.
-                    if config.fast_sync_enabled {
+                    if config.sync == ChainSyncMode::Snap {
                         let _ = fast_sync_task.await;
                     }
 

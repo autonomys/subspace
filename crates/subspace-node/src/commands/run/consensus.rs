@@ -20,7 +20,7 @@ use std::str::FromStr;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
-    SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
+    ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
 };
 use subspace_service::dsn::DsnConfig;
@@ -394,10 +394,6 @@ pub(super) struct ConsensusChainOptions {
     #[clap(flatten)]
     dsn_options: DsnOptions,
 
-    /// Enables DSN-sync on startup.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    sync_from_dsn: bool,
-
     /// Parameters used to create the storage monitor.
     #[clap(flatten)]
     storage_monitor: StorageMonitorParams,
@@ -405,9 +401,53 @@ pub(super) struct ConsensusChainOptions {
     #[clap(flatten)]
     timekeeper_options: TimekeeperOptions,
 
-    /// Experimental support of state-only sync using DSN.
-    #[arg(long, default_value_t = false)]
-    fast_sync: bool,
+    /// Sync mode
+    #[arg(long, default_value_t = ConfigSyncMode::Full)]
+    sync: ConfigSyncMode,
+}
+
+/// Syncing mode.
+#[derive(Debug, Clone, Copy, PartialEq, Parser)]
+pub enum ConfigSyncMode {
+    /// Full sync. Download and verify all blocks.
+    Full,
+    /// Download blocks from DSN.
+    Dsn,
+    /// Download latest state and related blocks only. Can run DSN-sync afterwards.
+    Snap,
+}
+
+impl FromStr for ConfigSyncMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "full" => Ok(Self::Full),
+            "dsn" => Ok(Self::Dsn),
+            "snap" => Ok(Self::Snap),
+            _ => Err("Unsupported sync type".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for ConfigSyncMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Full => f.write_str("full"),
+            Self::Dsn => f.write_str("dsn"),
+            Self::Snap => f.write_str("snap"),
+        }
+    }
+}
+
+impl From<ConfigSyncMode> for ChainSyncMode {
+    fn from(val: ConfigSyncMode) -> ChainSyncMode {
+        match val {
+            ConfigSyncMode::Full => ChainSyncMode::Full,
+            ConfigSyncMode::Dsn => ChainSyncMode::Dsn,
+            ConfigSyncMode::Snap => ChainSyncMode::Snap,
+        }
+    }
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -448,10 +488,9 @@ pub(super) fn create_consensus_chain_configuration(
         mut force_authoring,
         pot_external_entropy,
         dsn_options,
-        sync_from_dsn,
         storage_monitor,
         mut timekeeper_options,
-        fast_sync,
+        sync,
     } = consensus_node_options;
 
     let transaction_pool;
@@ -598,7 +637,7 @@ pub(super) fn create_consensus_chain_configuration(
     };
     let mut consensus_chain_config = Configuration::from(consensus_chain_config);
     // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
-    if fast_sync {
+    if sync == ConfigSyncMode::Snap {
         consensus_chain_config.network.sync_mode = SyncMode::LightState {
             skip_proofs: true,
             storage_chain_mode: false,
@@ -669,10 +708,9 @@ pub(super) fn create_consensus_chain_configuration(
             force_new_slot_notifications: domains_enabled,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
-            sync_from_dsn,
+            sync: sync.into(),
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
-            fast_sync_enabled: fast_sync,
         },
         dev,
         pot_external_entropy,
