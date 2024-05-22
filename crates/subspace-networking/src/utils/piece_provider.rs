@@ -4,6 +4,7 @@ use crate::utils::multihash::ToMultihash;
 use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
 use async_trait::async_trait;
 use futures::StreamExt;
+use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use std::fmt;
@@ -59,15 +60,20 @@ where
 
     /// Returns piece by its index from farmer's piece cache (L2)
     pub async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key = piece_index.to_multihash();
+        let key = RecordKey::from(piece_index.to_multihash());
 
         let mut request_batch = self.node.get_requests_batch_handle().await;
-        let get_providers_result = request_batch.get_providers(key).await;
+        let get_providers_result = request_batch.get_providers(key.clone()).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
                 while let Some(provider_id) = get_providers_stream.next().await {
-                    trace!(%piece_index, %provider_id, "get_providers returned an item");
+                    trace!(
+                        %piece_index,
+                        key = hex::encode(&key),
+                        %provider_id,
+                        "get_providers returned an item"
+                    );
 
                     let request_result = request_batch
                         .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
@@ -75,7 +81,12 @@ where
 
                     match request_result {
                         Ok(PieceByIndexResponse { piece: Some(piece) }) => {
-                            trace!(%provider_id, %piece_index, ?key, "Piece request succeeded.");
+                            trace!(
+                                %piece_index,
+                                key = hex::encode(&key),
+                                %provider_id,
+                                "Piece request succeeded"
+                            );
 
                             if let Some(validator) = &self.piece_validator {
                                 return validator
@@ -86,10 +97,21 @@ where
                             }
                         }
                         Ok(PieceByIndexResponse { piece: None }) => {
-                            debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
+                            debug!(
+                                %piece_index,
+                                key = hex::encode(&key),
+                                %provider_id,
+                                "Piece request returned empty piece"
+                            );
                         }
                         Err(error) => {
-                            debug!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
+                            debug!(
+                                %piece_index,
+                                key = hex::encode(&key),
+                                %provider_id,
+                                ?error,
+                                "Piece request failed"
+                            );
                         }
                     }
                 }
@@ -115,7 +137,7 @@ where
 
         match request_result {
             Ok(PieceByIndexResponse { piece: Some(piece) }) => {
-                trace!(%peer_id, %piece_index, "Piece request succeeded.");
+                trace!(%peer_id, %piece_index, "Piece request succeeded");
 
                 if let Some(validator) = &self.piece_validator {
                     return validator.validate_piece(peer_id, piece_index, piece).await;
@@ -124,10 +146,10 @@ where
                 }
             }
             Ok(PieceByIndexResponse { piece: None }) => {
-                debug!(%peer_id, %piece_index, "Piece request returned empty piece.");
+                debug!(%peer_id, %piece_index, "Piece request returned empty piece");
             }
             Err(error) => {
-                debug!(%peer_id, %piece_index, ?error, "Piece request failed.");
+                debug!(%peer_id, %piece_index, ?error, "Piece request failed");
             }
         }
 

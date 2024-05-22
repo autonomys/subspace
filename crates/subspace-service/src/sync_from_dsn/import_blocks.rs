@@ -35,6 +35,7 @@ use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, PieceIndex, RecordedHistorySegment, SegmentIndex,
 };
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tokio::sync::Semaphore;
 use tracing::warn;
@@ -327,8 +328,11 @@ where
                     }
                 };
 
+                let key =
+                    subspace_networking::libp2p::kad::RecordKey::from(piece_index.to_multihash());
                 trace!(
                     ?piece_index,
+                    key = hex::encode(&key),
                     piece_found = maybe_piece.is_some(),
                     "Piece request succeeded",
                 );
