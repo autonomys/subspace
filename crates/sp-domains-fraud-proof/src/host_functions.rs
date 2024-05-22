@@ -2,8 +2,9 @@
 extern crate alloc;
 
 use crate::{
-    DomainChainAllowlistUpdateExtrinsic, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse, SetCodeExtrinsic, StorageKeyRequest,
+    DomainChainAllowlistUpdateExtrinsic, DomainInherentExtrinsic, DomainInherentExtrinsicData,
+    DomainStorageKeyRequest, FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
+    SetCodeExtrinsic, StatelessDomainRuntimeCall, StorageKeyRequest,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -53,10 +54,18 @@ pub trait FraudProofHostFunctions: Send + Sync {
     ) -> Option<FraudProofVerificationInfoResponse>;
 
     /// Derive the bundle digest for the given bundle body.
+    // TODO: remove before the new network
     fn derive_bundle_digest(
         &self,
         consensus_block_hash: H256,
         domain_id: DomainId,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256>;
+
+    /// Derive the bundle digest for the given bundle body.
+    fn derive_bundle_digest_v2(
+        &self,
+        domain_runtime_code: Vec<u8>,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<H256>;
 
@@ -71,6 +80,34 @@ pub trait FraudProofHostFunctions: Send + Sync {
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>>;
+
+    fn check_extrinsics_in_single_context(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        domain_block_id: (BlockNumber, H256),
+        domain_block_state_root: H256,
+        bundle_extrinsics: Vec<OpaqueExtrinsic>,
+        // TODO: implement `PassBy` for `sp_trie::StorageProof` in upstream to pass it directly here
+        encoded_proof: Vec<u8>,
+    ) -> Option<Option<u32>>;
+
+    fn construct_domain_inherent_extrinsic(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        domain_inherent_extrinsic_data: DomainInherentExtrinsicData,
+    ) -> Option<DomainInherentExtrinsic>;
+
+    fn domain_storage_key(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        req: DomainStorageKeyRequest,
+    ) -> Option<Vec<u8>>;
+
+    fn domain_runtime_call(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        call: StatelessDomainRuntimeCall,
+    ) -> Option<bool>;
 }
 
 sp_externalities::decl_extension! {
@@ -289,16 +326,14 @@ where
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
 
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
-
-        let encoded_extrinsic = opaque_extrinsic.encode();
-        let extrinsic =
-            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
-
-        domain_stateless_runtime
-            .is_within_tx_range(&extrinsic, &bundle_vrf_hash, &domain_tx_range)
-            .ok()
+        self.domain_runtime_call(
+            runtime_code,
+            StatelessDomainRuntimeCall::IsTxInRange {
+                opaque_extrinsic,
+                bundle_vrf_hash,
+                domain_tx_range,
+            },
+        )
     }
 
     fn is_inherent_extrinsic(
@@ -308,17 +343,10 @@ where
         opaque_extrinsic: OpaqueExtrinsic,
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
-
-        let encoded_extrinsic = opaque_extrinsic.encode();
-        let extrinsic =
-            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
-
-        domain_stateless_runtime
-            .is_inherent_extrinsic(&extrinsic)
-            .ok()
+        self.domain_runtime_call(
+            runtime_code,
+            StatelessDomainRuntimeCall::IsInherentExtrinsic(opaque_extrinsic),
+        )
     }
 
     fn is_valid_xdm(
@@ -358,13 +386,10 @@ where
         opaque_extrinsic: OpaqueExtrinsic,
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
-
-        Some(matches!(
-            domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
-            Ok(Ok(_))
-        ))
+        self.domain_runtime_call(
+            runtime_code,
+            StatelessDomainRuntimeCall::IsDecodableExtrinsic(opaque_extrinsic),
+        )
     }
 
     fn storage_key(
@@ -410,7 +435,7 @@ where
         Some(operator_stake)
     }
 
-    fn check_extrinsics_in_single_context(
+    fn check_extrinsics_in_single_context_v1(
         &self,
         consensus_block_hash: H256,
         domain_id: DomainId,
@@ -419,27 +444,14 @@ where
         bundle_extrinsics: Vec<OpaqueExtrinsic>,
         storage_proof: StorageProof,
     ) -> Option<Option<u32>> {
-        let (domain_block_number, domain_block_hash) = domain_block_id;
-
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-
-        let raw_response = self.execution_proof_check(
+        self.check_extrinsics_in_single_context(
+            runtime_code,
             domain_block_id,
             domain_block_state_root,
+            bundle_extrinsics,
             storage_proof.encode(),
-            CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
-            // The call data must be encoded form of arguments to `DomainCoreApi::check_extrinsic_and_do_pre_dispatch`
-            &(&bundle_extrinsics, &domain_block_number, &domain_block_hash).encode(),
-            runtime_code,
-        )?;
-
-        let bundle_extrinsics_validity_response: Result<(), CheckExtrinsicsValidityError> =
-            Decode::decode(&mut raw_response.as_slice()).ok()?;
-        if let Err(bundle_extrinsic_validity_error) = bundle_extrinsics_validity_response {
-            Some(Some(bundle_extrinsic_validity_error.extrinsic_index))
-        } else {
-            Some(None)
-        }
+        )
     }
 }
 
@@ -554,7 +566,7 @@ where
                 extrinsics,
                 storage_proof,
             } => self
-                .check_extrinsics_in_single_context(
+                .check_extrinsics_in_single_context_v1(
                     consensus_block_hash,
                     domain_id,
                     (domain_block_number, domain_block_hash),
@@ -562,11 +574,7 @@ where
                     extrinsics,
                     storage_proof,
                 )
-                .map(|transactions_check_result| {
-                    FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(
-                        transactions_check_result,
-                    )
-                }),
+                .map(FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext),
             FraudProofVerificationInfoRequest::StorageKey { domain_id, req } => {
                 Some(FraudProofVerificationInfoResponse::StorageKey(
                     self.storage_key(consensus_block_hash, domain_id, req),
@@ -599,6 +607,15 @@ where
         domain_id: DomainId,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<H256> {
+        let domain_runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        self.derive_bundle_digest_v2(domain_runtime_code, bundle_body)
+    }
+
+    fn derive_bundle_digest_v2(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
         let mut extrinsics = Vec::with_capacity(bundle_body.len());
         for opaque_extrinsic in bundle_body {
             let ext = <<DomainBlock as BlockT>::Extrinsic>::decode(
@@ -608,7 +625,6 @@ where
             extrinsics.push(ext);
         }
 
-        let domain_runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
             self.executor.clone(),
             domain_runtime_code.into(),
@@ -666,6 +682,149 @@ where
             &mut domain_extensions,
         )
         .ok()
+    }
+
+    fn check_extrinsics_in_single_context(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        domain_block_id: (BlockNumber, H256),
+        domain_block_state_root: H256,
+        bundle_extrinsics: Vec<OpaqueExtrinsic>,
+        encoded_proof: Vec<u8>,
+    ) -> Option<Option<u32>> {
+        let storage_proof: StorageProof = Decode::decode(&mut encoded_proof.as_ref()).ok()?;
+        let (domain_block_number, domain_block_hash) = domain_block_id;
+
+        let raw_response = self.execution_proof_check(
+            domain_block_id,
+            domain_block_state_root,
+            storage_proof.encode(),
+            CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME,
+            // The call data must be encoded form of arguments to `DomainCoreApi::check_extrinsic_and_do_pre_dispatch`
+            &(&bundle_extrinsics, &domain_block_number, &domain_block_hash).encode(),
+            domain_runtime_code,
+        )?;
+
+        let bundle_extrinsics_validity_response: Result<(), CheckExtrinsicsValidityError> =
+            Decode::decode(&mut raw_response.as_slice()).ok()?;
+        if let Err(bundle_extrinsic_validity_error) = bundle_extrinsics_validity_response {
+            Some(Some(bundle_extrinsic_validity_error.extrinsic_index))
+        } else {
+            Some(None)
+        }
+    }
+
+    fn construct_domain_inherent_extrinsic(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        domain_inherent_extrinsic_data: DomainInherentExtrinsicData,
+    ) -> Option<DomainInherentExtrinsic> {
+        let DomainInherentExtrinsicData {
+            timestamp,
+            maybe_domain_runtime_upgrade,
+            consensus_transaction_byte_fee,
+            domain_chain_allowlist,
+        } = domain_inherent_extrinsic_data;
+
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.executor.clone(),
+            domain_runtime_code.into(),
+        );
+
+        let domain_timestamp_extrinsic = domain_stateless_runtime
+            .construct_timestamp_extrinsic(timestamp)
+            .ok()
+            .map(|ext| ext.encode())?;
+
+        let consensus_chain_byte_fee_extrinsic = domain_stateless_runtime
+            .construct_consensus_chain_byte_fee_extrinsic(consensus_transaction_byte_fee)
+            .ok()
+            .map(|ext| ext.encode())?;
+
+        let maybe_domain_chain_allowlist_extrinsic = if !domain_chain_allowlist.is_empty() {
+            Some(
+                domain_stateless_runtime
+                    .construct_domain_update_chain_allowlist_extrinsic(domain_chain_allowlist)
+                    .ok()
+                    .map(|ext| ext.encode())?,
+            )
+        } else {
+            None
+        };
+
+        let maybe_domain_set_code_extrinsic = match maybe_domain_runtime_upgrade {
+            None => None,
+            Some(upgraded_runtime_code) => Some(
+                domain_stateless_runtime
+                    .construct_set_code_extrinsic(upgraded_runtime_code)
+                    .ok()
+                    .map(|ext| ext.encode())?,
+            ),
+        };
+
+        Some(DomainInherentExtrinsic {
+            domain_timestamp_extrinsic,
+            maybe_domain_chain_allowlist_extrinsic,
+            consensus_chain_byte_fee_extrinsic,
+            maybe_domain_set_code_extrinsic,
+        })
+    }
+
+    fn domain_storage_key(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        req: DomainStorageKeyRequest,
+    ) -> Option<Vec<u8>> {
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.executor.clone(),
+            domain_runtime_code.into(),
+        );
+        let key = match req {
+            DomainStorageKeyRequest::BlockFees => domain_stateless_runtime.block_fees_storage_key(),
+            DomainStorageKeyRequest::Transfers => domain_stateless_runtime.transfers_storage_key(),
+        }
+        .ok()?;
+        Some(key)
+    }
+
+    fn domain_runtime_call(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        call: StatelessDomainRuntimeCall,
+    ) -> Option<bool> {
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.executor.clone(),
+            domain_runtime_code.into(),
+        );
+
+        match call {
+            StatelessDomainRuntimeCall::IsTxInRange {
+                opaque_extrinsic,
+                bundle_vrf_hash,
+                domain_tx_range,
+            } => {
+                let encoded_extrinsic = opaque_extrinsic.encode();
+                let extrinsic =
+                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                        .ok()?;
+                domain_stateless_runtime
+                    .is_within_tx_range(&extrinsic, &bundle_vrf_hash, &domain_tx_range)
+                    .ok()
+            }
+            StatelessDomainRuntimeCall::IsInherentExtrinsic(opaque_extrinsic) => {
+                let encoded_extrinsic = opaque_extrinsic.encode();
+                let extrinsic =
+                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                        .ok()?;
+                domain_stateless_runtime
+                    .is_inherent_extrinsic(&extrinsic)
+                    .ok()
+            }
+            StatelessDomainRuntimeCall::IsDecodableExtrinsic(opaque_extrinsic) => Some(matches!(
+                domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
+                Ok(Ok(_))
+            )),
+        }
     }
 }
 

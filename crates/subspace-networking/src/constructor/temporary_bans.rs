@@ -1,8 +1,7 @@
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use libp2p::PeerId;
-use lru::LruCache;
-use std::num::NonZeroUsize;
+use schnellru::{ByLength, LruMap};
 use std::ops::Add;
 use std::time::Instant;
 
@@ -63,14 +62,14 @@ impl TemporaryBan {
 #[derive(Debug)]
 pub(crate) struct TemporaryBans {
     backoff: ExponentialBackoff,
-    list: LruCache<PeerId, TemporaryBan>,
+    list: LruMap<PeerId, TemporaryBan>,
 }
 
 impl TemporaryBans {
-    pub(super) fn new(capacity: NonZeroUsize, backoff: ExponentialBackoff) -> Self {
+    pub(super) fn new(capacity: u32, backoff: ExponentialBackoff) -> Self {
         Self {
             backoff,
-            list: LruCache::new(capacity),
+            list: LruMap::new(ByLength::new(capacity)),
         }
     }
 
@@ -87,11 +86,11 @@ impl TemporaryBans {
 
     /// Create temporary ban for peer or extend existing ban
     pub(crate) fn create_or_extend(&mut self, peer_id: &PeerId) {
-        if let Some(ban) = self.list.get_mut(peer_id) {
+        if let Some(ban) = self.list.get(peer_id) {
             ban.try_extend();
         } else {
             self.list
-                .put(*peer_id, TemporaryBan::new(self.backoff.clone()));
+                .insert(*peer_id, TemporaryBan::new(self.backoff.clone()));
         }
     }
 
@@ -99,6 +98,6 @@ impl TemporaryBans {
     ///
     /// Returns `true` if there was an entry for peer during call.
     pub(crate) fn remove(&mut self, peer_id: &PeerId) -> bool {
-        self.list.pop(peer_id).is_some()
+        self.list.remove(peer_id).is_some()
     }
 }

@@ -39,7 +39,7 @@ use frame_system::pallet_prelude::BlockNumberFor;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
-use sp_domains::DomainId;
+use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
     ChainId, ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce,
 };
@@ -292,8 +292,9 @@ mod pallet {
     #[pallet::getter(fn chain_allowlist)]
     pub(super) type ChainAllowlist<T: Config> = StorageValue<_, BTreeSet<ChainId>, ValueQuery>;
 
-    /// A temporary storage to store any allowlist updates to domain.
-    /// Will be cleared in the next block once the previous block has a domain bundle.
+    /// A storage to store any allowlist updates to domain. The updates will be cleared in the next block
+    /// once the previous block has a domain bundle, but a empty value should be left because in the invalid
+    /// extrinsic root fraud proof the prover need to generate a proof-of-empty-value for the domain.
     #[pallet::storage]
     #[pallet::getter(fn domain_chain_allowlist_updates)]
     pub(super) type DomainChainAllowlistUpdate<T: Config> =
@@ -551,7 +552,6 @@ mod pallet {
         /// A new Channel is initiated with a foreign chain.
         /// Next Channel ID is used to assign the new channel.
         /// Channel is set to initiated and do not accept or receive any messages.
-        /// Only a root user can create the channel.
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::initiate_channel())]
         pub fn initiate_channel(
@@ -591,7 +591,6 @@ mod pallet {
 
         /// An open channel is closed with a foreign chain.
         /// Channel is set to Closed and do not accept or receive any messages.
-        /// Only a root user can close an open channel.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::close_channel())]
         pub fn close_channel(
@@ -1000,7 +999,6 @@ mod pallet {
                     // if there is no channel config, this must the Channel open request.
                     // so nonce is 0
                     should_init_channel = true;
-                    // TODO(ved): collect fees to open channel
                     log::debug!(
                         "Initiating new channel: {:?} to chain: {:?}",
                         xdm.channel_id,
@@ -1148,10 +1146,10 @@ mod pallet {
             // nonce should be either be next or in future.
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
-            let state_root = T::MmrProofVerifier::verify_proof_and_extract_consensus_state_root(
-                xdm.proof.consensus_mmr_proof(),
-            )
-            .ok_or(InvalidTransaction::BadProof)?;
+            let state_root =
+                T::MmrProofVerifier::verify_proof_and_extract_leaf(xdm.proof.consensus_mmr_proof())
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
 
             // if the message is from domain, verify domain confirmation proof
             let state_root = if let Some(domain_proof) = xdm.proof.domain_proof().clone()
@@ -1211,7 +1209,11 @@ mod pallet {
         pub fn domain_chains_allowlist_update(
             domain_id: DomainId,
         ) -> Option<DomainAllowlistUpdates> {
-            DomainChainAllowlistUpdate::<T>::get(domain_id)
+            DomainChainAllowlistUpdate::<T>::get(domain_id).filter(|updates| !updates.is_empty())
+        }
+
+        pub fn domain_allow_list_update_storage_key(domain_id: DomainId) -> Vec<u8> {
+            DomainChainAllowlistUpdate::<T>::hashed_key_for(domain_id)
         }
     }
 }
@@ -1247,6 +1249,19 @@ where
 
 impl<T: Config> sp_domains::DomainBundleSubmitted for Pallet<T> {
     fn domain_bundle_submitted(domain_id: DomainId) {
-        DomainChainAllowlistUpdate::<T>::remove(domain_id);
+        // NOTE: clear the updates leave an empty value but does not delete the value for the
+        // domain completely because in the invalid extrinsic root fraud proof the prover need
+        // to generate a proof-of-empty-value for the domain.
+        DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_updates| {
+            if let Some(ref mut updates) = maybe_updates {
+                updates.clear();
+            }
+        });
+    }
+}
+
+impl<T: Config> sp_domains::OnDomainInstantiated for Pallet<T> {
+    fn on_domain_instantiated(domain_id: DomainId) {
+        DomainChainAllowlistUpdate::<T>::insert(domain_id, DomainAllowlistUpdates::default());
     }
 }

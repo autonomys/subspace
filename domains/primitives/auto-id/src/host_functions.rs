@@ -1,7 +1,7 @@
 use crate::{DerVec, SignatureVerificationRequest, TbsCertificate, Validity};
 use sp_core::U256;
 use std::sync::Arc;
-use x509_parser::der_parser::asn1_rs::{BitString, ToDer};
+use x509_parser::der_parser::asn1_rs::BitString;
 use x509_parser::prelude::{AlgorithmIdentifier, FromDer, SubjectPublicKeyInfo};
 use x509_parser::verify::verify_signature;
 
@@ -51,8 +51,7 @@ impl HostFunctions for HostFunctionsImpl {
             .subject
             .iter_common_name()
             .next()
-            .and_then(|cn| cn.attr_value().to_der_vec().ok())?
-            .into();
+            .map(|cn| cn.attr_value().as_bytes().to_vec())?;
 
         Some(TbsCertificate {
             serial,

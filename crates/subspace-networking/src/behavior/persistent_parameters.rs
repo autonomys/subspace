@@ -6,14 +6,14 @@ use futures::future::{pending, Fuse};
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
-use lru::LruCache;
 use memmap2::{MmapMut, MmapOptions};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use parking_lot::Mutex;
+use schnellru::{ByLength, LruMap};
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -30,9 +30,9 @@ use tracing::{debug, error, trace, warn};
 type FailureTime = Option<SystemTime>;
 
 /// Size of the LRU cache for peers.
-const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+const KNOWN_PEERS_CACHE_SIZE: u32 = 100;
 /// Size of the LRU cache for addresses of a single peer ID.
-const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+const ADDRESSES_CACHE_SIZE: u32 = 30;
 /// Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 /// Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
@@ -60,21 +60,19 @@ struct EncodableKnownPeerAddress {
 
 #[derive(Debug, Encode, Decode)]
 struct EncodableKnownPeers {
-    cache_size: NonZeroU64,
+    cache_size: u32,
     timestamp: u64,
     // Each entry is a tuple of peer ID + list of multiaddresses with corresponding failure time
     known_peers: Vec<(Vec<u8>, Vec<EncodableKnownPeerAddress>)>,
 }
 
 impl EncodableKnownPeers {
-    fn into_cache(self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
-        let mut peers_cache = LruCache::new(
-            NonZeroUsize::new(self.cache_size.get() as usize)
-                .expect("Upstream value is NoneZeroUsize"),
-        );
+    fn into_cache(self) -> LruMap<PeerId, LruMap<Multiaddr, FailureTime>> {
+        let mut peers_cache = LruMap::new(ByLength::new(self.cache_size));
 
         'peers: for (peer_id, addresses) in self.known_peers {
-            let mut peer_cache = LruCache::<Multiaddr, FailureTime>::new(ADDRESSES_CACHE_SIZE);
+            let mut peer_cache =
+                LruMap::<Multiaddr, FailureTime>::new(ByLength::new(ADDRESSES_CACHE_SIZE));
 
             let peer_id = match PeerId::from_bytes(&peer_id) {
                 Ok(peer_id) => peer_id,
@@ -95,7 +93,7 @@ impl EncodableKnownPeers {
                     }
                 };
 
-                peer_cache.push(
+                peer_cache.insert(
                     multiaddr,
                     address.failure_time.map(|failure_time| {
                         SystemTime::UNIX_EPOCH + Duration::from_secs(failure_time)
@@ -103,21 +101,17 @@ impl EncodableKnownPeers {
                 );
             }
 
-            peers_cache.push(peer_id, peer_cache);
+            peers_cache.insert(peer_id, peer_cache);
         }
 
         peers_cache
     }
 
-    fn from_cache(
-        cache: &LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
-        cache_size: NonZeroUsize,
-    ) -> Self {
+    fn from_cache(cache: &LruMap<PeerId, LruMap<Multiaddr, FailureTime>>, cache_size: u32) -> Self {
         let single_peer_encoded_address_size =
             KnownPeersManager::single_peer_encoded_address_size();
         Self {
-            cache_size: NonZeroU64::new(cache_size.get() as u64)
-                .expect("Getting the value from another NonZero type"),
+            cache_size,
             timestamp: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("Never before Unix epoch; qed")
@@ -260,7 +254,7 @@ pub struct KnownPeersManagerConfig {
     /// Defines whether we return known peers batches on next_known_addresses_batch().
     pub enable_known_peers_source: bool,
     /// Defines cache size.
-    pub cache_size: NonZeroUsize,
+    pub cache_size: u32,
     /// Peer ID list to filter on address adding.
     pub ignore_peer_list: HashSet<PeerId>,
     /// Defines whether we enable cache persistence.
@@ -301,7 +295,7 @@ pub struct KnownPeersManager {
     /// Defines whether the cache requires saving to DB
     cache_need_saving: bool,
     /// LRU cache for the known peers and their addresses
-    known_peers: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
+    known_peers: LruMap<PeerId, LruMap<Multiaddr, FailureTime>>,
     /// Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     /// Slots backed by file that store known peers
@@ -332,7 +326,7 @@ impl Drop for KnownPeersManager {
 impl KnownPeersManager {
     fn init_file(
         path: &Path,
-        cache_size: NonZeroUsize,
+        cache_size: u32,
     ) -> Result<
         (Option<EncodableKnownPeers>, Arc<Mutex<KnownPeersSlots>>),
         KnownPeersManagerPersistenceError,
@@ -456,7 +450,7 @@ impl KnownPeersManager {
 
         let known_peers = maybe_newest_known_addresses
             .map(EncodableKnownPeers::into_cache)
-            .unwrap_or_else(|| LruCache::new(config.cache_size));
+            .unwrap_or_else(|| LruMap::new(ByLength::new(config.cache_size)));
 
         Ok(Self {
             cache_need_saving: false,
@@ -483,7 +477,7 @@ impl KnownPeersManager {
     }
 
     /// Size of the backing file on disk
-    pub fn file_size(cache_size: NonZeroUsize) -> usize {
+    pub fn file_size(cache_size: u32) -> usize {
         // *2 because we have a/b parts of the file
         Self::known_addresses_size(cache_size) * 2
     }
@@ -514,21 +508,21 @@ impl KnownPeersManager {
         // Peer ID encoding + compact encoding of the length of list of addresses + (length of a
         // single peer address entry + optional failure time) * number of entries
         PeerId::random().to_bytes().encoded_size()
-            + Compact::compact_len(&(ADDRESSES_CACHE_SIZE.get() as u32))
+            + Compact::compact_len(&(ADDRESSES_CACHE_SIZE))
             + (Self::single_peer_encoded_address_size() + Some(0u64).encoded_size())
-                * ADDRESSES_CACHE_SIZE.get()
+                * ADDRESSES_CACHE_SIZE as usize
     }
 
     /// Size of known addresses and accompanying metadata.
     ///
     /// NOTE: This is max size that needs to be allocated on disk for successful write of a single
     /// `known_addresses` copy, the actual written data can occupy only a part of this size
-    fn known_addresses_size(cache_size: NonZeroUsize) -> usize {
+    fn known_addresses_size(cache_size: u32) -> usize {
         // Timestamp (when was written) + compact encoding of the length of peer records + peer
         // records + checksum
         mem::size_of::<u64>()
-            + Compact::compact_len(&(cache_size.get() as u32))
-            + Self::single_peer_encoded_size() * cache_size.get()
+            + Compact::compact_len(&(cache_size))
+            + Self::single_peer_encoded_size() * cache_size as usize
             + mem::size_of::<Blake3Hash>()
     }
 
@@ -579,11 +573,11 @@ impl KnownPeersRegistry for KnownPeersManager {
             .for_each(|addr| {
                 // Add new address cache if it doesn't exist previously.
                 self.known_peers
-                    .get_or_insert(peer_id, || LruCache::new(ADDRESSES_CACHE_SIZE));
+                    .get_or_insert(peer_id, || LruMap::new(ByLength::new(ADDRESSES_CACHE_SIZE)));
 
-                if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-                    let previous_entry = addresses.push(addr, None);
-
+                if let Some(addresses) = self.known_peers.get(&peer_id) {
+                    let previous_entry = addresses.peek(&addr).cloned().flatten();
+                    addresses.insert(addr, None);
                     if let Some(previous_entry) = previous_entry {
                         trace!(%peer_id, "Address cache entry replaced: {:?}", previous_entry);
                     }
@@ -614,7 +608,7 @@ impl KnownPeersRegistry for KnownPeersManager {
     fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId) {
         trace!(%peer_id, "Remove all peer addresses from the networking parameters registry");
 
-        self.known_peers.pop(&peer_id);
+        self.known_peers.remove(&peer_id);
 
         self.cache_need_saving = true;
     }
@@ -715,7 +709,7 @@ pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Mult
 
 // Testable implementation of the `remove_known_peer_addresses`
 pub(super) fn remove_known_peer_addresses_internal(
-    known_peers: &mut LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
+    known_peers: &mut LruMap<PeerId, LruMap<Multiaddr, FailureTime>>,
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
     expired_address_duration_persistent_storage: Duration,
@@ -730,7 +724,7 @@ pub(super) fn remove_known_peer_addresses_internal(
         .for_each(|addr| {
             // if peer_id is present in the cache
             if let Some(addresses) = known_peers.peek_mut(&peer_id) {
-                let last_address = addresses.contains(&addr) && addresses.len() == 1;
+                let last_address = addresses.peek(&addr).is_some() && addresses.len() == 1;
                 // Get mutable reference to first_failed_time for the address without updating
                 // the item's position in the cache
                 if let Some(first_failed_time) = addresses.peek_mut(&addr) {
@@ -751,11 +745,11 @@ pub(super) fn remove_known_peer_addresses_internal(
                         // if we failed first time more than a day ago (for persistent cache)
                         if *time + expired_address_duration_persistent_storage < now {
                             // Remove a failed address
-                            addresses.pop(&addr);
+                            addresses.remove(&addr);
 
                             // If the last address for peer
                             if last_address {
-                                known_peers.pop(&peer_id);
+                                known_peers.remove(&peer_id);
 
                                 trace!(%peer_id, "Peer removed from the cache");
                             }

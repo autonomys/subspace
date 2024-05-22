@@ -51,6 +51,7 @@ impl<FarmIndex, PV, NC> fmt::Debug for FarmerPieceGetter<FarmIndex, PV, NC> {
 }
 
 impl<FarmIndex, PV, NC> Clone for FarmerPieceGetter<FarmIndex, PV, NC> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -368,6 +369,7 @@ impl<FarmIndex, PV, NC> fmt::Debug for WeakFarmerPieceGetter<FarmIndex, PV, NC> 
 }
 
 impl<FarmIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),

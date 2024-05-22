@@ -201,10 +201,10 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                         sudo_account.clone(),
                     ]),
-                    genesis_domains: vec![evm_chain_spec::get_genesis_domain(
-                        SpecId::Gemini,
-                        sudo_account,
-                    )?],
+                    genesis_domains: vec![
+                        evm_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
+                        auto_id_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account)?,
+                    ],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -313,7 +313,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
                     genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
                         SpecId::DevNet,
                         sudo_account,
-                    )],
+                    )?],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
@@ -370,7 +370,7 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                         sudo_account.clone(),
                     ]),
                     genesis_domains: vec![
-                        auto_id_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account.clone()),
+                        auto_id_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account.clone())?,
                         evm_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account)?,
                     ],
                 },

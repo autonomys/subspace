@@ -560,6 +560,11 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                     protocol.on_swarm_event(FromSwarm::ExternalAddrExpired(inner));
                 }
             }
+            FromSwarm::NewExternalAddrOfPeer(inner) => {
+                for (protocol, _) in self.protocols.values_mut() {
+                    protocol.on_swarm_event(FromSwarm::NewExternalAddrOfPeer(inner));
+                }
+            }
             event => {
                 warn!(
                     ?event,
