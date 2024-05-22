@@ -28,7 +28,7 @@ use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, warn};
 
 type AddRemoveFuture<'a> =
-    Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, Box<dyn Farm>)>> + 'a>>;
+    Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>> + 'a>>;
 
 pub(super) type FarmIndex = u16;
 
@@ -319,7 +319,7 @@ fn process_farm_identify_message<'a>(
                         );
                     }
 
-                    Some((farm_index, expired_receiver, Box::new(farm) as Box<_>))
+                    Some((farm_index, expired_receiver, farm))
                 }
                 Err(error) => {
                     warn!(

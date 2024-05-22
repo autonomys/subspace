@@ -425,12 +425,6 @@ pub trait Farm {
     /// Get plotted sectors instance
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static>;
 
-    /// Get piece cache instance
-    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static>;
-
-    /// Get plot cache instance
-    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static>;
-
     /// Get piece reader to read plotted pieces later
     fn piece_reader(&self) -> Arc<dyn PieceReader + 'static>;
 
@@ -471,16 +465,6 @@ where
     #[inline]
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
         self.as_ref().plotted_sectors()
-    }
-
-    #[inline]
-    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
-        self.as_ref().piece_cache()
-    }
-
-    #[inline]
-    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
-        self.as_ref().plot_cache()
     }
 
     #[inline]
