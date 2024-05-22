@@ -97,7 +97,8 @@ use subspace_test_runtime::{
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 
-type FraudProofFor<DomainBlock> = FraudProof<<DomainBlock as BlockT>::Header>;
+type FraudProofFor<Block, DomainBlock> =
+    FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 
@@ -796,7 +797,7 @@ impl MockConsensusNode {
         fraud_proof_predict: FP,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>
     where
-        FP: Fn(&FraudProofFor<DomainBlock>) -> bool + Send + 'static,
+        FP: Fn(&FraudProofFor<Block, DomainBlock>) -> bool + Send + 'static,
     {
         let tx_pool = self.transaction_pool.clone();
         let mut import_tx_stream = self.transaction_pool.import_notification_stream();

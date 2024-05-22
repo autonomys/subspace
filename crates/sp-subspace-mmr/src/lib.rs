@@ -39,10 +39,16 @@ pub enum MmrLeaf<BlockNumber, Hash> {
     V0(LeafDataV0<BlockNumber, Hash>),
 }
 
-impl<BlockNumber, Hash: Clone> MmrLeaf<BlockNumber, Hash> {
+impl<BlockNumber: Clone, Hash: Clone> MmrLeaf<BlockNumber, Hash> {
     pub fn state_root(&self) -> Hash {
         match self {
             MmrLeaf::V0(leaf) => leaf.state_root.clone(),
+        }
+    }
+
+    pub fn block_number(&self) -> BlockNumber {
+        match self {
+            MmrLeaf::V0(leaf) => leaf.block_number.clone(),
         }
     }
 }
@@ -116,15 +122,15 @@ impl<CBlockNumber: Clone, CBlockHash: Clone, MmrHash: Clone> Clone
 /// Trait to verify MMR proofs
 pub trait MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> {
     /// Returns consensus state root if the given MMR proof is valid
-    fn verify_proof_and_extract_consensus_state_root(
+    fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
-    ) -> Option<CBlockHash>;
+    ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>>;
 }
 
 impl<MmrHash, CBlockNumber, CBlockHash> MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> for () {
-    fn verify_proof_and_extract_consensus_state_root(
+    fn verify_proof_and_extract_leaf(
         _mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
-    ) -> Option<CBlockHash> {
+    ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>> {
         None
     }
 }

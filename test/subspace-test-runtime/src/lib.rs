@@ -544,9 +544,9 @@ parameter_types! {
 pub struct MmrProofVerifier;
 
 impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for MmrProofVerifier {
-    fn verify_proof_and_extract_consensus_state_root(
+    fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
-    ) -> Option<Hash> {
+    ) -> Option<mmr::Leaf> {
         let ConsensusChainMmrLeafProof {
             consensus_block_number,
             opaque_mmr_leaf,
@@ -567,7 +567,7 @@ impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for Mm
 
         let leaf: mmr::Leaf = opaque_mmr_leaf.into_opaque_leaf().try_decode()?;
 
-        Some(leaf.state_root())
+        Some(leaf)
     }
 }
 
@@ -743,6 +743,9 @@ impl pallet_domains::Config for Runtime {
     type DomainBundleSubmitted = Messenger;
     type OnDomainInstantiated = Messenger;
     type Balance = Balance;
+    type MmrHash = mmr::Hash;
+    type MmrProofVerifier = MmrProofVerifier;
+    type FraudProofStorageKeyProvider = StorageKeyProvider;
 }
 
 parameter_types! {
@@ -1063,25 +1066,6 @@ fn extract_bundle(
         }
         _ => None,
     }
-}
-
-pub(crate) fn extract_fraud_proofs(
-    domain_id: DomainId,
-    extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<FraudProof<DomainHeader>> {
-    let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id
-                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
-            {
-                Some(*fraud_proof)
-            }
-            _ => None,
-        })
-        .collect()
 }
 
 struct RewardAddress([u8; 32]);
@@ -1425,6 +1409,10 @@ impl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance {
             Domains::storage_fund_account_balance(operator_id)
         }
+
+        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+            Domains::is_domain_runtime_updraded_since(domain_id, at)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1523,15 +1511,8 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<DomainHeader>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn extract_fraud_proofs(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<DomainHeader>> {
-            extract_fraud_proofs(domain_id, extrinsics)
         }
 
         fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
@@ -1594,8 +1575,8 @@ impl_runtime_apis! {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
 
-        fn verify_proof_and_extract_consensus_state_root(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<H256> {
-            <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_consensus_state_root(mmr_leaf_proof)
+        fn verify_proof_and_extract_leaf(mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, <Block as BlockT>::Hash, H256>) -> Option<mmr::Leaf> {
+            <MmrProofVerifier as sp_subspace_mmr::MmrProofVerifier<_, _, _,>>::verify_proof_and_extract_leaf(mmr_leaf_proof)
         }
     }
 
