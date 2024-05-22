@@ -9,7 +9,7 @@ use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
-use libp2p::kad::PeerRecord;
+use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
@@ -436,14 +436,14 @@ impl Node {
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.
     pub async fn get_providers(
         &self,
-        key: Multihash,
+        key: RecordKey,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         self.get_providers_internal(key, true).await
     }
 
     async fn get_providers_internal(
         &self,
-        key: Multihash,
+        key: RecordKey,
         acquire_permit: bool,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         let permit = if acquire_permit {
@@ -454,7 +454,7 @@ impl Node {
 
         let (result_sender, result_receiver) = mpsc::unbounded();
 
-        trace!(?key, "Starting 'get_providers' request.");
+        trace!(key = hex::encode(&key), "Starting 'get_providers' request");
 
         self.shared
             .command_sender
@@ -598,7 +598,7 @@ impl NodeRequestsBatchHandle {
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.
     pub async fn get_providers(
         &mut self,
-        key: Multihash,
+        key: RecordKey,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         self.node.get_providers_internal(key, false).await
     }

@@ -24,6 +24,7 @@ use libp2p::kad::{
     Behaviour as Kademlia, BootstrapOk, Event as KademliaEvent, GetClosestPeersError,
     GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError, GetRecordOk,
     InboundRequest, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    RecordKey,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
@@ -57,6 +58,7 @@ enum QueryResultSender {
         _permit: Option<OwnedSemaphorePermit>,
     },
     Providers {
+        key: RecordKey,
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
         _permit: Option<OwnedSemaphorePermit>,
@@ -963,7 +965,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::Providers { sender, .. }) =
+                if let Some(QueryResultSender::Providers { key, sender, .. }) =
                     self.query_id_receivers.get(&id)
                 {
                     match result {
@@ -984,8 +986,12 @@ where
                                 ) || cancelled;
                             }
                         }
-                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { .. }) => {
-                            trace!("Get providers query yielded no results");
+                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { closest_peers }) => {
+                            trace!(
+                                key = hex::encode(key),
+                                closest_peers = %closest_peers.len(),
+                                "Get providers query yielded no results"
+                            );
                         }
                         Err(error) => {
                             let GetProvidersError::Timeout { key, .. } = error;
@@ -1375,11 +1381,12 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .get_providers(key.into());
+                    .get_providers(key.clone());
 
                 self.query_id_receivers.insert(
                     query_id,
                     QueryResultSender::Providers {
+                        key,
                         sender: result_sender,
                         _permit: permit,
                     },
