@@ -8,7 +8,7 @@ use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
-use libp2p::kad::PeerRecord;
+use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -89,7 +89,7 @@ pub(crate) enum Command {
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
     GetProviders {
-        key: Multihash,
+        key: RecordKey,
         result_sender: mpsc::UnboundedSender<PeerId>,
         permit: Option<OwnedSemaphorePermit>,
     },

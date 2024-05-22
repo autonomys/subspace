@@ -1,6 +1,4 @@
-use crate::domain_block_processor::{
-    generate_mmr_proof, DomainBlockProcessor, PendingConsensusBlocks,
-};
+use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
@@ -17,6 +15,7 @@ use futures::StreamExt;
 use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
+use sc_domains::generate_mmr_proof;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -34,7 +33,7 @@ use sp_domains::{
     InvalidBundleType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
+    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
     InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
     InvalidTransfersProof,
 };
@@ -957,8 +956,8 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
             ferdie.clear_tx_pool().await.unwrap();
 
             // Modify fraud proof's mismatch index to a higher value and try to submit it.
-            match &fraud_proof {
-                FraudProof::InvalidStateTransition(invalid_state_transition_fraud_proof) => {
+            match &fraud_proof.proof {
+                FraudProofVariant::InvalidStateTransition(invalid_state_transition_fraud_proof) => {
                     match &invalid_state_transition_fraud_proof.execution_phase {
                         ExecutionPhase::ApplyExtrinsic {
                             extrinsic_proof,
@@ -971,7 +970,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                                     extrinsic_proof: extrinsic_proof.clone(),
                                     mismatch: ApplyExtrinsicMismatch::StateRoot(u32::MAX),
                                 };
-                            fraud_proof = FraudProof::InvalidStateTransition(
+                            fraud_proof.proof = FraudProofVariant::InvalidStateTransition(
                                 modified_invalid_state_transition_fraud_proof,
                             );
                         }
@@ -984,7 +983,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                                 ExecutionPhase::FinalizeBlock {
                                     mismatch: FinalizeBlockMismatch::Longer(u32::MAX),
                                 };
-                            fraud_proof = FraudProof::InvalidStateTransition(
+                            fraud_proof.proof = FraudProofVariant::InvalidStateTransition(
                                 modified_invalid_state_transition_fraud_proof,
                             );
                         }
@@ -1175,7 +1174,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidStateTransition(proof) = fp {
+        if let FraudProofVariant::InvalidStateTransition(proof) = &fp.proof {
             match (trace_diff_type, mismatch_trace_index) {
                 (TraceDiffType::Mismatch, mismatch_trace_index) => match mismatch_trace_index {
                     0 => assert!(matches!(
@@ -1360,7 +1359,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 return true;
@@ -1473,7 +1472,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(!proof.is_true_invalid_fraud_proof);
                 return true;
@@ -1626,7 +1625,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
@@ -1791,7 +1790,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 2);
@@ -1924,7 +1923,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
-        if let FraudProof::InvalidBundles(proof) = fp {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
             if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(!proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 1);
@@ -2024,8 +2023,8 @@ async fn test_invalid_block_fees_proof_creation() {
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
-            fp,
-            FraudProof::InvalidBlockFees(InvalidBlockFeesProof { .. })
+            fp.proof,
+            FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { .. })
         )
     });
 
@@ -2126,8 +2125,8 @@ async fn test_invalid_transfers_fraud_proof() {
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
-            fp,
-            FraudProof::InvalidTransfers(InvalidTransfersProof { .. })
+            fp.proof,
+            FraudProofVariant::InvalidTransfers(InvalidTransfersProof { .. })
         )
     });
 
@@ -2223,8 +2222,8 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
-            fp,
-            FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
+            fp.proof,
+            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
         )
     });
 
@@ -2320,8 +2319,8 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
-            fp,
-            FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. })
+            fp.proof,
+            FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. })
         )
     });
 
@@ -2593,12 +2592,9 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         )
         .into()
     };
-    let proof_to_tx = |proof| {
+    let proof_to_tx = |fraud_proof| {
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_fraud_proof {
-                fraud_proof: Box::new(FraudProof::ValidBundle(proof)),
-            }
-            .into(),
+            pallet_domains::Call::submit_fraud_proof { fraud_proof }.into(),
         )
         .into()
     };
@@ -2652,26 +2648,27 @@ async fn test_valid_bundle_proof_generation_and_verification() {
             pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
         {
-            if let FraudProof::ValidBundle(proof) = *fraud_proof {
+            if let FraudProofVariant::ValidBundle(ref proof) = fraud_proof.proof {
                 // The fraud proof is targetting the `bad_receipt`
                 assert_eq!(
-                    proof.bad_receipt_hash,
+                    fraud_proof.bad_receipt_hash,
                     bad_receipt.hash::<HeaderHashingFor<Header>>()
                 );
 
                 // If the fraud proof target a non-exist receipt then it is invalid
-                let mut bad_proof = proof.clone();
-                bad_proof.bad_receipt_hash = H256::random();
+                let mut bad_fraud_proof = fraud_proof.clone();
+                bad_fraud_proof.bad_receipt_hash = H256::random();
                 assert!(ferdie
-                    .submit_transaction(proof_to_tx(bad_proof))
+                    .submit_transaction(proof_to_tx(bad_fraud_proof))
                     .await
                     .is_err());
 
                 // If the fraud proof point to non-exist bundle then it is invalid
-                let mut bad_proof = proof.clone();
-                bad_proof.bundle_index = u32::MAX;
+                let (mut bad_fraud_proof, mut bad_proof) = (fraud_proof.clone(), proof.clone());
+                bad_proof.bundle_with_proof.bundle_index = u32::MAX;
+                bad_fraud_proof.proof = FraudProofVariant::ValidBundle(bad_proof);
                 assert!(ferdie
-                    .submit_transaction(proof_to_tx(bad_proof))
+                    .submit_transaction(proof_to_tx(bad_fraud_proof))
                     .await
                     .is_err());
 
@@ -4029,9 +4026,9 @@ async fn test_bad_receipt_chain() {
     // Wait for a fraud proof that target the first bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
-            fp,
-            FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
-        ) && fp.targeted_bad_receipt_hash() == Some(bad_receipt_hash)
+            fp.proof,
+            FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof { .. })
+        ) && fp.targeted_bad_receipt_hash() == bad_receipt_hash
     });
 
     // Produce more bundle with bad ER that use previous bad ER as parent
@@ -4313,6 +4310,7 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
     assert_eq!(alice.account_nonce(), nonce + 3);
 }
 
+// TODO: add test to ensure MMR proof from diff fork wil be rejected
 #[tokio::test(flavor = "multi_thread")]
 async fn test_verify_mmr_proof_stateless() {
     use subspace_test_primitives::OnchainStateApi as _;
@@ -4362,11 +4360,9 @@ async fn test_verify_mmr_proof_stateless() {
         let res = ferdie
             .client
             .runtime_api()
-            .verify_proof_and_extract_consensus_state_root(
-                ferdie.client.info().best_hash,
-                proof.clone(),
-            )
-            .unwrap();
+            .verify_proof_and_extract_leaf(ferdie.client.info().best_hash, proof.clone())
+            .unwrap()
+            .map(|leaf| leaf.state_root());
 
         produce_blocks!(ferdie, alice, 1).await.unwrap();
 
@@ -4384,11 +4380,9 @@ async fn test_verify_mmr_proof_stateless() {
         let res = ferdie
             .client
             .runtime_api()
-            .verify_proof_and_extract_consensus_state_root(
-                ferdie.client.info().best_hash,
-                proof.clone(),
-            )
-            .unwrap();
+            .verify_proof_and_extract_leaf(ferdie.client.info().best_hash, proof.clone())
+            .unwrap()
+            .map(|leaf| leaf.state_root());
 
         assert_eq!(res, Some(expected_state_root));
         produce_blocks!(ferdie, alice, 1).await.unwrap();
