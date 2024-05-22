@@ -47,7 +47,7 @@ pub trait FraudProofRuntimeInterface {
     }
 
     /// Derive the bundle digest for the given bundle body.
-    #[version(2, register_only)]
+    #[version(2)]
     fn derive_bundle_digest(
         &mut self,
         domain_runtime_code: Vec<u8>,
@@ -104,7 +104,7 @@ pub trait FraudProofRuntimeInterface {
             )
     }
 
-    #[version(1, register_only)]
+    #[version(1)]
     fn check_extrinsics_in_single_context(
         &mut self,
         domain_runtime_code: Vec<u8>,
@@ -124,7 +124,7 @@ pub trait FraudProofRuntimeInterface {
             )
     }
 
-    #[version(1, register_only)]
+    #[version(1)]
     fn construct_domain_inherent_extrinsic(
         &mut self,
         domain_runtime_code: Vec<u8>,
@@ -138,7 +138,7 @@ pub trait FraudProofRuntimeInterface {
             )
     }
 
-    #[version(1, register_only)]
+    #[version(1)]
     fn domain_storage_key(
         &mut self,
         domain_runtime_code: Vec<u8>,
@@ -149,7 +149,7 @@ pub trait FraudProofRuntimeInterface {
             .domain_storage_key(domain_runtime_code, req)
     }
 
-    #[version(1, register_only)]
+    #[version(1)]
     fn domain_runtime_call(
         &mut self,
         domain_runtime_code: Vec<u8>,

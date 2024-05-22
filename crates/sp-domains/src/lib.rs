@@ -1325,7 +1325,7 @@ pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(3)]
+    #[api_version(4)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1408,6 +1408,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the balance of the storage fund account
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
+
+        /// Return if the domain runtime code is upgraded since `at`
+        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
