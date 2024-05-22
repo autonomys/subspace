@@ -1062,6 +1062,9 @@ pub enum InvalidBundleType {
     /// Transaction is an inherent extrinsic.
     #[codec(index = 4)]
     InherentExtrinsic(u32),
+    /// The `estimated_bundle_weight` in the bundle header is invalid
+    #[codec(index = 5)]
+    InvalidBundleWeight,
 }
 
 impl InvalidBundleType {
@@ -1074,6 +1077,7 @@ impl InvalidBundleType {
             Self::OutOfRangeTx(_) => 2,
             Self::InherentExtrinsic(_) => 3,
             Self::IllegalTx(_) => 5,
+            Self::InvalidBundleWeight => 6,
         }
     }
 
@@ -1083,6 +1087,11 @@ impl InvalidBundleType {
             Self::OutOfRangeTx(i) => *i,
             Self::IllegalTx(i) => *i,
             Self::InherentExtrinsic(i) => *i,
+            // NOTE: the `InvalidBundleWeight` is targetting the whole bundle not a specific
+            // single extrinsic, as `extrinsic_index` is used as the order to check the extrinsic
+            // in the bundle returning `u32::MAX` indicate `InvalidBundleWeight` is checked after
+            // all the extrinsic in the bundle is checked.
+            Self::InvalidBundleWeight => u32::MAX,
         }
     }
 }

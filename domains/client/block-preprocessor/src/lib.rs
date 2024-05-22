@@ -30,6 +30,7 @@ use sp_domains::{
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
 use sp_state_machine::LayoutV1;
+use sp_weights::Weight;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -251,6 +252,7 @@ where
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
+        let mut estimated_bundle_weight = Weight::default();
 
         let domain_block_number = self
             .client
@@ -316,7 +318,16 @@ where
                 )));
             }
 
+            let tx_weight = runtime_api.extrinsic_weight(at, &extrinsic)?;
+            estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
+
             extrinsics.push(extrinsic);
+        }
+
+        if estimated_bundle_weight != bundle.estimated_weight() {
+            return Ok(BundleValidity::Invalid(
+                InvalidBundleType::InvalidBundleWeight,
+            ));
         }
 
         Ok(BundleValidity::Valid(extrinsics))

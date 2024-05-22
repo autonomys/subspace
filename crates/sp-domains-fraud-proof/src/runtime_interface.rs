@@ -160,7 +160,7 @@ pub trait FraudProofRuntimeInterface {
             .domain_runtime_call(domain_runtime_code, call)
     }
 
-    #[version(1, register_only)]
+    #[version(1)]
     fn bundle_weight(
         &mut self,
         domain_runtime_code: Vec<u8>,

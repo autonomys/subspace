@@ -675,5 +675,29 @@ where
             }
             Ok(())
         }
+        InvalidBundleType::InvalidBundleWeight => {
+            let bundle = match proof_data {
+                InvalidBundlesProofData::Bundle(bundle_with_proof)
+                    if bundle_with_proof.bundle_index == bundle_index =>
+                {
+                    bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+                    bundle_with_proof.bundle.clone()
+                }
+                _ => return Err(VerificationError::UnexpectedInvalidBundleProofData),
+            };
+            let bundle_header_weight = bundle.estimated_weight();
+            let estimated_bundle_weight = fraud_proof_runtime_interface::bundle_weight(
+                domain_runtime_code,
+                bundle.extrinsics,
+            )
+            .ok_or(VerificationError::FailedToGetBundleWeight)?;
+
+            let is_bundle_weight_correct = estimated_bundle_weight == bundle_header_weight;
+
+            if is_bundle_weight_correct == is_true_invalid_fraud_proof {
+                return Err(VerificationError::InvalidProof);
+            }
+            Ok(())
+        }
     }
 }

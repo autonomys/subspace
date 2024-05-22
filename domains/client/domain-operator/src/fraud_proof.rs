@@ -650,7 +650,7 @@ where
                     execution_proof,
                 }
             }
-            InvalidBundleType::OutOfRangeTx(_) => {
+            InvalidBundleType::OutOfRangeTx(_) | InvalidBundleType::InvalidBundleWeight => {
                 let bundle_with_proof = OpaqueBundleWithProof::generate(
                     &self.storage_key_provider,
                     self.consensus_client.as_ref(),

@@ -339,6 +339,9 @@ pub enum VerificationError<DomainHash> {
         error("Failed to get domain runtime call response")
     )]
     FailedToGetDomainRuntimeCallResponse,
+    /// Failed to get bundle weight
+    #[cfg_attr(feature = "thiserror", error("Failed to get bundle weight"))]
+    FailedToGetBundleWeight,
 }
 
 impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<DomainHash> {
