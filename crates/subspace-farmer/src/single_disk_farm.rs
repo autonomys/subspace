@@ -6,7 +6,7 @@ mod plotted_sectors;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlotCache, PlottedSectors, SectorUpdate};
+use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlottedSectors, SectorUpdate};
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
@@ -624,14 +624,6 @@ impl Farm for SingleDiskFarm {
 
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
         Arc::new(self.plotted_sectors())
-    }
-
-    fn piece_cache(&self) -> Arc<dyn farm::PieceCache + 'static> {
-        Arc::new(self.piece_cache())
-    }
-
-    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
-        Arc::new(self.plot_cache())
     }
 
     fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {

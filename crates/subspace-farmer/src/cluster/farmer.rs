@@ -12,8 +12,8 @@ use crate::cluster::nats_client::{
     GenericBroadcast, GenericRequest, GenericStreamRequest, NatsClient, StreamRequest,
 };
 use crate::farm::{
-    Farm, FarmError, FarmId, FarmingNotification, HandlerFn, HandlerId, MaybePieceStoredResult,
-    PieceCache, PieceCacheOffset, PieceReader, PlotCache, PlottedSectors, SectorUpdate,
+    Farm, FarmError, FarmId, FarmingNotification, HandlerFn, HandlerId, PieceReader,
+    PlottedSectors, SectorUpdate,
 };
 use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
@@ -29,9 +29,8 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::blake3_hash_list;
-use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex, PieceOffset, SectorIndex};
+use subspace_core_primitives::{Blake3Hash, Piece, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
-use subspace_networking::libp2p::kad::RecordKey;
 use subspace_rpc_primitives::SolutionResponse;
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, trace, warn};
@@ -145,80 +144,6 @@ impl PlottedSectors for ClusterPlottedSectors {
 }
 
 #[derive(Debug)]
-struct DummyPieceCache;
-
-#[async_trait]
-impl PieceCache for DummyPieceCache {
-    #[inline]
-    fn max_num_elements(&self) -> u32 {
-        0
-    }
-
-    #[inline]
-    async fn contents(
-        &self,
-    ) -> Result<
-        Box<
-            dyn Stream<Item = Result<(PieceCacheOffset, Option<PieceIndex>), FarmError>>
-                + Unpin
-                + Send
-                + '_,
-        >,
-        FarmError,
-    > {
-        Ok(Box::new(stream::empty()))
-    }
-
-    #[inline]
-    async fn write_piece(
-        &self,
-        _offset: PieceCacheOffset,
-        _piece_index: PieceIndex,
-        _piece: &Piece,
-    ) -> Result<(), FarmError> {
-        Err("Can't write pieces into empty cache".into())
-    }
-
-    #[inline]
-    async fn read_piece_index(
-        &self,
-        _offset: PieceCacheOffset,
-    ) -> Result<Option<PieceIndex>, FarmError> {
-        Ok(None)
-    }
-
-    #[inline]
-    async fn read_piece(&self, _offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
-        Ok(None)
-    }
-}
-
-#[derive(Debug)]
-struct DummyPlotCache;
-
-#[async_trait]
-impl PlotCache for DummyPlotCache {
-    async fn is_piece_maybe_stored(
-        &self,
-        _key: &RecordKey,
-    ) -> Result<MaybePieceStoredResult, FarmError> {
-        Ok(MaybePieceStoredResult::No)
-    }
-
-    async fn try_store_piece(
-        &self,
-        _piece_index: PieceIndex,
-        _piece: &Piece,
-    ) -> Result<bool, FarmError> {
-        Ok(false)
-    }
-
-    async fn read_piece(&self, _key: &RecordKey) -> Result<Option<Piece>, FarmError> {
-        Ok(None)
-    }
-}
-
-#[derive(Debug)]
 struct ClusterPieceReader {
     farm_id_string: String,
     nats_client: NatsClient,
@@ -279,14 +204,6 @@ impl Farm for ClusterFarm {
         })
     }
 
-    fn piece_cache(&self) -> Arc<dyn PieceCache + 'static> {
-        Arc::new(DummyPieceCache)
-    }
-
-    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
-        Arc::new(DummyPlotCache)
-    }
-
     fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
         Arc::new(ClusterPieceReader {
             farm_id_string: self.farm_id_string.clone(),
@@ -313,7 +230,7 @@ impl Farm for ClusterFarm {
     }
 
     fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
-        Box::pin(async move { Ok(self.background_tasks.await?) })
+        Box::pin((*self).run())
     }
 }
 
@@ -409,6 +326,11 @@ impl ClusterFarm {
             handlers,
             background_tasks: AsyncJoinOnDrop::new(tokio::spawn(background_tasks), true),
         })
+    }
+
+    /// Run and wait for background tasks to exit or return an error
+    pub async fn run(self) -> anyhow::Result<()> {
+        Ok(self.background_tasks.await?)
     }
 }
 
