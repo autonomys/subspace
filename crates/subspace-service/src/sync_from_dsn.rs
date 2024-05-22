@@ -5,7 +5,6 @@ pub(crate) mod piece_validator;
 pub(crate) mod raw_block_import;
 pub(crate) mod segment_header_downloader;
 
-use crate::sync_from_dsn::fast_sync::FastSyncer;
 use crate::sync_from_dsn::import_blocks::{import_blocks_from_dsn, DsnSyncPieceGetter};
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::channel::mpsc;
@@ -14,7 +13,6 @@ use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, LockImportRun, Pro
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::{NetworkPeers, NetworkService};
-use sc_network_sync::SyncingService;
 use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -29,7 +27,7 @@ use std::time::{Duration, Instant};
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::SegmentIndex;
 use subspace_networking::Node;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -57,13 +55,10 @@ pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS, B>(
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
-    import_queue_service1: Box<IQS>,
-    import_queue_service2: Box<IQS>,
+    import_queue_service: Box<IQS>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
-    fast_sync_enabled: bool,
-    sync_service: Arc<SyncingService<Block>>,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -88,36 +83,22 @@ where
 {
     let network_service_clone = network_service.clone();
     let (tx, rx) = mpsc::channel(0);
-    let notification_sender = tx.clone();
     let observer_fut = {
         let node = node.clone();
         let client = Arc::clone(&client);
 
-        async move {
-            create_observer(
-                network_service_clone.as_ref(),
-                &node,
-                client.as_ref(),
-                notification_sender,
-            )
-            .await
-        }
+        async move { create_observer(network_service_clone.as_ref(), &node, client.as_ref(), tx).await }
     };
     let worker_fut = async move {
         create_worker(
             segment_headers_store,
             &node,
-            client.clone(),
-            import_queue_service1,
-            import_queue_service2,
+            client.as_ref(),
+            import_queue_service,
             sync_target_block_number,
             pause_sync,
             rx,
             &piece_getter,
-            network_service,
-            tx,
-            fast_sync_enabled,
-            sync_service,
         )
         .await
     };
@@ -240,40 +221,30 @@ async fn create_substrate_network_observer<Block>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Backend, Block, AS, IQS, Client, PG>(
+async fn create_worker<Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
-    client: Arc<Client>,
-    import_queue_service1: Box<IQS>,
-    mut import_queue_service2: Box<IQS>,
+    client: &Client,
+    mut import_queue_service: Box<IQS>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
     piece_getter: &PG,
-    network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
-    mut notifications_sender: mpsc::Sender<NotificationReason>,
-    fast_sync_enabled: bool,
-    sync_service: Arc<SyncingService<Block>>,
 ) -> Result<(), sc_service::Error>
 where
-    Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
-    IQS: ImportQueueService<Block> + 'static + ?Sized,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
-        + ClientExt<Block, Backend>
         + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>
-        + LockImportRun<Block, Backend>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    IQS: ImportQueueService<Block> + ?Sized,
     PG: DsnSyncPieceGetter,
 {
     let info = client.info();
-
     let chain_constants = client
         .runtime_api()
         .chain_constants(info.best_hash)
@@ -289,68 +260,18 @@ where
         .saturating_sub(chain_constants.confirmation_depth_k().into());
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
-    let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
-
-    pause_sync.store(true, Ordering::Release);
-
-    let finalized_hash_existed = client.info().finalized_hash != client.info().genesis_hash;
-
-    if fast_sync_enabled && finalized_hash_existed {
-        debug!("Fast sync detected existing finalized hash.");
-    }
-
-    // Run fast-sync first.
-    #[allow(clippy::collapsible_if)] // clippy error: the if statement is not the same
-    if fast_sync_enabled && !finalized_hash_existed {
-        if notifications.next().await.is_some() {
-            let fast_syncer = FastSyncer::new(
-                &segment_headers_store,
-                node,
-                piece_getter,
-                client.clone(),
-                import_queue_service1,
-                network_service.clone(),
-                sync_service,
-            );
-
-            let fast_sync_result = fast_syncer.sync().await;
-
-            match fast_sync_result {
-                Ok(fast_sync_result) => {
-                    if fast_sync_result.skipped {
-                        debug!("Fast sync was skipped.");
-                    } else {
-                        last_processed_block_number = fast_sync_result.last_imported_block_number;
-                        last_processed_segment_index = fast_sync_result.last_imported_segment_index;
-                        reconstructor = fast_sync_result.reconstructor;
-
-                        debug!(%last_processed_block_number, %last_processed_segment_index, "Fast sync finished.");
-                    }
-                }
-                Err(err) => {
-                    error!("Fast sync failed: {err}");
-                }
-            }
-
-            notifications_sender
-                .try_send(NotificationReason::WentOnlineSubspace)
-                .map_err(|_| {
-                    sc_service::Error::Other("Can't send sync notification reason.".into())
-                })?;
-        }
-    }
-
     while let Some(reason) = notifications.next().await {
-        info!(?reason, "Received notification to sync from DSN");
         pause_sync.store(true, Ordering::Release);
 
+        info!(?reason, "Received notification to sync from DSN");
+        let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_froms_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
             &segment_header_downloader,
-            client.as_ref(),
+            client,
             piece_getter,
-            import_queue_service2.as_mut(),
+            import_queue_service.as_mut(),
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
             &mut reconstructor,

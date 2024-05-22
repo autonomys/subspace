@@ -35,6 +35,7 @@ pub mod transaction_pool;
 use crate::config::{SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
+use crate::sync_from_dsn::fast_sync::fast_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -931,18 +932,26 @@ where
             pause_sync.store(true, Ordering::Release);
         }
 
+        let fast_sync_task = fast_sync(
+            segment_headers_store.clone(),
+            node.clone(),
+            Arc::clone(&client),
+            import_queue_service1,
+            pause_sync.clone(),
+            dsn_sync_piece_getter.clone(),
+            Arc::clone(&network_service),
+            sync_service.clone(),
+        );
+
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
             segment_headers_store.clone(),
             Arc::clone(&network_service),
             node.clone(),
             Arc::clone(&client),
-            import_queue_service1,
             import_queue_service2,
             sync_target_block_number,
             pause_sync,
             dsn_sync_piece_getter,
-            config.fast_sync_enabled,
-            sync_service.clone(),
         );
         task_manager
             .spawn_handle()
@@ -953,6 +962,11 @@ where
                 "worker",
                 Some("sync-from-dsn"),
                 Box::pin(async move {
+                    // Run fast-sync before DSN-sync.
+                    if config.fast_sync_enabled {
+                        let _ = fast_sync_task.await;
+                    }
+
                     if let Err(error) = worker.await {
                         error!(%error, "Sync from DSN exited with an error");
                     }

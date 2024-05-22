@@ -23,6 +23,7 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_runtime::Justifications;
 use std::collections::HashSet;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
@@ -32,6 +33,8 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error};
 
+// TODO: remove unused fields if DSN-sync is not related to fast-sync.
+#[allow(dead_code)]
 pub(crate) struct FastSyncResult<Block: BlockT> {
     pub(crate) last_imported_block_number: NumberFor<Block>,
     pub(crate) last_imported_segment_index: SegmentIndex,
@@ -51,7 +54,67 @@ impl<Block: BlockT> FastSyncResult<Block> {
     }
 }
 
-pub(crate) struct FastSyncer<'a, PG, AS, Block, Client, IQS, B>
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn fast_sync<Backend, Block, AS, IQS, Client, PG>(
+    segment_headers_store: SegmentHeadersStore<AS>,
+    node: Node,
+    client: Arc<Client>,
+    import_queue_service: Box<IQS>,
+    pause_sync: Arc<AtomicBool>,
+    piece_getter: PG,
+    network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    sync_service: Arc<SyncingService<Block>>,
+) where
+    Backend: sc_client_api::Backend<Block>,
+    Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
+    IQS: ImportQueueService<Block> + 'static + ?Sized,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + ClientExt<Block, Backend>
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + LockImportRun<Block, Backend>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    PG: DsnSyncPieceGetter,
+{
+    pause_sync.store(true, Ordering::Release);
+
+    let finalized_hash_exists = client.info().finalized_hash != client.info().genesis_hash;
+    if !finalized_hash_exists {
+        let fast_syncer = FastSyncer::new(
+            &segment_headers_store,
+            &node,
+            &piece_getter,
+            client.clone(),
+            import_queue_service,
+            network_service.clone(),
+            sync_service,
+        );
+
+        let fast_sync_result = fast_syncer.sync().await;
+
+        match fast_sync_result {
+            Ok(fast_sync_result) => {
+                if fast_sync_result.skipped {
+                    debug!("Fast sync was skipped.");
+                }
+            }
+            Err(err) => {
+                error!("Fast sync failed: {err}");
+            }
+        }
+    } else {
+        debug!("Fast sync detected existing finalized hash.");
+    }
+
+    pause_sync.store(false, Ordering::Release);
+}
+
+struct FastSyncer<'a, PG, AS, Block, Client, IQS, B>
 where
     Block: BlockT,
     IQS: ?Sized,
