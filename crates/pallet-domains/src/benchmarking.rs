@@ -29,13 +29,14 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorAllowList,
-    OperatorId, OperatorPublicKey, OperatorSignature, RuntimeType,
+    OperatorId, OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
 
 const SEED: u32 = 0;
+const MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR: u32 = MAX_NOMINATORS_TO_SLASH - 1;
 
 #[benchmarks]
 mod benchmarks {
@@ -356,27 +357,19 @@ mod benchmarks {
         assert!(staking_summary.current_epoch_rewards.is_empty());
     }
 
-    /// Benchmark `do_finalize_slashed_operators` based on the number of operator and the number of their
-    // nominator that has slashed in the current epoch
+    /// Benchmark `do_slash_operator` based on the number of their
+    // nominators
     #[benchmark]
-    fn finalize_slashed_operators(
-        n: Linear<1, { MAX_BUNLDE_PER_BLOCK * T::MaxNominators::get() }>,
-    ) {
+    fn slash_operator(n: Linear<0, MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
         let domain_id = register_domain::<T>();
 
-        let (operator_count, nominator_per_operator) = if n <= MAX_BUNLDE_PER_BLOCK {
-            (n, 1)
-        } else {
-            (MAX_BUNLDE_PER_BLOCK, n.div_ceil(MAX_BUNLDE_PER_BLOCK))
-        };
+        let operator_count = 1;
+        let nominator_per_operator = n;
 
-        let mut operator_ids = Vec::new();
-        for i in 0..operator_count {
-            let (_, operator_id) =
-                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
-            operator_ids.push(operator_id);
-        }
+        let (_, operator_id) =
+            register_operator_with_seed::<T>(domain_id, 1, minimum_nominator_stake);
+
         do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
 
@@ -386,24 +379,21 @@ mod benchmarks {
             T::Currency::minimum_balance() + 1u32.into(),
         );
 
-        for (i, operator_id) in operator_ids.iter().enumerate() {
-            // Minus one since the operator owner is already a nominator
-            for j in 1..nominator_per_operator {
-                let nominator = account("nominator", i as u32, j);
-                T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
-                assert_ok!(Domains::<T>::nominate_operator(
-                    RawOrigin::Signed(nominator).into(),
-                    *operator_id,
-                    minimum_nominator_stake,
-                ));
-            }
-            do_finalize_domain_current_epoch::<T>(domain_id)
-                .expect("finalize domain staking should success");
+        for j in 0..nominator_per_operator {
+            let nominator = account("nominator", 0, j);
+            T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
+            assert_ok!(Domains::<T>::nominate_operator(
+                RawOrigin::Signed(nominator).into(),
+                operator_id,
+                minimum_nominator_stake,
+            ));
         }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         // Slash operator
         do_mark_operators_as_slashed::<T>(
-            operator_ids.into_iter(),
+            vec![operator_id].into_iter(),
             SlashedReason::InvalidBundle(1u32.into()),
         )
         .expect("slash operator should success");
@@ -548,8 +538,13 @@ mod benchmarks {
             initial_balances: Default::default(),
         };
 
+        assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(
+            RawOrigin::Root.into(),
+            PermissionedActionAllowedBy::Anyone,
+        ));
+
         #[extrinsic_call]
-        _(RawOrigin::Root, domain_config.clone());
+        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -658,6 +653,9 @@ mod benchmarks {
 
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        do_finalize_domain_epoch_staking::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         #[extrinsic_call]
         _(RawOrigin::Signed(operator_owner.clone()), operator_id);
@@ -778,7 +776,7 @@ mod benchmarks {
         assert!(Deposits::<T>::get(operator_id, nominator).is_none());
     }
 
-    /// Benchmark `unlock_nominator` extrinsic based on the number of nominator of the unlocked operator
+    /// Benchmark `unlock_nominator` extrinsic for a given de-registered operator
     #[benchmark]
     fn unlock_nominator() {
         let domain_id = register_domain::<T>();
@@ -884,8 +882,13 @@ mod benchmarks {
             initial_balances: Default::default(),
         };
 
-        assert_ok!(Domains::<T>::instantiate_domain(
+        assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(
             RawOrigin::Root.into(),
+            PermissionedActionAllowedBy::Anyone,
+        ));
+
+        assert_ok!(Domains::<T>::instantiate_domain(
+            RawOrigin::Signed(creator.clone()).into(),
             domain_config.clone(),
         ));
 

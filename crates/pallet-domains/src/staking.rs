@@ -287,7 +287,6 @@ pub enum Error {
     TooManyPendingStakingOperation,
     OperatorNotAllowed,
     InvalidOperatorSigningKey,
-    MaximumNominators,
     DuplicateOperatorSigningKey,
     MissingOperatorEpochSharePrice,
     MissingWithdrawal,
@@ -636,7 +635,6 @@ pub(crate) fn do_nominate_operator<T: Config>(
             if first_deposit_in_epoch {
                 NominatorCount::<T>::try_mutate(operator_id, |count| {
                     *count += 1;
-                    ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
                     Ok(())
                 })?;
             }
@@ -1322,7 +1320,7 @@ pub(crate) mod tests {
         OperatorConfig, OperatorSigningKeyProofOfOwnershipData, OperatorStatus, StakingSummary,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
-    use crate::tests::{new_test_ext, AccountId, ExistentialDeposit, RuntimeOrigin, Test};
+    use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
         bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
     };
@@ -1341,7 +1339,7 @@ pub(crate) mod tests {
     use sp_runtime::{PerThing, Perbill};
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
-    use subspace_runtime_primitives::{Balance, SSC};
+    use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
@@ -1713,59 +1711,6 @@ pub(crate) mod tests {
                 domain_staking_summary.current_total_stake,
                 operator_stake + nominator_stake + addtional_nomination_stake
             );
-        });
-    }
-
-    #[test]
-    fn nominate_operator_max_nominators() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 0;
-        let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
-        let nominator_account = 26;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-
-        let nominator_accounts: Vec<AccountId> = (1..=25).collect();
-        let nominators: BTreeMap<AccountId, (Balance, Balance)> = nominator_accounts
-            .into_iter()
-            .map(|nominator_id| (nominator_id, (nominator_free_balance, nominator_stake)))
-            .collect();
-
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                10 * SSC,
-                pair.public(),
-                signature,
-                nominators,
-            );
-
-            Balances::set_balance(&nominator_account, nominator_free_balance);
-            let nominator_count = NominatorCount::<Test>::get(operator_id);
-
-            // nomination should fail since Max nominators number has reached.
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                40 * SSC,
-            );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::MaximumNominators)
-            );
-
-            // should not update nominator count.
-            assert_eq!(nominator_count, NominatorCount::<Test>::get(operator_id));
         });
     }
 

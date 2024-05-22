@@ -191,16 +191,18 @@ mod pallet {
         do_unlock_nominator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
         Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
     };
-    use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, do_slash_operator, Error as StakingEpochError,
-    };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::staking_epoch::do_slash_operator;
+    use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::DomainHashingFor;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, StateRootOf,
-        MAX_BUNLDE_PER_BLOCK, MAX_NOMINATORS_TO_SLASH, STORAGE_VERSION,
+        MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -371,10 +373,6 @@ mod pallet {
         /// The maximum number of pending staking operation that can perform upon epoch transition.
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
-
-        /// The maximum number of nominators for given operator.
-        #[pallet::constant]
-        type MaxNominators: Get<u32>;
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
@@ -1104,10 +1102,14 @@ mod pallet {
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 
             // slash operator who are in pending slash
-            // TODO: include this for benchmarking
-            let _slashed_nominator_count =
-                do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
-                    .map_err(Error::<T>::from)?;
+            #[cfg(not(feature = "runtime-benchmarks"))]
+            {
+                let slashed_nominator_count =
+                    do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
+                        .map_err(Error::<T>::from)?;
+                actual_weight = actual_weight
+                    .saturating_add(Self::actual_slash_operator_weight(slashed_nominator_count));
+            }
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -1374,7 +1376,7 @@ mod pallet {
         /// Unlocks the nominator under given operator given the unlocking period is complete.
         /// A nominator can initiate their unlock given operator is already deregistered.
         #[pallet::call_index(11)]
-        #[pallet::weight(T::WeightInfo::unlock_operator(T::MaxNominators::get()))]
+        #[pallet::weight(T::WeightInfo::unlock_nominator())]
         pub fn unlock_nominator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator = ensure_signed(origin)?;
 
@@ -2320,25 +2322,22 @@ impl<T: Config> Pallet<T> {
             .saturating_add(
                 // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
                 // `confirm_domain_block` can happen, thus we use the `max` of them
-                T::WeightInfo::handle_bad_receipt(T::MaxNominators::get()).max(
+
+                // We use `MAX_BUNLDE_PER_BLOCK` number to assume the number of slashed operators.
+                // We do not expect so many operators to be slashed but nontheless, if it did happen
+                // we will limit the weight to 100 operators.
+                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK).max(
                     T::WeightInfo::confirm_domain_block(MAX_BUNLDE_PER_BLOCK, MAX_BUNLDE_PER_BLOCK),
                 ),
             )
             .saturating_add(Self::max_staking_epoch_transition())
+            .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
     }
 
     pub fn max_staking_epoch_transition() -> Weight {
-        T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK)
-            .saturating_add(T::WeightInfo::finalize_slashed_operators(
-                // FIXME: the actual value should be `N * T::MaxNominators` where `N` is the number of
-                // submitter of the bad ER, which is probabilistically bounded by `bundle_slot_probability`
-                // we use `N = 1` here because `finalize_slashed_operators` is expensive and can consume
-                // more weight than the max block weight
-                T::MaxNominators::get(),
-            ))
-            .saturating_add(T::WeightInfo::finalize_domain_epoch_staking(
-                T::MaxPendingStakingOperation::get(),
-            ))
+        T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK).saturating_add(
+            T::WeightInfo::finalize_domain_epoch_staking(T::MaxPendingStakingOperation::get()),
+        )
     }
 
     fn actual_epoch_transition_weight(epoch_transition_res: EpochTransitionResult) -> Weight {
@@ -2351,6 +2350,11 @@ impl<T: Config> Pallet<T> {
         T::WeightInfo::operator_reward_tax_and_restake(rewarded_operator_count).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(finalized_operator_count),
         )
+    }
+
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    fn actual_slash_operator_weight(slashed_nominators: u32) -> Weight {
+        T::WeightInfo::slash_operator(slashed_nominators)
     }
 
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
