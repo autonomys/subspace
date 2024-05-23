@@ -535,20 +535,42 @@ where
     } = invalid_bundles_fraud_proof;
     let (bundle_index, is_true_invalid_fraud_proof) = (*bundle_index, *is_true_invalid_fraud_proof);
 
-    let invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
+    let targeted_invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
         &bad_receipt,
         bundle_index,
         invalid_bundle_type.clone(),
         is_true_invalid_fraud_proof,
     )?;
+    let bundle_extrinsic_root = targeted_invalid_bundle_entry.extrinsics_root;
+
+    // Verify the bundle proof so in following we can use the bundle dirctly
+    match proof_data {
+        InvalidBundlesProofData::Bundle(bundle_with_proof)
+        | InvalidBundlesProofData::BundleAndExecution {
+            bundle_with_proof, ..
+        } => {
+            if bundle_with_proof.bundle_index != bundle_index {
+                return Err(VerificationError::UnexpectedInvalidBundleProofData);
+            }
+            bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+        }
+        InvalidBundlesProofData::Extrinsic(_) => {}
+    }
+
+    // Fast path to check if the fraud proof is targetting a bad receipt that claim a non-exist extrinsic
+    // is invalid
+    if let Some(invalid_extrinsic_index) = targeted_invalid_bundle_entry.invalid_extrinsic_index() {
+        if let InvalidBundlesProofData::Bundle(bundle_with_proof) = proof_data {
+            if bundle_with_proof.bundle.extrinsics.len() as u32 <= invalid_extrinsic_index {
+                return Ok(());
+            }
+        }
+    }
 
     match &invalid_bundle_type {
         InvalidBundleType::OutOfRangeTx(extrinsic_index) => {
             let bundle = match proof_data {
-                InvalidBundlesProofData::Bundle(bundle_with_proof)
-                    if bundle_with_proof.bundle_index == bundle_index =>
-                {
-                    bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
+                InvalidBundlesProofData::Bundle(bundle_with_proof) => {
                     bundle_with_proof.bundle.clone()
                 }
                 _ => return Err(VerificationError::UnexpectedInvalidBundleProofData),
@@ -590,7 +612,7 @@ where
                 };
                 get_extrinsic_from_proof::<DomainHeader>(
                     *extrinsic_index,
-                    invalid_bundle_entry.extrinsics_root,
+                    bundle_extrinsic_root,
                     extrinsic_storage_proof,
                 )?
             };
@@ -614,10 +636,7 @@ where
                 InvalidBundlesProofData::BundleAndExecution {
                     bundle_with_proof,
                     execution_proof,
-                } if bundle_with_proof.bundle_index == bundle_index => {
-                    bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
-                    (bundle_with_proof.bundle.clone(), execution_proof.clone())
-                }
+                } => (bundle_with_proof.bundle.clone(), execution_proof.clone()),
                 _ => return Err(VerificationError::UnexpectedInvalidBundleProofData),
             };
 
@@ -660,7 +679,7 @@ where
                 };
                 get_extrinsic_from_proof::<DomainHeader>(
                     *extrinsic_index,
-                    invalid_bundle_entry.extrinsics_root,
+                    bundle_extrinsic_root,
                     extrinsic_storage_proof,
                 )?
             };
