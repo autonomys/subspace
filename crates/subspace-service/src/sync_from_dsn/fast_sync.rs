@@ -1,12 +1,10 @@
 use crate::sync_from_dsn::fast_sync_engine::FastSyncingEngine;
-use crate::sync_from_dsn::import_blocks::{
-    download_and_reconstruct_blocks, import_raw_block, RawBlockData,
-};
+use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_client_api::{AuxStore, BlockBackend, LockImportRun, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::IncomingBlock;
+use sc_consensus::{BlockImportParams, ForkChoiceStrategy, IncomingBlock, StateAction};
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkService, PeerId};
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
@@ -21,7 +19,7 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_runtime::Justifications;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -214,22 +212,13 @@ where
             .get_segment_header(last_segment_index)
             .expect("Last segment index exists; qed");
 
-        let second_last_segment_index = last_segment_header.segment_index() - SegmentIndex::ONE;
-
-        let second_last_segment_blocks = download_and_reconstruct_blocks(
-            second_last_segment_index,
+        // Just to seed reconstructor, we don't care about blocks themselves
+        download_and_reconstruct_blocks(
+            last_segment_header.segment_index() - SegmentIndex::ONE,
             self.piece_getter,
             &mut reconstructor,
         )
         .await?;
-
-        let blocks_in_second_last_segment = second_last_segment_blocks.len();
-        debug!(
-            "Second last segment blocks downloaded (SegmentId={}): {}-{}",
-            second_last_segment_index,
-            second_last_segment_blocks[0].0,
-            second_last_segment_blocks[blocks_in_second_last_segment - 1].0
-        );
 
         let blocks = download_and_reconstruct_blocks(
             last_segment_header.segment_index(),
@@ -237,53 +226,82 @@ where
             &mut reconstructor,
         )
         .await?;
+        let mut blocks = VecDeque::from(blocks);
 
-        let blocks_in_last_segment = blocks.len();
-        debug!(
-            "Blocks downloaded (SegmentId={}): {}-{}",
-            last_segment_index,
-            blocks[0].0,
-            blocks[blocks_in_last_segment - 1].0
-        );
+        let (first_block_number, first_block_bytes) = blocks
+            .pop_front()
+            // TODO: Ensure this expectation actually holds, currently this is not guaranteed
+            .expect("List of blocks is not empty according to logic above; qed");
 
-        // 2. Raw import the last block from the second last segment.
-
-        // 3. Download state for the first block of the last segment.
-
-        let (second_last_block_number, _) = blocks[blocks_in_last_segment - 2].clone();
-        let last_block = blocks[blocks_in_last_segment - 1].clone();
-        let last_block_number = last_block.0;
-
-        // Raw import state block and download state.
-        // Add the first block of the last segment as raw
-
-        // The state block is first block from the last segment.
-        let state_block_bytes = blocks[0].1.clone();
-        let state_block_number = blocks[0].0;
-
-        let (raw_block, _) =
-            Self::create_raw_block(state_block_bytes.clone(), state_block_number.into())?;
-
-        import_raw_block(self.client.as_ref(), raw_block.clone())?;
+        let last_block_number = blocks
+            .back()
+            .map_or(first_block_number, |(block_number, _block_bytes)| {
+                *block_number
+            });
 
         debug!(
-            hash = ?raw_block.hash,
-            number = %state_block_number,
-            "Raw state block imported"
+            %last_segment_index,
+            %first_block_number,
+            %last_block_number,
+            "Blocks from last segment downloaded"
         );
 
-        // Download state for the target block.
+        let signed_block =
+            decode_block::<Block>(&first_block_bytes).map_err(|error| error.to_string())?;
+
+        let (header, extrinsics) = signed_block.block.deconstruct();
+        let block_hash = header.hash();
+
+        debug!(
+            %first_block_number,
+            ?block_hash,
+            parent_hash = ?header.parent_hash(),
+            "Reconstructed block for raw block import"
+        );
+
+        let mut import_block = BlockImportParams::new(
+            if blocks.is_empty() {
+                BlockOrigin::NetworkBroadcast
+            } else {
+                BlockOrigin::NetworkInitialSync
+            },
+            header,
+        );
+        import_block.justifications = signed_block.justifications;
+        import_block.body = Some(extrinsics);
+        import_block.state_action = StateAction::Skip;
+        import_block.finalized = true;
+        import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+
+        // Raw import of the first block in the last segment
+        let result = self
+            .client
+            .lock_import_and_run(|operation| self.client.apply_block(operation, import_block, None))
+            .map_err(|e| {
+                error!("Error during importing of the raw block: {}", e);
+                sp_consensus::Error::ClientImport(e.to_string())
+            })?;
+
+        debug!(
+            %first_block_number,
+            ?block_hash,
+            ?result,
+            "Raw block imported"
+        );
+
+        // Sync state for the above block
         let download_state_result = self
-            .download_state(state_block_bytes, state_block_number.into())
+            // TODO: Replace this with reconstructed block instead of bytes
+            .download_state(first_block_bytes, first_block_number.into())
             .await;
 
         match download_state_result {
             Ok(Some(state_block)) => {
                 if let Some(state_block_header) = state_block.header {
-                    if *state_block_header.number() != NumberFor::<Block>::from(state_block_number)
+                    if *state_block_header.number() != NumberFor::<Block>::from(first_block_number)
                     {
                         error!(
-                            expected = %state_block_number,
+                            expected = %first_block_number,
                             actual = %*state_block_header.number(),
                             "Download state operation returned invalid state block."
                         );
@@ -312,7 +330,10 @@ where
 
         // 4. Import and execute blocks from the last segment
 
-        debug!("Started importing blocks from last segment.");
+        debug!(
+            blocks_count = %blocks.len(),
+            "Started importing remaining blocks from last segment"
+        );
 
         let mut blocks_to_import = blocks
             .into_iter()
@@ -332,37 +353,43 @@ where
                     state: None,
                 })
             })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Result<Vec<IncomingBlock<Block>>, Error>>()?;
 
-        let block_to_import = blocks_to_import
-            .pop()
-            .expect("At least one block is present; qed");
+        let maybe_last_block_to_import = blocks_to_import.pop();
 
         if !blocks_to_import.is_empty() {
+            let last_queued_block_number = *blocks_to_import
+                .last()
+                .expect("Not empty; qed")
+                .header
+                .as_ref()
+                .expect("Always set; qed")
+                .number();
+
             self.import_queue_service
                 .lock()
                 .await
                 .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
+
+            // Block import delay
+            // We wait to import for all the blocks from the segment except the last one
+            // TODO: Replace this hack with actual watching of block import
+            self.wait_for_block_import(last_queued_block_number).await;
         }
 
-        // Block import delay
-        // We wait to import for all the blocks from the segment except the last one
-        // TODO: Replace this hack with actual watching of block import
-        self.wait_for_block_import(second_last_block_number.into())
-            .await;
-
         // Notify Substrate sync by importing block with using BlockOrigin::NetworkBroadcast
+        if let Some(last_block_to_import) = maybe_last_block_to_import {
+            debug!(
+                %last_block_number,
+                %last_segment_index,
+                "Importing the last block from the last segment"
+            );
 
-        debug!(
-            "Importing the last block #{} from the segment #{last_segment_index}",
-            last_block_number
-        );
-
-        // Import and execute the last block from the segment and setup the substrate sync
-        self.import_queue_service
-            .lock()
-            .await
-            .import_blocks(BlockOrigin::NetworkBroadcast, vec![block_to_import]);
+            self.import_queue_service
+                .lock()
+                .await
+                .import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block_to_import]);
+        }
 
         // Block import delay
         // We wait to import for all the blocks from the segment except the last one
@@ -451,37 +478,6 @@ where
         }
 
         Ok(())
-    }
-
-    fn create_raw_block(
-        block_bytes: Vec<u8>,
-        block_number: NumberFor<Block>,
-    ) -> Result<(RawBlockData<Block>, SignedBlock<Block>), Error> {
-        let signed_block =
-            decode_block::<Block>(&block_bytes).map_err(|error| error.to_string())?;
-
-        let SignedBlock {
-            block,
-            justifications,
-        } = signed_block.clone();
-        let (header, extrinsics) = block.deconstruct();
-        let hash = header.hash();
-
-        debug!(
-            ?hash,
-            parent_hash=?header.parent_hash(),
-            "Reconstructed block #{} for raw block import", block_number
-        );
-
-        Ok((
-            RawBlockData {
-                hash,
-                header,
-                block_body: Some(extrinsics),
-                justifications,
-            },
-            signed_block,
-        ))
     }
 
     #[allow(clippy::type_complexity)]
