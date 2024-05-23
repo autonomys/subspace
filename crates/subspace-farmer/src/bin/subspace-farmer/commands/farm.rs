@@ -23,7 +23,8 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::farm::{
-    Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
+    FarmingNotification, PlottedSectors, SectorExpirationDetails, SectorPlottingDetails,
+    SectorUpdate,
 };
 use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
@@ -131,7 +132,7 @@ pub(crate) struct FarmingArgs {
     /// Increase will result in higher memory usage.
     #[arg(long)]
     sector_encoding_concurrency: Option<NonZeroUsize>,
-    /// Defines how many record farmer will encode in a single sector concurrently, defaults to one
+    /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
@@ -184,7 +185,8 @@ pub(crate) struct FarmingArgs {
     #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "replotting_thread_pool_size"])]
     replotting_cpu_cores: Option<String>,
     /// Plotting thread priority, by default de-prioritizes plotting threads in order to make sure
-    /// farming is successful and computer can be used comfortably for other things
+    /// farming is successful and computer can be used comfortably for other things.  Can be set to
+    /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
     plotting_thread_priority: PlottingThreadPriority,
     /// Enable plot cache.
@@ -605,7 +607,7 @@ where
                         info!("  Directory: {}", disk_farm.directory.display());
                     }
 
-                    (farm_index, Ok(Box::new(farm) as Box<dyn Farm>))
+                    (farm_index, Ok(farm))
                 }
                 .instrument(info_span!("", %farm_index))
             })
@@ -655,9 +657,15 @@ where
     }
     farmer_cache
         .replace_backing_caches(
-            farms.iter().map(|farm| farm.piece_cache()).collect(),
+            farms
+                .iter()
+                .map(|farm| Arc::new(farm.piece_cache()) as Arc<_>)
+                .collect(),
             if plot_cache {
-                farms.iter().map(|farm| farm.plot_cache()).collect()
+                farms
+                    .iter()
+                    .map(|farm| Arc::new(farm.plot_cache()) as Arc<_>)
+                    .collect()
             } else {
                 Vec::new()
             },
@@ -679,7 +687,7 @@ where
             )
         })?;
 
-        plotted_pieces.add_farm(farm_index, farm.piece_reader());
+        plotted_pieces.add_farm(farm_index, Arc::new(farm.piece_reader()));
 
         let total_sectors_count = farm.total_sectors_count();
         let mut plotted_sectors_count = 0;

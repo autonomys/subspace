@@ -25,12 +25,14 @@ pub struct UnbufferedIoFileWindows {
 }
 
 impl ReadAtSync for UnbufferedIoFileWindows {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.read_exact_at(buf, offset)
     }
 }
 
 impl ReadAtSync for &UnbufferedIoFileWindows {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         (*self).read_at(buf, offset)
     }

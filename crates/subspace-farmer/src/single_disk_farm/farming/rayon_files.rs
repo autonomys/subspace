@@ -28,6 +28,7 @@ impl<File> ReadAtSync for &RayonFiles<File>
 where
     File: ReadAtSync,
 {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         (*self).read_at(buf, offset)
     }

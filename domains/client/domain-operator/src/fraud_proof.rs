@@ -5,23 +5,30 @@ use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sc_domains::FPStorageKeyProvider;
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
-use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType};
+use sp_domains::{
+    DomainId, DomainsApi, DomainsDigestItem, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType,
+    RuntimeId,
+};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
-    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
-    InvalidBlockFeesProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTransfersProof,
-    ValidBundleDigest,
+    ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
+    FraudProofVariant, InvalidBlockFeesProof, InvalidBundlesProof, InvalidBundlesProofData,
+    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTransfersProof, ValidBundleDigest, ValidBundleProof,
 };
+use sp_domains_fraud_proof::storage_proof::{self, *};
+use sp_domains_fraud_proof::FraudProofApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::LayoutV1;
 use std::marker::PhantomData;
@@ -68,17 +75,20 @@ pub enum FraudProofError {
         is_true_invalid: bool,
         extrinsics_validity_response: Result<(), CheckExtrinsicsValidityError>,
     },
+    #[error("Fail to generate the storage proof")]
+    StorageProof(#[from] storage_proof::GenerationError),
 }
 
-pub struct FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
+pub struct FraudProofGenerator<Block: BlockT, CBlock, Client, CClient, Backend, E> {
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
+    storage_key_provider: FPStorageKeyProvider<CBlock, Block::Header, CClient>,
     _phantom: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, E> Clone
+impl<Block: BlockT, CBlock, Client, CClient, Backend, E> Clone
     for FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 {
     fn clone(&self) -> Self {
@@ -87,13 +97,14 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
             consensus_client: self.consensus_client.clone(),
             backend: self.backend.clone(),
             code_executor: self.code_executor.clone(),
+            storage_key_provider: self.storage_key_provider.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
 type FraudProofFor<CBlock, DomainHeader> =
-    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader>;
+    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader, H256>;
 
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
@@ -114,7 +125,9 @@ where
         + ProvideRuntimeApi<CBlock>
         + ProofProvider<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>
+        + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -126,278 +139,67 @@ where
     ) -> Self {
         Self {
             client,
-            consensus_client,
+            consensus_client: consensus_client.clone(),
             backend,
             code_executor,
+            storage_key_provider: FPStorageKeyProvider::new(consensus_client),
             _phantom: Default::default(),
         }
     }
 
-    pub(crate) fn generate_invalid_block_fees_proof(
+    #[allow(clippy::type_complexity)]
+    fn maybe_generate_domain_runtime_code_proof_for_receipt(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
-        let block_hash = local_receipt.domain_block_hash;
-        let key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
-        let proof = self
-            .client
-            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidBlockFees(InvalidBlockFeesProof {
-            domain_id,
-            bad_receipt_hash,
-            storage_proof: proof,
-        }))
-    }
-
-    pub(crate) fn generate_invalid_transfers_proof(
-        &self,
-        domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
-        let block_hash = local_receipt.domain_block_hash;
-        let runtime_api = self.client.runtime_api();
-        let key = runtime_api.transfers_storage_key(block_hash)?;
-        let proof = self
-            .client
-            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidTransfers(InvalidTransfersProof {
-            domain_id,
-            bad_receipt_hash,
-            storage_proof: proof,
-        }))
-    }
-
-    pub(crate) fn generate_invalid_domain_block_hash_proof(
-        &self,
-        domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
-        let block_hash = local_receipt.domain_block_hash;
-        let digest_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
-        let digest_storage_proof = self
-            .client
-            .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidDomainBlockHash(
-            InvalidDomainBlockHashProof {
-                domain_id,
-                bad_receipt_hash,
-                digest_storage_proof,
-            },
-        ))
-    }
-
-    pub(crate) fn generate_invalid_bundle_field_proof(
-        &self,
-        domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        mismatch_type: BundleMismatchType,
-        bundle_index: u32,
-        bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
-        let consensus_block_hash = local_receipt.consensus_block_hash;
-        let consensus_extrinsics = self
-            .consensus_client
-            .block_body(consensus_block_hash)?
-            .ok_or(FraudProofError::MissingConsensusExtrinsics)?;
-
-        let bundles = self
-            .consensus_client
-            .runtime_api()
-            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
-
-        let bundle = bundles
-            .get(bundle_index as usize)
-            .ok_or(FraudProofError::MissingBundle {
-                bundle_index: bundle_index as usize,
-            })?;
-
-        let (invalid_type, is_true_invalid) = match mismatch_type {
-            BundleMismatchType::TrueInvalid(invalid_type) => (invalid_type, true),
-            BundleMismatchType::FalseInvalid(invalid_type) => (invalid_type, false),
-            BundleMismatchType::Valid => {
-                return Err(sp_blockchain::Error::Application(
-                    "Unexpected bundle mismatch type, this should not happen"
-                        .to_string()
-                        .into(),
-                )
-                .into());
-            }
-        };
-
-        let extrinsic_index = invalid_type.extrinsic_index();
-        let encoded_extrinsics: Vec<_> = bundle.extrinsics.iter().map(Encode::encode).collect();
-        let proof_data = if let InvalidBundleType::IllegalTx(expected_extrinsic_index) =
-            invalid_type
-        {
-            if expected_extrinsic_index as usize >= bundle.extrinsics.len() {
-                return Err(FraudProofError::OutOfBoundsExtrinsicIndex {
-                    index: expected_extrinsic_index as usize,
-                    max: bundle.extrinsics.len(),
-                });
-            }
-
-            let domain_block_parent_hash = *self
-                .client
-                .header(local_receipt.domain_block_hash)?
-                .ok_or_else(|| {
-                    FraudProofError::Blockchain(sp_blockchain::Error::MissingHeader(format!(
-                        "{:?}",
-                        local_receipt.domain_block_hash
-                    )))
-                })?
-                .parent_hash();
-
-            let domain_block_parent_number = self
-                .client
-                .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
-                .ok_or_else(|| {
-                    FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
-                        "unable to get block number for domain block:{:?}",
-                        domain_block_parent_hash
-                    )))
-                })?;
-
-            let mut runtime_api_instance = self.client.runtime_api();
-            runtime_api_instance.record_proof();
-            let proof_recorder = runtime_api_instance
-                .proof_recorder()
-                .expect("we enabled proof recording just above; qed");
-
-            let mut block_extrinsics = vec![];
-            for (extrinsic_index, extrinsic) in bundle
-                .extrinsics
-                .iter()
-                .enumerate()
-                .take((expected_extrinsic_index + 1) as usize)
-            {
-                let encoded_extrinsic = extrinsic.encode();
-                block_extrinsics.push(
-                    <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                        .map_err(|decoding_error| {
-                            FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
-                                extrinsic_index,
-                                decoding_error,
-                            }
-                        })?,
-                );
-            }
-
-            let validation_response = runtime_api_instance.check_extrinsics_and_do_pre_dispatch(
-                domain_block_parent_hash,
-                block_extrinsics,
-                domain_block_parent_number,
-                domain_block_parent_hash,
-            )?;
-
-            // If the proof is true invalid then validation response should not be Ok.
-            // If the proof is false invalid then validation response should not be Err.
-            // OR
-            // If it is true invalid and expected extrinsic index does not match
-            if (is_true_invalid == validation_response.is_ok())
-                || (is_true_invalid
-                    && validation_response
-                        .as_ref()
-                        .is_err_and(|e| e.extrinsic_index != expected_extrinsic_index))
-            {
-                return Err(FraudProofError::InvalidIllegalTxFraudProofExtrinsicIndex {
-                    index: expected_extrinsic_index as usize,
-                    is_true_invalid,
-                    extrinsics_validity_response: validation_response,
-                });
-            }
-
-            proof_recorder.drain_storage_proof()
-        } else {
-            StorageProofProvider::<
-                LayoutV1<HeaderHashingFor<Block::Header>>,
-            >::generate_enumerated_proof_of_inclusion(
-                encoded_extrinsics.as_slice(), extrinsic_index,
+    ) -> Result<
+        Option<DomainRuntimeCodeAt<NumberFor<CBlock>, <CBlock as BlockT>::Hash, H256>>,
+        FraudProofError,
+    > {
+        // NOTE: domain runtime code is take affect in the next block, so we need to get
+        // the doamin runtime code of the parent block, which is what used to derived the
+        // ER.
+        let (parent_consensus_number, parent_consensus_hash) = {
+            let consensus_header = self.consensus_header(local_receipt.consensus_block_hash)?;
+            (
+                local_receipt.consensus_block_number - One::one(),
+                *consensus_header.parent_hash(),
             )
-                .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?
         };
 
-        Ok(FraudProof::InvalidBundles(InvalidBundlesFraudProof::new(
-            bad_receipt_hash,
-            domain_id,
-            bundle_index,
-            invalid_type,
-            proof_data,
-            is_true_invalid,
-        )))
-    }
-
-    pub(crate) fn generate_invalid_domain_extrinsics_root_proof(
-        &self,
-        domain_id: DomainId,
-        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
-        let consensus_block_hash = local_receipt.consensus_block_hash;
-        let consensus_extrinsics = self
-            .consensus_client
-            .block_body(consensus_block_hash)?
+        let best_hash = self.consensus_client.info().best_hash;
+        let runtime_api = self.consensus_client.runtime_api();
+        let runtime_id = runtime_api
+            .runtime_id(best_hash, domain_id)?
             .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "BlockBody of {consensus_block_hash:?} unavailable"
-                ))
+                sp_blockchain::Error::Application(
+                    "Failed to get domain runtime id".to_string().into(),
+                )
+            })?;
+        let is_domain_runtime_updraded_since = runtime_api
+            .is_domain_runtime_updraded_since(best_hash, domain_id, parent_consensus_number)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    "Failed to get domain runtime object".to_string().into(),
+                )
             })?;
 
-        let bundles = self
-            .consensus_client
-            .runtime_api()
-            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
-
-        let domain_runtime_api = self.client.runtime_api();
-        let mut valid_bundle_digests = Vec::new();
-        for bundle_index in local_receipt.valid_bundle_indexes() {
-            let bundle =
-                bundles
-                    .get(bundle_index as usize)
-                    .ok_or(FraudProofError::MissingBundle {
-                        bundle_index: bundle_index as usize,
-                    })?;
-
-            let mut exts = Vec::with_capacity(bundle.extrinsics.len());
-            for opaque_extrinsic in &bundle.extrinsics {
-                let extrinsic = <<Block as BlockT>::Extrinsic>::decode(
-                    &mut opaque_extrinsic.encode().as_slice(),
-                )
-                .map_err(|_| FraudProofError::InvalidBundleExtrinsic {
-                    bundle_index: bundle_index as usize,
-                })?;
-
-                exts.push(extrinsic)
-            }
-
-            let bundle_digest = domain_runtime_api
-                .extract_signer(local_receipt.domain_block_hash, exts)?
-                .into_iter()
-                .map(|(signer, ext)| {
-                    (
-                        signer,
-                        ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
-                            ext.encode(),
-                        ),
-                    )
-                })
-                .collect::<Vec<(Option<AccountId>, ExtrinsicDigest)>>();
-            valid_bundle_digests.push(ValidBundleDigest {
-                bundle_index,
-                bundle_digest,
-            });
+        if is_domain_runtime_updraded_since {
+            let mmr_proof =
+                sc_domains::generate_mmr_proof(&self.consensus_client, parent_consensus_number)?;
+            let domain_runtime_code_proof = DomainRuntimeCodeProof::generate(
+                self.consensus_client.as_ref(),
+                parent_consensus_hash,
+                runtime_id,
+                &self.storage_key_provider,
+            )?;
+            Ok(Some(DomainRuntimeCodeAt {
+                mmr_proof,
+                domain_runtime_code_proof,
+            }))
+        } else {
+            Ok(None)
         }
-
-        Ok(FraudProof::InvalidExtrinsicsRoot(
-            InvalidExtrinsicsRootProof {
-                domain_id,
-                bad_receipt_hash,
-                valid_bundle_digests,
-            },
-        ))
     }
 
     pub(crate) fn generate_invalid_state_transition_proof(
@@ -493,22 +295,506 @@ where
             delta_changes,
         )?;
 
-        let invalid_state_transition_proof = InvalidStateTransitionProof {
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let invalid_state_transition_proof = FraudProof {
             domain_id,
             bad_receipt_hash,
-            proof: execution_proof,
-            execution_phase,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidStateTransition(InvalidStateTransitionProof {
+                execution_proof,
+                execution_phase,
+            }),
         };
 
-        Ok(FraudProof::InvalidStateTransition(
-            invalid_state_transition_proof,
-        ))
+        Ok(invalid_state_transition_proof)
+    }
+
+    pub(crate) fn generate_valid_bundle_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bundle_index: usize,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let consensus_block_hash = local_receipt.consensus_block_hash;
+        let consensus_block_number = local_receipt.consensus_block_number;
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash)?
+            .ok_or(FraudProofError::MissingConsensusExtrinsics)?;
+
+        let mut bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
+
+        if bundle_index >= bundles.len() {
+            return Err(FraudProofError::MissingBundle { bundle_index });
+        }
+        let bundle = bundles.swap_remove(bundle_index);
+
+        let bundle_with_proof = OpaqueBundleWithProof::generate(
+            &self.storage_key_provider,
+            self.consensus_client.as_ref(),
+            domain_id,
+            consensus_block_hash,
+            bundle,
+            bundle_index as u32,
+        )?;
+
+        let mmr_proof =
+            sc_domains::generate_mmr_proof(&self.consensus_client, consensus_block_number)?;
+
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let valid_bundle_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::ValidBundle(ValidBundleProof { bundle_with_proof }),
+        };
+
+        Ok(valid_bundle_proof)
+    }
+
+    pub(crate) fn generate_invalid_domain_extrinsics_root_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let consensus_block_hash = local_receipt.consensus_block_hash;
+        let consensus_block_number = local_receipt.consensus_block_number;
+
+        let valid_bundle_digests =
+            self.generate_valid_bundle_digest_for_receipt(domain_id, local_receipt)?;
+
+        let mmr_proof =
+            sc_domains::generate_mmr_proof(&self.consensus_client, consensus_block_number)?;
+
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let block_randomness_proof = BlockRandomnessProof::generate(
+            self.consensus_client.as_ref(),
+            consensus_block_hash,
+            (),
+            &self.storage_key_provider,
+        )?;
+
+        let maybe_runtime_id =
+            self.is_domain_runtime_updraded_at(domain_id, consensus_block_hash)?;
+        let domain_inherent_extrinsic_data_proof = DomainInherentExtrinsicDataProof::generate(
+            &self.storage_key_provider,
+            self.consensus_client.as_ref(),
+            domain_id,
+            consensus_block_hash,
+            maybe_runtime_id,
+        )?;
+
+        let invalid_domain_extrinsics_root_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
+                valid_bundle_digests,
+                block_randomness_proof,
+                domain_inherent_extrinsic_data_proof,
+            }),
+        };
+
+        Ok(invalid_domain_extrinsics_root_proof)
+    }
+
+    pub fn is_domain_runtime_updraded_at(
+        &self,
+        domain_id: DomainId,
+        at: CBlock::Hash,
+    ) -> Result<Option<RuntimeId>, FraudProofError> {
+        let header =
+            self.consensus_client
+                .header(at)?
+                .ok_or(sp_blockchain::Error::MissingHeader(format!(
+                    "No header found for {at:?}"
+                )))?;
+
+        let runtime_id = self
+            .consensus_client
+            .runtime_api()
+            .runtime_id(at, domain_id)?
+            .ok_or(sp_blockchain::Error::Application(Box::from(format!(
+                "No RuntimeId found for {domain_id:?}"
+            ))))?;
+
+        let is_runtime_upgraded = header
+            .digest()
+            .logs
+            .iter()
+            .filter_map(|log| log.as_domain_runtime_upgrade())
+            .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id);
+
+        Ok(is_runtime_upgraded.then_some(runtime_id))
+    }
+
+    pub(crate) fn generate_valid_bundle_digest_for_receipt(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    ) -> Result<Vec<ValidBundleDigest>, FraudProofError> {
+        let consensus_block_hash = local_receipt.consensus_block_hash;
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "BlockBody of {consensus_block_hash:?} unavailable"
+                ))
+            })?;
+
+        let bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
+
+        let domain_runtime_api = self.client.runtime_api();
+        let mut valid_bundle_digests = Vec::new();
+        for bundle_index in local_receipt.valid_bundle_indexes() {
+            let bundle =
+                bundles
+                    .get(bundle_index as usize)
+                    .ok_or(FraudProofError::MissingBundle {
+                        bundle_index: bundle_index as usize,
+                    })?;
+
+            let mut exts = Vec::with_capacity(bundle.extrinsics.len());
+            for opaque_extrinsic in &bundle.extrinsics {
+                let extrinsic = <<Block as BlockT>::Extrinsic>::decode(
+                    &mut opaque_extrinsic.encode().as_slice(),
+                )
+                .map_err(|_| FraudProofError::InvalidBundleExtrinsic {
+                    bundle_index: bundle_index as usize,
+                })?;
+
+                exts.push(extrinsic)
+            }
+
+            let bundle_digest = domain_runtime_api
+                .extract_signer(local_receipt.domain_block_hash, exts)?
+                .into_iter()
+                .map(|(signer, ext)| {
+                    (
+                        signer,
+                        ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                            ext.encode(),
+                        ),
+                    )
+                })
+                .collect::<Vec<(Option<AccountId>, ExtrinsicDigest)>>();
+            valid_bundle_digests.push(ValidBundleDigest {
+                bundle_index,
+                bundle_digest,
+            });
+        }
+
+        Ok(valid_bundle_digests)
+    }
+
+    pub(crate) fn generate_invalid_bundle_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        mismatch_type: BundleMismatchType,
+        bundle_index: u32,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let consensus_block_hash = local_receipt.consensus_block_hash;
+        let consensus_block_number = local_receipt.consensus_block_number;
+
+        let bundle = {
+            let consensus_extrinsics = self
+                .consensus_client
+                .block_body(consensus_block_hash)?
+                .ok_or(FraudProofError::MissingConsensusExtrinsics)?;
+
+            let mut bundles = self
+                .consensus_client
+                .runtime_api()
+                .extract_successful_bundles(
+                    consensus_block_hash,
+                    domain_id,
+                    consensus_extrinsics,
+                )?;
+            if bundles.len() <= bundle_index as usize {
+                return Err(FraudProofError::MissingBundle {
+                    bundle_index: bundle_index as usize,
+                });
+            }
+
+            bundles.swap_remove(bundle_index as usize)
+        };
+
+        let (invalid_type, is_true_invalid) = match mismatch_type {
+            BundleMismatchType::TrueInvalid(invalid_type) => (invalid_type, true),
+            BundleMismatchType::FalseInvalid(invalid_type) => (invalid_type, false),
+            BundleMismatchType::Valid => {
+                return Err(sp_blockchain::Error::Application(
+                    "Unexpected bundle mismatch type, this should not happen"
+                        .to_string()
+                        .into(),
+                )
+                .into());
+            }
+        };
+
+        let extrinsic_index = invalid_type.extrinsic_index();
+        let encoded_extrinsics: Vec<_> = bundle.extrinsics.iter().map(Encode::encode).collect();
+        let proof_data = match invalid_type {
+            InvalidBundleType::IllegalTx(expected_extrinsic_index) => {
+                if expected_extrinsic_index as usize >= bundle.extrinsics.len() {
+                    return Err(FraudProofError::OutOfBoundsExtrinsicIndex {
+                        index: expected_extrinsic_index as usize,
+                        max: bundle.extrinsics.len(),
+                    });
+                }
+
+                let domain_block_parent_hash = *self
+                    .client
+                    .header(local_receipt.domain_block_hash)?
+                    .ok_or_else(|| {
+                        FraudProofError::Blockchain(sp_blockchain::Error::MissingHeader(format!(
+                            "{:?}",
+                            local_receipt.domain_block_hash
+                        )))
+                    })?
+                    .parent_hash();
+
+                let domain_block_parent_number = self
+                    .client
+                    .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
+                    .ok_or_else(|| {
+                        FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
+                            "unable to get block number for domain block:{:?}",
+                            domain_block_parent_hash
+                        )))
+                    })?;
+
+                let mut runtime_api_instance = self.client.runtime_api();
+                runtime_api_instance.record_proof();
+                let proof_recorder = runtime_api_instance
+                    .proof_recorder()
+                    .expect("we enabled proof recording just above; qed");
+
+                let mut block_extrinsics = vec![];
+                for (extrinsic_index, extrinsic) in bundle
+                    .extrinsics
+                    .iter()
+                    .enumerate()
+                    .take((expected_extrinsic_index + 1) as usize)
+                {
+                    let encoded_extrinsic = extrinsic.encode();
+                    block_extrinsics.push(
+                        <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                            .map_err(|decoding_error| {
+                                FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
+                                    extrinsic_index,
+                                    decoding_error,
+                                }
+                            })?,
+                    );
+                }
+
+                let validation_response = runtime_api_instance
+                    .check_extrinsics_and_do_pre_dispatch(
+                        domain_block_parent_hash,
+                        block_extrinsics,
+                        domain_block_parent_number,
+                        domain_block_parent_hash,
+                    )?;
+
+                // If the proof is true invalid then validation response should not be Ok.
+                // If the proof is false invalid then validation response should not be Err.
+                // OR
+                // If it is true invalid and expected extrinsic index does not match
+                if (is_true_invalid == validation_response.is_ok())
+                    || (is_true_invalid
+                        && validation_response
+                            .as_ref()
+                            .is_err_and(|e| e.extrinsic_index != expected_extrinsic_index))
+                {
+                    return Err(FraudProofError::InvalidIllegalTxFraudProofExtrinsicIndex {
+                        index: expected_extrinsic_index as usize,
+                        is_true_invalid,
+                        extrinsics_validity_response: validation_response,
+                    });
+                }
+
+                let execution_proof = proof_recorder.drain_storage_proof();
+
+                let bundle_with_proof = OpaqueBundleWithProof::generate(
+                    &self.storage_key_provider,
+                    self.consensus_client.as_ref(),
+                    domain_id,
+                    consensus_block_hash,
+                    bundle,
+                    bundle_index,
+                )?;
+
+                InvalidBundlesProofData::BundleAndExecution {
+                    bundle_with_proof,
+                    execution_proof,
+                }
+            }
+            InvalidBundleType::OutOfRangeTx(_) => {
+                let bundle_with_proof = OpaqueBundleWithProof::generate(
+                    &self.storage_key_provider,
+                    self.consensus_client.as_ref(),
+                    domain_id,
+                    consensus_block_hash,
+                    bundle,
+                    bundle_index,
+                )?;
+
+                InvalidBundlesProofData::Bundle(bundle_with_proof)
+            }
+            InvalidBundleType::UndecodableTx(_) | InvalidBundleType::InherentExtrinsic(_) => {
+                let extrinsic_proof = StorageProofProvider::<
+                    LayoutV1<HeaderHashingFor<Block::Header>>,
+                >::generate_enumerated_proof_of_inclusion(
+                    encoded_extrinsics.as_slice(),
+                    extrinsic_index,
+                )
+                .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
+
+                InvalidBundlesProofData::Extrinsic(extrinsic_proof)
+            }
+        };
+
+        let mmr_proof =
+            sc_domains::generate_mmr_proof(&self.consensus_client, consensus_block_number)?;
+
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let invalid_bundle_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: Some(mmr_proof),
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidBundles(InvalidBundlesProof {
+                bundle_index,
+                invalid_bundle_type: invalid_type,
+                is_true_invalid_fraud_proof: is_true_invalid,
+                proof_data,
+            }),
+        };
+        Ok(invalid_bundle_proof)
+    }
+
+    pub(crate) fn generate_invalid_block_fees_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let block_hash = local_receipt.domain_block_hash;
+
+        let runtime_api = self.client.runtime_api();
+        let api_version = runtime_api
+            .api_version::<dyn DomainCoreApi<Block>>(block_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("DomainCoreApi not found at: {:?}", block_hash).into(),
+                ))
+            })?;
+        let key = if api_version >= 2 {
+            runtime_api.block_fees_storage_key(block_hash)?
+        } else {
+            sp_domains::operator_block_fees_final_key()
+        };
+        let storage_proof = self
+            .client
+            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
+
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let invalid_block_fees_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidBlockFees(InvalidBlockFeesProof { storage_proof }),
+        };
+        Ok(invalid_block_fees_proof)
+    }
+
+    pub(crate) fn generate_invalid_transfers_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let block_hash = local_receipt.domain_block_hash;
+        let runtime_api = self.client.runtime_api();
+        let key = runtime_api.transfers_storage_key(block_hash)?;
+        let storage_proof = self
+            .client
+            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
+
+        let maybe_domain_runtime_code_proof =
+            self.maybe_generate_domain_runtime_code_proof_for_receipt(domain_id, local_receipt)?;
+
+        let invalid_transfers_proof = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof,
+            proof: FraudProofVariant::InvalidTransfers(InvalidTransfersProof { storage_proof }),
+        };
+        Ok(invalid_transfers_proof)
+    }
+
+    pub(crate) fn generate_invalid_domain_block_hash_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: Block::Hash,
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
+        let block_hash = local_receipt.domain_block_hash;
+        let digest_key = sp_domains::system_digest_final_key();
+        let digest_storage_proof = self
+            .client
+            .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
+
+        let invalid_domain_block_hash = FraudProof {
+            domain_id,
+            bad_receipt_hash,
+            maybe_mmr_proof: None,
+            maybe_domain_runtime_code_proof: None,
+            proof: FraudProofVariant::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+                digest_storage_proof,
+            }),
+        };
+        Ok(invalid_domain_block_hash)
     }
 
     fn header(&self, hash: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
         self.client
             .header(hash)?
             .ok_or_else(|| sp_blockchain::Error::Backend(format!("Header not found for {hash:?}")))
+    }
+
+    fn consensus_header(&self, hash: CBlock::Hash) -> Result<CBlock::Header, sp_blockchain::Error> {
+        self.consensus_client.header(hash)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Consensus header not found for {hash:?}"))
+        })
     }
 
     fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {

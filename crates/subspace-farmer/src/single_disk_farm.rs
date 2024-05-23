@@ -6,7 +6,7 @@ mod plotted_sectors;
 mod plotting;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlotCache, PlottedSectors, SectorUpdate};
+use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlottedSectors, SectorUpdate};
 pub use crate::farm::{FarmingError, FarmingNotification};
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
@@ -257,7 +257,10 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
-pub struct SingleDiskFarmOptions<NC, P> {
+pub struct SingleDiskFarmOptions<NC, P>
+where
+    NC: Clone,
+{
     /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
@@ -599,6 +602,7 @@ pub struct SingleDiskFarm {
 }
 
 impl Drop for SingleDiskFarm {
+    #[inline]
     fn drop(&mut self) {
         self.piece_reader.close_all_readers();
         // Make background threads that are waiting to do something exit immediately
@@ -620,14 +624,6 @@ impl Farm for SingleDiskFarm {
 
     fn plotted_sectors(&self) -> Arc<dyn PlottedSectors + 'static> {
         Arc::new(self.plotted_sectors())
-    }
-
-    fn piece_cache(&self) -> Arc<dyn farm::PieceCache + 'static> {
-        Arc::new(self.piece_cache())
-    }
-
-    fn plot_cache(&self) -> Arc<dyn PlotCache + 'static> {
-        Arc::new(self.plot_cache())
     }
 
     fn piece_reader(&self) -> Arc<dyn PieceReader + 'static> {
@@ -668,7 +664,7 @@ impl SingleDiskFarm {
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
-        NC: NodeClient,
+        NC: NodeClient + Clone,
         P: Plotter + Send + 'static,
         PosTable: Table,
     {
@@ -1055,7 +1051,10 @@ impl SingleDiskFarm {
 
     fn init<NC, P>(
         options: &SingleDiskFarmOptions<NC, P>,
-    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
+    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError>
+    where
+        NC: Clone,
+    {
         let SingleDiskFarmOptions {
             directory,
             farmer_app_info,

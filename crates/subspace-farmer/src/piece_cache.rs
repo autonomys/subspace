@@ -74,6 +74,7 @@ pub struct PieceCache {
 
 #[async_trait]
 impl farm::PieceCache for PieceCache {
+    #[inline]
     fn max_num_elements(&self) -> u32 {
         self.inner.max_num_elements
     }
@@ -123,18 +124,34 @@ impl farm::PieceCache for PieceCache {
         piece_index: PieceIndex,
         piece: &Piece,
     ) -> Result<(), FarmError> {
-        Ok(self.write_piece(offset, piece_index, piece)?)
+        let piece = piece.clone();
+        let piece_cache = self.clone();
+        Ok(AsyncJoinOnDrop::new(
+            task::spawn_blocking(move || piece_cache.write_piece(offset, piece_index, &piece)),
+            false,
+        )
+        .await??)
     }
 
     async fn read_piece_index(
         &self,
         offset: PieceCacheOffset,
     ) -> Result<Option<PieceIndex>, FarmError> {
-        Ok(self.read_piece_index(offset)?)
+        let piece_cache = self.clone();
+        Ok(AsyncJoinOnDrop::new(
+            task::spawn_blocking(move || piece_cache.read_piece_index(offset)),
+            false,
+        )
+        .await??)
     }
 
     async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
-        Ok(self.read_piece(offset)?)
+        let piece_cache = self.clone();
+        Ok(AsyncJoinOnDrop::new(
+            task::spawn_blocking(move || piece_cache.read_piece(offset)),
+            false,
+        )
+        .await??)
     }
 }
 

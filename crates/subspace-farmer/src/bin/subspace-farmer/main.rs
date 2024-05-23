@@ -1,4 +1,10 @@
-#![feature(const_option, type_changing_struct_update)]
+#![feature(
+    const_option,
+    extract_if,
+    hash_extract_if,
+    let_chains,
+    type_changing_struct_update
+)]
 
 mod commands;
 mod utils;
@@ -24,6 +30,8 @@ type PosTable = ChiaTable;
 enum Command {
     /// Start a farmer, does plotting and farming
     Farm(commands::farm::FarmingArgs),
+    /// Farming cluster
+    Cluster(commands::cluster::ClusterArgs),
     /// Run various benchmarks
     #[clap(subcommand)]
     Benchmark(commands::benchmark::BenchmarkArgs),
@@ -85,6 +93,9 @@ async fn main() -> anyhow::Result<()> {
     match command {
         Command::Farm(farming_args) => {
             commands::farm::farm::<PosTable>(farming_args).await?;
+        }
+        Command::Cluster(cluster_args) => {
+            commands::cluster::cluster::<PosTable>(cluster_args).await?;
         }
         Command::Benchmark(benchmark_args) => {
             commands::benchmark::benchmark(benchmark_args)?;

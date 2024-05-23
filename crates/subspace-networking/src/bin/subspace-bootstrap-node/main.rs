@@ -13,7 +13,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -31,7 +30,7 @@ use tracing_subscriber::EnvFilter;
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS: Duration = Duration::from_secs(3600);
 
 /// Size of the LRU cache for peers.
-pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10000).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: u32 = 10000;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]

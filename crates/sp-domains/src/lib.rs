@@ -84,6 +84,14 @@ mod app {
     app_crypto!(sr25519, KEY_TYPE);
 }
 
+// TODO: this runtime constant is not support to update, see https://github.com/subspace/subspace/issues/2712
+// for more detail about the problem and what we need to do to support it.
+//
+// The domain storage fee multiplier used to charge a higher storage fee to the domain
+// transaction to even out the duplicated/illegal domain transaction storage cost, which
+// can not be eliminated right now.
+pub const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 3;
+
 /// An operator authority signature.
 pub type OperatorSignature = app::Signature;
 
@@ -318,6 +326,12 @@ impl<Balance> Transfers<Balance> {
             && !self.rejected_transfers_claimed.contains_key(&chain_id)
     }
 }
+
+// TODO: this runtime constant is not support to update, see https://github.com/subspace/subspace/issues/2712
+// for more detail about the problem and what we need to do to support it.
+//
+/// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
+pub const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
@@ -1032,17 +1046,21 @@ pub enum ReceiptValidity {
 /// Bundle invalidity type
 ///
 /// Each type contains the index of the first invalid extrinsic within the bundle
+// TODO: `#[codec(index = 3)]` is reserved for the reomved `InvalidBundleType::InvalidXDM`
+// we can only reuse index 3 in the next network
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
+    #[codec(index = 0)]
     UndecodableTx(u32),
     /// Transaction is out of the tx range.
+    #[codec(index = 1)]
     OutOfRangeTx(u32),
     /// Transaction is illegal (unable to pay the fee, etc).
+    #[codec(index = 2)]
     IllegalTx(u32),
-    /// Transaction is an invalid XDM
-    InvalidXDM(u32),
     /// Transaction is an inherent extrinsic.
+    #[codec(index = 4)]
     InherentExtrinsic(u32),
 }
 
@@ -1055,7 +1073,6 @@ impl InvalidBundleType {
             Self::UndecodableTx(_) => 1,
             Self::OutOfRangeTx(_) => 2,
             Self::InherentExtrinsic(_) => 3,
-            Self::InvalidXDM(_) => 4,
             Self::IllegalTx(_) => 5,
         }
     }
@@ -1065,7 +1082,6 @@ impl InvalidBundleType {
             Self::UndecodableTx(i) => *i,
             Self::OutOfRangeTx(i) => *i,
             Self::IllegalTx(i) => *i,
-            Self::InvalidXDM(i) => *i,
             Self::InherentExtrinsic(i) => *i,
         }
     }
@@ -1234,6 +1250,15 @@ impl DomainBundleSubmitted for () {
     fn domain_bundle_submitted(_domain_id: DomainId) {}
 }
 
+/// A hook to call after a domain is instantiated
+pub trait OnDomainInstantiated {
+    fn on_domain_instantiated(domain_id: DomainId);
+}
+
+impl OnDomainInstantiated for () {
+    fn on_domain_instantiated(_domain_id: DomainId) {}
+}
+
 pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
@@ -1243,7 +1268,7 @@ pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
 >;
 
 /// Domain chains allowlist updates.
-#[derive(Default, Debug, Encode, Decode, PartialEq, Clone, TypeInfo)]
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
 pub struct DomainAllowlistUpdates {
     /// Chains that are allowed to open channel with this chain.
     pub allow_chains: BTreeSet<ChainId>,
@@ -1251,9 +1276,56 @@ pub struct DomainAllowlistUpdates {
     pub remove_chains: BTreeSet<ChainId>,
 }
 
+impl DomainAllowlistUpdates {
+    pub fn is_empty(&self) -> bool {
+        self.allow_chains.is_empty() && self.remove_chains.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.allow_chains.clear();
+        self.remove_chains.clear();
+    }
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct RuntimeObject<Number, Hash> {
+    pub runtime_name: String,
+    pub runtime_type: RuntimeType,
+    pub runtime_upgrades: u32,
+    pub hash: Hash,
+    // The raw gensis storage that contains the runtime code.
+    // NOTE: don't use this field directly but `into_complete_raw_genesis` instead
+    pub raw_genesis: RawGenesis,
+    pub version: RuntimeVersion,
+    pub created_at: Number,
+    pub updated_at: Number,
+}
+
+/// Digest storage key in frame_system.
+/// Unfortunately, the digest storage is private and not possible to derive the key from it directly.
+pub fn system_digest_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
+}
+
+// TODO: This is used to keep compatible with gemini-3h, remove before next network
+/// This is a representation of actual Block Fees storage in pallet-block-fees.
+/// Any change in key or value there should be changed here accordingly.
+pub fn operator_block_fees_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
+        .to_vec()
+}
+
+/// Preimage to verify the proof of ownership of Operator Signing key.
+/// Operator owner is used to ensure the signature is used by anyone except
+/// the owner of the Signing key pair.
+#[derive(Debug, Encode)]
+pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
+    pub operator_owner: AccountId,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(3)]
+    #[api_version(4)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1336,6 +1408,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the balance of the storage fund account
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
+
+        /// Return if the domain runtime code is upgraded since `at`
+        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

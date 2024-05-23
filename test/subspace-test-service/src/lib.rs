@@ -82,7 +82,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{PotOutput, Solution};
@@ -99,7 +98,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{RpcHandlersExt, RpcTransactionError, RpcTransactionOutput};
 
 type FraudProofFor<Block, DomainBlock> =
-    FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header>;
+    FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header, H256>;
 
 const MAX_PRODUCE_BUNDLE_TRY: usize = 10;
 
@@ -423,14 +422,12 @@ impl MockConsensusNode {
             .state_pruning
             .clone()
             .unwrap_or(PruningMode::ArchiveCanonical);
-        let sync_target_block_number = Arc::new(AtomicU32::new(0));
         let transaction_pool = subspace_service::transaction_pool::new_full(
             config.transaction_pool.clone(),
             config.role.is_authority(),
             config.prometheus_registry(),
             &task_manager,
             client.clone(),
-            sync_target_block_number.clone(),
         )
         .expect("failed to create transaction pool");
 

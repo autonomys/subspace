@@ -13,6 +13,7 @@
 //! * notifications (typically targeting a particular instance of an app) and corresponding subscriptions (for example solution notification)
 //! * broadcasts and corresponding subscriptions (for example slot info broadcast)
 
+use crate::utils::AsyncJoinOnDrop;
 use async_nats::{
     Client, ConnectOptions, HeaderMap, HeaderValue, PublishError, RequestError, RequestErrorKind,
     Subject, SubscribeError, Subscriber, ToServerAddrs,
@@ -20,21 +21,30 @@ use async_nats::{
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use derive_more::{Deref, DerefMut};
-use futures::{Stream, StreamExt};
+use futures::channel::mpsc;
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
-use std::fmt;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
+use std::{fmt, mem};
 use thiserror::Error;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use ulid::Ulid;
 
 const EXPECTED_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
+const ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_mins(1);
+/// Requests should time out eventually, but we should set a larger timeout to allow for spikes in
+/// load to be absorbed gracefully
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Generic request with associated response.
 ///
@@ -48,12 +58,11 @@ pub trait GenericRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
-/// Generic stream request where response is streamed using [`GenericStreamResponses`].
+/// Generic stream request where response is streamed using [`NatsClient::stream_response`].
 ///
 /// Used for cases where a large payload that doesn't fit into NATS message needs to be sent or
 /// there is a very large number of messages to send. For simple request/response patten
 /// [`GenericRequest`] can be used instead.
-// TODO: Sequence numbers for streams, backpressure with acknowledgement
 pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
     /// Request subject with optional `*` in place of application instance to receive the request
     const SUBJECT: &'static str;
@@ -68,16 +77,30 @@ pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'st
 #[derive(Debug, Encode, Decode)]
 pub enum GenericStreamResponses<Response> {
     /// Some responses, but the stream didn't end yet
-    Continue(VecDeque<Response>),
+    Continue {
+        /// Monotonically increasing index of responses in a stream
+        index: u32,
+        /// Individual responses
+        responses: VecDeque<Response>,
+        /// Subject where to send acknowledgement of received stream response indices, which acts as
+        /// a backpressure mechanism
+        ack_subject: String,
+    },
     /// Remaining responses and this is the end of the stream.
-    Last(VecDeque<Response>),
+    Last {
+        /// Monotonically increasing index of responses in a stream
+        index: u32,
+        /// Individual responses
+        responses: VecDeque<Response>,
+    },
 }
 
 impl<Response> From<GenericStreamResponses<Response>> for VecDeque<Response> {
+    #[inline]
     fn from(value: GenericStreamResponses<Response>) -> Self {
         match value {
-            GenericStreamResponses::Continue(responses) => responses,
-            GenericStreamResponses::Last(responses) => responses,
+            GenericStreamResponses::Continue { responses, .. } => responses,
+            GenericStreamResponses::Last { responses, .. } => responses,
         }
     }
 }
@@ -85,13 +108,28 @@ impl<Response> From<GenericStreamResponses<Response>> for VecDeque<Response> {
 impl<Response> GenericStreamResponses<Response> {
     fn next(&mut self) -> Option<Response> {
         match self {
-            GenericStreamResponses::Continue(responses) => responses.pop_front(),
-            GenericStreamResponses::Last(responses) => responses.pop_front(),
+            GenericStreamResponses::Continue { responses, .. } => responses.pop_front(),
+            GenericStreamResponses::Last { responses, .. } => responses.pop_front(),
+        }
+    }
+
+    fn index(&self) -> u32 {
+        match self {
+            GenericStreamResponses::Continue { index, .. } => *index,
+            GenericStreamResponses::Last { index, .. } => *index,
+        }
+    }
+
+    fn ack_subject(&self) -> Option<&str> {
+        if let GenericStreamResponses::Continue { ack_subject, .. } = self {
+            Some(ack_subject)
+        } else {
+            None
         }
     }
 
     fn is_last(&self) -> bool {
-        matches!(self, Self::Last(_))
+        matches!(self, Self::Last { .. })
     }
 }
 
@@ -144,7 +182,10 @@ pub struct StreamResponseSubscriber<Response> {
     #[deref]
     #[deref_mut]
     subscriber: Subscriber,
-    buffered_responses: GenericStreamResponses<Response>,
+    buffered_responses: Option<GenericStreamResponses<Response>>,
+    next_index: u32,
+    acknowledgement_sender: mpsc::UnboundedSender<(String, u32)>,
+    _background_task: AsyncJoinOnDrop<()>,
     _phantom: PhantomData<Response>,
 }
 
@@ -155,10 +196,15 @@ where
     type Item = Response;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(response) = self.buffered_responses.next() {
-            return Poll::Ready(Some(response));
-        } else if self.buffered_responses.is_last() {
-            return Poll::Ready(None);
+        if let Some(buffered_responses) = self.buffered_responses.as_mut() {
+            if let Some(response) = buffered_responses.next() {
+                return Poll::Ready(Some(response));
+            } else if buffered_responses.is_last() {
+                return Poll::Ready(None);
+            }
+
+            self.buffered_responses.take();
+            self.next_index += 1;
         }
 
         let mut projected = self.project();
@@ -166,8 +212,37 @@ where
             Poll::Ready(Some(message)) => {
                 match GenericStreamResponses::<Response>::decode(&mut message.payload.as_ref()) {
                     Ok(mut responses) => {
+                        if responses.index() != *projected.next_index {
+                            warn!(
+                                actual_index = %responses.index(),
+                                expected_index = %*projected.next_index,
+                                message_type = %type_name::<Response>(),
+                                "Received unexpected response stream index, aborting stream"
+                            );
+
+                            return Poll::Ready(None);
+                        }
+
+                        if let Some(ack_subject) = responses.ack_subject() {
+                            let index = responses.index();
+                            let ack_subject = ack_subject.to_string();
+
+                            if let Err(error) = projected
+                                .acknowledgement_sender
+                                .unbounded_send((ack_subject.clone(), index))
+                            {
+                                warn!(
+                                    %error,
+                                    %index,
+                                    message_type = %type_name::<Response>(),
+                                    %ack_subject,
+                                    "Failed to send acknowledgement for stream response"
+                                );
+                            }
+                        }
+
                         if let Some(response) = responses.next() {
-                            *projected.buffered_responses = responses;
+                            *projected.buffered_responses = Some(responses);
                             Poll::Ready(Some(response))
                         } else {
                             Poll::Ready(None)
@@ -176,7 +251,7 @@ where
                     Err(error) => {
                         warn!(
                             %error,
-                            message_type = %type_name::<Response>(),
+                            response_type = %type_name::<Response>(),
                             message = %hex::encode(message.payload),
                             "Failed to decode stream response"
                         );
@@ -187,6 +262,40 @@ where
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl<Response> StreamResponseSubscriber<Response> {
+    fn new(subscriber: Subscriber, nats_client: NatsClient) -> Self {
+        let (acknowledgement_sender, mut acknowledgement_receiver) =
+            mpsc::unbounded::<(String, u32)>();
+
+        let background_task = AsyncJoinOnDrop::new(
+            tokio::spawn(async move {
+                // Make sure to use the same exact NATS connection for all acknowledgements in order to
+                // ensure consistent ordering
+                let client = &*nats_client;
+                while let Some((subject, index)) = acknowledgement_receiver.next().await {
+                    if let Err(error) = client
+                        .publish(subject.clone(), index.to_le_bytes().to_vec().into())
+                        .await
+                    {
+                        warn!(%error, %subject, %index, "Failed to send acknowledgement");
+                        return;
+                    }
+                }
+            }),
+            true,
+        );
+
+        Self {
+            subscriber,
+            buffered_responses: None,
+            next_index: 0,
+            acknowledgement_sender,
+            _background_task: background_task,
+            _phantom: PhantomData,
         }
     }
 }
@@ -254,7 +363,8 @@ where
 
 #[derive(Debug)]
 struct Inner {
-    client: Client,
+    clients: Vec<Client>,
+    next_client: AtomicUsize,
     request_retry_backoff_policy: ExponentialBackoff,
     approximate_max_message_size: usize,
 }
@@ -268,8 +378,9 @@ pub struct NatsClient {
 impl Deref for NatsClient {
     type Target = Client;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner.client
+        self.client()
     }
 }
 
@@ -278,23 +389,37 @@ impl NatsClient {
     pub async fn new<A: ToServerAddrs>(
         addrs: A,
         request_retry_backoff_policy: ExponentialBackoff,
+        nats_pool_size: NonZeroUsize,
     ) -> Result<Self, async_nats::Error> {
-        Self::from_client(
-            async_nats::connect_with_options(
-                addrs,
-                ConnectOptions::default().request_timeout(None),
-            )
-            .await?,
+        let servers = addrs.to_server_addrs()?.collect::<Vec<_>>();
+        Self::from_clients(
+            (0..nats_pool_size.get())
+                .map(|_| async {
+                    async_nats::connect_with_options(
+                        &servers,
+                        ConnectOptions::default().request_timeout(Some(REQUEST_TIMEOUT)),
+                    )
+                    .await
+                })
+                .collect::<FuturesUnordered<_>>()
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()?,
             request_retry_backoff_policy,
         )
     }
 
     /// Create new client from existing NATS instance
-    pub fn from_client(
-        client: Client,
+    pub fn from_clients(
+        clients: Vec<Client>,
         request_retry_backoff_policy: ExponentialBackoff,
     ) -> Result<Self, async_nats::Error> {
-        let max_payload = client.server_info().max_payload;
+        let max_payload = clients
+            .first()
+            .ok_or("Empty list of NATS clients is not supported; qed")?
+            .server_info()
+            .max_payload;
         if max_payload < EXPECTED_MESSAGE_SIZE {
             return Err(format!(
                 "Max payload {max_payload} is smaller than expected {EXPECTED_MESSAGE_SIZE}, \
@@ -304,7 +429,8 @@ impl NatsClient {
         }
 
         let inner = Inner {
-            client,
+            clients,
+            next_client: AtomicUsize::default(),
             request_retry_backoff_policy,
             // Allow up to 90%, the rest will be wrapper data structures, etc.
             approximate_max_message_size: max_payload * 9 / 10,
@@ -334,8 +460,7 @@ impl NatsClient {
         let mut maybe_retry_backoff = None;
         let message = loop {
             match self
-                .inner
-                .client
+                .client()
                 .request(subject.clone(), request.encode().into())
                 .await
             {
@@ -404,24 +529,212 @@ impl NatsClient {
         let stream_request = StreamRequest::new(request);
 
         let subscriber = self
-            .inner
-            .client
+            .client()
             .subscribe(stream_request.response_subject.clone())
             .await?;
+        debug!(request_type = %type_name::<Request>(), ?subscriber, "Stream request subscription");
 
-        self.inner
-            .client
+        self.client()
             .publish(
                 subject_with_instance(Request::SUBJECT, instance),
                 stream_request.encode().into(),
             )
             .await?;
 
-        Ok(StreamResponseSubscriber {
-            subscriber,
-            buffered_responses: GenericStreamResponses::Continue(VecDeque::new()),
-            _phantom: PhantomData,
-        })
+        Ok(StreamResponseSubscriber::new(subscriber, self.clone()))
+    }
+
+    /// Helper method to send responses to requests initiated with [`Self::stream_request`]
+    pub async fn stream_response<Request, S>(&self, response_subject: String, response_stream: S)
+    where
+        Request: GenericStreamRequest,
+        S: Stream<Item = Request::Response> + Unpin,
+    {
+        type Response<Request> =
+            GenericStreamResponses<<Request as GenericStreamRequest>::Response>;
+
+        let mut response_stream = response_stream.fuse();
+        // Make sure to use the same exact NATS connection for all acknowledgements in order to
+        // ensure consistent ordering
+        let client = &**self;
+
+        // Pull the first element to measure response size
+        let first_element = match response_stream.next().await {
+            Some(first_element) => first_element,
+            None => {
+                if let Err(error) = client
+                    .publish(
+                        response_subject.clone(),
+                        Response::<Request>::Last {
+                            index: 0,
+                            responses: VecDeque::new(),
+                        }
+                        .encode()
+                        .into(),
+                    )
+                    .await
+                {
+                    warn!(
+                        %error,
+                        request_type = %type_name::<Request>(),
+                        response_type = %type_name::<Request::Response>(),
+                        "Failed to send stream response"
+                    );
+                }
+
+                return;
+            }
+        };
+        let max_responses_per_message =
+            self.approximate_max_message_size() / first_element.encoded_size();
+
+        // Initialize buffer that will be reused for responses
+        let mut buffer = VecDeque::with_capacity(max_responses_per_message);
+        buffer.push_back(first_element);
+
+        let ack_subject = format!("stream-response-ack.{}", Ulid::new());
+        let mut ack_subscription = match self.subscribe(ack_subject.clone()).await {
+            Ok(ack_subscription) => ack_subscription,
+            Err(error) => {
+                warn!(
+                    %error,
+                    request_type = %type_name::<Request>(),
+                    response_type = %type_name::<Request::Response>(),
+                    "Failed to subscribe to ack subject"
+                );
+                return;
+            }
+        };
+        debug!(
+            request_type = %type_name::<Request>(),
+            response_type = %type_name::<Request::Response>(),
+            ?ack_subscription,
+            "Ack subscription subscription"
+        );
+        let mut index = 0;
+
+        loop {
+            // Try to fill the buffer
+            let mut local_response_stream = response_stream
+                .by_ref()
+                .take(max_responses_per_message - buffer.len());
+            if buffer.is_empty() {
+                if let Some(element) = local_response_stream.next().await {
+                    buffer.push_back(element);
+                }
+            }
+            while let Some(element) = local_response_stream.next().now_or_never().flatten() {
+                buffer.push_back(element);
+            }
+
+            let is_done = response_stream.is_done();
+            debug!(
+                %response_subject,
+                num_messages = buffer.len(),
+                %index,
+                %is_done,
+                "Publishing stream response messages",
+            );
+            let response = if is_done {
+                Response::<Request>::Last {
+                    index,
+                    responses: buffer,
+                }
+            } else {
+                Response::<Request>::Continue {
+                    index,
+                    responses: buffer,
+                    ack_subject: ack_subject.clone(),
+                }
+            };
+
+            if let Err(error) = client
+                .publish(response_subject.clone(), response.encode().into())
+                .await
+            {
+                warn!(
+                    %error,
+                    request_type = %type_name::<Request>(),
+                    response_type = %type_name::<Request::Response>(),
+                    "Failed to send stream response"
+                );
+                return;
+            }
+
+            if is_done {
+                return;
+            } else {
+                buffer = response.into();
+                buffer.clear();
+            }
+
+            if index >= 1 {
+                // Acknowledgements are received with delay
+                let expected_index = index - 1;
+
+                trace!(
+                    %response_subject,
+                    %expected_index,
+                    "Waiting for acknowledgement"
+                );
+                match tokio::time::timeout(ACKNOWLEDGEMENT_TIMEOUT, ack_subscription.next()).await {
+                    Ok(Some(message)) => {
+                        if let Some(received_index) = message
+                            .payload
+                            .split_at_checked(mem::size_of::<u32>())
+                            .map(|(bytes, _)| {
+                                u32::from_le_bytes(
+                                    bytes.try_into().expect("Correctly chunked slice; qed"),
+                                )
+                            })
+                        {
+                            debug!(
+                                %response_subject,
+                                %received_index,
+                                "Received acknowledgement"
+                            );
+                            if received_index != expected_index {
+                                warn!(
+                                    %received_index,
+                                    %expected_index,
+                                    request_type = %type_name::<Request>(),
+                                    response_type = %type_name::<Request::Response>(),
+                                    message = %hex::encode(message.payload),
+                                    "Unexpected acknowledgement index"
+                                );
+                                return;
+                            }
+                        } else {
+                            warn!(
+                                request_type = %type_name::<Request>(),
+                                response_type = %type_name::<Request::Response>(),
+                                message = %hex::encode(message.payload),
+                                "Unexpected acknowledgement message"
+                            );
+                            return;
+                        }
+                    }
+                    Ok(None) => {
+                        warn!(
+                            request_type = %type_name::<Request>(),
+                            response_type = %type_name::<Request::Response>(),
+                            "Acknowledgement stream ended unexpectedly"
+                        );
+                        return;
+                    }
+                    Err(_error) => {
+                        warn!(
+                            request_type = %type_name::<Request>(),
+                            response_type = %type_name::<Request::Response>(),
+                            "Acknowledgement wait timed out"
+                        );
+                        return;
+                    }
+                }
+            }
+
+            index += 1;
+        }
     }
 
     /// Make notification without waiting for response
@@ -433,8 +746,7 @@ impl NatsClient {
     where
         Notification: GenericNotification,
     {
-        self.inner
-            .client
+        self.client()
             .publish(
                 subject_with_instance(Notification::SUBJECT, instance),
                 notification.encode().into(),
@@ -451,8 +763,7 @@ impl NatsClient {
     where
         Broadcast: GenericBroadcast,
     {
-        self.inner
-            .client
+        self.client()
             .publish_with_headers(
                 Broadcast::SUBJECT.replace('*', instance),
                 {
@@ -464,6 +775,20 @@ impl NatsClient {
                 },
                 message.encode().into(),
             )
+            .await
+    }
+
+    /// Simple subscription that will produce decoded stream requests, while skipping messages that
+    /// fail to decode
+    pub async fn subscribe_to_stream_requests<Request>(
+        &self,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+    ) -> Result<SubscriberWrapper<StreamRequest<Request>>, SubscribeError>
+    where
+        Request: GenericStreamRequest,
+    {
+        self.simple_subscribe(Request::SUBJECT, instance, queue_group)
             .await
     }
 
@@ -495,6 +820,12 @@ impl NatsClient {
             .await
     }
 
+    /// Get NATS client from a pool
+    fn client(&self) -> &Client {
+        let client = self.inner.next_client.fetch_add(1, Ordering::Relaxed);
+        &self.inner.clients[client % self.inner.clients.len()]
+    }
+
     /// Simple subscription that will produce decoded messages, while skipping messages that fail to
     /// decode
     async fn simple_subscribe<Message>(
@@ -506,18 +837,24 @@ impl NatsClient {
     where
         Message: Decode,
     {
+        let subscriber = if let Some(queue_group) = queue_group {
+            self.client()
+                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
+                .await?
+        } else {
+            self.client()
+                .subscribe(subject_with_instance(subject, instance))
+                .await?
+        };
+        debug!(
+            %subject,
+            message_type = %type_name::<Message>(),
+            ?subscriber,
+            "Simple subscription"
+        );
+
         Ok(SubscriberWrapper {
-            subscriber: if let Some(queue_group) = queue_group {
-                self.inner
-                    .client
-                    .queue_subscribe(subject_with_instance(subject, instance), queue_group)
-                    .await?
-            } else {
-                self.inner
-                    .client
-                    .subscribe(subject_with_instance(subject, instance))
-                    .await?
-            },
+            subscriber,
             _phantom: PhantomData,
         })
     }

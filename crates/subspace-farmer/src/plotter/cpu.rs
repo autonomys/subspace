@@ -52,6 +52,7 @@ pub struct CpuPlotter<PG, PosTable> {
 }
 
 impl<PG, PosTable> Drop for CpuPlotter<PG, PosTable> {
+    #[inline]
     fn drop(&mut self) {
         self.abort_early.store(true, Ordering::Release);
         self.tasks_sender.close_channel();

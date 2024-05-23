@@ -107,7 +107,6 @@ use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunct
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -126,7 +125,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30_000).expect("Not zero; qed");
+const POT_VERIFIER_CACHE_SIZE: u32 = 30_000;
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
@@ -579,7 +578,6 @@ where
         config.prometheus_registry(),
         &task_manager,
         client.clone(),
-        sync_target_block_number.clone(),
     )?;
 
     let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {

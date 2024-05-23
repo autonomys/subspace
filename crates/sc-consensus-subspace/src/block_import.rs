@@ -149,9 +149,6 @@ pub enum Error<Header: HeaderT> {
     /// Piece verification failed
     #[error("Piece verification failed for slot {0}")]
     InvalidPiece(Slot),
-    /// Parent block has no associated weight
-    #[error("Parent block of {0} has no associated weight")]
-    ParentBlockNoAssociatedWeight(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
@@ -659,7 +656,7 @@ where
             0
         } else {
             aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())?
-                .ok_or_else(|| Error::ParentBlockNoAssociatedWeight(block_hash))?
+                .unwrap_or_default()
         };
 
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);

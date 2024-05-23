@@ -13,6 +13,7 @@
     let_chains,
     never_type,
     slice_flatten,
+    split_at_checked,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,
@@ -54,7 +55,6 @@ pub mod utils;
 
 pub use identity::Identity;
 pub use jsonrpsee;
-use std::num::NonZeroUsize;
 
 /// Size of the LRU cache for peers.
-pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: u32 = 100;

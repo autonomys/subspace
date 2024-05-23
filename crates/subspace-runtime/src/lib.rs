@@ -40,7 +40,8 @@ use domain_runtime_primitives::{
 use frame_support::genesis_builder_helper::{build_config, create_default_config};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, VariantCount,
+    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, OnRuntimeUpgrade,
+    VariantCount,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -62,10 +63,14 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier,
+    ExecutionReceiptFor, MessengerHoldIdentifier, OnDomainInstantiated, OpaqueBundle, OperatorId,
+    OperatorPublicKey, StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::storage_proof::{
+    FraudProofStorageKeyProvider, FraudProofStorageKeyRequest,
+};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
@@ -88,8 +93,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SlotNumber, SolutionRange, U256,
+    sectors_to_solution_range, solution_range_to_sectors, HistorySize, Piece, Randomness,
+    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
@@ -100,11 +105,6 @@ sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
-
-// The domain storage fee multiplier used to charge a higher storage fee to the domain
-// transaction to even out the duplicated/illegal domain transaction storage cost, which
-// can not be eliminated right now.
-const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 3;
 
 /// How many pieces one sector is supposed to contain (max)
 const MAX_PIECES_IN_SECTOR: u16 = 1000;
@@ -175,14 +175,12 @@ const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
-/// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
-const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
-
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
 // We assume initial plot size starts with the a single sector.
-const INITIAL_SOLUTION_RANGE: SolutionRange = sectors_to_solution_range(1);
+const INITIAL_SOLUTION_RANGE: SolutionRange =
+    sectors_to_solution_range(1, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
 
 /// Number of votes expected per block.
 ///
@@ -209,41 +207,6 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
-/// Computes the following:
-/// ```
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
-/// ```
-const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
-    let solution_range = SolutionRange::MAX
-        // Account for slot probability
-        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
-
-    // Take number of sectors into account
-    solution_range / sectors
-}
-
-/// Computes the following:
-/// ```
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
-/// ```
-const fn solution_range_to_sectors(solution_range: SolutionRange) -> u64 {
-    let sectors = SolutionRange::MAX
-        // Account for slot probability
-        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
-
-    // Take solution range into account
-    sectors / solution_range
-}
-
-// Quick test to ensure functions above are the inverse of each other
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(1)) == 1);
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(3)) == 3);
-const_assert!(solution_range_to_sectors(sectors_to_solution_range(5)) == 5);
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
@@ -446,7 +409,7 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
-        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
+        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
         sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
@@ -504,9 +467,9 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
 pub struct MmrProofVerifier;
 
 impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for MmrProofVerifier {
-    fn verify_proof_and_extract_consensus_state_root(
+    fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
-    ) -> Option<Hash> {
+    ) -> Option<mmr::Leaf> {
         let ConsensusChainMmrLeafProof {
             consensus_block_number,
             opaque_mmr_leaf,
@@ -527,7 +490,7 @@ impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for Mm
 
         let leaf: mmr::Leaf = opaque_mmr_leaf.into_opaque_leaf().try_decode()?;
 
-        Some(leaf.state_root())
+        Some(leaf)
     }
 }
 
@@ -712,7 +675,11 @@ impl pallet_domains::Config for Runtime {
     type MaxInitialDomainAccounts = MaxInitialDomainAccounts;
     type MinInitialDomainAccountBalance = MinInitialDomainAccountBalance;
     type DomainBundleSubmitted = Messenger;
+    type OnDomainInstantiated = Messenger;
     type Balance = Balance;
+    type MmrHash = mmr::Hash;
+    type MmrProofVerifier = MmrProofVerifier;
+    type FraudProofStorageKeyProvider = StorageKeyProvider;
 }
 
 parameter_types! {
@@ -844,6 +811,25 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
+pub struct InitializeDomainChainAllowlistUpdate;
+
+impl OnRuntimeUpgrade for InitializeDomainChainAllowlistUpdate {
+    fn on_runtime_upgrade() -> Weight {
+        let mut read = 0;
+        let mut write = 0;
+        let next_domain_id = Domains::next_domain_id().into();
+        for i in 0u32..next_domain_id {
+            let domain_id = i.into();
+            read += 1;
+            if Messenger::domain_chain_allowlist_updates(domain_id).is_none() {
+                <Messenger as OnDomainInstantiated>::on_domain_instantiated(domain_id);
+                write += 1;
+            }
+        }
+        <Runtime as frame_system::Config>::DbWeight::get().reads_writes(read, write)
+    }
+}
+
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -851,6 +837,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    InitializeDomainChainAllowlistUpdate,
 >;
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
@@ -896,6 +883,36 @@ impl From<RewardAddress> for AccountId32 {
     #[inline]
     fn from(reward_address: RewardAddress) -> Self {
         reward_address.0.into()
+    }
+}
+
+pub struct StorageKeyProvider;
+impl FraudProofStorageKeyProvider for StorageKeyProvider {
+    fn storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+        match req {
+            FraudProofStorageKeyRequest::BlockRandomness => {
+                pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
+            }
+            FraudProofStorageKeyRequest::Timestamp => {
+                pallet_timestamp::Now::<Runtime>::hashed_key().to_vec()
+            }
+            FraudProofStorageKeyRequest::SuccessfulBundles(domain_id) => {
+                pallet_domains::SuccessfulBundles::<Runtime>::hashed_key_for(domain_id)
+            }
+            FraudProofStorageKeyRequest::TransactionByteFee => {
+                TransactionFees::transaction_byte_fee_storage_key()
+            }
+            FraudProofStorageKeyRequest::DomainAllowlistUpdates(domain_id) => {
+                Messenger::domain_allow_list_update_storage_key(domain_id)
+            }
+            FraudProofStorageKeyRequest::BlockDigest => sp_domains::system_digest_final_key(),
+            FraudProofStorageKeyRequest::RuntimeRegistry(runtime_id) => {
+                pallet_domains::RuntimeRegistry::<Runtime>::hashed_key_for(runtime_id)
+            }
+            FraudProofStorageKeyRequest::DynamicCostOfStorage => {
+                pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
+            }
+        }
     }
 }
 
@@ -1209,6 +1226,10 @@ impl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance {
             Domains::storage_fund_account_balance(operator_id)
         }
+
+        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+            Domains::is_domain_runtime_updraded_since(domain_id, at)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1307,15 +1328,12 @@ impl_runtime_apis! {
     }
 
     impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, H256>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
-        fn extract_fraud_proofs(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
-            crate::domains::extract_fraud_proofs(domain_id, extrinsics)
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+            <StorageKeyProvider as FraudProofStorageKeyProvider>::storage_key(req)
         }
     }
 

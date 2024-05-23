@@ -15,6 +15,7 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::{Digest, DigestItem};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
@@ -148,6 +149,7 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock>
         + FraudProofApi<CBlock, Block::Header>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
