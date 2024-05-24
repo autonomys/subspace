@@ -28,9 +28,9 @@ use prost::Message;
 use sc_client_api::{BlockBackend, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
-use sc_network::request_responses::{IfDisconnected, RequestFailure};
+use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkService, OutboundFailure, PeerId};
+use sc_network::{NetworkService, PeerId};
 use sc_network_sync::pending_responses::{PendingResponses, ResponseEvent};
 use sc_network_sync::schema::v1::{StateRequest, StateResponse};
 use sc_network_sync::service::network::NetworkServiceProvider;
@@ -46,18 +46,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, trace, warn};
-
-mod rep {
-    use sc_network::ReputationChange as Rep;
-    /// We received a message that failed to decode.
-    pub const BAD_MESSAGE: Rep = Rep::new(-(1 << 12), "Bad message");
-    /// Peer is on unsupported protocol version.
-    pub const BAD_PROTOCOL: Rep = Rep::new_fatal("Unsupported protocol");
-    /// Reputation change when a peer refuses a request.
-    pub const REFUSED: Rep = Rep::new(-(1 << 10), "Request refused");
-    /// Reputation change when a peer doesn't respond in time to our messages.
-    pub const TIMEOUT: Rep = Rep::new(-(1 << 10), "Request timeout");
-}
 
 pub struct FastSyncingEngine<B: BlockT, IQS>
 where
@@ -182,9 +170,6 @@ where
                 }
                 StateStrategyAction::DropPeer(BadPeer(peer_id, rep)) => {
                     self.pending_responses.remove(peer_id, StrategyKey::State);
-                    self.network_service_handle
-                        .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    self.network_service_handle.report_peer(peer_id, rep);
 
                     trace!("{peer_id:?} dropped: {rep:?}.");
                 }
@@ -265,10 +250,6 @@ where
                         Ok(proto) => proto,
                         Err(e) => {
                             debug!("Failed to decode state response from peer {peer_id:?}: {e:?}.",);
-                            self.network_service_handle
-                                .report_peer(peer_id, rep::BAD_MESSAGE);
-                            self.network_service_handle
-                                .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
                             return;
                         }
                     };
@@ -281,51 +262,9 @@ where
             },
             Ok(Err(e)) => {
                 debug!("Request to peer {peer_id:?} failed: {e:?}.");
-
-                match e {
-                    RequestFailure::Network(OutboundFailure::Timeout) => {
-                        self.network_service_handle
-                            .report_peer(peer_id, rep::TIMEOUT);
-                        self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    }
-                    RequestFailure::Network(OutboundFailure::UnsupportedProtocols) => {
-                        self.network_service_handle
-                            .report_peer(peer_id, rep::BAD_PROTOCOL);
-                        self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    }
-                    RequestFailure::Network(OutboundFailure::DialFailure) => {
-                        self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    }
-                    RequestFailure::Refused => {
-                        self.network_service_handle
-                            .report_peer(peer_id, rep::REFUSED);
-                        self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    }
-                    RequestFailure::Network(OutboundFailure::ConnectionClosed)
-                    | RequestFailure::NotConnected => {
-                        self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
-                    }
-                    RequestFailure::UnknownProtocol => {
-                        debug_assert!(false, "Block request protocol should always be known.");
-                    }
-                    RequestFailure::Obsolete => {
-                        debug_assert!(
-                            false,
-                            "Can not receive `RequestFailure::Obsolete` after dropping the \
-								response receiver.",
-                        );
-                    }
-                }
             }
             Err(oneshot::Canceled) => {
                 trace!("Request to peer {peer_id:?} failed due to oneshot being canceled.",);
-                self.network_service_handle
-                    .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
             }
         }
     }
