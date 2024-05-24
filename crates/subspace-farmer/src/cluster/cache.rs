@@ -24,7 +24,7 @@ use std::pin::{pin, Pin};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use ulid::Ulid;
 
 /// An ephemeral identifier for a cache
@@ -252,6 +252,8 @@ where
         .iter()
         .map(|cache| {
             let cache_id = ClusterCacheId::new();
+
+            info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
 
             CacheDetails {
                 cache_id,
