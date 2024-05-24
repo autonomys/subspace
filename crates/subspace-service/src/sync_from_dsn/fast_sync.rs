@@ -178,7 +178,9 @@ where
     ///     - notify Substrate sync by importing block with using BlockOrigin::NetworkBroadcast,
     ///     - clear the block gap to prevent Substrate sync to download blocks from the start.
     ///     - restart the Substrate sync with SyncMode::Full to enable it downloading full blocks.
-    ///  Note: retry for fast sync will degrade reputation if we have already announced blocks.
+    ///  Notes:
+    /// - retry for fast sync will degrade reputation if we have already announced blocks.
+    /// - we support a hypothetical case when block size is big enough to fill the whole segment
     // TODO: fast-sync specification contains a special case for a segment that have the
     // complete last archived block, this will remove the necessity to download the second last
     // segment, we need to implement this case when the blockchain will contain at least one such
@@ -233,6 +235,7 @@ where
             // TODO: Ensure this expectation actually holds, currently this is not guaranteed
             .expect("List of blocks is not empty according to logic above; qed");
 
+        // We support the case when the block with extra-big blocks.
         let last_block_number = blocks
             .back()
             .map_or(first_block_number, |(block_number, _block_bytes)| {
@@ -260,6 +263,7 @@ where
         );
 
         let mut import_block = BlockImportParams::new(
+            // We support the case when the block with extra-big blocks.
             if blocks.is_empty() {
                 BlockOrigin::NetworkBroadcast
             } else {
@@ -378,6 +382,7 @@ where
         }
 
         // Notify Substrate sync by importing block with using BlockOrigin::NetworkBroadcast
+        // We support the case when the block with extra-big blocks.
         if let Some(last_block_to_import) = maybe_last_block_to_import {
             debug!(
                 %last_block_number,
