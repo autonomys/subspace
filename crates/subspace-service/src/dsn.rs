@@ -71,7 +71,7 @@ pub(crate) fn create_dsn_instance(
 ) -> Result<(Node, NodeRunner<()>), DsnConfigurationError> {
     trace!("Subspace networking starting.");
 
-    let networking_parameters_registry = {
+    let known_peers_registry = {
         let network_path = dsn_config.network_path;
 
         if !network_path.is_dir() {
@@ -100,7 +100,7 @@ pub(crate) fn create_dsn_instance(
         keypair: dsn_config.keypair.clone(),
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
-        networking_parameters_registry,
+        known_peers_registry,
         request_response_protocols: vec![
             // We need to enable protocol to request pieces
             PieceByIndexRequestHandler::create(|_, _| async { None }),

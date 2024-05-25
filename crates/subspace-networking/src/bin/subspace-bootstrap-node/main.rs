@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 bootstrap_addresses: bootstrap_nodes,
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
-                networking_parameters_registry: known_peers_registry.boxed(),
+                known_peers_registry: known_peers_registry.boxed(),
 
                 ..Config::new(
                     protocol_version.to_string(),

@@ -95,7 +95,7 @@ where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
 {
-    let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
+    let known_peers_registry = KnownPeersManager::new(KnownPeersManagerConfig {
         path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
         ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
             .into_iter()
@@ -116,7 +116,7 @@ where
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: allow_private_ips,
-        networking_parameters_registry,
+        known_peers_registry,
         request_response_protocols: vec![
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");
