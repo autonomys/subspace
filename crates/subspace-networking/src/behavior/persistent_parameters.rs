@@ -1,4 +1,4 @@
-use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, Handler, HandlerFn, PeerAddress};
+use crate::utils::{AsyncJoinOnDrop, Handler, HandlerFn};
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
 use fs2::FileExt;
@@ -13,7 +13,6 @@ use schnellru::{ByLength, LruMap};
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -35,8 +34,6 @@ const KNOWN_PEERS_CACHE_SIZE: u32 = 100;
 const ADDRESSES_CACHE_SIZE: u32 = 30;
 /// Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
-/// Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
-pub(crate) const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
 /// Defines an expiration period for the peer marked for the removal.
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: Duration = Duration::from_secs(3600 * 24);
 /// Defines an expiration period for the peer marked for the removal for Kademlia DHT.
@@ -191,13 +188,8 @@ pub trait KnownPeersRegistry: Send + Sync {
     /// Unregisters associated addresses for peer ID.
     fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId);
 
-    /// Returns a batch of the combined collection of known addresses from networking parameters DB
-    /// and boostrap addresses from networking parameters initialization.
-    /// It removes p2p-protocol suffix.
-    async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress>;
-
-    /// Reset the batching process to the initial state.
-    fn start_over_address_batching(&mut self) {}
+    /// Returns all known peers and their addresses without P2P suffix at the end
+    async fn all_known_peers(&mut self) -> Vec<(PeerId, Vec<Multiaddr>)>;
 
     /// Drive async work in the persistence provider
     async fn run(&mut self);
@@ -231,7 +223,7 @@ impl KnownPeersRegistry for StubNetworkingParametersManager {
 
     fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
 
-    async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
+    async fn all_known_peers(&mut self) -> Vec<(PeerId, Vec<Multiaddr>)> {
         Vec::new()
     }
 
@@ -251,7 +243,7 @@ impl KnownPeersRegistry for StubNetworkingParametersManager {
 /// Configuration for [`KnownPeersManager`].
 #[derive(Debug, Clone)]
 pub struct KnownPeersManagerConfig {
-    /// Defines whether we return known peers batches on next_known_addresses_batch().
+    /// Defines whether we return known peers in [`KnownPeersRegistry::all_known_peers()`]
     pub enable_known_peers_source: bool,
     /// Defines cache size.
     pub cache_size: u32,
@@ -300,8 +292,6 @@ pub struct KnownPeersManager {
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     /// Slots backed by file that store known peers
     known_peers_slots: Option<Arc<Mutex<KnownPeersSlots>>>,
-    /// Provides batching capabilities for the address collection (it stores the last batch index)
-    collection_batcher: CollectionBatcher<PeerAddress>,
     /// Event handler triggered when we decide to remove address from the storage.
     address_removed: Handler<PeerAddressRemovedEvent>,
     /// Defines configuration.
@@ -457,23 +447,9 @@ impl KnownPeersManager {
             known_peers,
             networking_parameters_save_delay: Self::default_delay(),
             known_peers_slots,
-            collection_batcher: CollectionBatcher::new(
-                NonZeroUsize::new(PEERS_ADDRESSES_BATCH_SIZE)
-                    .expect("Manual non-zero initialization failed."),
-            ),
             address_removed: Default::default(),
             config,
         })
-    }
-
-    // Returns known addresses from networking parameters DB.
-    async fn known_addresses(&self) -> Vec<PeerAddress> {
-        self.known_peers
-            .iter()
-            .flat_map(|(peer_id, addresses)| {
-                addresses.iter().map(|addr| (*peer_id, addr.0.clone()))
-            })
-            .collect()
     }
 
     /// Size of the backing file on disk
@@ -613,28 +589,23 @@ impl KnownPeersRegistry for KnownPeersManager {
         self.cache_need_saving = true;
     }
 
-    async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
+    async fn all_known_peers(&mut self) -> Vec<(PeerId, Vec<Multiaddr>)> {
         if !self.config.enable_known_peers_source {
             return Vec::new();
         }
 
-        // We take cached known addresses and combine them with manually provided bootstrap addresses.
-        let combined_addresses = self.known_addresses().await.into_iter().collect::<Vec<_>>();
-
-        trace!(
-            "Peer addresses batch requested. Total list size: {}",
-            combined_addresses.len()
-        );
-
-        self.collection_batcher.next_batch(combined_addresses)
-    }
-
-    fn start_over_address_batching(&mut self) {
-        if !self.config.enable_known_peers_source {
-            return;
-        }
-
-        self.collection_batcher.reset();
+        self.known_peers
+            .iter()
+            .map(|(&peer_id, addresses)| {
+                (
+                    peer_id,
+                    addresses
+                        .iter()
+                        .map(|(addr, _failure_time)| addr.clone())
+                        .collect(),
+                )
+            })
+            .collect()
     }
 
     async fn run(&mut self) {

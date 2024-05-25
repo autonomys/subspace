@@ -28,6 +28,7 @@ use libp2p::kad::{
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -291,6 +292,47 @@ where
 
     /// Bootstraps Kademlia network
     async fn bootstrap(&mut self) {
+        // Add bootstrap nodes first to make sure there is space for them in k-buckets
+        for (peer_id, address) in strip_peer_id(self.bootstrap_addresses.clone()) {
+            self.swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, address);
+        }
+
+        let known_peers = self.known_peers_registry.all_known_peers().await;
+
+        if !known_peers.is_empty() {
+            for (peer_id, addresses) in known_peers {
+                for address in addresses.clone() {
+                    let address = match address.with_p2p(peer_id) {
+                        Ok(address) => address,
+                        Err(address) => {
+                            warn!(%peer_id, %address, "Failed to add peer ID to known peer address");
+                            break;
+                        }
+                    };
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, address);
+                }
+
+                if let Err(error) = self
+                    .swarm
+                    .dial(DialOpts::peer_id(peer_id).addresses(addresses).build())
+                {
+                    warn!(%peer_id, %error, "Failed to dial peer during bootstrapping");
+                }
+            }
+
+            // Do bootstrap asynchronously
+            self.handle_command(Command::Bootstrap {
+                result_sender: None,
+            });
+            return;
+        }
+
         let bootstrap_command_state = self.bootstrap_command_state.clone();
         let mut bootstrap_command_state = bootstrap_command_state.lock().await;
         let bootstrap_command_receiver = match &mut *bootstrap_command_state {
@@ -300,7 +342,7 @@ where
                 let (bootstrap_command_sender, bootstrap_command_receiver) = mpsc::unbounded();
 
                 self.handle_command(Command::Bootstrap {
-                    result_sender: bootstrap_command_sender,
+                    result_sender: Some(bootstrap_command_sender),
                 });
 
                 *bootstrap_command_state =
@@ -1406,18 +1448,16 @@ where
             Command::Bootstrap { result_sender } => {
                 let kademlia = &mut self.swarm.behaviour_mut().kademlia;
 
-                for (peer_id, address) in strip_peer_id(self.bootstrap_addresses.clone()) {
-                    kademlia.add_address(&peer_id, address);
-                }
-
                 match kademlia.bootstrap() {
                     Ok(query_id) => {
-                        self.query_id_receivers.insert(
-                            query_id,
-                            QueryResultSender::Bootstrap {
-                                sender: result_sender,
-                            },
-                        );
+                        if let Some(result_sender) = result_sender {
+                            self.query_id_receivers.insert(
+                                query_id,
+                                QueryResultSender::Bootstrap {
+                                    sender: result_sender,
+                                },
+                            );
+                        }
                     }
                     Err(err) => {
                         debug!(?err, "Bootstrap error.");
