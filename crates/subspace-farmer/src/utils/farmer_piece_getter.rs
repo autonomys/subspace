@@ -249,6 +249,54 @@ where
         None
     }
 
+    async fn get_piece_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
+        {
+            let retries = AtomicU32::new(0);
+            let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
+            let mut backoff = self.inner.dsn_cache_retry_policy.backoff.clone();
+            backoff.reset();
+
+            let maybe_piece_fut = retry(backoff, || async {
+                let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
+
+                if let Some(piece) = self.get_piece_fast_internal(piece_index).await {
+                    trace!(%piece_index, current_attempt, "Got piece from DSN L2 cache");
+                    return Ok(Some(piece));
+                }
+                if current_attempt >= max_retries {
+                    if max_retries > 0 {
+                        debug!(
+                            %piece_index,
+                            current_attempt,
+                            max_retries,
+                            "Couldn't get a piece from DSN L2. No retries left"
+                        );
+                    }
+                    return Ok(None);
+                }
+
+                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
+
+                Err(backoff::Error::transient("Couldn't get piece from DSN"))
+            });
+
+            if let Ok(Some(piece)) = maybe_piece_fut.await {
+                trace!(%piece_index, "Got piece from cache successfully");
+                return Some(piece);
+            }
+        };
+
+        if let Some(piece) = self.get_piece_slow_internal(piece_index).await {
+            return Some(piece);
+        }
+
+        debug!(
+            %piece_index,
+            "Cannot acquire piece: all methods yielded empty result"
+        );
+        None
+    }
+
     /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
     /// used [`Arc`]
     pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, PV, NC> {
@@ -297,61 +345,15 @@ where
             }
         }
 
-        {
-            let retries = AtomicU32::new(0);
-            let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
-            let mut backoff = self.inner.dsn_cache_retry_policy.backoff.clone();
-            backoff.reset();
+        let maybe_piece = self.get_piece_internal(piece_index).await;
 
-            let maybe_piece_fut = retry(backoff, || async {
-                let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
-
-                if let Some(piece) = self.get_piece_fast_internal(piece_index).await {
-                    trace!(%piece_index, current_attempt, "Got piece from DSN L2 cache");
-                    return Ok(Some(piece));
-                }
-                if current_attempt >= max_retries {
-                    if max_retries > 0 {
-                        debug!(
-                            %piece_index,
-                            current_attempt,
-                            max_retries,
-                            "Couldn't get a piece from DSN L2. No retries left"
-                        );
-                    }
-                    return Ok(None);
-                }
-
-                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
-
-                Err(backoff::Error::transient("Couldn't get piece from DSN"))
-            });
-
-            if let Ok(Some(piece)) = maybe_piece_fut.await {
-                trace!(%piece_index, "Got piece from cache successfully");
-                // Store successfully downloaded piece for others to observe
-                if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
-                    in_progress_piece.replace(piece.clone());
-                    self.inner.in_progress_pieces.lock().remove(&piece_index);
-                }
-                return Ok(Some(piece));
-            }
-        };
-
-        if let Some(piece) = self.get_piece_slow_internal(piece_index).await {
-            // Store successfully downloaded piece for others to observe
-            if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
-                in_progress_piece.replace(piece.clone());
-                self.inner.in_progress_pieces.lock().remove(&piece_index);
-            }
-            return Ok(Some(piece));
+        // Store successfully downloaded piece for others to observe
+        if let Some(mut in_progress_piece) = local_in_progress_piece_guard {
+            in_progress_piece.clone_from(&maybe_piece);
+            self.inner.in_progress_pieces.lock().remove(&piece_index);
         }
 
-        debug!(
-            %piece_index,
-            "Cannot acquire piece: all methods yielded empty result"
-        );
-        Ok(None)
+        Ok(maybe_piece)
     }
 }
 
