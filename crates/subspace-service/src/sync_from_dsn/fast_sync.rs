@@ -31,27 +31,6 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error};
 
-// TODO: remove unused fields if DSN-sync is not related to fast-sync.
-#[allow(dead_code)]
-pub(crate) struct FastSyncResult<Block: BlockT> {
-    pub(crate) last_imported_block_number: NumberFor<Block>,
-    pub(crate) last_imported_segment_index: SegmentIndex,
-    pub(crate) reconstructor: Reconstructor,
-    /// Fast sync was skipped (possible reason - not enough archived segments).
-    pub(crate) skipped: bool,
-}
-
-impl<Block: BlockT> FastSyncResult<Block> {
-    fn skipped() -> Self {
-        Self {
-            skipped: true,
-            reconstructor: Reconstructor::new().expect("Default initialization works."),
-            last_imported_block_number: Default::default(),
-            last_imported_segment_index: Default::default(),
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fast_sync<Backend, Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -96,10 +75,8 @@ pub(crate) async fn fast_sync<Backend, Block, AS, IQS, Client, PG>(
         let fast_sync_result = fast_syncer.sync().await;
 
         match fast_sync_result {
-            Ok(fast_sync_result) => {
-                if fast_sync_result.skipped {
-                    debug!("Fast sync was skipped.");
-                }
+            Ok(()) => {
+                debug!("Fast sync finished successfully");
             }
             Err(err) => {
                 error!("Fast sync failed: {err}");
@@ -185,7 +162,7 @@ where
     // complete last archived block, this will remove the necessity to download the second last
     // segment, we need to implement this case when the blockchain will contain at least one such
     // a segment to verify the solution.
-    pub(crate) async fn sync(&self) -> Result<FastSyncResult<Block>, Error> {
+    pub(crate) async fn sync(&self) -> Result<(), Error> {
         debug!("Starting fast sync...");
 
         // 1. Download the last two segments.
@@ -204,9 +181,12 @@ where
             return Err(Error::Other("Can't get last segment index.".into()));
         };
 
-        // Skip the fast sync if we lack the minimum required segment number
+        // Skip the fast sync if there is just one segment header built on top of genesis, it is
+        // more efficient to sync it regularly
         if last_segment_index <= SegmentIndex::ONE {
-            return Ok(FastSyncResult::skipped());
+            debug!("Fast sync was skipped due to too early chain history");
+
+            return Ok(());
         }
 
         let last_segment_header = self
@@ -415,12 +395,7 @@ where
         let info = self.client.info();
         debug!("Fast sync. Current client info: {:?}", info);
 
-        Ok(FastSyncResult::<Block> {
-            skipped: false,
-            last_imported_block_number: last_block_number.into(),
-            last_imported_segment_index: last_segment_index,
-            reconstructor,
-        })
+        Ok(())
     }
 
     async fn wait_for_block_import(&self, waiting_block_number: NumberFor<Block>) {
