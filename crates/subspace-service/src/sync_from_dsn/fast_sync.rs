@@ -189,21 +189,16 @@ where
             return Ok(());
         }
 
-        let last_segment_header = self
-            .segment_headers_store
-            .get_segment_header(last_segment_index)
-            .expect("Last segment index exists; qed");
-
         // Just to seed reconstructor, we don't care about blocks themselves
         download_and_reconstruct_blocks(
-            last_segment_header.segment_index() - SegmentIndex::ONE,
+            last_segment_index - SegmentIndex::ONE,
             self.piece_getter,
             &mut reconstructor,
         )
         .await?;
 
         let blocks = download_and_reconstruct_blocks(
-            last_segment_header.segment_index(),
+            last_segment_index,
             self.piece_getter,
             &mut reconstructor,
         )
