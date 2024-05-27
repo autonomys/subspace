@@ -167,19 +167,15 @@ where
 
         // 1. Download the last two segments.
         let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
-        let segment_header_downloader = SegmentHeaderDownloader::new(self.node);
 
-        if let Err(error) = self
-            .download_segment_headers(&segment_header_downloader)
+        self.sync_segment_headers()
             .await
-        {
-            let error = format!("Failed to download segment headers: {}", error);
-            return Err(Error::Other(error));
-        };
+            .map_err(|error| format!("Failed to sync segment headers: {}", error))?;
 
-        let Some(last_segment_index) = self.segment_headers_store.max_segment_index() else {
-            return Err(Error::Other("Can't get last segment index.".into()));
-        };
+        let last_segment_index = self
+            .segment_headers_store
+            .max_segment_index()
+            .expect("Successfully synced above; qed");
 
         // Skip the fast sync if there is just one segment header built on top of genesis, it is
         // more efficient to sync it regularly
@@ -423,10 +419,7 @@ where
         }
     }
 
-    async fn download_segment_headers(
-        &self,
-        segment_header_downloader: &SegmentHeaderDownloader<'_>,
-    ) -> Result<(), Error>
+    async fn sync_segment_headers(&self) -> Result<(), Error>
     where
         AS: AuxStore + Send + Sync + 'static,
     {
@@ -435,12 +428,12 @@ where
                 .max_segment_index()
                 .ok_or_else(|| {
                     Error::Other(
-                "Archiver needs to be initialized before syncing from DSN to populate the very \
-                    first segment"
-                    .to_string(),
-            )
+                        "Archiver needs to be initialized before syncing from DSN to populate the \
+                        very first segment"
+                            .to_string(),
+                    )
                 })?;
-        let new_segment_headers = segment_header_downloader
+        let new_segment_headers = SegmentHeaderDownloader::new(self.node)
             .get_segment_headers(max_segment_index)
             .await
             .map_err(|error| error.to_string())?;
