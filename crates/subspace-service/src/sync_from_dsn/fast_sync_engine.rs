@@ -68,8 +68,6 @@ where
 
     /// Handle to import queue.
     import_queue: Arc<Mutex<Box<IQS>>>,
-
-    last_block: Option<IncomingBlock<B>>,
 }
 
 impl<B, IQS> Drop for FastSyncingEngine<B, IQS>
@@ -126,66 +124,51 @@ where
             network_service_join_handle,
             pending_responses: PendingResponses::new(),
             state_request_protocol_name,
-            last_block: None,
         })
     }
 
-    pub async fn download_state(mut self) -> Result<Option<IncomingBlock<B>>, ClientError> {
-        debug!("State import started.");
+    // Downloads state and returns incoming block with state pre-populated and ready for importing
+    pub async fn download_state(mut self) -> Result<IncomingBlock<B>, ClientError> {
+        debug!("Starting state downloading");
+
         loop {
             // Process actions requested by a syncing strategy.
-            match self.process_strategy_actions().await {
-                Ok(Some(_)) => {
-                    trace!("State strategy advanced.");
-                }
-                Ok(None) => {
-                    debug!("State import finished.");
-                    break;
-                }
-                Err(e) => {
-                    error!("Terminating `FastSyncingEngine` due to fatal error: {e:?}");
-                    return Err(e);
+            let mut actions = self.strategy.actions().peekable();
+            if actions.peek().is_none() {
+                return Err(ClientError::Backend(
+                    "Sync state download failed: no further actions".into(),
+                ));
+            }
+
+            for action in actions {
+                match action {
+                    StateStrategyAction::SendStateRequest { peer_id, request } => {
+                        self.send_state_request(peer_id, StrategyKey::State, request);
+                    }
+                    StateStrategyAction::DropPeer(BadPeer(peer_id, rep)) => {
+                        self.pending_responses.remove(peer_id, StrategyKey::State);
+
+                        trace!(%peer_id, "Peer dropped: {rep:?}");
+                    }
+                    StateStrategyAction::ImportBlocks { blocks, .. } => {
+                        return blocks.into_iter().next().ok_or_else(|| {
+                            ClientError::Application(
+                                "StateStrategyAction::ImportBlocks didn't contain any blocks to import"
+                                    .into(),
+                            )
+                        });
+                    }
+                    StateStrategyAction::Finished => {
+                        return Err(ClientError::Backend(
+                            "Sync state finished without blocks to import".into(),
+                        ));
+                    }
                 }
             }
 
             let response_event = self.pending_responses.select_next_some().await;
             self.process_response_event(response_event);
         }
-
-        Ok(self.last_block.take())
-    }
-
-    async fn process_strategy_actions(&mut self) -> Result<Option<()>, ClientError> {
-        let actions = self.strategy.actions().collect::<Vec<_>>();
-        if actions.is_empty() {
-            return Err(ClientError::Backend(
-                "Fast sync failed - no further actions.".into(),
-            ));
-        }
-
-        for action in actions.into_iter() {
-            match action {
-                StateStrategyAction::SendStateRequest { peer_id, request } => {
-                    self.send_state_request(peer_id, StrategyKey::State, request);
-                }
-                StateStrategyAction::DropPeer(BadPeer(peer_id, rep)) => {
-                    self.pending_responses.remove(peer_id, StrategyKey::State);
-
-                    trace!("{peer_id:?} dropped: {rep:?}.");
-                }
-                StateStrategyAction::ImportBlocks { origin, blocks } => {
-                    self.last_block = blocks.first().cloned();
-                    self.import_queue.lock().await.import_blocks(origin, blocks);
-
-                    return Ok(None);
-                }
-                StateStrategyAction::Finished => {
-                    trace!("State strategy action finished.");
-                }
-            }
-        }
-
-        Ok(Some(()))
     }
 
     fn send_state_request(
@@ -217,9 +200,9 @@ where
 
     fn encode_state_request(request: &OpaqueStateRequest) -> Result<Vec<u8>, String> {
         let request: &StateRequest = request.0.downcast_ref().ok_or_else(|| {
-            "Failed to downcast opaque state response during encoding, this is an \
-				implementation bug."
-                .to_string()
+            "Failed to downcast opaque state response during encoding, this is an implementation \
+            bug"
+            .to_string()
         })?;
 
         Ok(request.encode_to_vec())
