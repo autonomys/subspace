@@ -9,7 +9,7 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
-use sc_network::{NetworkService, PeerId};
+use sc_network::{NetworkRequest, PeerId};
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
@@ -31,7 +31,7 @@ use tokio::time::sleep;
 use tracing::{debug, error};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
+pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
     fork_id: Option<String>,
@@ -39,12 +39,12 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
-    network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    network_request: NR,
     sync_service: Arc<SyncingService<Block>>,
 ) where
     Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
-    AS: AuxStore + Send + Sync + 'static,
+    AS: AuxStore,
     Client: HeaderBackend<Block>
         + ClientExt<Block, Backend>
         + ProvideRuntimeApi<Block>
@@ -54,7 +54,8 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
-    PG: DsnSyncPieceGetter + Send + Sync + 'static,
+    PG: DsnSyncPieceGetter,
+    NR: NetworkRequest,
 {
     pause_sync.store(true, Ordering::Release);
 
@@ -67,7 +68,7 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
             fork_id.as_deref(),
             &client,
             import_queue_service.as_mut(),
-            &network_service,
+            &network_request,
             &sync_service,
         )
         .await;
@@ -88,20 +89,20 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn sync<PG, AS, Block, Client, IQS, B>(
+async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     piece_getter: &PG,
     fork_id: Option<&str>,
     client: &Arc<Client>,
     import_queue_service: &mut IQS,
-    network_service: &Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    network_request: &NR,
     sync_service: &SyncingService<Block>,
 ) -> Result<(), Error>
 where
     B: sc_client_api::Backend<Block>,
     PG: DsnSyncPieceGetter,
-    AS: AuxStore + Send + Sync + 'static,
+    AS: AuxStore,
     Block: BlockT,
     Client: HeaderBackend<Block>
         + ClientExt<Block, B>
@@ -113,6 +114,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized,
+    NR: NetworkRequest,
 {
     debug!("Starting fast sync...");
 
@@ -221,7 +223,7 @@ where
     let (header, extrinsics) = signed_block.block.deconstruct();
 
     // Download state for the first block, so it can be imported even without doing execution
-    let first_block_state = download_state(&header, client, fork_id, network_service, sync_service)
+    let first_block_state = download_state(&header, client, fork_id, network_request, sync_service)
         .await
         .map_err(|error| {
             format!("Failed to download state for the first block of last segment: {error}")
@@ -396,16 +398,17 @@ where
 }
 
 /// Download and return state for specified block
-async fn download_state<Block, Client>(
+async fn download_state<Block, Client, NR>(
     header: &Block::Header,
     client: &Arc<Client>,
     fork_id: Option<&str>,
-    network_service: &Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    network_request: &NR,
     sync_service: &SyncingService<Block>,
 ) -> Result<ImportedState<Block>, Error>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
+    NR: NetworkRequest,
 {
     let block_number = *header.number();
 
@@ -443,13 +446,13 @@ where
 
         tried_peers.insert(current_peer_id);
 
-        let sync_engine = FastSyncingEngine::<Block>::new(
+        let sync_engine = FastSyncingEngine::<Block, NR>::new(
             client.clone(),
             fork_id,
             header.clone(),
             false,
             (current_peer_id, block_number),
-            network_service.clone(),
+            network_request,
         )
         .map_err(Error::Client)?;
 
