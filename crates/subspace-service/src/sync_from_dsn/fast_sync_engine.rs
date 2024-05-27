@@ -25,8 +25,7 @@
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use prost::Message;
-use sc_client_api::{BlockBackend, ProofProvider};
-use sc_consensus::import_queue::ImportQueueService;
+use sc_client_api::ProofProvider;
 use sc_consensus::IncomingBlock;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
@@ -43,14 +42,10 @@ use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, trace, warn};
 
-pub struct FastSyncingEngine<B: BlockT, IQS>
-where
-    IQS: ImportQueueService<B> + ?Sized,
-{
+pub struct FastSyncingEngine<B: BlockT> {
     /// Syncing strategy.
     strategy: StateStrategy<B>,
 
@@ -65,30 +60,24 @@ where
 
     /// Protocol name used to send out state requests
     state_request_protocol_name: ProtocolName,
-
-    /// Handle to import queue.
-    import_queue: Arc<Mutex<Box<IQS>>>,
 }
 
-impl<B, IQS> Drop for FastSyncingEngine<B, IQS>
+impl<B> Drop for FastSyncingEngine<B>
 where
     B: BlockT,
-    IQS: ImportQueueService<B> + ?Sized,
 {
     fn drop(&mut self) {
         self.network_service_join_handle.abort()
     }
 }
 
-impl<B: BlockT, IQS> FastSyncingEngine<B, IQS>
+impl<B> FastSyncingEngine<B>
 where
     B: BlockT,
-    IQS: ImportQueueService<B> + ?Sized + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new<Client>(
         client: Arc<Client>,
-        import_queue: Arc<Mutex<Box<IQS>>>,
         fork_id: Option<&str>,
         target_header: B::Header,
         target_body: Option<Vec<B::Extrinsic>>,
@@ -98,7 +87,7 @@ where
         network_service: Arc<NetworkService<B, <B as BlockT>::Hash>>,
     ) -> Result<Self, ClientError>
     where
-        Client: BlockBackend<B> + HeaderBackend<B> + ProofProvider<B> + Send + Sync + 'static,
+        Client: HeaderBackend<B> + ProofProvider<B> + Send + Sync + 'static,
     {
         let (network_service_worker, network_service_handle) = NetworkServiceProvider::new();
         let networking_fut = network_service_worker.run(network_service);
@@ -118,7 +107,6 @@ where
         );
 
         Ok(Self {
-            import_queue,
             strategy,
             network_service_handle,
             network_service_join_handle,
