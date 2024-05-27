@@ -30,7 +30,7 @@ use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use thiserror::Error;
 use tokio::sync::watch;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, info_span, trace, warn, Instrument};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
@@ -139,7 +139,10 @@ where
                     break;
                 };
 
-                let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options).fuse();
+                let sector_index = sector_to_plot.sector_index;
+                let sector_plotting_init_fut = plot_single_sector(sector_to_plot, &sector_plotting_options)
+                    .instrument(info_span!("", %sector_index))
+                    .fuse();
                 let mut sector_plotting_init_fut = pin!(sector_plotting_init_fut);
 
                 // Wait for plotting of new sector to start (backpressure), while also waiting
@@ -249,7 +252,7 @@ where
         last_queued,
         acknowledgement_sender: _acknowledgement_sender,
     } = sector_to_plot;
-    trace!(%sector_index, "Preparing to plot sector");
+    trace!("Preparing to plot sector");
 
     let maybe_old_sector_metadata = sectors_metadata
         .read()
@@ -311,9 +314,9 @@ where
         .await;
 
     if replotting {
-        info!(%sector_index, "Replotting sector ({progress:.2}% complete)");
+        info!("Replotting sector ({progress:.2}% complete)");
     } else {
-        info!(%sector_index, "Plotting sector ({progress:.2}% complete)");
+        info!("Plotting sector ({progress:.2}% complete)");
     }
 
     Ok(async move {
@@ -335,7 +338,6 @@ where
                 }
                 Err(error) => {
                     warn!(
-                        %sector_index,
                         %error,
                         "Failed to plot sector, retrying in {PLOTTING_RETRY_DELAY:?}"
                     );
@@ -360,9 +362,9 @@ where
                 .await;
 
             if replotting {
-                info!(%sector_index, "Replotting sector retry");
+                info!("Replotting sector retry");
             } else {
-                info!(%sector_index, "Plotting sector retry");
+                info!("Plotting sector retry");
             }
         };
 
@@ -407,9 +409,9 @@ where
         sectors_being_modified.write().await.remove(&sector_index);
 
         if replotting {
-            debug!(%sector_index, "Sector replotted successfully");
+            debug!("Sector replotted successfully");
         } else {
-            debug!(%sector_index, "Sector plotted successfully");
+            debug!("Sector plotted successfully");
         }
 
         let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
