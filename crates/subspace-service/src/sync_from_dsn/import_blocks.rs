@@ -18,19 +18,15 @@ use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use sc_client_api::{backend, AuxStore, BlockBackend, HeaderBackend, LockImportRun, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::{BlockImportParams, ForkChoiceStrategy, IncomingBlock, StateAction};
+use sc_consensus::IncomingBlock;
 use sc_consensus_subspace::archiver::{decode_block, encode_block, SegmentHeadersStore};
-use sc_service::ClientExt;
-use sc_tracing::tracing::{debug, trace, warn};
-use sp_api::ProvideRuntimeApi;
+use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
-use sp_runtime::{Justifications, Saturating};
+use sp_runtime::Saturating;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
@@ -42,7 +38,7 @@ use subspace_core_primitives::{
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tokio::sync::Semaphore;
-use tracing::error;
+use tracing::warn;
 
 /// Trait representing a way to get pieces for DSN sync purposes
 #[async_trait]
@@ -88,7 +84,6 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     segment_header_downloader: &SegmentHeaderDownloader<'_>,
@@ -97,7 +92,6 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
-    reconstructor: &mut Reconstructor,
 ) -> Result<u64, sc_service::Error>
 where
     Block: BlockT,
@@ -128,6 +122,7 @@ where
     }
 
     let mut downloaded_blocks = 0;
+    let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
     // Start from the first unprocessed segment and process all segments known so far
     let segment_indices_iter = (*last_processed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
@@ -162,7 +157,7 @@ where
         if last_archived_block <= *last_processed_block_number {
             *last_processed_segment_index = segment_index;
             // Reset reconstructor instance
-            *reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+            reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
             continue;
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
@@ -172,12 +167,13 @@ where
             && segment_indices_iter.peek().is_none()
         {
             // Reset reconstructor instance
-            *reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+            reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
             continue;
         }
 
         let blocks =
-            download_and_reconstruct_blocks(segment_index, piece_getter, reconstructor).await?;
+            download_and_reconstruct_blocks(segment_index, piece_getter, &mut reconstructor)
+                .await?;
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
@@ -212,12 +208,9 @@ where
                         .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
                     blocks_to_import.clear();
                 }
-
-                let limit = QUEUED_BLOCKS_LIMIT;
                 trace!(
                     %block_number,
                     %best_block_number,
-                    %limit,
                     "Number of importing blocks reached queue limit, waiting before retrying"
                 );
                 tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
@@ -270,7 +263,6 @@ where
                 let last_block = blocks_to_import
                     .pop()
                     .expect("Not empty, checked above; qed");
-
                 import_queue_service
                     .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
                 // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
@@ -287,7 +279,7 @@ where
     Ok(downloaded_blocks)
 }
 
-pub(crate) async fn download_and_reconstruct_blocks<PG>(
+pub(super) async fn download_and_reconstruct_blocks<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
     reconstructor: &mut Reconstructor,
@@ -383,62 +375,4 @@ where
     trace!(%segment_index, "Segment reconstructed successfully");
 
     Ok(reconstructed_contents.blocks)
-}
-
-#[derive(Clone, Debug)]
-/// Data container to insert the block into the BlockchainDb without checks.
-pub struct RawBlockData<Block: BlockT> {
-    /// Block hash
-    pub hash: Block::Hash,
-    /// Block header
-    pub header: Block::Header,
-    /// Extrinsics of the block
-    pub block_body: Option<Vec<Block::Extrinsic>>,
-    /// Justifications of the block
-    pub justifications: Option<Justifications>,
-}
-
-/// Insert block in the blockchain bypassing checks. Implies that absent block weight is
-/// handled gracefully.
-#[allow(dead_code)] // TODO: remove on usage
-pub fn import_raw_block<B, Block, Client>(
-    client: &Client,
-    raw_block: RawBlockData<Block>,
-) -> Result<(), sp_blockchain::Error>
-where
-    B: backend::Backend<Block>,
-    Block: BlockT,
-    Client: HeaderBackend<Block>
-        + ClientExt<Block, B>
-        + BlockBackend<Block>
-        + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>
-        + LockImportRun<Block, B>
-        + Send
-        + Sync,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
-{
-    let hash = raw_block.hash;
-    let number = *raw_block.header.number();
-    debug!("Importing raw block: {number:?}  - {hash:?} ");
-
-    let mut import_block =
-        BlockImportParams::new(BlockOrigin::NetworkInitialSync, raw_block.header);
-    import_block.justifications = raw_block.justifications;
-    import_block.body = raw_block.block_body;
-    import_block.state_action = StateAction::Skip;
-    import_block.finalized = true;
-    import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-    import_block.import_existing = false;
-
-    let result = client
-        .lock_import_and_run(|operation| client.apply_block(operation, import_block, None))
-        .map_err(|e| {
-            error!("Error during importing of the raw block: {}", e);
-            sp_consensus::Error::ClientImport(e.to_string())
-        })?;
-
-    debug!("Raw block imported: {number:?}  - {hash:?}. Result: {result:?}");
-
-    Ok(())
 }
