@@ -722,8 +722,8 @@ where
         mut telemetry,
     } = other;
 
-    // Clear block gap after fast sync on reruns.
-    // Substrate detects a gap and inserts on each sync.
+    // TODO: Fast sync is not actually removed during fast sync right now, so it needs to be cleared
+    //  on every restart
     if config.sync == ChainSyncMode::Snap {
         let finalized_hash_existed = client.info().finalized_hash != client.info().genesis_hash;
         if finalized_hash_existed {

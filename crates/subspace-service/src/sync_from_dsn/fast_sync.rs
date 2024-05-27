@@ -19,9 +19,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
-use sp_runtime::Justifications;
 use std::collections::{HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -257,6 +255,7 @@ where
 
         let signed_block = decode_block::<Block>(&first_block_bytes)
             .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+        drop(first_block_bytes);
         let (header, extrinsics) = signed_block.block.deconstruct();
 
         // Download state for the first block, so it can be imported even without doing execution
@@ -299,8 +298,12 @@ where
         debug!(
             %first_block_number,
             ?result,
-            "Raw block imported"
+            "Raw block imported, clearing block gap"
         );
+
+        // Clear the block gap that arises from above block import of the block with a much higher
+        // number than previously
+        self.client.clear_block_gap();
 
         debug!(
             blocks_count = %blocks.len(),
@@ -310,14 +313,16 @@ where
         let mut blocks_to_import = blocks
             .into_iter()
             .map(|(_block_number, block_bytes)| {
-                let (header, extrinsics, justifications) = Self::deconstruct_block(block_bytes)?;
+                let signed_block = decode_block::<Block>(&block_bytes)
+                    .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+                let (header, extrinsics) = signed_block.block.deconstruct();
 
                 Ok(IncomingBlock {
                     hash: header.hash(),
                     header: Some(header),
                     body: Some(extrinsics),
                     indexed_body: None,
-                    justifications,
+                    justifications: signed_block.justifications,
                     origin: None,
                     allow_missing_state: false,
                     import_existing: false,
@@ -353,10 +358,6 @@ where
         // Wait for blocks to be imported
         // TODO: Replace this hack with actual watching of block import
         self.wait_for_block_import(last_block_number.into()).await;
-
-        // Clear the block gap to prevent Substrate sync to download blocks from the start
-        debug!("Clearing block gap...");
-        self.client.clear_block_gap();
 
         // Switch back to full sync mode
         self.sync_service
@@ -429,21 +430,6 @@ where
         }
 
         Ok(())
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn deconstruct_block(
-        block_data: Vec<u8>,
-    ) -> Result<(Block::Header, Vec<Block::Extrinsic>, Option<Justifications>), Error> {
-        let signed_block = decode_block::<Block>(&block_data).map_err(|error| error.to_string())?;
-
-        let SignedBlock {
-            block,
-            justifications,
-        } = signed_block;
-        let (header, extrinsics) = block.deconstruct();
-
-        Ok((header, extrinsics, justifications))
     }
 
     /// Download and return state for specified block
