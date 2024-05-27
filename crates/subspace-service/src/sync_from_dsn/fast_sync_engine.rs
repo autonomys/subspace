@@ -40,7 +40,6 @@ use sc_network_sync::strategy::StrategyKey;
 use sc_network_sync::types::{BadPeer, OpaqueStateRequest, OpaqueStateResponse, PeerRequest};
 use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_runtime::Justifications;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, trace, warn};
@@ -75,13 +74,10 @@ impl<B> FastSyncingEngine<B>
 where
     B: BlockT,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new<Client>(
         client: Arc<Client>,
         fork_id: Option<&str>,
         target_header: B::Header,
-        target_body: Option<Vec<B::Extrinsic>>,
-        target_justifications: Option<Justifications>,
         skip_proof: bool,
         current_sync_peer: (PeerId, NumberFor<B>),
         network_service: Arc<NetworkService<B, <B as BlockT>::Hash>>,
@@ -98,10 +94,14 @@ where
 
         // Initialize syncing strategy.
         let strategy = StateStrategy::new(
-            client.clone(),
+            client,
             target_header,
-            target_body,
-            target_justifications,
+            // We only care about the state, this value is just forwarded back into block to
+            // import that is thrown away below
+            None,
+            // We only care about the state, this value is just forwarded back into block to
+            // import that is thrown away below
+            None,
             skip_proof,
             vec![current_sync_peer].into_iter(),
         );

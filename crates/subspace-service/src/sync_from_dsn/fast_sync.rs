@@ -34,6 +34,7 @@ use tracing::{debug, error};
 pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
+    fork_id: Option<String>,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     pause_sync: Arc<AtomicBool>,
@@ -63,10 +64,11 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
             &segment_headers_store,
             &node,
             &piece_getter,
+            fork_id.as_deref(),
             &client,
             import_queue_service.as_mut(),
-            network_service.clone(),
-            sync_service,
+            &network_service,
+            &sync_service,
         )
         .await;
 
@@ -85,14 +87,16 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG>(
     pause_sync.store(false, Ordering::Release);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn sync<PG, AS, Block, Client, IQS, B>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     piece_getter: &PG,
+    fork_id: Option<&str>,
     client: &Arc<Client>,
     import_queue_service: &mut IQS,
-    network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
-    sync_service: Arc<SyncingService<Block>>,
+    network_service: &Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    sync_service: &SyncingService<Block>,
 ) -> Result<(), Error>
 where
     B: sc_client_api::Backend<Block>,
@@ -217,7 +221,7 @@ where
     let (header, extrinsics) = signed_block.block.deconstruct();
 
     // Download state for the first block, so it can be imported even without doing execution
-    let first_block_state = download_state(&header, client, &network_service, &sync_service)
+    let first_block_state = download_state(&header, client, fork_id, network_service, sync_service)
         .await
         .map_err(|error| {
             format!("Failed to download state for the first block of last segment: {error}")
@@ -395,6 +399,7 @@ where
 async fn download_state<Block, Client>(
     header: &Block::Header,
     client: &Arc<Client>,
+    fork_id: Option<&str>,
     network_service: &Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     sync_service: &SyncingService<Block>,
 ) -> Result<ImportedState<Block>, Error>
@@ -440,14 +445,8 @@ where
 
         let sync_engine = FastSyncingEngine::<Block>::new(
             client.clone(),
-            None,
+            fork_id,
             header.clone(),
-            // We only care about the state, this value is just forwarded back into block to
-            // import that is thrown away below
-            None,
-            // We only care about the state, this value is just forwarded back into block to
-            // import that is thrown away below
-            None,
             false,
             (current_peer_id, block_number),
             network_service.clone(),
