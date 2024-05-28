@@ -116,6 +116,11 @@ pub(crate) struct FarmingArgs {
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
     prometheus_listen_on: Vec<SocketAddr>,
+    /// Piece getter concurrency.
+    ///
+    /// Increase will result in higher memory usage.
+    #[arg(long, default_value = "128")]
+    piece_getter_concurrency: NonZeroUsize,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
@@ -242,6 +247,7 @@ where
         tmp,
         mut disk_farms,
         prometheus_listen_on,
+        piece_getter_concurrency,
         sector_downloading_concurrency,
         sector_encoding_concurrency,
         record_encoding_concurrency,
@@ -398,6 +404,7 @@ where
                 ..ExponentialBackoff::default()
             },
         },
+        piece_getter_concurrency,
     );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(

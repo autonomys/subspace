@@ -12,6 +12,7 @@ use clap::{Parser, ValueHint};
 use futures::{select, FutureExt};
 use prometheus_client::registry::Registry;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
@@ -41,6 +42,11 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 /// Arguments for controller
 #[derive(Debug, Parser)]
 pub(super) struct ControllerArgs {
+    /// Piece getter concurrency.
+    ///
+    /// Increase will result in higher memory usage.
+    #[arg(long, default_value = "128")]
+    piece_getter_concurrency: NonZeroUsize,
     /// Base path where to store P2P network identity
     #[arg(long, value_hint = ValueHint::DirPath)]
     base_path: Option<PathBuf>,
@@ -75,6 +81,7 @@ pub(super) async fn controller(
     controller_args: ControllerArgs,
 ) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
     let ControllerArgs {
+        piece_getter_concurrency,
         base_path,
         node_rpc_url,
         cache_group,
@@ -164,6 +171,7 @@ pub(super) async fn controller(
                 ..ExponentialBackoff::default()
             },
         },
+        piece_getter_concurrency,
     );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(

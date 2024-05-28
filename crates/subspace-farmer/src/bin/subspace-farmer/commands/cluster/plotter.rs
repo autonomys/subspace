@@ -28,7 +28,7 @@ pub(super) struct PlotterArgs {
     /// Increase can result in NATS communication issues if too many messages arrive via NATS, but
     /// are not processed quickly enough for some reason and might require increasing cluster-level
     /// `--nats-pool-size` parameter.
-    #[arg(long, default_value = "100")]
+    #[arg(long, default_value = "32")]
     piece_getter_concurrency: NonZeroUsize,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
