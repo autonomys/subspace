@@ -31,27 +31,6 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error};
 
-// TODO: remove unused fields if DSN-sync is not related to fast-sync.
-#[allow(dead_code)]
-pub(crate) struct FastSyncResult<Block: BlockT> {
-    pub(crate) last_imported_block_number: NumberFor<Block>,
-    pub(crate) last_imported_segment_index: SegmentIndex,
-    pub(crate) reconstructor: Reconstructor,
-    /// Fast sync was skipped (possible reason - not enough archived segments).
-    pub(crate) skipped: bool,
-}
-
-impl<Block: BlockT> FastSyncResult<Block> {
-    fn skipped() -> Self {
-        Self {
-            skipped: true,
-            reconstructor: Reconstructor::new().expect("Default initialization works."),
-            last_imported_block_number: Default::default(),
-            last_imported_segment_index: Default::default(),
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fast_sync<Backend, Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -96,10 +75,8 @@ pub(crate) async fn fast_sync<Backend, Block, AS, IQS, Client, PG>(
         let fast_sync_result = fast_syncer.sync().await;
 
         match fast_sync_result {
-            Ok(fast_sync_result) => {
-                if fast_sync_result.skipped {
-                    debug!("Fast sync was skipped.");
-                }
+            Ok(()) => {
+                debug!("Fast sync finished successfully");
             }
             Err(err) => {
                 error!("Fast sync failed: {err}");
@@ -167,75 +144,101 @@ where
         }
     }
 
-    // TODO: Fix this implementation to actually follow the spec
-    /// Sync algorithm:
-    /// - 1. download two last segments,
-    /// - 2. add the last block the second last segment (as raw - without checks and execution),
-    /// - 3. download the state for the first block of the last segment,
-    ///     - add the first block of the last segment as raw,
-    ///     - download state for it,
-    /// - 4. add blocks with execution from the last segment,
-    ///     - notify Substrate sync by importing block with using BlockOrigin::NetworkBroadcast,
-    ///     - clear the block gap to prevent Substrate sync to download blocks from the start.
-    ///     - restart the Substrate sync with SyncMode::Full to enable it downloading full blocks.
-    ///  Notes:
-    /// - retry for fast sync will degrade reputation if we have already announced blocks.
-    /// - we support a hypothetical case when block size is big enough to fill the whole segment
-    // TODO: fast-sync specification contains a special case for a segment that have the
-    // complete last archived block, this will remove the necessity to download the second last
-    // segment, we need to implement this case when the blockchain will contain at least one such
-    // a segment to verify the solution.
-    pub(crate) async fn sync(&self) -> Result<FastSyncResult<Block>, Error> {
+    pub(crate) async fn sync(&self) -> Result<(), Error> {
         debug!("Starting fast sync...");
 
-        // 1. Download the last two segments.
-        let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
-        let segment_header_downloader = SegmentHeaderDownloader::new(self.node);
-
-        if let Err(error) = self
-            .download_segment_headers(&segment_header_downloader)
+        self.sync_segment_headers()
             .await
-        {
-            let error = format!("Failed to download segment headers: {}", error);
-            return Err(Error::Other(error));
-        };
+            .map_err(|error| format!("Failed to sync segment headers: {}", error))?;
 
-        let Some(last_segment_index) = self.segment_headers_store.max_segment_index() else {
-            return Err(Error::Other("Can't get last segment index.".into()));
-        };
+        let last_segment_index = self
+            .segment_headers_store
+            .max_segment_index()
+            .expect("Successfully synced above; qed");
 
-        // Skip the fast sync if we lack the minimum required segment number
+        // Skip the fast sync if there is just one segment header built on top of genesis, it is
+        // more efficient to sync it regularly
         if last_segment_index <= SegmentIndex::ONE {
-            return Ok(FastSyncResult::skipped());
+            debug!("Fast sync was skipped due to too early chain history");
+
+            return Ok(());
         }
 
-        let last_segment_header = self
-            .segment_headers_store
-            .get_segment_header(last_segment_index)
-            .expect("Last segment index exists; qed");
+        // Identify all segment headers that would need to be reconstructed in order to get first
+        // block of last segment header
+        let mut segments_to_reconstruct = VecDeque::from([last_segment_index]);
+        {
+            let mut last_segment_first_block_number = None;
 
-        // Just to seed reconstructor, we don't care about blocks themselves
-        download_and_reconstruct_blocks(
-            last_segment_header.segment_index() - SegmentIndex::ONE,
-            self.piece_getter,
-            &mut reconstructor,
-        )
-        .await?;
+            loop {
+                let oldest_segment_index =
+                    *segments_to_reconstruct.front().expect("Not empty; qed");
+                let segment_index = oldest_segment_index
+                    .checked_sub(SegmentIndex::ONE)
+                    .ok_or_else(|| {
+                        format!(
+                            "Attempted to get segment index before {oldest_segment_index} during \
+                            fast sync"
+                        )
+                    })?;
+                let segment_header = self
+                    .segment_headers_store
+                    .get_segment_header(segment_index)
+                    .ok_or_else(|| {
+                        format!("Failed to get segment index {segment_index} during fast sync")
+                    })?;
+                let last_archived_block = segment_header.last_archived_block();
 
-        let blocks = download_and_reconstruct_blocks(
-            last_segment_header.segment_index(),
-            self.piece_getter,
-            &mut reconstructor,
-        )
-        .await?;
-        let mut blocks = VecDeque::from(blocks);
+                // If older segment header ends with fully archived block then no additional
+                // information is necessary
+                if last_archived_block.partial_archived().is_none() {
+                    break;
+                }
+
+                match last_segment_first_block_number {
+                    Some(block_number) => {
+                        if block_number == last_archived_block.number {
+                            // If older segment ends with the same block number as the first block
+                            // in the last segment then add it to the list of segments that need to
+                            // be reconstructed
+                            segments_to_reconstruct.push_front(segment_index);
+                        } else {
+                            // Otherwise we're done here
+                            break;
+                        }
+                    }
+                    None => {
+                        last_segment_first_block_number.replace(last_archived_block.number);
+                        // This segment will definitely be needed to reconstruct first block of the
+                        // last segment
+                        segments_to_reconstruct.push_front(segment_index);
+                    }
+                }
+            }
+        }
+
+        // Reconstruct blocks of the last segment
+        let mut blocks = VecDeque::new();
+        {
+            let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+
+            for segment_index in segments_to_reconstruct {
+                let blocks_fut = download_and_reconstruct_blocks(
+                    segment_index,
+                    self.piece_getter,
+                    &mut reconstructor,
+                );
+
+                blocks = VecDeque::from(blocks_fut.await?);
+            }
+        }
 
         let (first_block_number, first_block_bytes) = blocks
             .pop_front()
             // TODO: Ensure this expectation actually holds, currently this is not guaranteed
             .expect("List of blocks is not empty according to logic above; qed");
 
-        // We support the case when the block with extra-big blocks.
+        // Sometimes first block is the last block
         let last_block_number = blocks
             .back()
             .map_or(first_block_number, |(block_number, _block_bytes)| {
@@ -263,7 +266,7 @@ where
         );
 
         let mut import_block = BlockImportParams::new(
-            // We support the case when the block with extra-big blocks.
+            // In case there is just one block we need to notify Substrate sync about it
             if blocks.is_empty() {
                 BlockOrigin::NetworkBroadcast
             } else {
@@ -362,27 +365,13 @@ where
         let maybe_last_block_to_import = blocks_to_import.pop();
 
         if !blocks_to_import.is_empty() {
-            let last_queued_block_number = *blocks_to_import
-                .last()
-                .expect("Not empty; qed")
-                .header
-                .as_ref()
-                .expect("Always set; qed")
-                .number();
-
             self.import_queue_service
                 .lock()
                 .await
                 .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
-
-            // Block import delay
-            // We wait to import for all the blocks from the segment except the last one
-            // TODO: Replace this hack with actual watching of block import
-            self.wait_for_block_import(last_queued_block_number).await;
         }
 
-        // Notify Substrate sync by importing block with using BlockOrigin::NetworkBroadcast
-        // We support the case when the block with extra-big blocks.
+        // Import last block (if there was more than one) and notify Substrate sync about it
         if let Some(last_block_to_import) = maybe_last_block_to_import {
             debug!(
                 %last_block_number,
@@ -396,15 +385,15 @@ where
                 .import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block_to_import]);
         }
 
-        // Block import delay
-        // We wait to import for all the blocks from the segment except the last one
+        // Wait for blocks to be imported
         // TODO: Replace this hack with actual watching of block import
         self.wait_for_block_import(last_block_number.into()).await;
 
-        // Clear the block gap to prevent Substrate sync to download blocks from the start.
+        // Clear the block gap to prevent Substrate sync to download blocks from the start
         debug!("Clearing block gap...");
         self.client.clear_block_gap();
 
+        // Switch back to full sync mode
         self.sync_service
             .restart(SyncRestartArgs {
                 sync_mode: SyncMode::Full,
@@ -415,17 +404,12 @@ where
         let info = self.client.info();
         debug!("Fast sync. Current client info: {:?}", info);
 
-        Ok(FastSyncResult::<Block> {
-            skipped: false,
-            last_imported_block_number: last_block_number.into(),
-            last_imported_segment_index: last_segment_index,
-            reconstructor,
-        })
+        Ok(())
     }
 
     async fn wait_for_block_import(&self, waiting_block_number: NumberFor<Block>) {
         const WAIT_DURATION: Duration = Duration::from_secs(5);
-        const MAX_NO_NEW_IMPORT_ITERATIONS: i32 = 10;
+        const MAX_NO_NEW_IMPORT_ITERATIONS: u32 = 10;
         let mut current_iteration = 0;
         let mut last_best_block_number = self.client.info().best_number;
         loop {
@@ -453,10 +437,7 @@ where
         }
     }
 
-    async fn download_segment_headers(
-        &self,
-        segment_header_downloader: &SegmentHeaderDownloader<'_>,
-    ) -> Result<(), Error>
+    async fn sync_segment_headers(&self) -> Result<(), Error>
     where
         AS: AuxStore + Send + Sync + 'static,
     {
@@ -465,12 +446,12 @@ where
                 .max_segment_index()
                 .ok_or_else(|| {
                     Error::Other(
-                "Archiver needs to be initialized before syncing from DSN to populate the very \
-                    first segment"
-                    .to_string(),
-            )
+                        "Archiver needs to be initialized before syncing from DSN to populate the \
+                        very first segment"
+                            .to_string(),
+                    )
                 })?;
-        let new_segment_headers = segment_header_downloader
+        let new_segment_headers = SegmentHeaderDownloader::new(self.node)
             .get_segment_headers(max_segment_index)
             .await
             .map_err(|error| error.to_string())?;
