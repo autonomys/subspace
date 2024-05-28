@@ -4,10 +4,7 @@ use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_client_api::{AuxStore, LockImportRun, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::{
-    BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
-    StorageChanges,
-};
+use sc_consensus::{ImportedState, IncomingBlock};
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkRequest, PeerId};
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
@@ -207,105 +204,80 @@ where
             blocks = VecDeque::from(blocks_fut.await?);
         }
     }
+    let mut blocks_to_import = Vec::with_capacity(blocks.len());
+    let last_block_number;
 
-    let (first_block_number, first_block_bytes) = blocks
-        .pop_front()
-        // TODO: Ensure this expectation actually holds, currently this is not guaranteed
-        .expect("List of blocks is not empty according to logic above; qed");
+    // First block is special because we need to download state for it
+    {
+        let (first_block_number, first_block_bytes) = blocks
+            .pop_front()
+            .expect("List of blocks is not empty according to logic above; qed");
 
-    // Sometimes first block is the last block
-    let last_block_number = blocks
-        .back()
-        .map_or(first_block_number, |(block_number, _block_bytes)| {
-            *block_number
+        // Sometimes first block is the only block
+        last_block_number = blocks
+            .back()
+            .map_or(first_block_number, |(block_number, _block_bytes)| {
+                *block_number
+            });
+
+        debug!(
+            %last_segment_index,
+            %first_block_number,
+            %last_block_number,
+            "Blocks from last segment downloaded"
+        );
+
+        let signed_block = decode_block::<Block>(&first_block_bytes)
+            .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+        drop(first_block_bytes);
+        let (header, extrinsics) = signed_block.block.deconstruct();
+
+        // Download state for the first block, so it can be imported even without doing execution
+        let state = download_state(&header, client, fork_id, network_request, sync_service)
+            .await
+            .map_err(|error| {
+                format!("Failed to download state for the first block of last segment: {error}")
+            })?;
+
+        debug!("Downloaded state of the first block of the last segment");
+
+        blocks_to_import.push(IncomingBlock {
+            hash: header.hash(),
+            header: Some(header),
+            body: Some(extrinsics),
+            indexed_body: None,
+            justifications: signed_block.justifications,
+            origin: None,
+            allow_missing_state: true,
+            import_existing: true,
+            skip_execution: true,
+            state: Some(state),
         });
-
-    debug!(
-        %last_segment_index,
-        %first_block_number,
-        %last_block_number,
-        "Blocks from last segment downloaded"
-    );
-
-    let signed_block = decode_block::<Block>(&first_block_bytes)
-        .map_err(|error| format!("Failed to decode archived block: {error}"))?;
-    drop(first_block_bytes);
-    let (header, extrinsics) = signed_block.block.deconstruct();
-
-    // Download state for the first block, so it can be imported even without doing execution
-    let first_block_state = download_state(&header, client, fork_id, network_request, sync_service)
-        .await
-        .map_err(|error| {
-            format!("Failed to download state for the first block of last segment: {error}")
-        })?;
-
-    debug!("Downloaded state of the first block of the last segment");
-
-    let mut import_block = BlockImportParams::new(
-        // In case there is just one block we need to notify Substrate sync about it
-        if blocks.is_empty() {
-            BlockOrigin::NetworkBroadcast
-        } else {
-            BlockOrigin::NetworkInitialSync
-        },
-        header,
-    );
-    import_block.justifications = signed_block.justifications;
-    import_block.body = Some(extrinsics);
-    import_block.state_action = StateAction::Skip;
-    import_block.finalized = true;
-    import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-
-    // Raw import of the first block in the last segment
-    let result = client
-        .lock_import_and_run(|operation| {
-            client.apply_block(
-                operation,
-                import_block,
-                Some(StorageChanges::Import(first_block_state)),
-            )
-        })
-        .map_err(|e| {
-            error!("Error during importing of the raw block: {}", e);
-            sp_consensus::Error::ClientImport(e.to_string())
-        })?;
-
-    debug!(
-        %first_block_number,
-        ?result,
-        "Raw block imported, clearing block gap"
-    );
-
-    // Clear the block gap that arises from above block import of the block with a much higher
-    // number than previously
-    client.clear_block_gap();
+    }
 
     debug!(
         blocks_count = %blocks.len(),
-        "Started importing remaining blocks from last segment"
+        "Queuing importing remaining blocks from last segment"
     );
 
-    let mut blocks_to_import = blocks
-        .into_iter()
-        .map(|(_block_number, block_bytes)| {
-            let signed_block = decode_block::<Block>(&block_bytes)
-                .map_err(|error| format!("Failed to decode archived block: {error}"))?;
-            let (header, extrinsics) = signed_block.block.deconstruct();
+    for (_block_number, block_bytes) in blocks {
+        let signed_block = decode_block::<Block>(&block_bytes)
+            .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+        let (header, extrinsics) = signed_block.block.deconstruct();
 
-            Ok(IncomingBlock {
-                hash: header.hash(),
-                header: Some(header),
-                body: Some(extrinsics),
-                indexed_body: None,
-                justifications: signed_block.justifications,
-                origin: None,
-                allow_missing_state: false,
-                import_existing: false,
-                skip_execution: false,
-                state: None,
-            })
-        })
-        .collect::<Result<Vec<IncomingBlock<Block>>, Error>>()?;
+        blocks_to_import.push(IncomingBlock {
+            hash: header.hash(),
+            header: Some(header),
+            body: Some(extrinsics),
+            indexed_body: None,
+            justifications: signed_block.justifications,
+            origin: None,
+            allow_missing_state: false,
+            import_existing: false,
+            skip_execution: false,
+            state: None,
+        });
+    }
 
     let maybe_last_block_to_import = blocks_to_import.pop();
 
@@ -328,6 +300,11 @@ where
     // Wait for blocks to be imported
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
+
+    // Clear the block gap that arises from first block import with a much higher number than
+    // previously (resulting in a gap)
+    // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
+    client.clear_block_gap();
 
     Ok(())
 }

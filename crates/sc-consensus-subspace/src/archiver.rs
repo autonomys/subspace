@@ -865,6 +865,10 @@ where
                     // Special sync mode where verified blocks were inserted into blockchain
                     // directly, archiving of this block will naturally happen later
                     continue;
+                } else if best_archived_block_number.is_zero() {
+                    // We may have imported some block using special sync mode right after genesis,
+                    // in which case archiver will be stuck at genesis block
+                    continue;
                 } else {
                     let error = format!(
                         "There was a gap in blockchain history and the last contiguous series of \
