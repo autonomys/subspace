@@ -57,11 +57,13 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
     PG: DsnSyncPieceGetter,
     NR: NetworkRequest,
 {
-    pause_sync.store(true, Ordering::Release);
+    let info = client.info();
+    // Only attempt fast sync with genesis state
+    // TODO: Support fast sync from any state
+    if info.best_hash == info.genesis_hash {
+        pause_sync.store(true, Ordering::Release);
 
-    let finalized_hash_exists = client.info().finalized_hash != client.info().genesis_hash;
-    if !finalized_hash_exists {
-        let fast_sync_result = sync(
+        let fast_sync_fut = sync(
             &segment_headers_store,
             &node,
             &piece_getter,
@@ -70,22 +72,30 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
             import_queue_service.as_mut(),
             &network_request,
             &sync_service,
-        )
-        .await;
+        );
 
-        match fast_sync_result {
+        match fast_sync_fut.await {
             Ok(()) => {
                 debug!("Fast sync finished successfully");
             }
-            Err(err) => {
-                error!("Fast sync failed: {err}");
+            Err(error) => {
+                error!(%error, "Fast sync failed");
             }
         }
+
+        pause_sync.store(false, Ordering::Release);
     } else {
-        debug!("Fast sync detected existing finalized hash.");
+        debug!("Fast sync can only work with genesis state, skipping");
     }
 
-    pause_sync.store(false, Ordering::Release);
+    // Switch back to full sync mode
+    let info = client.info();
+    sync_service
+        .restart(SyncRestartArgs {
+            sync_mode: SyncMode::Full,
+            new_best_block: Some(info.best_number),
+        })
+        .await;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -318,17 +328,6 @@ where
     // Wait for blocks to be imported
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
-
-    // Switch back to full sync mode
-    sync_service
-        .restart(SyncRestartArgs {
-            sync_mode: SyncMode::Full,
-            new_best_block: Some(last_block_number.into()),
-        })
-        .await;
-
-    let info = client.info();
-    debug!("Fast sync. Current client info: {:?}", info);
 
     Ok(())
 }
