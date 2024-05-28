@@ -8,22 +8,19 @@ use crate::sync_from_dsn::import_blocks::{import_blocks_from_dsn, DsnSyncPieceGe
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
-use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, LockImportRun, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::{NetworkPeers, NetworkService};
-use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use sp_runtime::Saturating;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::SegmentIndex;
 use subspace_networking::Node;
 use tracing::{debug, info, warn};
@@ -49,12 +46,12 @@ enum NotificationReason {
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS, B>(
+pub(super) fn create_observer_and_worker<Block, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
-    import_queue_service: Box<IQS>,
+    mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
@@ -63,37 +60,31 @@ pub(crate) fn create_observer_and_worker<Block, AS, Client, PG, IQS, B>(
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
 )
 where
-    B: sc_client_api::Backend<Block>,
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
         + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>
-        + LockImportRun<Block, B>
         + Send
         + Sync
-        + ClientExt<Block, B>
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     PG: DsnSyncPieceGetter + Send + Sync + 'static,
-    IQS: ImportQueueService<Block> + 'static + ?Sized,
 {
-    let network_service_clone = network_service.clone();
     let (tx, rx) = mpsc::channel(0);
     let observer_fut = {
         let node = node.clone();
         let client = Arc::clone(&client);
 
-        async move { create_observer(network_service_clone.as_ref(), &node, client.as_ref(), tx).await }
+        async move { create_observer(network_service.as_ref(), &node, client.as_ref(), tx).await }
     };
     let worker_fut = async move {
         create_worker(
             segment_headers_store,
             &node,
             client.as_ref(),
-            import_queue_service,
+            import_queue_service.as_mut(),
             sync_target_block_number,
             pause_sync,
             rx,
@@ -224,7 +215,7 @@ async fn create_worker<Block, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
-    mut import_queue_service: Box<IQS>,
+    import_queue_service: &mut IQS,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
@@ -263,17 +254,15 @@ where
         pause_sync.store(true, Ordering::Release);
 
         info!(?reason, "Received notification to sync from DSN");
-        let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
         // TODO: Maybe handle failed block imports, additional helpful logging
         let import_froms_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
             &segment_header_downloader,
             client,
             piece_getter,
-            import_queue_service.as_mut(),
+            import_queue_service,
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
-            &mut reconstructor,
         );
         let wait_almost_synced_fut = async {
             loop {
@@ -306,7 +295,7 @@ where
             }
         }
 
-        debug!("Finished DSN sync.");
+        debug!("Finished DSN sync");
 
         pause_sync.store(false, Ordering::Release);
 
