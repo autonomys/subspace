@@ -930,9 +930,12 @@ where
             pause_sync.store(true, Ordering::Release);
         }
 
+        let fork_id = config.base.chain_spec.fork_id().map(String::from);
+
         let fast_sync_task = fast_sync(
             segment_headers_store.clone(),
             node.clone(),
+            fork_id,
             Arc::clone(&client),
             import_queue_service1,
             pause_sync.clone(),

@@ -25,110 +25,79 @@
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use prost::Message;
-use sc_client_api::{BlockBackend, ProofProvider};
-use sc_consensus::import_queue::ImportQueueService;
+use sc_client_api::ProofProvider;
 use sc_consensus::IncomingBlock;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkService, PeerId};
+use sc_network::{NetworkRequest, PeerId};
 use sc_network_sync::pending_responses::{PendingResponses, ResponseEvent};
 use sc_network_sync::schema::v1::{StateRequest, StateResponse};
-use sc_network_sync::service::network::NetworkServiceProvider;
-use sc_network_sync::service::{self};
 use sc_network_sync::state_request_handler::generate_protocol_name;
 use sc_network_sync::strategy::state::{StateStrategy, StateStrategyAction};
 use sc_network_sync::strategy::StrategyKey;
 use sc_network_sync::types::{BadPeer, OpaqueStateRequest, OpaqueStateResponse, PeerRequest};
 use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_runtime::Justifications;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, trace, warn};
 
-pub struct FastSyncingEngine<B: BlockT, IQS>
+pub struct FastSyncingEngine<'a, Block, NR>
 where
-    IQS: ImportQueueService<B> + ?Sized,
+    Block: BlockT,
 {
-    /// Syncing strategy.
-    strategy: StateStrategy<B>,
-
-    /// Network service.
-    network_service_handle: service::network::NetworkServiceHandle,
-
-    /// Network service join handle.
-    network_service_join_handle: JoinHandle<()>,
-
+    /// Syncing strategy
+    strategy: StateStrategy<Block>,
+    /// Network request handle
+    network_request: &'a NR,
     /// Pending responses
-    pending_responses: PendingResponses<B>,
-
+    pending_responses: PendingResponses<Block>,
     /// Protocol name used to send out state requests
     state_request_protocol_name: ProtocolName,
-
-    /// Handle to import queue.
-    import_queue: Arc<Mutex<Box<IQS>>>,
 }
 
-impl<B, IQS> Drop for FastSyncingEngine<B, IQS>
+impl<'a, Block, NR> FastSyncingEngine<'a, Block, NR>
 where
-    B: BlockT,
-    IQS: ImportQueueService<B> + ?Sized,
+    Block: BlockT,
+    NR: NetworkRequest,
 {
-    fn drop(&mut self) {
-        self.network_service_join_handle.abort()
-    }
-}
-
-impl<B: BlockT, IQS> FastSyncingEngine<B, IQS>
-where
-    B: BlockT,
-    IQS: ImportQueueService<B> + ?Sized + 'static,
-{
-    #[allow(clippy::too_many_arguments)]
     pub fn new<Client>(
         client: Arc<Client>,
-        import_queue: Arc<Mutex<Box<IQS>>>,
         fork_id: Option<&str>,
-        target_header: B::Header,
-        target_body: Option<Vec<B::Extrinsic>>,
-        target_justifications: Option<Justifications>,
+        target_header: Block::Header,
         skip_proof: bool,
-        current_sync_peer: (PeerId, NumberFor<B>),
-        network_service: Arc<NetworkService<B, <B as BlockT>::Hash>>,
+        current_sync_peer: (PeerId, NumberFor<Block>),
+        network_request: &'a NR,
     ) -> Result<Self, ClientError>
     where
-        Client: BlockBackend<B> + HeaderBackend<B> + ProofProvider<B> + Send + Sync + 'static,
+        Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
     {
-        let (network_service_worker, network_service_handle) = NetworkServiceProvider::new();
-        let networking_fut = network_service_worker.run(network_service);
-        let network_service_join_handle = tokio::spawn(networking_fut);
-
         let state_request_protocol_name =
             generate_protocol_name(client.info().genesis_hash, fork_id).into();
 
         // Initialize syncing strategy.
         let strategy = StateStrategy::new(
-            client.clone(),
+            client,
             target_header,
-            target_body,
-            target_justifications,
+            // We only care about the state, this value is just forwarded back into block to
+            // import that is thrown away below
+            None,
+            // We only care about the state, this value is just forwarded back into block to
+            // import that is thrown away below
+            None,
             skip_proof,
             vec![current_sync_peer].into_iter(),
         );
 
         Ok(Self {
-            import_queue,
             strategy,
-            network_service_handle,
-            network_service_join_handle,
+            network_request,
             pending_responses: PendingResponses::new(),
             state_request_protocol_name,
         })
     }
 
     // Downloads state and returns incoming block with state pre-populated and ready for importing
-    pub async fn download_state(mut self) -> Result<IncomingBlock<B>, ClientError> {
+    pub async fn download_state(mut self) -> Result<IncomingBlock<Block>, ClientError> {
         debug!("Starting state downloading");
 
         loop {
@@ -184,10 +153,11 @@ where
 
         match Self::encode_state_request(&request) {
             Ok(data) => {
-                self.network_service_handle.start_request(
+                self.network_request.start_request(
                     peer_id,
                     self.state_request_protocol_name.clone(),
                     data,
+                    None,
                     tx,
                     IfDisconnected::ImmediateError,
                 );
@@ -215,7 +185,7 @@ where
         Ok(OpaqueStateResponse(Box::new(response)))
     }
 
-    fn process_response_event(&mut self, response_event: ResponseEvent<B>) {
+    fn process_response_event(&mut self, response_event: ResponseEvent<Block>) {
         let ResponseEvent {
             peer_id,
             request,
