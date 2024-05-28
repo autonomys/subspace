@@ -4,7 +4,10 @@ use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_client_api::{AuxStore, BlockBackend, LockImportRun, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::{BlockImportParams, ForkChoiceStrategy, IncomingBlock, StateAction};
+use sc_consensus::{
+    BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
+    StorageChanges,
+};
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkService, PeerId};
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
@@ -16,9 +19,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
-use sp_runtime::Justifications;
 use std::collections::{HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -252,18 +253,17 @@ where
             "Blocks from last segment downloaded"
         );
 
-        let signed_block =
-            decode_block::<Block>(&first_block_bytes).map_err(|error| error.to_string())?;
-
+        let signed_block = decode_block::<Block>(&first_block_bytes)
+            .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+        drop(first_block_bytes);
         let (header, extrinsics) = signed_block.block.deconstruct();
-        let block_hash = header.hash();
 
-        debug!(
-            %first_block_number,
-            ?block_hash,
-            parent_hash = ?header.parent_hash(),
-            "Reconstructed block for raw block import"
-        );
+        // Download state for the first block, so it can be imported even without doing execution
+        let first_block_state = self.download_state(&header).await.map_err(|error| {
+            format!("Failed to download state for the first block of last segment: {error}")
+        })?;
+
+        debug!("Downloaded state of the first block of the last segment");
 
         let mut import_block = BlockImportParams::new(
             // In case there is just one block we need to notify Substrate sync about it
@@ -283,7 +283,13 @@ where
         // Raw import of the first block in the last segment
         let result = self
             .client
-            .lock_import_and_run(|operation| self.client.apply_block(operation, import_block, None))
+            .lock_import_and_run(|operation| {
+                self.client.apply_block(
+                    operation,
+                    import_block,
+                    Some(StorageChanges::Import(first_block_state)),
+                )
+            })
             .map_err(|e| {
                 error!("Error during importing of the raw block: {}", e);
                 sp_consensus::Error::ClientImport(e.to_string())
@@ -291,51 +297,13 @@ where
 
         debug!(
             %first_block_number,
-            ?block_hash,
             ?result,
-            "Raw block imported"
+            "Raw block imported, clearing block gap"
         );
 
-        // Sync state for the above block
-        let download_state_result = self
-            // TODO: Replace this with reconstructed block instead of bytes
-            .download_state(first_block_bytes, first_block_number.into())
-            .await;
-
-        match download_state_result {
-            Ok(Some(state_block)) => {
-                if let Some(state_block_header) = state_block.header {
-                    if *state_block_header.number() != NumberFor::<Block>::from(first_block_number)
-                    {
-                        error!(
-                            expected = %first_block_number,
-                            actual = %*state_block_header.number(),
-                            "Download state operation returned invalid state block."
-                        );
-                        return Err(Error::Other(
-                            "Download state operation returned invalid state block.".into(),
-                        ));
-                    }
-                } else {
-                    error!("Download state operation returned empty state block header.");
-                    return Err(Error::Other(
-                        "Download state operation returned empty state block header.".into(),
-                    ));
-                }
-            }
-            Ok(None) => {
-                error!("Download state operation returned empty result.");
-                return Err(Error::Other(
-                    "Download state operation returned empty result.".into(),
-                ));
-            }
-            Err(err) => {
-                error!(?err, "Download state operation failed.");
-                return Err(err);
-            }
-        };
-
-        // 4. Import and execute blocks from the last segment
+        // Clear the block gap that arises from above block import of the block with a much higher
+        // number than previously
+        self.client.clear_block_gap();
 
         debug!(
             blocks_count = %blocks.len(),
@@ -345,14 +313,16 @@ where
         let mut blocks_to_import = blocks
             .into_iter()
             .map(|(_block_number, block_bytes)| {
-                let (header, extrinsics, justifications) = Self::deconstruct_block(block_bytes)?;
+                let signed_block = decode_block::<Block>(&block_bytes)
+                    .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+                let (header, extrinsics) = signed_block.block.deconstruct();
 
                 Ok(IncomingBlock {
                     hash: header.hash(),
                     header: Some(header),
                     body: Some(extrinsics),
                     indexed_body: None,
-                    justifications,
+                    justifications: signed_block.justifications,
                     origin: None,
                     allow_missing_state: false,
                     import_existing: false,
@@ -388,10 +358,6 @@ where
         // Wait for blocks to be imported
         // TODO: Replace this hack with actual watching of block import
         self.wait_for_block_import(last_block_number.into()).await;
-
-        // Clear the block gap to prevent Substrate sync to download blocks from the start
-        debug!("Clearing block gap...");
-        self.client.clear_block_gap();
 
         // Switch back to full sync mode
         self.sync_service
@@ -466,27 +432,9 @@ where
         Ok(())
     }
 
-    #[allow(clippy::type_complexity)]
-    fn deconstruct_block(
-        block_data: Vec<u8>,
-    ) -> Result<(Block::Header, Vec<Block::Extrinsic>, Option<Justifications>), Error> {
-        let signed_block = decode_block::<Block>(&block_data).map_err(|error| error.to_string())?;
-
-        let SignedBlock {
-            block,
-            justifications,
-        } = signed_block;
-        let (header, extrinsics) = block.deconstruct();
-
-        Ok((header, extrinsics, justifications))
-    }
-
-    async fn download_state(
-        &self,
-        state_block_bytes: Vec<u8>,
-        state_block_number: NumberFor<Block>,
-    ) -> Result<Option<IncomingBlock<Block>>, sc_service::Error> {
-        let (header, extrinsics, justifications) = Self::deconstruct_block(state_block_bytes)?;
+    /// Download and return state for specified block
+    async fn download_state(&self, header: &Block::Header) -> Result<ImportedState<Block>, Error> {
+        let block_number = *header.number();
 
         const STATE_SYNC_RETRIES: u32 = 5;
         const LOOP_PAUSE: Duration = Duration::from_secs(20);
@@ -499,7 +447,7 @@ where
             let mut tried_peers = HashSet::<PeerId>::new();
 
             // TODO: add loop timeout
-            let peer_candidates = loop {
+            let current_peer_id = loop {
                 let connected_full_peers = self
                     .sync_service
                     .peers_info()
@@ -507,7 +455,7 @@ where
                     .expect("Network service must be available.")
                     .iter()
                     .filter_map(|(peer_id, info)| {
-                        (info.roles.is_full() && info.best_number > state_block_number)
+                        (info.roles.is_full() && info.best_number > block_number)
                             .then_some(*peer_id)
                     })
                     .collect::<Vec<_>>();
@@ -516,22 +464,13 @@ where
 
                 let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
 
-                let diff = active_peers_set
-                    .difference(&tried_peers)
-                    .cloned()
-                    .collect::<HashSet<_>>();
-
-                if !diff.is_empty() {
-                    break diff;
+                if let Some(peer_id) = active_peers_set.difference(&tried_peers).next().cloned() {
+                    break peer_id;
                 }
 
                 sleep(LOOP_PAUSE).await;
             };
 
-            let current_peer_id = peer_candidates
-                .into_iter()
-                .next()
-                .expect("Length is checked within the loop.");
             tried_peers.insert(current_peer_id);
 
             let sync_engine = FastSyncingEngine::<Block, IQS>::new(
@@ -539,10 +478,14 @@ where
                 self.import_queue_service.clone(),
                 None,
                 header.clone(),
-                Some(extrinsics.clone()),
-                justifications.clone(),
+                // We only care about the state, this value is just forwarded back into block to
+                // import that is thrown away below
+                None,
+                // We only care about the state, this value is just forwarded back into block to
+                // import that is thrown away below
+                None,
                 false,
-                (current_peer_id, state_block_number),
+                (current_peer_id, block_number),
                 network_service,
             )
             .map_err(Error::Client)?;
@@ -550,26 +493,20 @@ where
             let last_block_from_sync_result = sync_engine.download_state().await;
 
             match last_block_from_sync_result {
-                Ok(Some(last_block_from_sync)) => {
-                    debug!("Sync worker handle result: {:?}", last_block_from_sync,);
+                Ok(block_to_import) => {
+                    debug!("Sync worker handle result: {:?}", block_to_import);
 
-                    // State block import delay
-                    // TODO: Replace this hack with actual watching of block import
-                    self.wait_for_block_import(state_block_number).await;
-
-                    return Ok(Some(last_block_from_sync));
-                }
-                Ok(None) => {
-                    error!("State sync error (state download failed).");
-                    continue;
+                    return block_to_import.state.ok_or_else(|| {
+                        Error::Other("Imported state was missing in synced block".into())
+                    });
                 }
                 Err(error) => {
-                    error!(?error, "State sync error.");
+                    error!(%error, "State sync error");
                     continue;
                 }
             }
         }
 
-        Err(Error::Other("All fast sync retries failed.".into()))
+        Err(Error::Other("All fast sync retries failed".into()))
     }
 }

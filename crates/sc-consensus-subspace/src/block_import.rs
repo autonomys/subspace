@@ -37,6 +37,7 @@ use sc_client_api::BlockBackend;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
+use sc_consensus::StateAction;
 use sc_proof_of_time::verifier::PotVerifier;
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -170,9 +171,6 @@ pub enum Error<Header: HeaderT> {
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
-    /// No block weight for parent header
-    #[error("No block weight for parent header {0}")]
-    NoBlockWeight(Header::Hash),
     /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
@@ -337,7 +335,6 @@ where
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn block_import_verification(
         &self,
         block_hash: Block::Hash,
@@ -350,7 +347,6 @@ where
             FarmerSignature,
         >,
         justifications: &Option<Justifications>,
-        skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
@@ -367,14 +363,7 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)
-            .or_else(|error| {
-                if skip_runtime_access {
-                    Ok(false)
-                } else {
-                    Err(Error::RuntimeApi(error))
-                }
-            })?
+            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)?
         {
             warn!(
                 public_key = %pre_digest.solution().public_key,
@@ -492,9 +481,6 @@ where
             pre_digest.solution().sector_index,
         );
 
-        // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
-        //  should (though we don't support fast sync yet, so doesn't matter in
-        //  practice)
         let max_pieces_in_sector = self
             .client
             .runtime_api()
@@ -542,9 +528,6 @@ where
                     recent_segments: chain_constants.recent_segments(),
                     recent_history_fraction: chain_constants.recent_history_fraction(),
                     min_sector_lifetime: chain_constants.min_sector_lifetime(),
-                    // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
-                    //  should (though we don't support fast sync yet, so doesn't matter in
-                    //  practice)
                     current_history_size: self.client.runtime_api().history_size(parent_hash)?,
                     sector_expiration_check_segment_commitment,
                 }),
@@ -553,37 +536,35 @@ where
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot(), error))?;
 
-        if !skip_runtime_access {
-            // If the body is passed through, we need to use the runtime to check that the
-            // internally-set timestamp in the inherents actually matches the slot set in the seal
-            // and segment headers in the inherents are set correctly.
-            if let Some(extrinsics) = extrinsics {
-                let create_inherent_data_providers = self
-                    .create_inherent_data_providers
-                    .create_inherent_data_providers(parent_hash, ())
-                    .await
-                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+        // If the body is passed through, we need to use the runtime to check that the
+        // internally-set timestamp in the inherents actually matches the slot set in the seal
+        // and segment headers in the inherents are set correctly.
+        if let Some(extrinsics) = extrinsics {
+            let create_inherent_data_providers = self
+                .create_inherent_data_providers
+                .create_inherent_data_providers(parent_hash, ())
+                .await
+                .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
 
-                let inherent_data = create_inherent_data_providers
-                    .create_inherent_data()
-                    .await
-                    .map_err(Error::CreateInherents)?;
+            let inherent_data = create_inherent_data_providers
+                .create_inherent_data()
+                .await
+                .map_err(Error::CreateInherents)?;
 
-                let inherent_res = self.client.runtime_api().check_inherents(
-                    parent_hash,
-                    Block::new(header, extrinsics),
-                    inherent_data,
-                )?;
+            let inherent_res = self.client.runtime_api().check_inherents(
+                parent_hash,
+                Block::new(header, extrinsics),
+                inherent_data,
+            )?;
 
-                if !inherent_res.ok() {
-                    for (i, e) in inherent_res.into_errors() {
-                        match create_inherent_data_providers
-                            .try_handle_error(&i, &e)
-                            .await
-                        {
-                            Some(res) => res.map_err(Error::CheckInherents)?,
-                            None => return Err(Error::CheckInherentsUnhandled(i)),
-                        }
+            if !inherent_res.ok() {
+                for (i, e) in inherent_res.into_errors() {
+                    match create_inherent_data_providers
+                        .try_handle_error(&i, &e)
+                        .await
+                    {
+                        Some(res) => res.map_err(Error::CheckInherents)?,
+                        None => return Err(Error::CheckInherentsUnhandled(i)),
                     }
                 }
             }
@@ -634,27 +615,33 @@ where
         }
 
         let subspace_digest_items = extract_subspace_digest_items(&block.header)?;
-        let skip_execution_checks = block.state_action.skip_execution_checks();
 
-        let root_plot_public_key = self
-            .client
-            .runtime_api()
-            .root_plot_public_key(*block.header.parent_hash())?;
+        // Only do import verification if we do not have the state already. If state needs to be
+        // applied this means verification and execution already happened before and doesn't need to
+        // be done again here (often can't because parent block would be missing in special sync
+        // modes).
+        if !matches!(block.state_action, StateAction::ApplyChanges(_)) {
+            let root_plot_public_key = self
+                .client
+                .runtime_api()
+                .root_plot_public_key(*block.header.parent_hash())?;
 
-        self.block_import_verification(
-            block_hash,
-            block.header.clone(),
-            block.body.clone(),
-            &root_plot_public_key,
-            &subspace_digest_items,
-            &block.justifications,
-            skip_execution_checks,
-        )
-        .await?;
+            self.block_import_verification(
+                block_hash,
+                block.header.clone(),
+                block.body.clone(),
+                &root_plot_public_key,
+                &subspace_digest_items,
+                &block.justifications,
+            )
+            .await?;
+        }
 
         let parent_weight = if block_number.is_one() {
             0
         } else {
+            // Parent block weight might be missing in special sync modes where block is imported in
+            // the middle of the blockchain history directly
             aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())?
                 .unwrap_or_default()
         };
@@ -695,8 +682,9 @@ where
                 // need to cover again here
                 parent_weight
             } else {
-                aux_schema::load_block_weight(&*self.client, info.best_hash)?
-                    .ok_or_else(|| Error::NoBlockWeight(info.best_hash))?
+                // Best block weight might be missing in special sync modes where block is imported
+                // in the middle of the blockchain history right after genesis
+                aux_schema::load_block_weight(&*self.client, info.best_hash)?.unwrap_or_default()
             };
 
             ForkChoiceStrategy::Custom(total_weight > last_best_weight)
