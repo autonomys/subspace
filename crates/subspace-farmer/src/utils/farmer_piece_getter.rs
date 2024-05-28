@@ -300,7 +300,7 @@ where
                 let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
                 if let Some(piece) = self.get_piece_fast_internal(piece_index).await {
-                    trace!(%piece_index, current_attempt, "Got piece from DSN L2 cache");
+                    trace!(%piece_index, current_attempt, "Got piece fast");
                     return Ok(Some(piece));
                 }
                 if current_attempt >= max_retries {
@@ -309,15 +309,15 @@ where
                             %piece_index,
                             current_attempt,
                             max_retries,
-                            "Couldn't get a piece from DSN L2. No retries left"
+                            "Couldn't get a piece fast. No retries left"
                         );
                     }
                     return Ok(None);
                 }
 
-                trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2, retrying...");
+                trace!(%piece_index, current_attempt, "Couldn't get a piece fast, retrying...");
 
-                Err(backoff::Error::transient("Couldn't get piece from DSN"))
+                Err(backoff::Error::transient("Couldn't get piece fast"))
             });
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
