@@ -1133,6 +1133,15 @@ impl<Hash> InboxedBundle<Hash> {
         matches!(self.bundle, BundleValidity::Invalid(_))
     }
 
+    pub fn invalid_extrinsic_index(&self) -> Option<u32> {
+        match &self.bundle {
+            BundleValidity::Invalid(invalid_bundle_type) => {
+                Some(invalid_bundle_type.extrinsic_index())
+            }
+            BundleValidity::Valid(_) => None,
+        }
+    }
+
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(extrinsics_root: Hash) -> Self
     where

@@ -90,7 +90,10 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            CollectedBlockFees::<T>::take();
+            // NOTE: set the `CollectedBlockFees` to an empty value instead of removing the value
+            // completely so we can generate a storage proof to prove the empty value, which is used
+            // in the fraud proof.
+            CollectedBlockFees::<T>::set(BlockFees::<T::Balance>::default());
             T::DbWeight::get().writes(1)
         }
 
