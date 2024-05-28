@@ -560,7 +560,7 @@ where
                 header.clone(),
                 Some(extrinsics.clone()),
                 justifications.clone(),
-                true,
+                false,
                 (current_peer_id, state_block_number),
                 network_service,
             )
