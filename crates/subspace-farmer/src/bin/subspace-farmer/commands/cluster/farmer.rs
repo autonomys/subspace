@@ -79,11 +79,11 @@ pub(super) struct FarmerArgs {
     /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
-    /// Defines max number sectors farmer will encode concurrently, defaults to 8. Might be limited
+    /// Defines max number sectors farmer will encode concurrently, defaults to 50. Might be limited
     /// by plotting capacity available in the cluster.
     ///
     /// Increase will result in higher memory usage.
-    #[arg(long, default_value = "8")]
+    #[arg(long, default_value = "50")]
     sector_encoding_concurrency: NonZeroUsize,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of logical CPUs
