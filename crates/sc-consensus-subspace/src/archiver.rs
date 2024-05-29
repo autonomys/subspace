@@ -1011,15 +1011,15 @@ where
             .filter(|block_number| *block_number > client.info().finalized_number);
 
         if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
-            let block_hash_to_finalize = client
-                .hash(block_number_to_finalize)?
-                .expect("Block about to be finalized must always exist");
-            finalize_block(
-                client.as_ref(),
-                telemetry.clone(),
-                block_hash_to_finalize,
-                block_number_to_finalize,
-            );
+            // Block is not guaranteed to be present this deep if we have only synced recent blocks
+            if let Some(block_hash_to_finalize) = client.hash(block_number_to_finalize)? {
+                finalize_block(
+                    client.as_ref(),
+                    telemetry.clone(),
+                    block_hash_to_finalize,
+                    block_number_to_finalize,
+                );
+            }
         }
     }
 
