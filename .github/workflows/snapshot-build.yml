@@ -162,9 +162,8 @@ jobs:
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
-        if: runner.os == 'Windows'
         # Doesn't exist on self-hosted runners
-        continue-on-error: true
+        if: matrix.os == 'windows-2022'
 
       - name: AArch64 cross-compile packages
         run: |

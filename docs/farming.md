@@ -189,7 +189,6 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 Create `subspace` directory and `docker-compose.yml` in it with following contents:
 ```yml
-version: "3.7"
 services:
   node:
     # Replace `snapshot-DATE` with the latest release (like `snapshot-2022-apr-29`)

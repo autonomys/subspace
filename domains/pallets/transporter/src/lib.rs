@@ -292,6 +292,9 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            // NOTE: set the `ChainTransfers` to an empty value instead of removing the value completely
+            // so we can generate a storage proof to prove the empty value, which is required by the fraud
+            // proof.
             ChainTransfers::<T>::set(Default::default());
             T::DbWeight::get().writes(1)
         }

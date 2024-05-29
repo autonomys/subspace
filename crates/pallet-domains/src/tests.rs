@@ -1,5 +1,6 @@
 use crate::block_tree::BlockTreeNode;
 use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::pallet::OperatorIdOwner;
 use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
@@ -60,7 +61,7 @@ frame_support::construct_runtime!(
 
 type BlockNumber = u64;
 type Hash = H256;
-type AccountId = u128;
+pub(crate) type AccountId = u128;
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
@@ -145,7 +146,6 @@ parameter_types! {
     pub TreasuryAccount: u128 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
     pub const MaxPendingStakingOperation: u32 = 512;
-    pub const MaxNominators: u32 = 5;
     pub const DomainsPalletId: PalletId = PalletId(*b"domains_");
     pub const DomainChainByteFee: Balance = 1;
     pub const MaxInitialDomainAccounts: u32 = 5;
@@ -265,7 +265,6 @@ impl pallet_domains::Config for Test {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
-    type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
     type PalletId = DomainsPalletId;
     type StorageFee = DummyStorageFee;
@@ -483,6 +482,7 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
     for operator_id in operator_ids {
         Operators::<Test>::insert(operator_id, Operator::dummy(domain_id, pair.public(), SSC));
+        OperatorIdOwner::<Test>::insert(operator_id, creator);
     }
 
     domain_id

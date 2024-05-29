@@ -118,13 +118,23 @@ pub(crate) fn execution_receipt_type<T: Config>(
 ) -> ReceiptType {
     let receipt_number = execution_receipt.domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+    let head_receipt_extended = HeadReceiptExtended::<T>::get(domain_id);
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
     let latest_confirmed_domain_block_number =
         Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
 
     match receipt_number.cmp(&next_receipt_number) {
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
-        Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
+        Ordering::Equal => {
+            // we do not allow consecutive ER in a single consensus block
+            // if the head receipt is already extended, then reject this ER
+            // as it is a Future ER
+            if head_receipt_extended {
+                ReceiptType::Rejected(RejectedReceiptType::InFuture)
+            } else {
+                ReceiptType::Accepted(AcceptedReceiptType::NewHead)
+            }
+        }
         Ordering::Less => {
             // Reject receipt that already confirmed
             if !latest_confirmed_domain_block_number.is_zero()
@@ -145,7 +155,6 @@ pub(crate) fn execution_receipt_type<T: Config>(
 
             // Add confirm to the head receipt that added in the current block or it is
             // the genesis receipt
-            let head_receipt_extended = HeadReceiptExtended::<T>::get(domain_id);
             if receipt_number == head_receipt_number
                 && (head_receipt_extended || receipt_number.is_zero())
             {
@@ -992,6 +1001,53 @@ mod tests {
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
                 Error::InvalidExecutionTrace
+            );
+        });
+    }
+
+    #[test]
+    fn test_invalid_receipt_with_head_receipt_already_extended() {
+        let creator = 0u128;
+        let operator_id = 1u64;
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+
+            // reject extending receipt if the HeadReceiptNumber is already extended
+            assert!(!HeadReceiptExtended::<Test>::get(domain_id));
+            HeadReceiptExtended::<Test>::set(domain_id, true);
+
+            // Construct a future receipt
+            let mut future_receipt = next_receipt.clone();
+            future_receipt.domain_block_number = head_receipt_number + 1;
+            future_receipt.consensus_block_number = head_receipt_number as u64 + 1;
+
+            ExecutionInbox::<Test>::insert(
+                (
+                    domain_id,
+                    future_receipt.domain_block_number,
+                    future_receipt.consensus_block_number,
+                ),
+                future_receipt
+                    .inboxed_bundles
+                    .clone()
+                    .into_iter()
+                    .map(|b| BundleDigest {
+                        header_hash: H256::random(),
+                        extrinsics_root: b.extrinsics_root,
+                        size: 0,
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &future_receipt),
+                ReceiptType::Rejected(RejectedReceiptType::InFuture)
+            );
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &future_receipt),
+                Error::InFutureReceipt
             );
         });
     }

@@ -472,6 +472,10 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
     pub fn estimated_weight(&self) -> Weight {
         self.sealed_header.header.estimated_bundle_weight
     }
+
+    pub fn slot_number(&self) -> u64 {
+        self.sealed_header.header.proof_of_election.slot_number
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -713,6 +717,10 @@ pub struct ProofOfElection<CHash> {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
+    /// TODO: this field is only used in the bundle equivocation FP which is removed,
+    /// also this field is problematic see https://github.com/subspace/subspace/issues/2737
+    /// so remove this field before next network
+    ///
     /// Consensus block hash at which proof of election was derived.
     pub consensus_block_hash: CHash,
 }
@@ -1132,6 +1140,15 @@ impl<Hash> InboxedBundle<Hash> {
 
     pub fn is_invalid(&self) -> bool {
         matches!(self.bundle, BundleValidity::Invalid(_))
+    }
+
+    pub fn invalid_extrinsic_index(&self) -> Option<u32> {
+        match &self.bundle {
+            BundleValidity::Invalid(invalid_bundle_type) => {
+                Some(invalid_bundle_type.extrinsic_index())
+            }
+            BundleValidity::Valid(_) => None,
+        }
     }
 
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
