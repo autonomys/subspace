@@ -306,6 +306,8 @@ where
     // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
     client.clear_block_gap();
 
+    debug!(info = ?client.info(), "Fast sync finished successfully");
+
     Ok(())
 }
 
