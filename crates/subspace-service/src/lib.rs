@@ -722,12 +722,11 @@ where
         mut telemetry,
     } = other;
 
-    // TODO: Fast sync is not actually removed during fast sync right now, so it needs to be cleared
-    //  on every restart
+    // TODO: This will not be needed once we clear block gap correctly after sync is done
     if config.sync == ChainSyncMode::Snap {
-        let finalized_hash_existed = client.info().finalized_hash != client.info().genesis_hash;
-        if finalized_hash_existed {
-            debug!(client_info=?client.info(), "Clear block gap after fast-sync.");
+        let info = client.info();
+        if info.best_hash != info.genesis_hash {
+            debug!(?info, "Clear block gap after fast-sync");
             client.clear_block_gap();
         }
     }
