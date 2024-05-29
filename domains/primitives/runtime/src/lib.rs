@@ -36,7 +36,9 @@ use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::Weight;
-use subspace_runtime_primitives::SHANNON;
+use subspace_runtime_primitives::{
+    BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
+};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -65,6 +67,11 @@ pub const SLOT_DURATION: u64 = 1000;
 
 /// The EVM chain Id type
 pub type EVMChainId = u64;
+
+/// The maximum domain block weight.
+pub fn maximum_domain_block_weight() -> Weight {
+    NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC
+}
 
 /// Maximum block length for mandatory dispatch.
 pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
@@ -99,17 +106,57 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 /// Maximum total block weight.
 pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(u64::MAX, u64::MAX);
 
+/// Calculates the max bundle weight
+// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
+// about the formula
+pub fn calculate_max_bundle_weight(
+    max_domain_block_weight: Weight,
+    consensus_slot_probability: (u64, u64),
+    bundle_slot_probability: (u64, u64),
+) -> Option<(u64, Weight)> {
+    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
+    // This represents: bundle_slot_probability/SLOT_PROBABILITY
+    let expected_bundles_per_block = bundle_slot_probability
+        .0
+        .checked_mul(consensus_slot_probability.1)?
+        .checked_div(
+            bundle_slot_probability
+                .1
+                .checked_mul(consensus_slot_probability.0)?,
+        )?;
+
+    let max_bundle_weight = max_domain_block_weight.checked_div(expected_bundles_per_block)?;
+    Some((expected_bundles_per_block, max_bundle_weight))
+}
+
+/// Calculates the maximum extrinsic weight for domains.
+/// We take bundle slot probability to be always at the maximum i.e 1 such that
+/// operator can produce bundle in each slot
+fn maximum_domain_extrinsic_weight() -> Option<Weight> {
+    let (_, max_bundle_weight) =
+        calculate_max_bundle_weight(maximum_domain_block_weight(), SLOT_PROBABILITY, (1, 1))?;
+    Some(max_bundle_weight)
+}
+
 pub fn block_weights() -> BlockWeights {
+    let max_extrinsic_weight =
+        maximum_domain_extrinsic_weight().expect("Maximum extrinsic weight must always be valid");
     BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
         .for_class(DispatchClass::all(), |weights| {
             weights.base_extrinsic = ExtrinsicBaseWeight::get();
         })
         .for_class(DispatchClass::Normal, |weights| {
+            // maximum weight of each transaction would be the maximum weight of
+            // single bundle
+            weights.max_extrinsic = Some(max_extrinsic_weight);
             // explicitly set max_total weight for normal dispatches to maximum
             weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
         })
         .for_class(DispatchClass::Operational, |weights| {
+            // maximum weight of each transaction would be the maximum weight of
+            // single bundle
+            weights.max_extrinsic = Some(max_extrinsic_weight);
             // explicitly set max_total weight for operational dispatches to maximum
             weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
         })

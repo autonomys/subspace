@@ -25,8 +25,9 @@ use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    derive_domain_block_hash, DomainBundleLimit, DomainId, DomainsDigestItem,
-    DomainsTransfersTracker, OnDomainInstantiated, OperatorAllowList, RuntimeId, RuntimeType,
+    calculate_max_bundle_weight_and_size, derive_domain_block_hash, DomainBundleLimit, DomainId,
+    DomainsDigestItem, DomainsTransfersTracker, OnDomainInstantiated, OperatorAllowList, RuntimeId,
+    RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -314,34 +315,6 @@ pub(crate) fn do_update_domain_allow_list<T: Config>(
 
         domain_obj.domain_config.operator_allow_list = updated_operator_allow_list;
         Ok(())
-    })
-}
-
-// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
-// about the formula
-pub(crate) fn calculate_max_bundle_weight_and_size(
-    max_domain_block_size: u32,
-    max_domain_block_weight: Weight,
-    consensus_slot_probability: (u64, u64),
-    bundle_slot_probability: (u64, u64),
-) -> Option<DomainBundleLimit> {
-    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
-    // This represents: bundle_slot_probability/SLOT_PROBABILITY
-    let expected_bundles_per_block = bundle_slot_probability
-        .0
-        .checked_mul(consensus_slot_probability.1)?
-        .checked_div(
-            bundle_slot_probability
-                .1
-                .checked_mul(consensus_slot_probability.0)?,
-        )?;
-
-    let max_bundle_weight = max_domain_block_weight.checked_div(expected_bundles_per_block)?;
-    let max_bundle_size = (max_domain_block_size as u64).checked_div(expected_bundles_per_block)?;
-
-    Some(DomainBundleLimit {
-        max_bundle_size: max_bundle_size as u32,
-        max_bundle_weight,
     })
 }
 

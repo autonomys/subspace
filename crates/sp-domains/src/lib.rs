@@ -41,7 +41,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::MultiAccountId;
+use domain_runtime_primitives::{calculate_max_bundle_weight, MultiAccountId};
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
@@ -1030,6 +1030,28 @@ pub struct DomainBundleLimit {
     pub max_bundle_size: u32,
     /// The max bundle weight for the domain.
     pub max_bundle_weight: Weight,
+}
+
+/// Calculates the max bundle weight and size
+// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
+// about the formula
+pub fn calculate_max_bundle_weight_and_size(
+    max_domain_block_size: u32,
+    max_domain_block_weight: Weight,
+    consensus_slot_probability: (u64, u64),
+    bundle_slot_probability: (u64, u64),
+) -> Option<DomainBundleLimit> {
+    let (expected_bundles_per_block, max_bundle_weight) = calculate_max_bundle_weight(
+        max_domain_block_weight,
+        consensus_slot_probability,
+        bundle_slot_probability,
+    )?;
+    let max_bundle_size = (max_domain_block_size as u64).checked_div(expected_bundles_per_block)?;
+
+    Some(DomainBundleLimit {
+        max_bundle_size: max_bundle_size as u32,
+        max_bundle_weight,
+    })
 }
 
 /// Checks if the signer Id hash is within the tx range
