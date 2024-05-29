@@ -456,13 +456,9 @@ where
             // think it is valid
             BundleValidity::Valid(_) => true,
             BundleValidity::Invalid(invalid_type) => {
-                // The proof trying to prove there is an invalid extrinsic that the `bad_receipt_bundle` think is valid,
-                // so the proof should point to an extrinsic that in front of the `bad_receipt_bundle`'s
-                invalid_bundle_type.extrinsic_index() < invalid_type.extrinsic_index() ||
-                    // The proof trying to prove the invalid extrinsic can not pass a check that the `bad_receipt_bundle` think it can,
-                    // so the proof should point to the same extrinsic and a check that perform before the `bad_receipt_bundle`'s
-                    (invalid_bundle_type.extrinsic_index() == invalid_type.extrinsic_index()
-                        && invalid_bundle_type.checking_order() < invalid_type.checking_order())
+                // The proof trying to prove there is a check failed while the `bad_receipt` think is pass,
+                // so the proof should point to a check that is performed before the `bad_receipt`'s
+                invalid_bundle_type.checking_order() < invalid_type.checking_order()
             }
         }
     };

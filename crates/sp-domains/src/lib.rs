@@ -1077,20 +1077,10 @@ pub enum InvalidBundleType {
 
 impl InvalidBundleType {
     // Return the checking order of the invalid type
-    pub fn checking_order(&self) -> u8 {
-        // Use explicit number as the order instead of the enum discriminant
-        // to avoid changing the order accidentally
-        match self {
-            Self::UndecodableTx(_) => 1,
-            Self::OutOfRangeTx(_) => 2,
-            Self::InherentExtrinsic(_) => 3,
-            Self::IllegalTx(_) => 5,
-            Self::InvalidBundleWeight => 6,
-        }
-    }
-
-    pub fn extrinsic_index(&self) -> u32 {
-        match self {
+    pub fn checking_order(&self) -> u64 {
+        // A bundle can contains multiple invalid extrinsics thus consider the first invalid extrinsic
+        // as the invalid type
+        let extrinsic_order = match self {
             Self::UndecodableTx(i) => *i,
             Self::OutOfRangeTx(i) => *i,
             Self::IllegalTx(i) => *i,
@@ -1100,6 +1090,40 @@ impl InvalidBundleType {
             // in the bundle returning `u32::MAX` indicate `InvalidBundleWeight` is checked after
             // all the extrinsic in the bundle is checked.
             Self::InvalidBundleWeight => u32::MAX,
+        };
+
+        // The extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
+        // can be `OutOfRangeTx` and `IllegalTx` at the same time) thus use the following checking order
+        // and consider the first check as the invalid type
+        //
+        // NOTE: Use explicit number as the order instead of the enum discriminant
+        // to avoid changing the order accidentally
+        let rule_order = match self {
+            Self::UndecodableTx(_) => 1,
+            Self::OutOfRangeTx(_) => 2,
+            Self::InherentExtrinsic(_) => 3,
+            Self::IllegalTx(_) => 5,
+            Self::InvalidBundleWeight => 6,
+        };
+
+        // The checking order is a combination of the `extrinsic_order` and `rule_order`
+        // it presents as an `u64` where the first 32 bits is the `extrinsic_order` and
+        // last 32 bits is the `rule_order` meaning the `extrinsic_order` is checked first
+        // then the `rule_order`.
+        ((extrinsic_order as u64) << 32) | (rule_order as u64)
+    }
+
+    // Return the index of the extrinsic that the invalid type points to
+    //
+    // NOTE: `InvalidBundleWeight` will return `None` since it is targetting the whole bundle not a
+    // specific single extrinsic
+    pub fn extrinsic_index(&self) -> Option<u32> {
+        match self {
+            Self::UndecodableTx(i) => Some(*i),
+            Self::OutOfRangeTx(i) => Some(*i),
+            Self::IllegalTx(i) => Some(*i),
+            Self::InherentExtrinsic(i) => Some(*i),
+            Self::InvalidBundleWeight => None,
         }
     }
 }
@@ -1144,9 +1168,7 @@ impl<Hash> InboxedBundle<Hash> {
 
     pub fn invalid_extrinsic_index(&self) -> Option<u32> {
         match &self.bundle {
-            BundleValidity::Invalid(invalid_bundle_type) => {
-                Some(invalid_bundle_type.extrinsic_index())
-            }
+            BundleValidity::Invalid(invalid_bundle_type) => invalid_bundle_type.extrinsic_index(),
             BundleValidity::Valid(_) => None,
         }
     }
