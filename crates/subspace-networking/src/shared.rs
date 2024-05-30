@@ -103,7 +103,8 @@ pub(crate) enum Command {
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
     Bootstrap {
-        result_sender: mpsc::UnboundedSender<()>,
+        // No result sender means background async bootstrapping
+        result_sender: Option<mpsc::UnboundedSender<()>>,
     },
 }
 

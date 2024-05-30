@@ -543,7 +543,9 @@ impl Node {
         self.shared
             .command_sender
             .clone()
-            .send(Command::Bootstrap { result_sender })
+            .send(Command::Bootstrap {
+                result_sender: Some(result_sender),
+            })
             .await?;
 
         for step in 0.. {

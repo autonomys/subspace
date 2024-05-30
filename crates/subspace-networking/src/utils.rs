@@ -3,8 +3,6 @@
 pub mod multihash;
 pub mod piece_provider;
 pub(crate) mod rate_limiter;
-#[cfg(test)]
-mod tests;
 pub(crate) mod unique_record_binary_heap;
 
 use event_listener_primitives::Bag;
@@ -14,8 +12,6 @@ use libp2p::{Multiaddr, PeerId};
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use std::future::Future;
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -92,59 +88,6 @@ pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
         Some(Protocol::Ip6(ip)) => ip.is_global(),
         Some(Protocol::Dns(_)) | Some(Protocol::Dns4(_)) | Some(Protocol::Dns6(_)) => true,
         _ => false,
-    }
-}
-
-// Generic collection batching helper.
-#[derive(Clone)]
-pub(crate) struct CollectionBatcher<T: Clone> {
-    last_batch_number: usize,
-    batch_size: NonZeroUsize,
-    _marker: PhantomData<T>,
-}
-
-impl<T: Clone> CollectionBatcher<T> {
-    /// Constructor
-    pub fn new(batch_size: NonZeroUsize) -> Self {
-        Self {
-            batch_size,
-            last_batch_number: 0,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Sets the last batch number to zero.
-    pub fn reset(&mut self) {
-        self.last_batch_number = 0;
-    }
-
-    /// Extract the next batch from the collection
-    pub fn next_batch(&mut self, collection: Vec<T>) -> Vec<T> {
-        // Collection is empty or less than batch size.
-        if collection.is_empty() || collection.len() < self.batch_size.get() {
-            return collection;
-        }
-
-        let skip_number = {
-            let skip_number = self.last_batch_number * self.batch_size.get();
-
-            // Correction when skip_number exceeds the collection length.
-            if skip_number >= collection.len() {
-                skip_number % collection.len()
-            } else {
-                skip_number
-            }
-        };
-
-        self.last_batch_number += 1;
-
-        collection
-            .iter()
-            .cloned()
-            .cycle()
-            .skip(skip_number)
-            .take(self.batch_size.get())
-            .collect::<Vec<_>>()
     }
 }
 

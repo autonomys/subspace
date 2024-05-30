@@ -28,6 +28,7 @@ use libp2p::kad::{
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -107,7 +108,7 @@ where
     /// Defines an interval between periodical tasks.
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
-    networking_parameters_registry: Box<dyn KnownPeersRegistry>,
+    known_peers_registry: Box<dyn KnownPeersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
     /// Temporarily banned peers.
@@ -153,7 +154,7 @@ where
     pub(crate) swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     pub(crate) shared_weak: Weak<Shared>,
     pub(crate) next_random_query_interval: Duration,
-    pub(crate) networking_parameters_registry: Box<dyn KnownPeersRegistry>,
+    pub(crate) known_peers_registry: Box<dyn KnownPeersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) libp2p_metrics: Option<Metrics>,
@@ -174,7 +175,7 @@ where
             swarm,
             shared_weak,
             next_random_query_interval,
-            mut networking_parameters_registry,
+            mut known_peers_registry,
             reserved_peers,
             temporary_bans,
             libp2p_metrics,
@@ -186,7 +187,7 @@ where
         // Setup the address removal events exchange between persistent params storage and Kademlia.
         let (removed_addresses_tx, removed_addresses_rx) = mpsc::unbounded();
         let mut address_removal_task_handler_id = None;
-        if let Some(handler_id) = networking_parameters_registry.on_unreachable_address({
+        if let Some(handler_id) = known_peers_registry.on_unreachable_address({
             Arc::new(move |event| {
                 if let Err(error) = removed_addresses_tx.unbounded_send(event.clone()) {
                     debug!(?error, ?event, "Cannot send PeerAddressRemovedEvent")
@@ -210,7 +211,7 @@ where
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             // We'll make the first dial right away and continue at the interval.
             periodical_tasks_interval: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
-            networking_parameters_registry,
+            known_peers_registry,
             reserved_peers,
             temporary_bans,
             libp2p_metrics,
@@ -270,7 +271,7 @@ where
                         break;
                     }
                 },
-                _ = self.networking_parameters_registry.run().fuse() => {
+                _ = self.known_peers_registry.run().fuse() => {
                     trace!("Network parameters registry runner exited.")
                 },
                 _ = &mut self.periodical_tasks_interval => {
@@ -291,6 +292,47 @@ where
 
     /// Bootstraps Kademlia network
     async fn bootstrap(&mut self) {
+        // Add bootstrap nodes first to make sure there is space for them in k-buckets
+        for (peer_id, address) in strip_peer_id(self.bootstrap_addresses.clone()) {
+            self.swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, address);
+        }
+
+        let known_peers = self.known_peers_registry.all_known_peers().await;
+
+        if !known_peers.is_empty() {
+            for (peer_id, addresses) in known_peers {
+                for address in addresses.clone() {
+                    let address = match address.with_p2p(peer_id) {
+                        Ok(address) => address,
+                        Err(address) => {
+                            warn!(%peer_id, %address, "Failed to add peer ID to known peer address");
+                            break;
+                        }
+                    };
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, address);
+                }
+
+                if let Err(error) = self
+                    .swarm
+                    .dial(DialOpts::peer_id(peer_id).addresses(addresses).build())
+                {
+                    warn!(%peer_id, %error, "Failed to dial peer during bootstrapping");
+                }
+            }
+
+            // Do bootstrap asynchronously
+            self.handle_command(Command::Bootstrap {
+                result_sender: None,
+            });
+            return;
+        }
+
         let bootstrap_command_state = self.bootstrap_command_state.clone();
         let mut bootstrap_command_state = bootstrap_command_state.lock().await;
         let bootstrap_command_receiver = match &mut *bootstrap_command_state {
@@ -300,7 +342,7 @@ where
                 let (bootstrap_command_sender, bootstrap_command_receiver) = mpsc::unbounded();
 
                 self.handle_command(Command::Bootstrap {
-                    result_sender: bootstrap_command_sender,
+                    result_sender: Some(bootstrap_command_sender),
                 });
 
                 *bootstrap_command_state =
@@ -447,7 +489,7 @@ where
                 if let ConnectedPoint::Dialer { address, .. } = &endpoint {
                     // filter non-global addresses when non-globals addresses are disabled
                     if self.allow_non_global_addresses_in_dht || is_global_address_or_dns(address) {
-                        self.networking_parameters_registry
+                        self.known_peers_registry
                             .add_known_peer(peer_id, vec![address.clone()])
                             .await;
                     }
@@ -568,7 +610,7 @@ where
                         for (addr, _) in addresses {
                             trace!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
                             if let Some(peer_id) = peer_id {
-                                self.networking_parameters_registry
+                                self.known_peers_registry
                                     .remove_known_peer_addresses(peer_id, vec![addr.clone()])
                                     .await;
                             }
@@ -686,7 +728,7 @@ where
                 // Forget about this peer until they upgrade
                 let _ = self.swarm.disconnect_peer_id(peer_id);
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                self.networking_parameters_registry
+                self.known_peers_registry
                     .remove_all_known_peer_addresses(peer_id);
 
                 return;
@@ -1406,18 +1448,16 @@ where
             Command::Bootstrap { result_sender } => {
                 let kademlia = &mut self.swarm.behaviour_mut().kademlia;
 
-                for (peer_id, address) in strip_peer_id(self.bootstrap_addresses.clone()) {
-                    kademlia.add_address(&peer_id, address);
-                }
-
                 match kademlia.bootstrap() {
                     Ok(query_id) => {
-                        self.query_id_receivers.insert(
-                            query_id,
-                            QueryResultSender::Bootstrap {
-                                sender: result_sender,
-                            },
-                        );
+                        if let Some(result_sender) = result_sender {
+                            self.query_id_receivers.insert(
+                                query_id,
+                                QueryResultSender::Bootstrap {
+                                    sender: result_sender,
+                                },
+                            );
+                        }
                     }
                     Err(err) => {
                         debug!(?err, "Bootstrap error.");
@@ -1435,7 +1475,7 @@ where
 
         self.swarm.behaviour_mut().block_list.block_peer(peer_id);
         self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-        self.networking_parameters_registry
+        self.known_peers_registry
             .remove_all_known_peer_addresses(peer_id);
     }
 

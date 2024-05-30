@@ -207,7 +207,7 @@ pub struct Config<LocalRecordProvider> {
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
     /// A reference to the `NetworkingParametersRegistry` implementation.
-    pub networking_parameters_registry: Box<dyn KnownPeersRegistry>,
+    pub known_peers_registry: Box<dyn KnownPeersRegistry>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
@@ -342,7 +342,7 @@ where
             local_records_provider,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            networking_parameters_registry: StubNetworkingParametersManager.boxed(),
+            known_peers_registry: StubNetworkingParametersManager.boxed(),
             request_response_protocols: Vec::new(),
             yamux_config,
             reserved_peers: Vec::new(),
@@ -406,7 +406,7 @@ where
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
-        networking_parameters_registry,
+        known_peers_registry,
         request_response_protocols,
         reserved_peers,
         max_established_incoming_connections,
@@ -560,7 +560,7 @@ where
         swarm,
         shared_weak,
         next_random_query_interval: initial_random_query_interval,
-        networking_parameters_registry,
+        known_peers_registry,
         reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
         libp2p_metrics,
