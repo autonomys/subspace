@@ -273,14 +273,12 @@ pub struct SubspaceConfiguration {
     pub sync: ChainSyncMode,
 }
 
-/// Syncing mode. All sync types eventually run Full sync mode as the last step.
+/// Syncing mode.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChainSyncMode {
-    /// Full sync. Download and verify all blocks.
+    /// Full sync. Download and verify all blocks from DSN.
     Full,
-    /// Download blocks from DSN.
-    Dsn,
-    /// Download latest state and related blocks only. Can run DSN-sync afterwards.
+    /// Download latest state and related blocks only. Run full DSN-sync afterwards.
     Snap,
 }
 
@@ -290,7 +288,6 @@ impl FromStr for ChainSyncMode {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
             "full" => Ok(Self::Full),
-            "dsn" => Ok(Self::Dsn),
             "snap" => Ok(Self::Snap),
             _ => Err("Unsupported sync type".to_string()),
         }
@@ -301,7 +298,6 @@ impl fmt::Display for ChainSyncMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Full => f.write_str("full"),
-            Self::Dsn => f.write_str("dsn"),
             Self::Snap => f.write_str("snap"),
         }
     }
@@ -310,12 +306,6 @@ impl fmt::Display for ChainSyncMode {
 impl Default for ChainSyncMode {
     fn default() -> Self {
         Self::Full
-    }
-}
-
-impl ChainSyncMode {
-    pub fn is_full(&self) -> bool {
-        matches!(self, Self::Full)
     }
 }
 

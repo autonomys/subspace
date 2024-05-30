@@ -903,67 +903,65 @@ where
 
     network_wrapper.set(network_service.clone());
 
-    if !config.sync.is_full() {
-        let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
-            Arc::new(PieceProvider::new(
+    let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
+        Arc::new(PieceProvider::new(
+            node.clone(),
+            Some(SegmentCommitmentPieceValidator::new(
                 node.clone(),
-                Some(SegmentCommitmentPieceValidator::new(
-                    node.clone(),
-                    subspace_link.kzg().clone(),
-                    segment_headers_store.clone(),
-                )),
-            ))
-        });
+                subspace_link.kzg().clone(),
+                segment_headers_store.clone(),
+            )),
+        ))
+    });
 
-        if !config.base.network.force_synced {
-            // Start with DSN sync in this case
-            pause_sync.store(true, Ordering::Release);
-        }
-
-        let fork_id = config.base.chain_spec.fork_id().map(String::from);
-
-        let snap_sync_task = snap_sync(
-            segment_headers_store.clone(),
-            node.clone(),
-            fork_id,
-            Arc::clone(&client),
-            import_queue_service1,
-            pause_sync.clone(),
-            dsn_sync_piece_getter.clone(),
-            Arc::clone(&network_service),
-            sync_service.clone(),
-        );
-
-        let (observer, worker) = sync_from_dsn::create_observer_and_worker(
-            segment_headers_store.clone(),
-            Arc::clone(&network_service),
-            node.clone(),
-            Arc::clone(&client),
-            import_queue_service2,
-            sync_target_block_number,
-            pause_sync,
-            dsn_sync_piece_getter,
-        );
-        task_manager
-            .spawn_handle()
-            .spawn("observer", Some("sync-from-dsn"), observer);
-        task_manager
-            .spawn_essential_handle()
-            .spawn_essential_blocking(
-                "worker",
-                Some("sync-from-dsn"),
-                Box::pin(async move {
-                    // Run snap-sync before DSN-sync.
-                    if config.sync == ChainSyncMode::Snap {
-                        snap_sync_task.await;
-                    }
-
-                    if let Err(error) = worker.await {
-                        error!(%error, "Sync from DSN exited with an error");
-                    }
-                }),
-            );
+    if !config.base.network.force_synced {
+        // Start with DSN sync in this case
+        pause_sync.store(true, Ordering::Release);
     }
+
+    let fork_id = config.base.chain_spec.fork_id().map(String::from);
+
+    let snap_sync_task = snap_sync(
+        segment_headers_store.clone(),
+        node.clone(),
+        fork_id,
+        Arc::clone(&client),
+        import_queue_service1,
+        pause_sync.clone(),
+        dsn_sync_piece_getter.clone(),
+        Arc::clone(&network_service),
+        sync_service.clone(),
+    );
+
+    let (observer, worker) = sync_from_dsn::create_observer_and_worker(
+        segment_headers_store.clone(),
+        Arc::clone(&network_service),
+        node.clone(),
+        Arc::clone(&client),
+        import_queue_service2,
+        sync_target_block_number,
+        pause_sync,
+        dsn_sync_piece_getter,
+    );
+    task_manager
+        .spawn_handle()
+        .spawn("observer", Some("sync-from-dsn"), observer);
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "worker",
+            Some("sync-from-dsn"),
+            Box::pin(async move {
+                // Run snap-sync before DSN-sync.
+                if config.sync == ChainSyncMode::Snap {
+                    snap_sync_task.await;
+                }
+
+                if let Err(error) = worker.await {
+                    error!(%error, "Sync from DSN exited with an error");
+                }
+            }),
+        );
 
     if let Some(registry) = config.base.prometheus_registry() {
         match NodeMetrics::new(
