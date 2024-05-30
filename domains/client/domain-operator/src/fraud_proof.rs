@@ -552,8 +552,10 @@ where
             }
         };
 
-        let extrinsic_index = invalid_type.extrinsic_index();
-        let proof_data = if bundle.extrinsics.len() as u32 <= extrinsic_index {
+        let proof_data = if invalid_type
+            .extrinsic_index()
+            .map_or(false, |idx| bundle.extrinsics.len() as u32 <= idx)
+        {
             // The bad receipt claims a non-exist extrinsic is invalid, in this case, generate a
             // `bundle_with_proof` as proof data is enough
             let bundle_with_proof = OpaqueBundleWithProof::generate(
@@ -661,7 +663,7 @@ where
                         execution_proof,
                     }
                 }
-                InvalidBundleType::OutOfRangeTx(_) => {
+                InvalidBundleType::OutOfRangeTx(_) | InvalidBundleType::InvalidBundleWeight => {
                     let bundle_with_proof = OpaqueBundleWithProof::generate(
                         &self.storage_key_provider,
                         self.consensus_client.as_ref(),
@@ -673,7 +675,8 @@ where
 
                     InvalidBundlesProofData::Bundle(bundle_with_proof)
                 }
-                InvalidBundleType::UndecodableTx(_) | InvalidBundleType::InherentExtrinsic(_) => {
+                InvalidBundleType::UndecodableTx(extrinsic_index)
+                | InvalidBundleType::InherentExtrinsic(extrinsic_index) => {
                     let encoded_extrinsics: Vec<_> =
                         bundle.extrinsics.iter().map(Encode::encode).collect();
 

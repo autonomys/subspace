@@ -644,28 +644,19 @@ where
             BundleValidity::Invalid(external_invalid_type),
         ) => {
             match local_invalid_type
-                .extrinsic_index()
-                .cmp(&external_invalid_type.extrinsic_index())
+                .checking_order()
+                .cmp(&external_invalid_type.checking_order())
             {
-                // A bundle can contains multiple invalid extrinsics thus consider the first invalid extrinsic
-                // as the mismatch.
+                // The `external_invalid_type` claim a prior check is pass while the `local_invalid_type` think
+                // it is failed, so generate a fraud proof to prove that check is truely invalid
                 Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
+                // The `external_invalid_type` claim a prior check is failed while the `local_invalid_type` think
+                // it is pass, so generate a fraud proof to prove that check is falsely invalid
                 Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
-                // If both the `local_invalid_type` and `external_invalid_type` point to the same extrinsic,
-                // the extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
-                // can be `OutOfRangeTx` and `IllegalTx` at the same time) thus use the checking order and
-                // consider the first check as the mismatch.
-                Ordering::Equal => match local_invalid_type
-                    .checking_order()
-                    .cmp(&external_invalid_type.checking_order())
-                {
-                    Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
-                    Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
-                    Ordering::Equal => unreachable!(
-                        "bundle validity must be different as the local/external bundle are checked to be different \
-                        and they have the same `extrinsic_root`"
-                    ),
-                },
+                Ordering::Equal => unreachable!(
+                    "bundle validity must be different as the local/external bundle are checked to be different \
+                    and they have the same `extrinsic_root`"
+                ),
             }
         }
         (BundleValidity::Valid(_), BundleValidity::Valid(_)) => BundleMismatchType::Valid,
