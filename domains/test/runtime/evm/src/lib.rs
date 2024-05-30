@@ -17,8 +17,8 @@ use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, ERR_BALANCE_OVERFLOW, ERR_NONCE_OVERFLOW,
-    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, maximum_domain_block_weight, ERR_BALANCE_OVERFLOW,
+    ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
@@ -571,7 +571,7 @@ pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PE
 parameter_types! {
     /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
     pub BlockGasLimit: U256 = U256::from(
-        MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
+        maximum_domain_block_weight().ref_time() / WEIGHT_PER_GAS
     );
     pub PrecompilesValue: Precompiles = Precompiles::default();
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);

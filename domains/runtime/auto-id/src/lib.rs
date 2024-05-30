@@ -16,7 +16,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
-    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
+    EXISTENTIAL_DEPOSIT,
 };
 use domain_runtime_primitives::{
     AccountId, Address, CheckExtrinsicsValidityError, DecodeExtrinsicError, Signature,

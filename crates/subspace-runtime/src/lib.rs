@@ -98,9 +98,9 @@ use subspace_core_primitives::{
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO,
-    SHANNON, SLOT_PROBABILITY, SSC,
+    maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
+    Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC, MAX_BLOCK_LENGTH,
+    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -196,16 +196,13 @@ const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
 const MIN_SECTOR_LIFETIME: HistorySize =
     HistorySize::new(NonZeroU64::new(4).expect("Not zero; qed"));
 
-/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
-const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 250;
     /// We allow for 2 seconds of compute with a 6 second average block time.
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
-    pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockLength: BlockLength = maximum_normal_block_length();
 }
 
 pub type SS58Prefix = ConstU16<2254>;

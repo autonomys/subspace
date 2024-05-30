@@ -25,7 +25,7 @@ use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 pub use fp_account::AccountId20;
-use frame_support::dispatch::{DispatchClass, PerDispatchClass};
+use frame_support::dispatch::DispatchClass;
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
@@ -35,10 +35,9 @@ use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
+use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
-use subspace_runtime_primitives::{
-    BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
-};
+use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON, SLOT_PROBABILITY};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -68,16 +67,19 @@ pub const SLOT_DURATION: u64 = 1000;
 /// The EVM chain Id type
 pub type EVMChainId = u64;
 
-/// The maximum domain block weight.
+/// Dispatch ratio for domains
+pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(65);
+
+/// The maximum domain block weight with 3.25 MiB as proof size
+/// Consensus allows 3.75 MiB but Fraud proof can carry extra size along with proof size
+/// So we set the proof size to 3.25 MiB
 pub fn maximum_domain_block_weight() -> Weight {
-    NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC
+    let consensus_maximum_normal_block_length =
+        *maximum_block_length().max.get(DispatchClass::Normal) as u64;
+    let weight =
+        NORMAL_DISPATCH_RATIO * Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), 0);
+    weight.set_proof_size(consensus_maximum_normal_block_length)
 }
-
-/// Maximum block length for mandatory dispatch.
-pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
-/// Maximum block length for operational and normal dispatches.
-pub const MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH: u32 = u32::MAX;
 
 /// Custom error when nonce overflow occurs.
 pub const ERR_NONCE_OVERFLOW: u8 = 100;
@@ -85,15 +87,9 @@ pub const ERR_NONCE_OVERFLOW: u8 = 100;
 pub const ERR_BALANCE_OVERFLOW: u8 = 200;
 
 /// Maximum block length for all dispatches.
+/// This is set to 3.75 MiB since consensus chain supports on 3.75 MiB for normal
 pub fn maximum_block_length() -> BlockLength {
-    BlockLength {
-        max: PerDispatchClass::new(|class| match class {
-            DispatchClass::Normal | DispatchClass::Operational => {
-                MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH
-            }
-            DispatchClass::Mandatory => MAXIMUM_MANDATORY_BLOCK_LENGTH,
-        }),
-    }
+    BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
 }
 
 /// The existential deposit. Same with the one on primary chain.
@@ -102,9 +98,6 @@ pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
 /// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
 /// used to limit the maximal weight of a single extrinsic.
 const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
-
-/// Maximum total block weight.
-pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(u64::MAX, u64::MAX);
 
 /// Calculates the max bundle weight
 // See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
@@ -125,13 +118,20 @@ pub fn calculate_max_bundle_weight(
                 .checked_mul(consensus_slot_probability.0)?,
         )?;
 
+    // set the proof size for bundle to be proof size of max domain weight
+    // so that each domain extrinsic can use the full proof size if required
+    let max_proof_size = max_domain_block_weight.proof_size();
     let max_bundle_weight = max_domain_block_weight.checked_div(expected_bundles_per_block)?;
-    Some((expected_bundles_per_block, max_bundle_weight))
+    Some((
+        expected_bundles_per_block,
+        max_bundle_weight.set_proof_size(max_proof_size),
+    ))
 }
 
 /// Calculates the maximum extrinsic weight for domains.
 /// We take bundle slot probability to be always at the maximum i.e 1 such that
 /// operator can produce bundle in each slot
+/// we also set the maximum extrinsic POV to be 3.75 MiB which is what Consensus allows
 fn maximum_domain_extrinsic_weight() -> Option<Weight> {
     let (_, max_bundle_weight) =
         calculate_max_bundle_weight(maximum_domain_block_weight(), SLOT_PROBABILITY, (1, 1))?;
@@ -139,26 +139,19 @@ fn maximum_domain_extrinsic_weight() -> Option<Weight> {
 }
 
 pub fn block_weights() -> BlockWeights {
+    // allow u64::MAX for ref_time and proof size for total domain weight
+    let maximum_block_weight = Weight::from_parts(u64::MAX, u64::MAX);
     let max_extrinsic_weight =
         maximum_domain_extrinsic_weight().expect("Maximum extrinsic weight must always be valid");
     BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
         .for_class(DispatchClass::all(), |weights| {
             weights.base_extrinsic = ExtrinsicBaseWeight::get();
-        })
-        .for_class(DispatchClass::Normal, |weights| {
             // maximum weight of each transaction would be the maximum weight of
             // single bundle
             weights.max_extrinsic = Some(max_extrinsic_weight);
             // explicitly set max_total weight for normal dispatches to maximum
-            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
-        })
-        .for_class(DispatchClass::Operational, |weights| {
-            // maximum weight of each transaction would be the maximum weight of
-            // single bundle
-            weights.max_extrinsic = Some(max_extrinsic_weight);
-            // explicitly set max_total weight for operational dispatches to maximum
-            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+            weights.max_total = Some(maximum_block_weight);
         })
         .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
         .build_or_panic()
