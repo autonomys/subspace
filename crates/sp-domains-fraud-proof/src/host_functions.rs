@@ -30,6 +30,7 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, Numb
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::{OverlayedChanges, StateMachine, TrieBackend, TrieBackendBuilder};
 use sp_trie::{MemoryDB, StorageProof};
+use sp_weights::Weight;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -108,6 +109,12 @@ pub trait FraudProofHostFunctions: Send + Sync {
         domain_runtime_code: Vec<u8>,
         call: StatelessDomainRuntimeCall,
     ) -> Option<bool>;
+
+    fn bundle_weight(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<Weight>;
 }
 
 sp_externalities::decl_extension! {
@@ -825,6 +832,27 @@ where
                 Ok(Ok(_))
             )),
         }
+    }
+
+    fn bundle_weight(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<Weight> {
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.executor.clone(),
+            domain_runtime_code.into(),
+        );
+        let mut estimated_bundle_weight = Weight::default();
+        for opaque_extrinsic in bundle_body {
+            let encoded_extrinsic = opaque_extrinsic.encode();
+            let extrinsic =
+                <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                    .ok()?;
+            let tx_weight = domain_stateless_runtime.extrinsic_weight(&extrinsic).ok()?;
+            estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
+        }
+        Some(estimated_bundle_weight)
     }
 }
 

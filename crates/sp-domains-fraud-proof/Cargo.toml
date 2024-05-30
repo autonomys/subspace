@@ -34,6 +34,7 @@ sp-state-machine = { optional = true, git = "https://github.com/subspace/polkado
 sp-subspace-mmr = { version = "0.1.0", default-features = false, path = "../sp-subspace-mmr" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
 sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
+sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "9b8cdb87de8f1c0e6b48c468b6196d1d99eeabee" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 trie-db = { version = "0.28.0", default-features = false }
@@ -93,6 +94,7 @@ std = [
     "sp-state-machine/std",
     "sp-subspace-mmr/std",
     "sp-trie/std",
+    "sp-weights/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
     "trie-db/std",

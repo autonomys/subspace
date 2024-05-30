@@ -369,10 +369,10 @@ pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
                     permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                         sudo_account.clone(),
                     ]),
-                    genesis_domains: vec![
-                        auto_id_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account.clone())?,
-                        evm_chain_spec::get_genesis_domain(SpecId::Dev, sudo_account)?,
-                    ],
+                    genesis_domains: vec![evm_chain_spec::get_genesis_domain(
+                        SpecId::Dev,
+                        sudo_account,
+                    )?],
                 },
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,

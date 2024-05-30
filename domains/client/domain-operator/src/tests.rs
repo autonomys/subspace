@@ -34,8 +34,8 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
-    InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTransfersProof,
+    InvalidBlockFeesProof, InvalidBundlesProofData, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_messenger::messages::{CrossDomainMessage, FeeModel, InitiateChannelParams, Proof};
@@ -48,6 +48,7 @@ use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use sp_weights::Weight;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
@@ -1955,7 +1956,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_invalid_block_fees_proof_creation() {
+async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verification() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -2000,15 +2001,112 @@ async fn test_invalid_block_fees_proof_creation() {
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
     let (slot, target_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert_eq!(target_bundle.extrinsics.len(), 1);
+    let extrinsics: Vec<Vec<u8>> = target_bundle
+        .extrinsics
+        .clone()
+        .into_iter()
+        .map(|ext| ext.encode())
+        .collect();
+    let bundle_extrinsic_root =
+        BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+
+    // produce another bundle that marks the previous valid extrinsic as invalid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        // bad receipt marks a non-exist extrinsic as invalid
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::InherentExtrinsic(u32::MAX),
+            bundle_extrinsic_root,
+        )];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundlesProofData::Bundle(_) = proof.proof_data {
+                assert_eq!(fp.targeted_bad_receipt_hash(), bad_receipt_hash);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_block_fees_proof_creation() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.block_fees = Default::default();
+        receipt.block_fees.consensus_storage_fee = 12345;
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -2856,59 +2954,6 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     //     .unwrap();
     // produce_blocks!(ferdie, bob, 1).await.unwrap();
     // assert_eq!(head_receipt_number(), 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn duplicated_bundle_should_be_rejected() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    produce_blocks!(ferdie, alice, 1).await.unwrap();
-
-    let (slot, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let submit_bundle_tx: OpaqueExtrinsic =
-        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
-        )
-        .into();
-
-    // Wait for one block to ensure the bundle is stored onchain.
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-
-    // Bundle is rejected because it is duplicated.
-    match ferdie
-        .submit_transaction(submit_bundle_tx.clone())
-        .await
-        .unwrap_err()
-    {
-        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
-            assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
-        }
-        e => panic!("Unexpected error: {e}"),
-    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -4439,4 +4484,139 @@ async fn test_verify_mmr_proof_stateless() {
         assert_eq!(res, Some(expected_state_root));
         produce_blocks!(ferdie, alice, 1).await.unwrap();
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_equivocated_bundle_check() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run_with_finalization_depth(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+        // finalization depth
+        Some(10),
+    );
+
+    // Run Alice (an evm domain)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let bundle_to_tx = |opaque_bundle| -> OpaqueExtrinsic {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Get a bundle from the txn pool
+    let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let proof_of_election = opaque_bundle.sealed_header.header.proof_of_election.clone();
+
+    // Construct an equivocated bundle that with the same slot but different content
+    let submit_equivocated_bundle_tx = {
+        let mut equivocated_bundle = opaque_bundle.clone();
+        equivocated_bundle
+            .sealed_header
+            .header
+            .estimated_bundle_weight = Weight::from_all(123);
+        equivocated_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(equivocated_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        bundle_to_tx(equivocated_bundle)
+    };
+
+    // Submit equivocated bundle to tx pool will failed because the equivocated bundle has
+    // the same `provides` tag as the original bundle
+    match ferdie
+        .submit_transaction(submit_equivocated_bundle_tx.clone())
+        .await
+        .unwrap_err()
+    {
+        sc_transaction_pool::error::Error::Pool(TxPoolError::TooLowPriority { .. }) => {}
+        e => panic!("Unexpected error: {e}"),
+    }
+
+    // Produce consensus block with equivocated bundle which will fail to include in block,
+    // in production the whole block will be discard by the honest farmer
+    ferdie
+        .produce_block_with_extrinsics(vec![
+            bundle_to_tx(opaque_bundle.clone()),
+            submit_equivocated_bundle_tx,
+        ])
+        .await
+        .unwrap();
+    let block_hash = ferdie.client.info().best_hash;
+    let block_body = ferdie.client.block_body(block_hash).unwrap().unwrap();
+    let bundles = ferdie
+        .client
+        .runtime_api()
+        .extract_successful_bundles(block_hash, GENESIS_DOMAIN_ID, block_body)
+        .unwrap();
+    assert_eq!(bundles, vec![opaque_bundle]);
+
+    // Produce consensus block with duplicated bundle which will fail to include in block,
+    // in production the whole block will be discard by the honest farmer
+    let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    ferdie
+        .produce_block_with_extrinsics(vec![
+            bundle_to_tx(opaque_bundle.clone()),
+            bundle_to_tx(opaque_bundle.clone()),
+        ])
+        .await
+        .unwrap();
+    let block_hash = ferdie.client.info().best_hash;
+    let block_body = ferdie.client.block_body(block_hash).unwrap().unwrap();
+    let bundles = ferdie
+        .client
+        .runtime_api()
+        .extract_successful_bundles(block_hash, GENESIS_DOMAIN_ID, block_body)
+        .unwrap();
+    assert_eq!(bundles, vec![opaque_bundle]);
+
+    // Construct an equivocated bundle that reuse an old `proof_of_election`
+    let (_, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let submit_equivocated_bundle_tx = {
+        opaque_bundle.sealed_header.header.proof_of_election = proof_of_election;
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        bundle_to_tx(opaque_bundle)
+    };
+    // It will fail to submit to the tx pool
+    match ferdie
+        .submit_transaction(submit_equivocated_bundle_tx.clone())
+        .await
+        .unwrap_err()
+    {
+        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+            assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
+        }
+        e => panic!("Unexpected error: {e}"),
+    }
+    // Also fail to include in block
+    let pre_ferdie_best_number = ferdie.client.info().best_number;
+    let pre_alice_best_number = alice.client.info().best_number;
+    ferdie
+        .produce_block_with_extrinsics(vec![submit_equivocated_bundle_tx])
+        .await
+        .unwrap();
+    assert_eq!(ferdie.client.info().best_number, pre_ferdie_best_number + 1);
+    assert_eq!(alice.client.info().best_number, pre_alice_best_number);
 }

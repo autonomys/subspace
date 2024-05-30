@@ -6,8 +6,8 @@ extern crate alloc;
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
-    OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches, PendingSlashes,
-    PendingStakingOperationCount, Withdrawals,
+    OperatorIdOwner, OperatorSigningKey, Operators, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -287,7 +287,6 @@ pub enum Error {
     TooManyPendingStakingOperation,
     OperatorNotAllowed,
     InvalidOperatorSigningKey,
-    MaximumNominators,
     DuplicateOperatorSigningKey,
     MissingOperatorEpochSharePrice,
     MissingWithdrawal,
@@ -636,7 +635,6 @@ pub(crate) fn do_nominate_operator<T: Config>(
             if first_deposit_in_epoch {
                 NominatorCount::<T>::try_mutate(operator_id, |count| {
                     *count += 1;
-                    ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
                     Ok(())
                 })?;
             }
@@ -996,13 +994,14 @@ pub(crate) fn do_unlock_funds<T: Config>(
     })
 }
 
-/// Unlocks an already de-registered operator given unlock wait period is complete.
-///
-/// Return the number of nominator processed
-pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<usize, Error> {
+/// Unlocks an already de-registered operator's nominator given unlock wait period is complete.
+pub(crate) fn do_unlock_nominator<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: NominatorId<T>,
+) -> Result<(), Error> {
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
-        let operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
+        let mut operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
         let OperatorDeregisteredInfo {
             domain_epoch,
             unlock_at_confirmed_domain_block_number,
@@ -1019,127 +1018,176 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<u
             Error::UnlockPeriodNotComplete
         );
 
-        let total_shares = operator.current_total_shares;
+        let mut total_shares = operator.current_total_shares;
+        // take any operator current epoch rewards to include in total stake and set to zero.
+        let operator_current_epoch_rewards = operator.current_epoch_rewards;
+        operator.current_epoch_rewards = Zero::zero();
+
+        // calculate total stake of operator.
         let mut total_stake = operator
             .current_total_stake
-            .checked_add(&operator.current_epoch_rewards)
+            .checked_add(&operator_current_epoch_rewards)
             .ok_or(Error::BalanceOverflow)?;
 
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
 
+        let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
         let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
             operator_id,
-            operator.total_storage_fee_deposit,
+            total_storage_fee_deposit,
         );
         let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
-        let mut nominator_count = 0;
-        Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
-            // convert any deposits from the previous epoch to shares
-            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
+        let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
+            .ok_or(Error::UnknownNominator)?;
 
-            let current_locked_amount =
-                T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+        // convert any deposits from the previous epoch to shares
+        do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
 
-            // if there are any withdrawals from this operator, account for them
-            // if the withdrawals has share price noted, then convert them to SSC
-            // if no share price, then it must be intitated in the epoch when operator was slashed,
-            // so get the shares as is and include them in the total staked shares.
-            let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-                Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                    .map(|mut withdrawal| {
-                        do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
-                        Ok((
-                            withdrawal.total_withdrawal_amount,
-                            withdrawal
-                                .withdrawal_in_shares
-                                .map(|WithdrawalInShares { shares, .. }| shares)
-                                .unwrap_or_default(),
-                        ))
-                    })
-                    .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
+        let current_locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
-            // include all the known shares and shares that were withdrawn in the current epoch
-            let nominator_shares = deposit
-                .known
-                .shares
-                .checked_add(&shares_withdrew_in_current_epoch)
-                .ok_or(Error::ShareOverflow)?;
+        // if there are any withdrawals from this operator, account for them
+        // if the withdrawals has share price noted, then convert them to SSC
+        // if no share price, then it must be intitated in the epoch before operator de-registered,
+        // so get the shares as is and include them in the total staked shares.
+        let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
+            Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                .map(|mut withdrawal| {
+                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                    Ok((
+                        withdrawal.total_withdrawal_amount,
+                        withdrawal
+                            .withdrawal_in_shares
+                            .map(|WithdrawalInShares { shares, .. }| shares)
+                            .unwrap_or_default(),
+                    ))
+                })
+                .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
 
-            // current staked amount
-            let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
+        // include all the known shares and shares that were withdrawn in the current epoch
+        let nominator_shares = deposit
+            .known
+            .shares
+            .checked_add(&shares_withdrew_in_current_epoch)
+            .ok_or(Error::ShareOverflow)?;
 
-            let amount_deposited_in_previous_epoch = deposit
-                .pending
-                .map(|pending_deposit| pending_deposit.amount)
-                .unwrap_or_default();
+        // current staked amount
+        let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
 
-            let total_amount_to_unlock = nominator_staked_amount
-                .checked_add(&amount_ready_to_withdraw)
-                .and_then(|amount| amount.checked_add(&amount_deposited_in_previous_epoch))
-                .ok_or(Error::BalanceOverflow)?;
+        // amount deposited by this nominator before operator de-registered.
+        let amount_deposited_in_epoch = deposit
+            .pending
+            .map(|pending_deposit| pending_deposit.amount)
+            .unwrap_or_default();
 
-            let amount_to_mint = total_amount_to_unlock
-                .checked_sub(&current_locked_amount)
-                .unwrap_or(Zero::zero());
+        let total_amount_to_unlock = nominator_staked_amount
+            .checked_add(&amount_ready_to_withdraw)
+            .and_then(|amount| amount.checked_add(&amount_deposited_in_epoch))
+            .ok_or(Error::BalanceOverflow)?;
 
-            // remove the lock and mint any gains
-            mint_funds::<T>(&nominator_id, amount_to_mint)?;
-            T::Currency::release(
-                &staked_hold_id,
-                &nominator_id,
-                current_locked_amount,
-                Precision::Exact,
-            )
+        let amount_to_mint = total_amount_to_unlock
+            .checked_sub(&current_locked_amount)
+            .unwrap_or(Zero::zero());
+
+        // remove the lock and mint any gains
+        mint_funds::<T>(&nominator_id, amount_to_mint)?;
+
+        T::Currency::release(
+            &staked_hold_id,
+            &nominator_id,
+            current_locked_amount,
+            Precision::Exact,
+        )
+        .map_err(|_| Error::RemoveLock)?;
+
+        total_stake = total_stake.saturating_sub(nominator_staked_amount);
+        total_shares = total_shares.saturating_sub(nominator_shares);
+
+        // Withdraw all storage fee for the nominator
+        let nominator_total_storage_fee_deposit = deposit
+            .pending
+            .map(|pending_deposit| pending_deposit.storage_fee_deposit)
+            .unwrap_or(Zero::zero())
+            .checked_add(&deposit.known.storage_fee_deposit)
+            .ok_or(Error::BalanceOverflow)?;
+
+        bundle_storage_fund::withdraw_and_hold::<T>(
+            operator_id,
+            &nominator_id,
+            storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
+        )
+        .map_err(Error::BundleStorageFund)?;
+
+        // Release all storage fee that of the nominator.
+        T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
             .map_err(|_| Error::RemoveLock)?;
 
-            total_stake = total_stake.saturating_sub(nominator_staked_amount);
+        // reduce total storage fee deposit with nominator total fee deposit
+        total_storage_fee_deposit =
+            total_storage_fee_deposit.saturating_sub(nominator_total_storage_fee_deposit);
 
-            // Withdraw all storage fee for the nominator
-            let nominator_total_storage_fee_deposit = deposit
-                .pending
-                .map(|pending_deposit| pending_deposit.storage_fee_deposit)
-                .unwrap_or(Zero::zero())
-                .checked_add(&deposit.known.storage_fee_deposit)
-                .ok_or(Error::BalanceOverflow)?;
-            bundle_storage_fund::withdraw_and_hold::<T>(
-                operator_id,
-                &nominator_id,
-                storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
-            )
-            .map_err(Error::BundleStorageFund)?;
+        let current_nominator_count = NominatorCount::<T>::get(operator_id);
+        let operator_owner =
+            OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-            // Release all storage fee that just withdraw above and withdraw previously
-            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
-                .map_err(|_| Error::RemoveLock)?;
+        // reduce the nominator count for operator if the nominator is not operator owner
+        // since operator own nominator is not counted into nominator count for operator.
+        let current_nominator_count =
+            if operator_owner != nominator_id && current_nominator_count > 0 {
+                let new_nominator_count = current_nominator_count - 1;
+                NominatorCount::<T>::set(operator_id, new_nominator_count);
+                new_nominator_count
+            } else {
+                current_nominator_count
+            };
 
-            nominator_count += 1;
+        // operator state can be cleaned if all the nominators have unlocked their stake and operator
+        // themself unlocked their stake.
+        let cleanup_operator = current_nominator_count == 0
+            && !Deposits::<T>::contains_key(operator_id, operator_owner);
 
-            Ok(())
-        })?;
+        if cleanup_operator {
+            do_cleanup_operator::<T>(operator_id, total_stake, operator.signing_key.clone())?
+        } else {
+            // set update total shares, total stake and total storage fee deposit for operator
+            operator.current_total_shares = total_shares;
+            operator.current_total_stake = total_stake;
+            operator.total_storage_fee_deposit = total_storage_fee_deposit;
 
-        // transfer any remaining storage fund to treasury
-        bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
-            .map_err(Error::BundleStorageFund)?;
+            *maybe_operator = Some(operator);
+        }
 
-        // transfer any remaining amount to treasury
-        mint_into_treasury::<T>(total_stake).ok_or(Error::MintBalance)?;
-
-        // remove OperatorOwner Details
-        OperatorIdOwner::<T>::remove(operator_id);
-
-        // remove operator signing key
-        OperatorSigningKey::<T>::remove(operator.signing_key.clone());
-
-        // remove operator epoch share prices
-        let _ = OperatorEpochSharePrice::<T>::clear_prefix(operator_id, u32::MAX, None);
-
-        // remove nominator count for this operator.
-        NominatorCount::<T>::remove(operator_id);
-
-        Ok(nominator_count)
+        Ok(())
     })
+}
+
+/// Removes all operator storages and mints the total stake back to treasury.
+pub(crate) fn do_cleanup_operator<T: Config>(
+    operator_id: OperatorId,
+    total_stake: BalanceOf<T>,
+    operator_signing_key: OperatorPublicKey,
+) -> Result<(), Error> {
+    // transfer any remaining storage fund to treasury
+    bundle_storage_fund::transfer_all_to_treasury::<T>(operator_id)
+        .map_err(Error::BundleStorageFund)?;
+
+    // transfer any remaining amount to treasury
+    mint_into_treasury::<T>(total_stake).ok_or(Error::MintBalance)?;
+
+    // remove OperatorOwner Details
+    OperatorIdOwner::<T>::remove(operator_id);
+
+    // remove operator signing key
+    OperatorSigningKey::<T>::remove(operator_signing_key);
+
+    // remove operator epoch share prices
+    let _ = OperatorEpochSharePrice::<T>::clear_prefix(operator_id, u32::MAX, None);
+
+    // remove nominator count for this operator.
+    NominatorCount::<T>::remove(operator_id);
+
+    Ok(())
 }
 
 /// Distribute the reward to the operators equally and drop any dust to treasury.
@@ -1213,7 +1261,7 @@ pub(crate) fn do_reward_operators<T: Config>(
 
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub(crate) fn do_slash_operators<T: Config>(
+pub(crate) fn do_mark_operators_as_slashed<T: Config>(
     operator_ids: impl AsRef<[OperatorId]>,
     slash_reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
 ) -> Result<(), Error> {
@@ -1244,16 +1292,6 @@ pub(crate) fn do_slash_operators<T: Config>(
                     operator.update_status(OperatorStatus::Slashed);
                     stake_summary.next_operators.remove(operator_id);
 
-                    // remove any current operator switches
-                    PendingOperatorSwitches::<T>::mutate(
-                        operator.current_domain_id,
-                        |maybe_switching_operators| {
-                            if let Some(switching_operators) = maybe_switching_operators.as_mut() {
-                                switching_operators.remove(operator_id);
-                            }
-                        },
-                    );
-
                     pending_slashes.insert(*operator_id);
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Pallet::<T>::deposit_event(Event::OperatorSlashed {
@@ -1277,13 +1315,15 @@ pub(crate) mod tests {
         NextOperatorId, NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
-        do_convert_previous_epoch_withdrawal, do_nominate_operator, do_reward_operators,
-        do_slash_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
+        do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
+        do_reward_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
         OperatorConfig, OperatorSigningKeyProofOfOwnershipData, OperatorStatus, StakingSummary,
     };
-    use crate::staking_epoch::do_finalize_domain_current_epoch;
+    use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
-    use crate::{bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason};
+    use crate::{
+        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+    };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
@@ -1675,59 +1715,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn nominate_operator_max_nominators() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 0;
-        let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let data = OperatorSigningKeyProofOfOwnershipData {
-            operator_owner: operator_account,
-        };
-        let signature = pair.sign(&data.encode());
-        let nominator_account = 7;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                10 * SSC,
-                pair.public(),
-                signature,
-                BTreeMap::from_iter(vec![
-                    (1, (nominator_free_balance, nominator_stake)),
-                    (2, (nominator_free_balance, nominator_stake)),
-                    (3, (nominator_free_balance, nominator_stake)),
-                    (4, (nominator_free_balance, nominator_stake)),
-                    (5, (nominator_free_balance, nominator_stake)),
-                ]),
-            );
-
-            Balances::set_balance(&nominator_account, nominator_free_balance);
-            let nominator_count = NominatorCount::<Test>::get(operator_id);
-
-            // nomination should fail since Max nominators number has reached.
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                40 * SSC,
-            );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::MaximumNominators)
-            );
-
-            // should not update nominator count.
-            assert_eq!(nominator_count, NominatorCount::<Test>::get(operator_id));
-        });
-    }
-
-    #[test]
     fn operator_deregistration() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
@@ -1772,7 +1759,7 @@ pub(crate) mod tests {
                 )
             );
 
-            // domain switch will not work since the operator is frozen
+            // operator nomination will not work since the operator is already de-registered
             let new_domain_id = DomainId::new(1);
             let domain_config = DomainConfig {
                 domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
@@ -2617,7 +2604,11 @@ pub(crate) mod tests {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
             }
 
-            do_slash_operators::<Test>(vec![operator_id], SlashedReason::InvalidBundle(1)).unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id],
+                SlashedReason::InvalidBundle(1),
+            )
+            .unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
@@ -2636,7 +2627,7 @@ pub(crate) mod tests {
                 0
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
@@ -2651,6 +2642,172 @@ pub(crate) mod tests {
             );
 
             assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * SSC);
+            assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
+        });
+    }
+
+    #[test]
+    fn slash_operator_with_more_than_max_nominators_to_slash() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+        let operator_extra_deposit = 40 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let data = OperatorSigningKeyProofOfOwnershipData {
+            operator_owner: operator_account,
+        };
+        let signature = pair.sign(&data.encode());
+
+        let nominator_accounts: Vec<crate::tests::AccountId> = (2..22).collect();
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+        let nominator_extra_deposit = 40 * SSC;
+
+        let mut nominators = vec![(operator_account, (operator_free_balance, operator_stake))];
+        for nominator_account in nominator_accounts.clone() {
+            nominators.push((nominator_account, (nominator_free_balance, nominator_stake)))
+        }
+
+        let last_nominator_account = nominator_accounts.last().cloned().unwrap();
+        let unlocking = vec![
+            (operator_account, 10 * SSC),
+            (last_nominator_account, 10 * SSC),
+        ];
+
+        let deposits = vec![
+            (operator_account, operator_extra_deposit),
+            (last_nominator_account, nominator_extra_deposit),
+        ];
+
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one()
+            * (200 + (100 * nominator_accounts.len() as u128))
+            * SSC;
+        let init_total_storage_fund =
+            STORAGE_FEE_RESERVE * (200 + (100 * nominator_accounts.len() as u128)) * SSC;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                signature,
+                BTreeMap::from_iter(nominators),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, init_total_stake);
+            assert_eq!(operator.total_storage_fee_deposit, init_total_storage_fund);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
+
+            for unlock in &unlocking {
+                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
+            }
+
+            do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)
+                .unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            // Manually convert previous withdrawal in share to balance
+            for id in [operator_account, last_nominator_account] {
+                Withdrawals::<Test>::try_mutate(operator_id, id, |maybe_withdrawal| {
+                    do_convert_previous_epoch_withdrawal::<Test>(
+                        operator_id,
+                        maybe_withdrawal.as_mut().unwrap(),
+                    )
+                })
+                .unwrap();
+            }
+
+            // post epoch transition, domain stake has 21.666 amount reduced and storage fund has 5 amount reduced
+            // due to withdrawal of 20 shares
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            let operator_withdrawal =
+                Withdrawals::<Test>::get(operator_id, operator_account).unwrap();
+            let nominator_withdrawal =
+                Withdrawals::<Test>::get(operator_id, last_nominator_account).unwrap();
+
+            let total_deposit =
+                domain_stake_summary.current_total_stake + operator.total_storage_fee_deposit;
+            let total_stake_withdrawal = operator_withdrawal.total_withdrawal_amount
+                + nominator_withdrawal.total_withdrawal_amount;
+            let total_storage_fee_withdrawal = operator_withdrawal.withdrawals[0]
+                .storage_fee_refund
+                + nominator_withdrawal.withdrawals[0].storage_fee_refund;
+            assert_eq!(2194772727253419421470, total_deposit,);
+            assert_eq!(20227272746580578530, total_stake_withdrawal);
+            assert_eq!(5000000000000000000, total_storage_fee_withdrawal);
+            assert_eq!(
+                2220 * SSC,
+                total_deposit + total_stake_withdrawal + total_storage_fee_withdrawal
+            );
+
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
+
+            for deposit in deposits {
+                do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
+            }
+
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id],
+                SlashedReason::InvalidBundle(1),
+            )
+            .unwrap();
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id));
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                *operator.status::<Test>(operator_id),
+                OperatorStatus::Slashed
+            );
+
+            let pending_slashes = PendingSlashes::<Test>::get(domain_id).unwrap();
+            assert!(pending_slashes.contains(&operator_id));
+
+            assert_eq!(
+                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
+                0
+            );
+
+            // since we only slash 10 nominators a time but we have a total of 21 nominators,
+            // do 3 iterations
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+            do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+
+            assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
+            assert_eq!(Operators::<Test>::get(operator_id), None);
+            assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
+
+            assert_eq!(
+                Balances::total_balance(&operator_account),
+                operator_free_balance - operator_stake
+            );
+            for nominator_account in nominator_accounts {
+                assert_eq!(
+                    Balances::total_balance(&nominator_account),
+                    nominator_free_balance - nominator_stake
+                );
+            }
+
+            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 2220 * SSC);
             assert_eq!(bundle_storage_fund::total_balance::<Test>(operator_id), 0);
         });
     }
@@ -2740,12 +2897,21 @@ pub(crate) mod tests {
                 );
             }
 
-            do_slash_operators::<Test>(vec![operator_id_1], SlashedReason::InvalidBundle(1))
-                .unwrap();
-            do_slash_operators::<Test>(vec![operator_id_2], SlashedReason::InvalidBundle(2))
-                .unwrap();
-            do_slash_operators::<Test>(vec![operator_id_3], SlashedReason::InvalidBundle(3))
-                .unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id_1],
+                SlashedReason::InvalidBundle(1),
+            )
+            .unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id_2],
+                SlashedReason::InvalidBundle(2),
+            )
+            .unwrap();
+            do_mark_operators_as_slashed::<Test>(
+                vec![operator_id_3],
+                SlashedReason::InvalidBundle(3),
+            )
+            .unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id_1));
@@ -2775,7 +2941,11 @@ pub(crate) mod tests {
                 0
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let slashed_operators = PendingSlashes::<Test>::get(domain_id).unwrap();
+            slashed_operators.into_iter().for_each(|_| {
+                do_slash_operator::<Test>(domain_id, MAX_NOMINATORS_TO_SLASH).unwrap();
+            });
+
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
             assert_eq!(Operators::<Test>::get(operator_id_1), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id_1), None);

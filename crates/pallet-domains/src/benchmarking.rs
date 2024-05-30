@@ -7,14 +7,14 @@ use crate::block_tree::{prune_receipt, BlockTreeNode};
 use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{
-    do_convert_previous_epoch_deposits, do_reward_operators, do_slash_operators, OperatorConfig,
-    OperatorStatus,
+    do_convert_previous_epoch_deposits, do_mark_operators_as_slashed, do_reward_operators,
+    OperatorConfig, OperatorStatus,
 };
 use crate::staking_epoch::{
-    do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking,
-    do_finalize_slashed_operators, operator_take_reward_tax_and_stake,
+    do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
+    operator_take_reward_tax_and_stake,
 };
-use crate::{DomainBlockNumberFor, Pallet as Domains};
+use crate::{DomainBlockNumberFor, Pallet as Domains, MAX_NOMINATORS_TO_SLASH};
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
 #[cfg(not(feature = "std"))]
@@ -29,13 +29,14 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorAllowList,
-    OperatorId, OperatorPublicKey, OperatorSignature, RuntimeType,
+    OperatorId, OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, RuntimeType,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
 use sp_std::collections::btree_set::BTreeSet;
 
 const SEED: u32 = 0;
+const MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR: u32 = MAX_NOMINATORS_TO_SLASH - 1;
 
 #[benchmarks]
 mod benchmarks {
@@ -225,7 +226,7 @@ mod benchmarks {
                 .expect("prune bad receipt should success")
                 .expect("block tree node must exist");
 
-            do_slash_operators::<T>(
+            do_mark_operators_as_slashed::<T>(
                 block_tree_node.operator_ids.into_iter(),
                 SlashedReason::BadExecutionReceipt(receipt_hash),
             )
@@ -290,7 +291,7 @@ mod benchmarks {
             )
             .expect("reward operator should success");
 
-            do_slash_operators::<T>(
+            do_mark_operators_as_slashed::<T>(
                 operator_ids[n as usize..].to_vec().into_iter(),
                 SlashedReason::InvalidBundle(1u32.into()),
             )
@@ -356,27 +357,19 @@ mod benchmarks {
         assert!(staking_summary.current_epoch_rewards.is_empty());
     }
 
-    /// Benchmark `do_finalize_slashed_operators` based on the number of operator and the number of their
-    // nominator that has slashed in the current epoch
+    /// Benchmark `do_slash_operator` based on the number of their
+    // nominators
     #[benchmark]
-    fn finalize_slashed_operators(
-        n: Linear<1, { MAX_BUNLDE_PER_BLOCK * T::MaxNominators::get() }>,
-    ) {
+    fn slash_operator(n: Linear<0, MAX_NOMINATORS_TO_SLASH_WITHOUT_OPERATOR>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
         let domain_id = register_domain::<T>();
 
-        let (operator_count, nominator_per_operator) = if n <= MAX_BUNLDE_PER_BLOCK {
-            (n, 1)
-        } else {
-            (MAX_BUNLDE_PER_BLOCK, n.div_ceil(MAX_BUNLDE_PER_BLOCK))
-        };
+        let operator_count = 1;
+        let nominator_per_operator = n;
 
-        let mut operator_ids = Vec::new();
-        for i in 0..operator_count {
-            let (_, operator_id) =
-                register_operator_with_seed::<T>(domain_id, i + 1, minimum_nominator_stake);
-            operator_ids.push(operator_id);
-        }
+        let (_, operator_id) =
+            register_operator_with_seed::<T>(domain_id, 1, minimum_nominator_stake);
+
         do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
 
@@ -386,38 +379,36 @@ mod benchmarks {
             T::Currency::minimum_balance() + 1u32.into(),
         );
 
-        for (i, operator_id) in operator_ids.iter().enumerate() {
-            // Minus one since the operator owner is already a nominator
-            for j in 1..nominator_per_operator {
-                let nominator = account("nominator", i as u32, j);
-                T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
-                assert_ok!(Domains::<T>::nominate_operator(
-                    RawOrigin::Signed(nominator).into(),
-                    *operator_id,
-                    minimum_nominator_stake,
-                ));
-            }
-            do_finalize_domain_current_epoch::<T>(domain_id)
-                .expect("finalize domain staking should success");
+        for j in 0..nominator_per_operator {
+            let nominator = account("nominator", 0, j);
+            T::Currency::set_balance(&nominator, minimum_nominator_stake * 2u32.into());
+            assert_ok!(Domains::<T>::nominate_operator(
+                RawOrigin::Signed(nominator).into(),
+                operator_id,
+                minimum_nominator_stake,
+            ));
         }
+        do_finalize_domain_current_epoch::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         // Slash operator
-        do_slash_operators::<T>(
-            operator_ids.into_iter(),
+        do_mark_operators_as_slashed::<T>(
+            vec![operator_id].into_iter(),
             SlashedReason::InvalidBundle(1u32.into()),
         )
         .expect("slash operator should success");
 
         assert_eq!(
             PendingSlashes::<T>::get(domain_id)
-                .expect("pedning slash must exist")
+                .expect("pending slash must exist")
                 .len(),
             operator_count as usize
         );
 
         #[block]
         {
-            do_finalize_slashed_operators::<T>(domain_id).expect("finalize slash should success");
+            do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
+                .expect("finalize slash should success");
         }
 
         assert!(PendingSlashes::<T>::get(domain_id).is_none());
@@ -547,8 +538,13 @@ mod benchmarks {
             initial_balances: Default::default(),
         };
 
+        assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(
+            RawOrigin::Root.into(),
+            PermissionedActionAllowedBy::Anyone,
+        ));
+
         #[extrinsic_call]
-        _(RawOrigin::Root, domain_config.clone());
+        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -651,37 +647,15 @@ mod benchmarks {
         assert!(!operator.deposits_in_epoch.is_zero());
     }
 
-    // TODO: `switch_domain` is not supported currently due to incompatible with lazily slashing
-    // enable this test when `switch_domain` is ready
-    // #[benchmark]
-    // fn switch_domain() {
-    //     let domain1_id = register_domain::<T>();
-    //     let domain2_id = register_domain::<T>();
-
-    //     let (operator_owner, operator_id) =
-    //         register_helper_operator::<T>(domain1_id, T::Currency::minimum_balance());
-
-    //     #[extrinsic_call]
-    //     _(
-    //         RawOrigin::Signed(operator_owner.clone()),
-    //         operator_id,
-    //         domain2_id,
-    //     );
-
-    //     let operator = Operators::<T>::get(operator_id).expect("operator must exist");
-    //     assert_eq!(operator.next_domain_id, domain2_id);
-
-    //     let pending_switch =
-    //         PendingOperatorSwitches::<T>::get(domain1_id).expect("pending switch must exist");
-    //     assert!(pending_switch.contains(&operator_id));
-    // }
-
     #[benchmark]
     fn deregister_operator() {
         let domain_id = register_domain::<T>();
 
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        do_finalize_domain_epoch_staking::<T>(domain_id)
+            .expect("finalize domain staking should success");
 
         #[extrinsic_call]
         _(RawOrigin::Signed(operator_owner.clone()), operator_id);
@@ -802,9 +776,9 @@ mod benchmarks {
         assert!(Deposits::<T>::get(operator_id, nominator).is_none());
     }
 
-    /// Benchmark `unlock_operator` extrinsic based on the number of nominator of the unlocked operator
+    /// Benchmark `unlock_nominator` extrinsic for a given de-registered operator
     #[benchmark]
-    fn unlock_operator(n: Linear<0, { T::MaxNominators::get() }>) {
+    fn unlock_nominator() {
         let domain_id = register_domain::<T>();
         let (operator_owner, operator_id) =
             register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
@@ -816,24 +790,6 @@ mod benchmarks {
             &T::TreasuryAccount::get(),
             T::Currency::minimum_balance() + 1u32.into(),
         );
-
-        for i in 0..n {
-            let nominator = account("nominator", i, SEED);
-            T::Currency::set_balance(
-                &nominator,
-                T::MinNominatorStake::get() + T::Currency::minimum_balance(),
-            );
-            assert_ok!(Domains::<T>::nominate_operator(
-                RawOrigin::Signed(nominator).into(),
-                operator_id,
-                T::MinNominatorStake::get(),
-            ));
-        }
-        if n != 0 {
-            assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 1);
-        }
-        do_finalize_domain_current_epoch::<T>(domain_id)
-            .expect("finalize domain staking should success");
 
         // Deregister operator
         assert_ok!(Domains::<T>::deregister_operator(
@@ -926,8 +882,13 @@ mod benchmarks {
             initial_balances: Default::default(),
         };
 
-        assert_ok!(Domains::<T>::instantiate_domain(
+        assert_ok!(Domains::<T>::set_permissioned_action_allowed_by(
             RawOrigin::Root.into(),
+            PermissionedActionAllowedBy::Anyone,
+        ));
+
+        assert_ok!(Domains::<T>::instantiate_domain(
+            RawOrigin::Signed(creator.clone()).into(),
             domain_config.clone(),
         ));
 
