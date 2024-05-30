@@ -6,6 +6,7 @@ use futures::future::pending;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use libp2p::identity::Keypair;
+use libp2p::kad::RecordKey;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use parking_lot::Mutex;
@@ -14,6 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;
@@ -217,6 +219,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
     let mut total_duration = Duration::default();
     for i in start_with..(start_with + max_pieces) {
         let piece_index = PieceIndex::from(i as u64);
+        let key = RecordKey::from(piece_index.to_multihash());
         let start = Instant::now();
         let piece =
             get_piece_from_dsn_cache_with_retries(&piece_provider, piece_index, u32::from(retries))
@@ -226,11 +229,11 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         total_duration += duration;
         match piece {
             Ok(Some(_)) => {
-                info!(%piece_index, ?duration, "Piece found.");
+                info!(%piece_index, key = hex::encode(&key), ?duration, "Piece found.");
                 stats.add_found();
             }
             Ok(None) => {
-                warn!(%piece_index, ?duration, "Piece not found.");
+                warn!(%piece_index, key = hex::encode(&key), ?duration, "Piece not found.");
                 stats.add_not_found();
             }
             Err(error) => {
@@ -302,19 +305,20 @@ async fn parallel_benchmark(
     while let Some((piece_index, maybe_piece, pure_duration, full_duration)) =
         pending_pieces.next().await
     {
+        let key = RecordKey::from(piece_index.to_multihash());
         total_duration += full_duration;
         pure_total_duration += pure_duration;
         match maybe_piece {
             Ok(Some(_)) => {
-                info!(%piece_index, ?pure_duration, ?full_duration, "Piece found.");
+                info!(%piece_index, key = hex::encode(&key), ?pure_duration, ?full_duration, "Piece found.");
                 stats.add_found();
             }
             Ok(None) => {
-                warn!(%piece_index, ?pure_duration, ?full_duration, "Piece not found.");
+                warn!(%piece_index, key = hex::encode(&key), ?pure_duration, ?full_duration, "Piece not found.");
                 stats.add_not_found();
             }
             Err(error) => {
-                error!(%piece_index, ?pure_duration, ?full_duration, ?error, "Piece request failed.");
+                error!(%piece_index, key = hex::encode(&key), ?pure_duration, ?full_duration, ?error, "Piece request failed.");
                 stats.add_error();
             }
         }

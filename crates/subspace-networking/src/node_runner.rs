@@ -397,6 +397,7 @@ where
 
             return;
         }
+        return;
 
         // Remove both versions of the address
         self.swarm.behaviour_mut().kademlia.remove_address(
@@ -970,7 +971,7 @@ where
                 {
                     match result {
                         Ok(GetProvidersOk::FoundProviders { key, providers }) => {
-                            trace!(
+                            error!(
                                 key = hex::encode(&key),
                                 "Get providers query yielded {} results",
                                 providers.len(),
@@ -987,16 +988,28 @@ where
                             }
                         }
                         Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { closest_peers }) => {
-                            trace!(
+                            error!(
                                 key = hex::encode(key),
                                 closest_peers = %closest_peers.len(),
+                                ?closest_peers,
                                 "Get providers query yielded no results"
                             );
+
+                            // Fall back to the closest peers just in case
+                            for provider in closest_peers {
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
+                                    &mut self.swarm.behaviour_mut().kademlia,
+                                    sender,
+                                    provider,
+                                    "GetProvidersOk",
+                                    &id,
+                                ) || cancelled;
+                            }
                         }
                         Err(error) => {
                             let GetProvidersError::Timeout { key, .. } = error;
 
-                            debug!(
+                            error!(
                                 key = hex::encode(&key),
                                 "Get providers query failed with no results",
                             );
@@ -1377,6 +1390,36 @@ where
                 result_sender,
                 permit,
             } => {
+                if self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_local_peers(&key.clone().into())
+                    .count()
+                    == 0
+                {
+                    let entries = self
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .kbuckets()
+                        .map(|k| k.iter().map(|e| e.node.key.clone()).collect::<Vec<_>>())
+                        .collect::<Vec<_>>();
+                    let total_kbuckets_entries = self
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .kbuckets()
+                        .map(|k| k.num_entries())
+                        .sum::<usize>();
+                    warn!(
+                        local_peer_id = %self.swarm.local_peer_id(),
+                        key = %hex::encode(&key),
+                        %total_kbuckets_entries,
+                        ?entries,
+                        "No local closest peers for key"
+                    );
+                }
                 let query_id = self
                     .swarm
                     .behaviour_mut()

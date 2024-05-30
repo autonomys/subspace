@@ -330,12 +330,21 @@ where
 
                 let key =
                     subspace_networking::libp2p::kad::RecordKey::from(piece_index.to_multihash());
-                trace!(
-                    ?piece_index,
-                    key = hex::encode(&key),
-                    piece_found = maybe_piece.is_some(),
-                    "Piece request succeeded",
-                );
+                if maybe_piece.is_some() {
+                    trace!(
+                        ?piece_index,
+                        key = hex::encode(&key),
+                        piece_found = maybe_piece.is_some(),
+                        "Piece request succeeded",
+                    );
+                } else {
+                    warn!(
+                        ?piece_index,
+                        key = hex::encode(&key),
+                        piece_found = maybe_piece.is_some(),
+                        "Piece request succeeded",
+                    );
+                }
 
                 maybe_piece.map(|received_piece| {
                     // Piece was received successfully, "remove" this slot from semaphore
