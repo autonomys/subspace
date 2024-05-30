@@ -402,52 +402,8 @@ pub(super) struct ConsensusChainOptions {
     timekeeper_options: TimekeeperOptions,
 
     /// Sync mode
-    #[arg(long, default_value_t = ConfigSyncMode::Full)]
-    sync: ConfigSyncMode,
-}
-
-/// Syncing mode.
-#[derive(Debug, Clone, Copy, PartialEq, Parser)]
-pub enum ConfigSyncMode {
-    /// Full sync. Download and verify all blocks.
-    Full,
-    /// Download blocks from DSN.
-    Dsn,
-    /// Download latest state and related blocks only. Can run DSN-sync afterwards.
-    Snap,
-}
-
-impl FromStr for ConfigSyncMode {
-    type Err = String;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input {
-            "full" => Ok(Self::Full),
-            "dsn" => Ok(Self::Dsn),
-            "snap" => Ok(Self::Snap),
-            _ => Err("Unsupported sync type".to_string()),
-        }
-    }
-}
-
-impl fmt::Display for ConfigSyncMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Full => f.write_str("full"),
-            Self::Dsn => f.write_str("dsn"),
-            Self::Snap => f.write_str("snap"),
-        }
-    }
-}
-
-impl From<ConfigSyncMode> for ChainSyncMode {
-    fn from(val: ConfigSyncMode) -> ChainSyncMode {
-        match val {
-            ConfigSyncMode::Full => ChainSyncMode::Full,
-            ConfigSyncMode::Dsn => ChainSyncMode::Dsn,
-            ConfigSyncMode::Snap => ChainSyncMode::Snap,
-        }
-    }
+    #[arg(long, default_value_t = ChainSyncMode::Full)]
+    sync: ChainSyncMode,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -637,7 +593,7 @@ pub(super) fn create_consensus_chain_configuration(
     };
     let mut consensus_chain_config = Configuration::from(consensus_chain_config);
     // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
-    if sync == ConfigSyncMode::Snap {
+    if sync == ChainSyncMode::Snap {
         consensus_chain_config.network.sync_mode = SyncMode::LightState {
             skip_proofs: true,
             storage_chain_mode: false,
@@ -708,7 +664,7 @@ pub(super) fn create_consensus_chain_configuration(
             force_new_slot_notifications: domains_enabled,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
-            sync: sync.into(),
+            sync,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
         },

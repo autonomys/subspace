@@ -14,10 +14,12 @@ use sc_service::{
 };
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
+use std::fmt;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
@@ -280,6 +282,29 @@ pub enum ChainSyncMode {
     Dsn,
     /// Download latest state and related blocks only. Can run DSN-sync afterwards.
     Snap,
+}
+
+impl FromStr for ChainSyncMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "full" => Ok(Self::Full),
+            "dsn" => Ok(Self::Dsn),
+            "snap" => Ok(Self::Snap),
+            _ => Err("Unsupported sync type".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for ChainSyncMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Full => f.write_str("full"),
+            Self::Dsn => f.write_str("dsn"),
+            Self::Snap => f.write_str("snap"),
+        }
+    }
 }
 
 impl Default for ChainSyncMode {
