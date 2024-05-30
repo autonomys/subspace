@@ -29,6 +29,7 @@ pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-s
 parity-scale-codec = "3.6.9"
 parking_lot = "0.12.2"
 prometheus-client = "0.22.2"
+prost = "0.12"
 sc-basic-authorship = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }

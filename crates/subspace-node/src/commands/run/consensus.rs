@@ -8,7 +8,7 @@ use sc_cli::{
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
-use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
+use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, SyncMode};
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
@@ -20,7 +20,7 @@ use std::str::FromStr;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
-    SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
+    ChainSyncMode, SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
     SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
 };
 use subspace_service::dsn::DsnConfig;
@@ -162,6 +162,8 @@ enum StatePruningMode {
     Archive,
     /// Keep only the data of finalized blocks.
     ArchiveCanonical,
+    /// Keep the data of the last number of finalized blocks.
+    Number(u32),
 }
 
 impl FromStr for StatePruningMode {
@@ -171,17 +173,21 @@ impl FromStr for StatePruningMode {
         match input {
             "archive" => Ok(Self::Archive),
             "archive-canonical" => Ok(Self::ArchiveCanonical),
-            _ => Err("Invalid state pruning mode specified".to_string()),
+            n => n
+                .parse()
+                .map_err(|_| "Invalid state pruning mode specified".to_string())
+                .map(Self::Number),
         }
     }
 }
 
 impl fmt::Display for StatePruningMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Archive => "archive",
-            Self::ArchiveCanonical => "archive-canonical",
-        })
+        match self {
+            Self::Archive => f.write_str("archive"),
+            Self::ArchiveCanonical => f.write_str("archive-canonical"),
+            Self::Number(n) => f.write_str(n.to_string().as_str()),
+        }
     }
 }
 
@@ -256,6 +262,7 @@ impl PruningOptions {
         match self.state_pruning {
             StatePruningMode::Archive => PruningMode::ArchiveAll,
             StatePruningMode::ArchiveCanonical => PruningMode::ArchiveCanonical,
+            StatePruningMode::Number(num) => PruningMode::blocks_pruning(num),
         }
     }
 
@@ -387,16 +394,16 @@ pub(super) struct ConsensusChainOptions {
     #[clap(flatten)]
     dsn_options: DsnOptions,
 
-    /// Enables DSN-sync on startup.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    sync_from_dsn: bool,
-
     /// Parameters used to create the storage monitor.
     #[clap(flatten)]
     storage_monitor: StorageMonitorParams,
 
     #[clap(flatten)]
     timekeeper_options: TimekeeperOptions,
+
+    /// Sync mode
+    #[arg(long, default_value_t = ChainSyncMode::Full)]
+    sync: ChainSyncMode,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -437,9 +444,9 @@ pub(super) fn create_consensus_chain_configuration(
         mut force_authoring,
         pot_external_entropy,
         dsn_options,
-        sync_from_dsn,
         storage_monitor,
         mut timekeeper_options,
+        sync,
     } = consensus_node_options;
 
     let transaction_pool;
@@ -584,7 +591,14 @@ pub(super) fn create_consensus_chain_configuration(
         chain_spec: Box::new(chain_spec),
         informant_output_format: OutputFormat { enable_color },
     };
-    let consensus_chain_config = Configuration::from(consensus_chain_config);
+    let mut consensus_chain_config = Configuration::from(consensus_chain_config);
+    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
+    if sync == ChainSyncMode::Snap {
+        consensus_chain_config.network.sync_mode = SyncMode::LightState {
+            skip_proofs: true,
+            storage_chain_mode: false,
+        };
+    }
 
     let pot_external_entropy =
         derive_pot_external_entropy(&consensus_chain_config, pot_external_entropy)?;
@@ -650,7 +664,7 @@ pub(super) fn create_consensus_chain_configuration(
             force_new_slot_notifications: domains_enabled,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
-            sync_from_dsn,
+            sync,
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
         },

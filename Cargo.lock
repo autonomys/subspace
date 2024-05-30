@@ -12749,6 +12749,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.2",
  "prometheus-client 0.22.2",
+ "prost 0.12.4",
  "sc-basic-authorship",
  "sc-chain-spec",
  "sc-client-api",

@@ -1,9 +1,10 @@
-mod import_blocks;
-pub(super) mod piece_validator;
-mod segment_header_downloader;
+pub(crate) mod import_blocks;
+pub(crate) mod piece_validator;
+pub(crate) mod segment_header_downloader;
+pub(crate) mod snap_sync;
+pub(crate) mod snap_sync_engine;
 
-use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
-pub use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
+use crate::sync_from_dsn::import_blocks::{import_blocks_from_dsn, DsnSyncPieceGetter};
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
@@ -22,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::SegmentIndex;
 use subspace_networking::Node;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -293,6 +294,8 @@ where
                 // Almost synced, DSN sync can't possibly help here
             }
         }
+
+        debug!("Finished DSN sync");
 
         pause_sync.store(false, Ordering::Release);
 
