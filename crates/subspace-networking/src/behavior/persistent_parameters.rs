@@ -66,10 +66,19 @@ struct EncodableKnownPeers {
 }
 
 impl EncodableKnownPeers {
-    fn into_cache(self) -> LruMap<PeerId, LruMap<Multiaddr, FailureTime>> {
+    fn into_cache(mut self) -> LruMap<PeerId, LruMap<Multiaddr, FailureTime>> {
         let mut peers_cache = LruMap::new(ByLength::new(self.cache_size));
 
-        'peers: for (peer_id, addresses) in self.known_peers {
+        // Sort peers with the oldest expiration date first
+        self.known_peers
+            .sort_by_cached_key(|(_peer_id, addresses)| {
+                addresses.iter().fold(0u64, |acc, address| {
+                    acc.max(address.failure_time.unwrap_or(u64::MAX))
+                })
+            });
+
+        // Iterate over known peers with most recent failure time (or no failire time) first
+        'peers: for (peer_id, addresses) in self.known_peers.into_iter().rev() {
             let mut peer_cache =
                 LruMap::<Multiaddr, FailureTime>::new(ByLength::new(ADDRESSES_CACHE_SIZE));
 
