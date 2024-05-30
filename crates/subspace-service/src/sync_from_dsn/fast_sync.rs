@@ -304,7 +304,7 @@ where
     // Clear the block gap that arises from first block import with a much higher number than
     // previously (resulting in a gap)
     // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
-    client.clear_block_gap();
+    client.clear_block_gap()?;
 
     debug!(info = ?client.info(), "Fast sync finished successfully");
 

@@ -75,7 +75,7 @@ use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
-use sc_service::{ClientExt, Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
+use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
@@ -721,15 +721,6 @@ where
         sync_target_block_number,
         mut telemetry,
     } = other;
-
-    // TODO: This will not be needed once we clear block gap correctly after sync is done
-    if config.sync == ChainSyncMode::Snap {
-        let info = client.info();
-        if info.best_hash != info.genesis_hash {
-            debug!(?info, "Clear block gap after fast-sync");
-            client.clear_block_gap();
-        }
-    }
 
     let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
     let (node, bootstrap_nodes) = match config.subspace_networking {
