@@ -175,7 +175,7 @@ impl FromStr for StatePruningMode {
             "archive-canonical" => Ok(Self::ArchiveCanonical),
             n => n
                 .parse()
-                .map_err(|_| "Invalid block pruning mode specified".to_string())
+                .map_err(|_| "Invalid state pruning mode specified".to_string())
                 .map(Self::Number),
         }
     }

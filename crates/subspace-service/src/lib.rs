@@ -955,7 +955,7 @@ where
                 Box::pin(async move {
                     // Run snap-sync before DSN-sync.
                     if config.sync == ChainSyncMode::Snap {
-                        let _ = snap_sync_task.await;
+                        snap_sync_task.await;
                     }
 
                     if let Err(error) = worker.await {
