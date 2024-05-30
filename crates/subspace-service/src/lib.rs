@@ -35,8 +35,8 @@ pub mod transaction_pool;
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
-use crate::sync_from_dsn::fast_sync::fast_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
+use crate::sync_from_dsn::snap_sync::snap_sync;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
@@ -922,7 +922,7 @@ where
 
         let fork_id = config.base.chain_spec.fork_id().map(String::from);
 
-        let fast_sync_task = fast_sync(
+        let snap_sync_task = snap_sync(
             segment_headers_store.clone(),
             node.clone(),
             fork_id,
@@ -953,9 +953,9 @@ where
                 "worker",
                 Some("sync-from-dsn"),
                 Box::pin(async move {
-                    // Run fast-sync before DSN-sync.
+                    // Run snap-sync before DSN-sync.
                     if config.sync == ChainSyncMode::Snap {
-                        let _ = fast_sync_task.await;
+                        let _ = snap_sync_task.await;
                     }
 
                     if let Err(error) = worker.await {

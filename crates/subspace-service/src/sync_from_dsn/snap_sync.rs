@@ -1,6 +1,6 @@
-use crate::sync_from_dsn::fast_sync_engine::FastSyncingEngine;
 use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
+use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_client_api::{AuxStore, LockImportRun, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
@@ -28,7 +28,7 @@ use tokio::time::sleep;
 use tracing::{debug, error};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
+pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
     fork_id: Option<String>,
@@ -55,12 +55,12 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
     NR: NetworkRequest,
 {
     let info = client.info();
-    // Only attempt fast sync with genesis state
-    // TODO: Support fast sync from any state
+    // Only attempt snap sync with genesis state
+    // TODO: Support snap sync from any state
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
-        let fast_sync_fut = sync(
+        let snap_sync_fut = sync(
             &segment_headers_store,
             &node,
             &piece_getter,
@@ -71,18 +71,18 @@ pub(crate) async fn fast_sync<Backend, Block, AS, Client, PG, NR>(
             &sync_service,
         );
 
-        match fast_sync_fut.await {
+        match snap_sync_fut.await {
             Ok(()) => {
-                debug!("Fast sync finished successfully");
+                debug!("Snap sync finished successfully");
             }
             Err(error) => {
-                error!(%error, "Fast sync failed");
+                error!(%error, "Snap sync failed");
             }
         }
 
         pause_sync.store(false, Ordering::Release);
     } else {
-        debug!("Fast sync can only work with genesis state, skipping");
+        debug!("Snap sync can only work with genesis state, skipping");
     }
 
     // Switch back to full sync mode
@@ -123,7 +123,7 @@ where
     IQS: ImportQueueService<Block> + ?Sized,
     NR: NetworkRequest,
 {
-    debug!("Starting fast sync...");
+    debug!("Starting snap sync...");
 
     sync_segment_headers(segment_headers_store, node)
         .await
@@ -133,10 +133,10 @@ where
         .max_segment_index()
         .expect("Successfully synced above; qed");
 
-    // Skip the fast sync if there is just one segment header built on top of genesis, it is
+    // Skip the snap sync if there is just one segment header built on top of genesis, it is
     // more efficient to sync it regularly
     if last_segment_index <= SegmentIndex::ONE {
-        debug!("Fast sync was skipped due to too early chain history");
+        debug!("Snap sync was skipped due to too early chain history");
 
         return Ok(());
     }
@@ -154,13 +154,13 @@ where
                 .ok_or_else(|| {
                     format!(
                         "Attempted to get segment index before {oldest_segment_index} during \
-                            fast sync"
+                            snap sync"
                     )
                 })?;
             let segment_header = segment_headers_store
                 .get_segment_header(segment_index)
                 .ok_or_else(|| {
-                    format!("Failed to get segment index {segment_index} during fast sync")
+                    format!("Failed to get segment index {segment_index} during snap sync")
                 })?;
             let last_archived_block = segment_header.last_archived_block();
 
@@ -306,7 +306,7 @@ where
     // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
     client.clear_block_gap()?;
 
-    debug!(info = ?client.info(), "Fast sync finished successfully");
+    debug!(info = ?client.info(), "Snap sync finished successfully");
 
     Ok(())
 }
@@ -424,7 +424,7 @@ where
 
         tried_peers.insert(current_peer_id);
 
-        let sync_engine = FastSyncingEngine::<Block, NR>::new(
+        let sync_engine = SnapSyncingEngine::<Block, NR>::new(
             client.clone(),
             fork_id,
             header.clone(),
@@ -451,5 +451,5 @@ where
         }
     }
 
-    Err(Error::Other("All fast sync retries failed".into()))
+    Err(Error::Other("All snap sync retries failed".into()))
 }

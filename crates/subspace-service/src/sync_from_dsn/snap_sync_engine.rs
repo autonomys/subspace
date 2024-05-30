@@ -41,7 +41,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use tracing::{debug, error, trace, warn};
 
-pub struct FastSyncingEngine<'a, Block, NR>
+pub struct SnapSyncingEngine<'a, Block, NR>
 where
     Block: BlockT,
 {
@@ -55,7 +55,7 @@ where
     state_request_protocol_name: ProtocolName,
 }
 
-impl<'a, Block, NR> FastSyncingEngine<'a, Block, NR>
+impl<'a, Block, NR> SnapSyncingEngine<'a, Block, NR>
 where
     Block: BlockT,
     NR: NetworkRequest,
