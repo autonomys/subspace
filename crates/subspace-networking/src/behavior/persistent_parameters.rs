@@ -35,9 +35,11 @@ const ADDRESSES_CACHE_SIZE: u32 = 30;
 /// Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 /// Defines an expiration period for the peer marked for the removal.
-const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: Duration = Duration::from_secs(3600 * 24);
+const REMOVE_KNOWN_PEERS_GRACE_PERIOD: Duration = Duration::from_secs(24 * 3600);
 /// Defines an expiration period for the peer marked for the removal for Kademlia DHT.
-const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS: Duration = Duration::from_secs(3600);
+const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA: Duration = Duration::from_secs(3600);
+/// Defines an expiration period for the peer marked for the removal for Kademlia DHT.
+const STALE_KNOWN_PEERS_TIMEOUT: Duration = Duration::from_secs(24 * 3600);
 
 /// Defines the event triggered when the peer address is removed from the permanent storage.
 #[derive(Debug, Clone)]
@@ -255,6 +257,8 @@ pub struct KnownPeersManagerConfig {
     pub failed_address_cache_removal_interval: Duration,
     /// Defines interval before the next peer address removal triggers [`PeerAddressRemovedEvent`].
     pub failed_address_kademlia_removal_interval: Duration,
+    /// Amount of time after which stored known peers contents is assumed to be stale.
+    pub stale_known_peers_timeout: Duration,
 }
 
 impl Default for KnownPeersManagerConfig {
@@ -264,9 +268,9 @@ impl Default for KnownPeersManagerConfig {
             cache_size: KNOWN_PEERS_CACHE_SIZE,
             ignore_peer_list: Default::default(),
             path: None,
-            failed_address_cache_removal_interval: REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
-            failed_address_kademlia_removal_interval:
-                REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+            failed_address_cache_removal_interval: REMOVE_KNOWN_PEERS_GRACE_PERIOD,
+            failed_address_kademlia_removal_interval: REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA,
+            stale_known_peers_timeout: STALE_KNOWN_PEERS_TIMEOUT,
         }
     }
 }
@@ -439,6 +443,15 @@ impl KnownPeersManager {
         };
 
         let known_peers = maybe_newest_known_addresses
+            .filter(|newest_known_addresses| {
+                let time_since_unix_epoch = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Never before Unix epoch; qed");
+                let known_peers_age = time_since_unix_epoch
+                    .saturating_sub(Duration::from_secs(newest_known_addresses.timestamp));
+
+                known_peers_age <= config.stale_known_peers_timeout
+            })
             .map(EncodableKnownPeers::into_cache)
             .unwrap_or_else(|| LruMap::new(ByLength::new(config.cache_size)));
 
