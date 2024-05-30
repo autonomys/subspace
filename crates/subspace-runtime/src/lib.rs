@@ -35,7 +35,8 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
-    AccountIdConverter, BlockNumber as DomainNumber, Hash as DomainHash,
+    maximum_domain_block_weight, AccountIdConverter, BlockNumber as DomainNumber,
+    Hash as DomainHash,
 };
 use frame_support::genesis_builder_helper::{build_config, create_default_config};
 use frame_support::inherent::ProvideInherent;
@@ -43,7 +44,7 @@ use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, OnRuntimeUpgrade,
     VariantCount,
 };
-use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -82,7 +83,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
@@ -97,8 +98,9 @@ use subspace_core_primitives::{
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC,
+    maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
+    Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC, MAX_BLOCK_LENGTH,
+    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -145,10 +147,6 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
 const SLOT_DURATION: u64 = 1000;
-
-/// 1 in 6 slots (on average, not counting collisions) will have a block.
-/// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
 /// Number of slots between slot arrival and when corresponding block can be produced.
 const BLOCK_AUTHORING_DELAY: SlotNumber = 4;
@@ -198,23 +196,13 @@ const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
 const MIN_SECTOR_LIFETIME: HistorySize =
     HistorySize::new(NonZeroU64::new(4).expect("Not zero; qed"));
 
-/// The block weight for 2 seconds of compute
-const BLOCK_WEIGHT_FOR_2_SEC: Weight =
-    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
-
-/// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
-const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
-
-/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
-const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 250;
     /// We allow for 2 seconds of compute with a 6 second average block time.
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
-    pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockLength: BlockLength = maximum_normal_block_length();
 }
 
 pub type SS58Prefix = ConstU16<2254>;
@@ -587,7 +575,7 @@ parameter_types! {
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
-    pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
+    pub MaxDomainBlockWeight: Weight = maximum_domain_block_weight();
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;

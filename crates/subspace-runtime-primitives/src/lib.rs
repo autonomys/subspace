@@ -24,12 +24,15 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Codec, Decode, Encode};
+use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
+use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
+use frame_system::limits::BlockLength;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
 use scale_info::TypeInfo;
 use sp_core::parameter_types;
 use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};
-use sp_runtime::{FixedPointNumber, MultiSignature, Perquintill};
+use sp_runtime::{FixedPointNumber, MultiSignature, Perbill, Perquintill};
 pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
@@ -42,6 +45,22 @@ pub const SHANNON: Balance = 1;
 pub const DECIMAL_PLACES: u8 = 18;
 /// One Subspace Credit.
 pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
+/// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
+pub const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
+/// 1 in 6 slots (on average, not counting collisions) will have a block.
+/// Must match ratio between block and slot duration in constants above.
+pub const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+/// The block weight for 2 seconds of compute
+pub const BLOCK_WEIGHT_FOR_2_SEC: Weight =
+    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
+
+/// Maximum block length for non-`Normal` extrinsic is 5 MiB.
+pub const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
+
+/// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
+pub fn maximum_normal_block_length() -> BlockLength {
+    BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO)
+}
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
