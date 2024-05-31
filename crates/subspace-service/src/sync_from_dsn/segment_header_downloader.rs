@@ -22,7 +22,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
         Self { dsn_node }
     }
 
-    /// Returns segment headers known to DSN, ordered from 0 to the last known.
+    /// Returns new segment headers known to DSN, ordered from 0 to the last known, but newer than
+    /// `last_known_segment_index`
     pub async fn get_segment_headers(
         &self,
         last_known_segment_index: SegmentIndex,
@@ -51,9 +52,15 @@ impl<'a> SegmentHeaderDownloader<'a> {
             "Downloading segment headers"
         );
 
-        let mut all_segment_headers =
-            Vec::with_capacity(u64::from(last_segment_header.segment_index()) as usize + 1);
-        all_segment_headers.push(last_segment_header);
+        let Some(new_segment_headers_count) = last_segment_header
+            .segment_index()
+            .checked_sub(last_known_segment_index)
+        else {
+            return Ok(Vec::new());
+        };
+        let mut new_segment_headers =
+            Vec::with_capacity(u64::from(new_segment_headers_count) as usize);
+        new_segment_headers.push(last_segment_header);
 
         while last_segment_header.segment_index() > last_known_segment_index {
             let segment_indexes = (last_known_segment_index..last_segment_header.segment_index())
@@ -82,13 +89,13 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 }
 
                 last_segment_header = segment_header;
-                all_segment_headers.push(segment_header);
+                new_segment_headers.push(segment_header);
             }
         }
 
-        all_segment_headers.reverse();
+        new_segment_headers.reverse();
 
-        Ok(all_segment_headers)
+        Ok(new_segment_headers)
     }
 
     /// Return last segment header known to DSN and agreed on by majority of the peer set with
