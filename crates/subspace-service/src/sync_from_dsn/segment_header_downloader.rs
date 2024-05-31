@@ -26,21 +26,23 @@ impl<'a> SegmentHeaderDownloader<'a> {
     /// `last_known_segment_index`
     pub async fn get_segment_headers(
         &self,
-        last_known_segment_index: SegmentIndex,
+        last_known_segment_header: &SegmentHeader,
     ) -> Result<Vec<SegmentHeader>, Box<dyn Error>> {
+        let last_known_segment_index = last_known_segment_header.segment_index();
         trace!(
             %last_known_segment_index,
             "Searching for latest segment header"
         );
 
-        let Some((mut last_segment_header, peers)) = self.get_last_segment_header().await? else {
+        let Some((last_segment_header, peers)) = self.get_last_segment_header().await? else {
             return Ok(Vec::new());
         };
 
-        if last_segment_header.segment_index() == last_known_segment_index {
+        if last_segment_header.segment_index() <= last_known_segment_index {
             debug!(
                 %last_known_segment_index,
-                "Last segment header matches last known segment header, nothing to download"
+                last_found_segment_index = %last_segment_header.segment_index(),
+                "No new segment headers found, nothing to download"
             );
 
             return Ok(Vec::new());
@@ -62,8 +64,11 @@ impl<'a> SegmentHeaderDownloader<'a> {
             Vec::with_capacity(u64::from(new_segment_headers_count) as usize);
         new_segment_headers.push(last_segment_header);
 
-        while last_segment_header.segment_index() > last_known_segment_index {
-            let segment_indexes = (last_known_segment_index..last_segment_header.segment_index())
+        let mut segment_to_download_to = last_segment_header;
+        while segment_to_download_to.segment_index() - last_known_segment_index > SegmentIndex::ONE
+        {
+            let segment_indexes = (last_known_segment_index + SegmentIndex::ONE
+                ..segment_to_download_to.segment_index())
                 .rev()
                 .take(SEGMENT_HEADER_NUMBER_PER_REQUEST as usize)
                 .collect();
@@ -73,27 +78,40 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .await?;
 
             for segment_header in segment_headers {
-                if segment_header.hash() != last_segment_header.prev_segment_header_hash() {
+                if segment_header.hash() != segment_to_download_to.prev_segment_header_hash() {
                     error!(
                         %peer_id,
-                        segment_index=%last_segment_header.segment_index() - SegmentIndex::ONE,
+                        segment_index=%segment_to_download_to.segment_index() - SegmentIndex::ONE,
                         actual_hash=?segment_header.hash(),
-                        expected_hash=?last_segment_header.prev_segment_header_hash(),
-                        "Segment header hash doesn't match expected hash from the last block."
+                        expected_hash=?segment_to_download_to.prev_segment_header_hash(),
+                        "Segment header hash doesn't match expected hash from the last block"
                     );
 
                     return Err(
-                        "Segment header hash doesn't match expected hash from the last block."
+                        "Segment header hash doesn't match expected hash from the last block"
                             .into(),
                     );
                 }
 
-                last_segment_header = segment_header;
+                segment_to_download_to = segment_header;
                 new_segment_headers.push(segment_header);
             }
         }
 
         new_segment_headers.reverse();
+
+        if new_segment_headers
+            .first()
+            .expect("Not empty; qed")
+            .prev_segment_header_hash()
+            != last_known_segment_header.hash()
+        {
+            return Err(
+                "Downloaded segment headers do not match last known segment header, ignoring \
+                downloaded headers"
+                    .into(),
+            );
+        }
 
         Ok(new_segment_headers)
     }

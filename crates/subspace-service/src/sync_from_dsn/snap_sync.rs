@@ -354,7 +354,7 @@ async fn sync_segment_headers<AS>(
 where
     AS: AuxStore,
 {
-    let max_segment_index = segment_headers_store.max_segment_index().ok_or_else(|| {
+    let last_segment_header = segment_headers_store.last_segment_header().ok_or_else(|| {
         Error::Other(
             "Archiver needs to be initialized before syncing from DSN to populate the very first \
             segment"
@@ -362,7 +362,7 @@ where
         )
     })?;
     let new_segment_headers = SegmentHeaderDownloader::new(node)
-        .get_segment_headers(max_segment_index)
+        .get_segment_headers(&last_segment_header)
         .await
         .map_err(|error| error.to_string())?;
 

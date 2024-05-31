@@ -169,6 +169,11 @@ where
         })
     }
 
+    /// Returns last observed segment header
+    pub fn last_segment_header(&self) -> Option<SegmentHeader> {
+        self.inner.cache.lock().last().cloned()
+    }
+
     /// Returns last observed segment index
     pub fn max_segment_index(&self) -> Option<SegmentIndex> {
         let segment_index = self.inner.cache.lock().len().checked_sub(1)? as u64;
