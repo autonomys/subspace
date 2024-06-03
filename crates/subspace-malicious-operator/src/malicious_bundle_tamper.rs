@@ -81,11 +81,11 @@ where
         opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
-        if Random::probability(0.5) {
+        if Random::probability(0.2) {
             self.make_receipt_fraudulent(&mut opaque_bundle.sealed_header.header.receipt)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
-        if Random::probability(0.3) {
+        if Random::probability(0.1) {
             self.make_bundle_invalid(opaque_bundle)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
