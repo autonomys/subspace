@@ -11,7 +11,6 @@ use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
-use schnellru::{ByLength, LruMap};
 use std::collections::{HashMap, HashSet};
 #[cfg(not(windows))]
 use std::fs::File;
@@ -35,7 +34,6 @@ use tracing::{debug, info, info_span, trace, warn, Instrument};
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 
-const ARCHIVED_SEGMENTS_CACHE_SIZE: u32 = 1000;
 const PLOTTING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub(super) struct SectorToPlot {
@@ -719,8 +717,6 @@ where
 
     let mut sectors_to_replot = Vec::new();
     let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
-    let mut archived_segment_commitments_cache =
-        LruMap::new(ByLength::new(ARCHIVED_SEGMENTS_CACHE_SIZE));
 
     loop {
         let archived_segment_header = *archived_segments_receiver.borrow_and_update();
@@ -786,27 +782,14 @@ where
                     %expiration_check_segment_index,
                     "Determined sector expiration check segment index"
                 );
-                let maybe_sector_expiration_check_segment_commitment =
-                    if let Some(segment_commitment) =
-                        archived_segment_commitments_cache.get(&expiration_check_segment_index)
-                    {
-                        Some(*segment_commitment)
-                    } else {
-                        node_client
-                            .segment_headers(vec![expiration_check_segment_index])
-                            .await
-                            .map_err(|error| PlottingError::FailedToGetSegmentHeader { error })?
-                            .into_iter()
-                            .next()
-                            .flatten()
-                            .map(|segment_header| {
-                                let segment_commitment = segment_header.segment_commitment();
-
-                                archived_segment_commitments_cache
-                                    .insert(expiration_check_segment_index, segment_commitment);
-                                segment_commitment
-                            })
-                    };
+                let maybe_sector_expiration_check_segment_commitment = node_client
+                    .segment_headers(vec![expiration_check_segment_index])
+                    .await
+                    .map_err(|error| PlottingError::FailedToGetSegmentHeader { error })?
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .map(|segment_header| segment_header.segment_commitment());
 
                 if let Some(sector_expiration_check_segment_commitment) =
                     maybe_sector_expiration_check_segment_commitment
@@ -820,7 +803,7 @@ where
                         )
                         .expect(
                             "Farmers internally stores correct history size in sector \
-                                metadata; qed",
+                            metadata; qed",
                         );
 
                     let expires_at = expiration_history_size.segment_index();
