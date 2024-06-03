@@ -17,7 +17,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
-use sc_service::PruningMode;
+use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -113,6 +113,22 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     );
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
     info!("💾 Node path: {}", base_path.display());
+
+    if maybe_domain_configuration.is_some()
+        && (matches!(
+            subspace_configuration.blocks_pruning,
+            BlocksPruning::Some(_)
+        ) || matches!(
+            subspace_configuration.state_pruning,
+            Some(PruningMode::Constrained(_))
+        ))
+    {
+        return Err(Error::Other(
+            "Running an operator requires both `--blocks-pruning` and `--state-pruning` to be set \
+            to either `archive` or `archive-canonical`"
+                .to_string(),
+        ));
+    }
 
     let mut consensus_state_pruning = subspace_configuration
         .state_pruning
