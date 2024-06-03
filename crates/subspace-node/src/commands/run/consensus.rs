@@ -17,6 +17,7 @@ use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
+use subspace_core_primitives::BlockNumber;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
@@ -25,7 +26,11 @@ use subspace_service::config::{
 };
 use subspace_service::dsn::DsnConfig;
 use tempfile::TempDir;
-use tracing::warn;
+use tracing::{error, warn};
+
+/// Roughly 138k empty blocks can fit into one archived segment, hence we need to not allow to prune
+/// more blocks that this
+const MIN_STATE_PRUNING: BlockNumber = 140_000;
 
 fn parse_timekeeper_cpu_cores(
     s: &str,
@@ -241,7 +246,7 @@ struct PruningOptions {
     /// Possible values:
     ///  - archive: Keep the state of all blocks.
     ///  - archive-canonical: Keep only the state of finalized blocks.
-    #[arg(long, default_value_t = StatePruningMode::ArchiveCanonical)]
+    #[arg(long, default_value_t = StatePruningMode::Number(MIN_STATE_PRUNING))]
     state_pruning: StatePruningMode,
 
     /// Specify the blocks pruning mode.
@@ -518,6 +523,17 @@ pub(super) fn create_consensus_chain_configuration(
     let net_config_path = base_path.join("network");
 
     let node_name = name.unwrap_or_else(generate_node_name);
+
+    if let StatePruningMode::Number(number) = pruning_params.state_pruning {
+        if number < MIN_STATE_PRUNING {
+            // Do not return error because some users may in fact use lower values and we don't want
+            // to break their setups, at least for now
+            error!(
+                "Do not set state pruning number below {MIN_STATE_PRUNING} for safety reasons, \
+                node can break any time!"
+            );
+        }
+    }
 
     let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
