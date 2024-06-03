@@ -146,12 +146,21 @@ impl farm::PieceCache for PieceCache {
     }
 
     async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
-        let piece_cache = self.clone();
-        Ok(AsyncJoinOnDrop::new(
-            task::spawn_blocking(move || piece_cache.read_piece(offset)),
-            false,
-        )
-        .await??)
+        // TODO: On Windows spawning blocking task that allows concurrent reads causes huge memory
+        //  usage. No idea why it happens, but not spawning anything at all helps for some reason.
+        //  Someone at some point should figure it out and fix, but it will probably be not me
+        //  (Nazar).
+        //  See https://github.com/subspace/subspace/issues/2813 and linked forum post for details.
+        if cfg!(windows) {
+            Ok(task::block_in_place(|| self.read_piece(offset))?)
+        } else {
+            let piece_cache = self.clone();
+            Ok(AsyncJoinOnDrop::new(
+                task::spawn_blocking(move || piece_cache.read_piece(offset)),
+                false,
+            )
+            .await??)
+        }
     }
 }
 

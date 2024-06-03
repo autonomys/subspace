@@ -156,7 +156,7 @@ impl PieceGetter for MockPieceGetter {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn basic() {
     let current_segment_index = Arc::new(AtomicU64::new(0));
     let pieces = Arc::default();
