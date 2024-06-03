@@ -181,14 +181,7 @@ pub(super) async fn controller(
             let instance = instance.clone();
 
             move || async move {
-                controller_service(
-                    &nats_client,
-                    &node_client,
-                    &piece_getter,
-                    &instance,
-                    &AsyncRwLock::default(),
-                )
-                .await
+                controller_service(&nats_client, &node_client, &piece_getter, &instance).await
             }
         },
         "controller-service".to_string(),

@@ -11,7 +11,7 @@ use crate::cluster::nats_client::{
 };
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
+use async_lock::{Mutex as AsyncMutex, Semaphore};
 use async_nats::{HeaderValue, Message};
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
@@ -28,9 +28,8 @@ use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
-    MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
 
@@ -325,7 +324,6 @@ pub async fn controller_service<NC, PG>(
     node_client: &NC,
     piece_getter: &PG,
     instance: &str,
-    segment_headers: &AsyncRwLock<Vec<SegmentHeader>>,
 ) -> anyhow::Result<()>
 where
     NC: NodeClient,
@@ -338,7 +336,7 @@ where
         result = reward_signing_broadcaster(nats_client, node_client, instance).fuse() => {
             result
         },
-        result = archived_segment_headers_broadcaster(nats_client, node_client, instance, segment_headers).fuse() => {
+        result = archived_segment_headers_broadcaster(nats_client, node_client, instance).fuse() => {
             result
         },
         result = solution_response_forwarder(nats_client, node_client, instance).fuse() => {
@@ -350,7 +348,7 @@ where
         result = farmer_app_info_responder(nats_client, node_client).fuse() => {
             result
         },
-        result = segment_headers_responder(nats_client, segment_headers).fuse() => {
+        result = segment_headers_responder(nats_client, node_client).fuse() => {
             result
         },
         result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -430,7 +428,6 @@ async fn archived_segment_headers_broadcaster<NC>(
     nats_client: &NatsClient,
     node_client: &NC,
     instance: &str,
-    segment_headers: &AsyncRwLock<Vec<SegmentHeader>>,
 ) -> anyhow::Result<()>
 where
     NC: NodeClient,
@@ -441,39 +438,6 @@ where
         .map_err(|error| {
             anyhow!("Failed to subscribe to archived segment header notifications: {error}")
         })?;
-
-    info!("Downloading all segment headers from node...");
-    {
-        let mut segment_headers = segment_headers.write().await;
-        let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
-        let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
-
-        'outer: loop {
-            let from = segment_index_offset;
-            let to = segment_index_offset + segment_index_step;
-            trace!(%from, %to, "Requesting segment headers");
-
-            for maybe_segment_header in node_client
-                .segment_headers((from..to).collect())
-                .await
-                .map_err(|error| {
-                    anyhow!("Failed to download segment headers {from}..{to} from node: {error}")
-                })?
-            {
-                let Some(segment_header) = maybe_segment_header else {
-                    // Reached non-existent segment header
-                    break 'outer;
-                };
-
-                if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
-                    segment_headers.push(segment_header);
-                }
-            }
-
-            segment_index_offset += segment_index_step;
-        }
-    }
-    info!("Downloaded all segment headers from node successfully");
 
     while let Some(archived_segment_header) = archived_segments_notifications.next().await {
         trace!(
@@ -496,11 +460,6 @@ where
             .await
         {
             warn!(%error, "Failed to broadcast archived segment header info");
-        }
-
-        let mut segment_headers = segment_headers.write().await;
-        if segment_headers.len() == u64::from(archived_segment_header.segment_index()) as usize {
-            segment_headers.push(archived_segment_header);
         }
     }
 
@@ -677,10 +636,13 @@ async fn process_farmer_app_info_request<NC>(
     }
 }
 
-async fn segment_headers_responder(
+async fn segment_headers_responder<NC>(
     nats_client: &NatsClient,
-    segment_headers: &AsyncRwLock<Vec<SegmentHeader>>,
-) -> anyhow::Result<()> {
+    node_client: &NC,
+) -> anyhow::Result<()>
+where
+    NC: NodeClient,
+{
     // Initialize with pending future so it never ends
     let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
         Box::pin(pending()) as Pin<Box<_>>,
@@ -706,7 +668,7 @@ async fn segment_headers_responder(
                 // Create background task for concurrent processing
                 processing.push(Box::pin(process_segment_headers_request(
                     nats_client,
-                    segment_headers,
+                    node_client,
                     message,
                 )));
             }
@@ -718,11 +680,13 @@ async fn segment_headers_responder(
     Ok(())
 }
 
-async fn process_segment_headers_request(
+async fn process_segment_headers_request<NC>(
     nats_client: &NatsClient,
-    segment_headers: &AsyncRwLock<Vec<SegmentHeader>>,
+    node_client: &NC,
     message: Message,
-) {
+) where
+    NC: NodeClient,
+{
     let Some(reply_subject) = message.reply else {
         return;
     };
@@ -741,19 +705,21 @@ async fn process_segment_headers_request(
         };
     trace!(?request, "Segment headers request");
 
-    let response: <ClusterControllerSegmentHeadersRequest as GenericRequest>::Response = {
-        let segment_headers = segment_headers.read().await;
-
-        request
-            .segment_indices
-            .into_iter()
-            .map(|segment_index| {
-                segment_headers
-                    .get(u64::from(segment_index) as usize)
-                    .copied()
-            })
-            .collect()
-    };
+    let response: <ClusterControllerSegmentHeadersRequest as GenericRequest>::Response =
+        match node_client
+            .segment_headers(request.segment_indices.clone())
+            .await
+        {
+            Ok(segment_headers) => segment_headers,
+            Err(error) => {
+                warn!(
+                    %error,
+                    segment_indices = ?request.segment_indices,
+                    "Failed to get segment headers"
+                );
+                return;
+            }
+        };
 
     if let Err(error) = nats_client
         .publish(reply_subject, response.encode().into())
