@@ -8,7 +8,7 @@ use sc_cli::{
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
-use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, SyncMode};
+use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
@@ -550,6 +550,7 @@ pub(super) fn create_consensus_chain_configuration(
             },
             node_name,
             allow_private_ips: network_options.allow_private_ips,
+            sync_mode: sync,
             force_synced,
         },
         state_pruning: pruning_params.state_pruning(),
@@ -591,14 +592,7 @@ pub(super) fn create_consensus_chain_configuration(
         chain_spec: Box::new(chain_spec),
         informant_output_format: OutputFormat { enable_color },
     };
-    let mut consensus_chain_config = Configuration::from(consensus_chain_config);
-    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
-    if sync == ChainSyncMode::Snap {
-        consensus_chain_config.network.sync_mode = SyncMode::LightState {
-            skip_proofs: true,
-            storage_chain_mode: false,
-        };
-    }
+    let consensus_chain_config = Configuration::from(consensus_chain_config);
 
     let pot_external_entropy =
         derive_pot_external_entropy(&consensus_chain_config, pot_external_entropy)?;
