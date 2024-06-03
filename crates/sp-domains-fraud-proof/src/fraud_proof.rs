@@ -256,9 +256,6 @@ pub enum VerificationError<DomainHash> {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(codec::Error),
-    /// Invalid storage proof.
-    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
-    InvalidStorageProof,
     #[cfg_attr(
         feature = "thiserror",
         error("The receipt's execution_trace have less than 2 traces")
