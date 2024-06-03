@@ -17,6 +17,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
+use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -86,7 +87,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
-        subspace_configuration,
+        mut subspace_configuration,
         dev,
         pot_external_entropy,
         storage_monitor,
@@ -113,7 +114,23 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
     info!("💾 Node path: {}", base_path.display());
 
-    let consensus_state_pruning = subspace_configuration
+    if maybe_domain_configuration.is_some()
+        && (matches!(
+            subspace_configuration.blocks_pruning,
+            BlocksPruning::Some(_)
+        ) || matches!(
+            subspace_configuration.state_pruning,
+            Some(PruningMode::Constrained(_))
+        ))
+    {
+        return Err(Error::Other(
+            "Running an operator requires both `--blocks-pruning` and `--state-pruning` to be set \
+            to either `archive` or `archive-canonical`"
+                .to_string(),
+        ));
+    }
+
+    let mut consensus_state_pruning = subspace_configuration
         .state_pruning
         .clone()
         .unwrap_or_default();
@@ -122,15 +139,39 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             let span = info_span!("Consensus");
             let _enter = span.enter();
 
-            let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
+            let partial_components = match subspace_service::new_partial::<PosTable, RuntimeApi>(
                 &subspace_configuration,
                 &pot_external_entropy,
-            )
-            .map_err(|error| {
-                sc_service::Error::Other(format!(
-                    "Failed to build a full subspace node 1: {error:?}"
-                ))
-            })?;
+            ) {
+                Ok(partial_components) => partial_components,
+                Err(sc_service::Error::Client(sp_blockchain::Error::StateDatabase(error)))
+                    if error.to_string().contains(
+                        "Incompatible pruning modes [stored: ArchiveCanonical; requested: \
+                        Constrained",
+                    ) =>
+                {
+                    // TODO: Workaround for supporting older default `archive-canonical` while new
+                    //  default has become pruned state, can be removed if/when
+                    //  https://github.com/paritytech/polkadot-sdk/issues/4671 is implemented
+                    consensus_state_pruning = PruningMode::ArchiveCanonical;
+                    subspace_configuration.base.state_pruning = Some(PruningMode::ArchiveCanonical);
+
+                    subspace_service::new_partial::<PosTable, RuntimeApi>(
+                        &subspace_configuration,
+                        &pot_external_entropy,
+                    )
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node 1: {error:?}"
+                        ))
+                    })?
+                }
+                Err(error) => {
+                    return Err(Error::Other(format!(
+                        "Failed to build a full subspace node 2: {error:?}"
+                    )));
+                }
+            };
 
             let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
@@ -146,7 +187,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
             full_node_fut.await.map_err(|error| {
                 sc_service::Error::Other(format!(
-                    "Failed to build a full subspace node 2: {error:?}"
+                    "Failed to build a full subspace node 3: {error:?}"
                 ))
             })?
         };

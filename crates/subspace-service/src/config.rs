@@ -72,6 +72,8 @@ pub struct SubstrateNetworkConfiguration {
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT.
     pub allow_private_ips: bool,
+    /// Sync mode
+    pub sync_mode: ChainSyncMode,
     /// Parameter that allows node to forcefully assume it is synced, needed for network
     /// bootstrapping only, as long as two synced nodes remain on the network at any time, this
     /// doesn't need to be used.
@@ -148,8 +150,14 @@ impl From<SubstrateConfiguration> for Configuration {
                 max_parallel_downloads: 5,
                 // Substrate's default
                 max_blocks_per_request: 64,
-                // Substrate's default, full mode
-                sync_mode: SyncMode::Full,
+                sync_mode: match configuration.network.sync_mode {
+                    ChainSyncMode::Full => SyncMode::Full,
+                    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
+                    ChainSyncMode::Snap => SyncMode::LightState {
+                        skip_proofs: false,
+                        storage_chain_mode: false,
+                    },
+                },
                 pause_sync: Arc::new(AtomicBool::new(false)),
                 // Substrate's default
                 enable_dht_random_walk: true,
