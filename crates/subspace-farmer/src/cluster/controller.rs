@@ -56,9 +56,9 @@ impl GenericBroadcast for ClusterControllerCacheIdentifyBroadcast {
 
 /// Broadcast with slot info sent by controllers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerSlotInfoBroadcast {
-    pub slot_info: SlotInfo,
-    pub instance: String,
+struct ClusterControllerSlotInfoBroadcast {
+    slot_info: SlotInfo,
+    instance: String,
 }
 
 impl GenericBroadcast for ClusterControllerSlotInfoBroadcast {
@@ -75,8 +75,8 @@ impl GenericBroadcast for ClusterControllerSlotInfoBroadcast {
 
 /// Broadcast with reward signing info by controllers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerRewardSigningBroadcast {
-    pub reward_signing_info: RewardSigningInfo,
+struct ClusterControllerRewardSigningBroadcast {
+    reward_signing_info: RewardSigningInfo,
 }
 
 impl GenericBroadcast for ClusterControllerRewardSigningBroadcast {
@@ -85,8 +85,8 @@ impl GenericBroadcast for ClusterControllerRewardSigningBroadcast {
 
 /// Broadcast with archived segment headers by controllers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerArchivedSegmentHeaderBroadcast {
-    pub archived_segment_header: SegmentHeader,
+struct ClusterControllerArchivedSegmentHeaderBroadcast {
+    archived_segment_header: SegmentHeader,
 }
 
 impl GenericBroadcast for ClusterControllerArchivedSegmentHeaderBroadcast {
@@ -107,8 +107,8 @@ impl GenericBroadcast for ClusterControllerArchivedSegmentHeaderBroadcast {
 
 /// Notification messages with solution by farmers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerSolutionNotification {
-    pub solution_response: SolutionResponse,
+struct ClusterControllerSolutionNotification {
+    solution_response: SolutionResponse,
 }
 
 impl GenericNotification for ClusterControllerSolutionNotification {
@@ -117,8 +117,8 @@ impl GenericNotification for ClusterControllerSolutionNotification {
 
 /// Notification messages with reward signature by farmers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerRewardSignatureNotification {
-    pub reward_signature: RewardSignatureResponse,
+struct ClusterControllerRewardSignatureNotification {
+    reward_signature: RewardSignatureResponse,
 }
 
 impl GenericNotification for ClusterControllerRewardSignatureNotification {
@@ -127,7 +127,7 @@ impl GenericNotification for ClusterControllerRewardSignatureNotification {
 
 /// Request farmer app info from controller
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerFarmerAppInfoRequest;
+struct ClusterControllerFarmerAppInfoRequest;
 
 impl GenericRequest for ClusterControllerFarmerAppInfoRequest {
     const SUBJECT: &'static str = "subspace.controller.farmer-app-info";
@@ -136,8 +136,8 @@ impl GenericRequest for ClusterControllerFarmerAppInfoRequest {
 
 /// Request segment headers with specified segment indices
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerSegmentHeadersRequest {
-    pub segment_indices: Vec<SegmentIndex>,
+struct ClusterControllerSegmentHeadersRequest {
+    segment_indices: Vec<SegmentIndex>,
 }
 
 impl GenericRequest for ClusterControllerSegmentHeadersRequest {
@@ -147,8 +147,8 @@ impl GenericRequest for ClusterControllerSegmentHeadersRequest {
 
 /// Request piece with specified index
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterControllerPieceRequest {
-    pub piece_index: PieceIndex,
+struct ClusterControllerPieceRequest {
+    piece_index: PieceIndex,
 }
 
 impl GenericRequest for ClusterControllerPieceRequest {
