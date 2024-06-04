@@ -15,12 +15,10 @@ use std::future::{ready, Future};
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_farmer::cluster::cache::{
-    ClusterCacheId, ClusterCacheIdentifyBroadcast, ClusterPieceCache,
-};
+use subspace_farmer::cluster::cache::{ClusterCacheIdentifyBroadcast, ClusterPieceCache};
 use subspace_farmer::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::farm::PieceCache;
+use subspace_farmer::farm::{PieceCache, PieceCacheId};
 use subspace_farmer::farmer_cache::FarmerCache;
 use tokio::time::MissedTickBehavior;
 use tracing::{info, trace, warn};
@@ -29,7 +27,7 @@ const SCHEDULE_REINITIALIZATION_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 struct KnownCache {
-    cache_id: ClusterCacheId,
+    cache_id: PieceCacheId,
     last_identification: Instant,
     piece_cache: Arc<ClusterPieceCache>,
 }
@@ -50,7 +48,7 @@ impl KnownCaches {
     /// Return `true` if farmer cache reinitialization is required
     fn update(
         &mut self,
-        cache_id: ClusterCacheId,
+        cache_id: PieceCacheId,
         max_num_elements: u32,
         nats_client: &NatsClient,
     ) -> bool {

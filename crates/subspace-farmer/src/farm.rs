@@ -33,6 +33,62 @@ pub trait PlottedSectors: Send + Sync + fmt::Debug {
     >;
 }
 
+/// An identifier for a cache, can be used for in logs, thread names, etc.
+#[derive(
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
+)]
+#[serde(untagged)]
+pub enum PieceCacheId {
+    /// Cache ID
+    Ulid(Ulid),
+}
+
+impl Encode for PieceCacheId {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        1_usize
+            + match self {
+                PieceCacheId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
+            }
+    }
+
+    #[inline]
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        match self {
+            PieceCacheId::Ulid(ulid) => {
+                output.push_byte(0);
+                Encode::encode_to(&ulid.0, output);
+            }
+        }
+    }
+}
+
+impl EncodeLike for PieceCacheId {}
+
+impl Decode for PieceCacheId {
+    #[inline]
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        match input
+            .read_byte()
+            .map_err(|e| e.chain("Could not decode `CacheId`, failed to read variant byte"))?
+        {
+            0 => u128::decode(input)
+                .map(|ulid| PieceCacheId::Ulid(Ulid(ulid)))
+                .map_err(|e| e.chain("Could not decode `CacheId::Ulid.0`")),
+            _ => Err("Could not decode `CacheId`, variant doesn't exist".into()),
+        }
+    }
+}
+
+#[allow(clippy::new_without_default)]
+impl PieceCacheId {
+    /// Creates new ID
+    #[inline]
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
+
 /// Offset wrapper for pieces in [`PieceCache`]
 #[derive(Debug, Display, Copy, Clone, Encode, Decode)]
 #[repr(transparent)]
@@ -41,6 +97,9 @@ pub struct PieceCacheOffset(pub(crate) u32);
 /// Abstract piece cache implementation
 #[async_trait]
 pub trait PieceCache: Send + Sync + fmt::Debug {
+    /// ID of this cache
+    fn id(&self) -> &PieceCacheId;
+
     /// Max number of elements in this cache
     fn max_num_elements(&self) -> u32;
 

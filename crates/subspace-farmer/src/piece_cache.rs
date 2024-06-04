@@ -2,7 +2,7 @@
 mod tests;
 
 use crate::farm;
-use crate::farm::{FarmError, PieceCacheOffset};
+use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
@@ -58,6 +58,7 @@ pub enum PieceCacheError {
 
 #[derive(Debug)]
 struct Inner {
+    id: PieceCacheId,
     #[cfg(not(windows))]
     file: File,
     #[cfg(windows)]
@@ -74,6 +75,10 @@ pub struct PieceCache {
 
 #[async_trait]
 impl farm::PieceCache for PieceCache {
+    fn id(&self) -> &PieceCacheId {
+        &self.inner.id
+    }
+
     #[inline]
     fn max_num_elements(&self) -> u32 {
         self.inner.max_num_elements
@@ -202,6 +207,8 @@ impl PieceCache {
 
         Ok(Self {
             inner: Arc::new(Inner {
+                // ID for cache is ephemeral
+                id: PieceCacheId::new(),
                 file,
                 max_num_elements: capacity,
             }),
