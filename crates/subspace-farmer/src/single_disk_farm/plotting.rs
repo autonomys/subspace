@@ -151,7 +151,9 @@ where
                 loop {
                     select! {
                         sector_plotting_init_result = sector_plotting_init_fut => {
-                            sectors_being_plotted.push_back(sector_plotting_init_result?);
+                            sectors_being_plotted.push_back(
+                                sector_plotting_init_result?.instrument(info_span!("", %sector_index))
+                            );
                             break;
                         }
                         maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
