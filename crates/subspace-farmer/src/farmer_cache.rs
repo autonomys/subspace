@@ -168,7 +168,7 @@ where
             WorkerCommand::ForgetKey { key } => {
                 let mut caches = self.piece_caches.write().await;
 
-                for (farm_index, cache) in caches.iter_mut().enumerate() {
+                for (cache_index, cache) in caches.iter_mut().enumerate() {
                     let Some(offset) = cache.stored_pieces.remove(&key) else {
                         // Not this disk farm
                         continue;
@@ -182,7 +182,7 @@ where
                         }
                         Ok(None) => {
                             warn!(
-                                %farm_index,
+                                %cache_index,
                                 %offset,
                                 "Piece index out of range, this is likely an implementation bug, \
                                 not freeing heap element"
@@ -191,7 +191,7 @@ where
                         Err(error) => {
                             error!(
                                 %error,
-                                %farm_index,
+                                %cache_index,
                                 ?key,
                                 %offset,
                                 "Error while reading piece from cache, might be a disk corruption"
@@ -467,7 +467,7 @@ where
             // populated first
             sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
             if !stream::iter(sorted_caches)
-                .any(|(farm_index, cache)| async move {
+                .any(|(cache_index, cache)| async move {
                     let Some(offset) = cache.free_offsets.pop_front() else {
                         return false;
                     };
@@ -476,7 +476,7 @@ where
                     {
                         error!(
                             %error,
-                            %farm_index,
+                            %cache_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
@@ -729,7 +729,7 @@ where
         match worker_state.heap.insert(heap_key) {
             // Entry is already occupied, we need to find and replace old piece with new one
             Some(KeyWrapper(old_piece_index)) => {
-                for (farm_index, cache) in caches.iter_mut().enumerate() {
+                for (cache_index, cache) in caches.iter_mut().enumerate() {
                     let old_record_key = RecordKey::from(old_piece_index.to_multihash());
                     let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
                         // Not this disk farm
@@ -740,14 +740,14 @@ where
                     {
                         error!(
                             %error,
-                            %farm_index,
+                            %cache_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
                         );
                     } else {
                         trace!(
-                            %farm_index,
+                            %cache_index,
                             %old_piece_index,
                             %piece_index,
                             %offset,
@@ -771,7 +771,7 @@ where
                 // Sort piece caches by number of stored pieces to fill those that are less
                 // populated first
                 sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
-                for (farm_index, cache) in sorted_caches {
+                for (cache_index, cache) in sorted_caches {
                     let Some(offset) = cache.free_offsets.pop_front() else {
                         // Not this disk farm
                         continue;
@@ -781,14 +781,14 @@ where
                     {
                         error!(
                             %error,
-                            %farm_index,
+                            %cache_index,
                             %piece_index,
                             %offset,
                             "Failed to write piece into cache"
                         );
                     } else {
                         trace!(
-                            %farm_index,
+                            %cache_index,
                             %piece_index,
                             %offset,
                             "Successfully stored piece in cache"
@@ -818,7 +818,7 @@ struct PlotCaches {
 
 impl PlotCaches {
     async fn should_store(&self, piece_index: PieceIndex, key: &RecordKey) -> bool {
-        for (farm_index, cache) in self.caches.read().await.iter().enumerate() {
+        for (cache_index, cache) in self.caches.read().await.iter().enumerate() {
             match cache.is_piece_maybe_stored(key).await {
                 Ok(MaybePieceStoredResult::No) => {
                     // Try another one if there is any
@@ -832,7 +832,7 @@ impl PlotCaches {
                 }
                 Err(error) => {
                     warn!(
-                        %farm_index,
+                        %cache_index,
                         %piece_index,
                         %error,
                         "Failed to check piece stored in cache"
@@ -932,7 +932,7 @@ impl FarmerCache {
 
     /// Get piece from cache
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
-        for (farm_index, cache) in self.piece_caches.read().await.iter().enumerate() {
+        for (cache_index, cache) in self.piece_caches.read().await.iter().enumerate() {
             let Some(&offset) = cache.stored_pieces.get(&key) else {
                 continue;
             };
@@ -943,7 +943,7 @@ impl FarmerCache {
                 Err(error) => {
                     error!(
                         %error,
-                        %farm_index,
+                        %cache_index,
                         ?key,
                         %offset,
                         "Error while reading piece from cache, might be a disk corruption"
