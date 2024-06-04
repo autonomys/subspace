@@ -7,12 +7,15 @@ use crate::{
     Error, Event, InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
 #[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use scale_info::TypeInfo;
+use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_messenger::messages::{
-    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, Message, MessageId,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, FeeModel, Message, MessageId,
     MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
     VersionedPayload,
 };
@@ -123,29 +126,20 @@ impl<T: Config> Pallet<T> {
 
             // process incoming endpoint message.
             VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))) => {
-                let response = if let Some(endpoint_handler) =
-                    T::get_endpoint_handler(&req.dst_endpoint)
-                {
-                    if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
-                        return Err(Error::<T>::ChainNotAllowed.into());
-                    }
-
-                    if msg_weight_tag != MessageWeightTag::EndpointRequest(req.dst_endpoint.clone())
-                    {
-                        return Err(Error::<T>::WeightTagNotMatch.into());
-                    }
-
-                    // store fees for inbox message execution
-                    Self::store_fees_for_inbox_message(
-                        (dst_chain_id, (channel_id, nonce)),
-                        &channel.fee,
-                        &req.src_endpoint,
-                    )?;
-
-                    endpoint_handler.message(dst_chain_id, (channel_id, nonce), req)
-                } else {
-                    Err(Error::<T>::NoMessageHandler.into())
-                };
+                let response =
+                    if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
+                        Self::process_incoming_endpoint_message_req(
+                            dst_chain_id,
+                            req,
+                            channel_id,
+                            nonce,
+                            &msg_weight_tag,
+                            &channel.fee,
+                            endpoint_handler,
+                        )
+                    } else {
+                        Err(Error::<T>::NoMessageHandler.into())
+                    };
 
                 Payload::Endpoint(RequestResponse::Response(response))
             }
@@ -214,6 +208,33 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn process_incoming_endpoint_message_req(
+        dst_chain_id: ChainId,
+        req: EndpointRequest,
+        channel_id: ChannelId,
+        nonce: Nonce,
+        msg_weight_tag: &MessageWeightTag,
+        fee: &FeeModel<BalanceOf<T>>,
+        endpoint_handler: Box<dyn sp_messenger::endpoint::EndpointHandler<MessageId>>,
+    ) -> EndpointResponse {
+        if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
+            return Err(Error::<T>::ChainNotAllowed.into());
+        }
+
+        if msg_weight_tag != &MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()) {
+            return Err(Error::<T>::WeightTagNotMatch.into());
+        }
+
+        // store fees for inbox message execution
+        Self::store_fees_for_inbox_message(
+            (dst_chain_id, (channel_id, nonce)),
+            fee,
+            &req.src_endpoint,
+        )?;
+
+        endpoint_handler.message(dst_chain_id, (channel_id, nonce), req)
+    }
+
     fn process_incoming_protocol_message_req(
         chain_id: ChainId,
         channel_id: ChannelId,
@@ -267,6 +288,26 @@ impl<T: Config> Pallet<T> {
         }
     }
 
+    fn process_incoming_endpoint_message_response(
+        dst_chain_id: ChainId,
+        channel_id: ChannelId,
+        nonce: Nonce,
+        resp_msg_weight_tag: &MessageWeightTag,
+        req: EndpointRequest,
+        resp: EndpointResponse,
+        endpoint_handler: Box<dyn EndpointHandler<MessageId>>,
+    ) -> DispatchResult {
+        if resp_msg_weight_tag != &MessageWeightTag::EndpointResponse(req.dst_endpoint.clone()) {
+            return Err(Error::<T>::WeightTagNotMatch.into());
+        }
+
+        let resp = endpoint_handler.message_response(dst_chain_id, (channel_id, nonce), req, resp);
+
+        Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
+
+        resp
+    }
+
     pub(crate) fn process_outbox_message_responses(
         resp_msg: Message<BalanceOf<T>>,
         resp_msg_weight_tag: MessageWeightTag,
@@ -307,22 +348,15 @@ impl<T: Config> Pallet<T> {
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(resp))),
             ) => {
                 if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
-                    if resp_msg_weight_tag
-                        != MessageWeightTag::EndpointResponse(req.dst_endpoint.clone())
-                    {
-                        return Err(Error::<T>::WeightTagNotMatch.into());
-                    }
-
-                    let resp = endpoint_handler.message_response(
+                    Self::process_incoming_endpoint_message_response(
                         dst_chain_id,
-                        (channel_id, nonce),
+                        channel_id,
+                        nonce,
+                        &resp_msg_weight_tag,
                         req,
                         resp,
-                    );
-
-                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
-
-                    resp
+                        endpoint_handler,
+                    )
                 } else {
                     Err(Error::<T>::NoMessageHandler.into())
                 }
