@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::farm::{MaybePieceStoredResult, PieceCache, PieceCacheOffset, PlotCache};
+use crate::farm::{MaybePieceStoredResult, PieceCache, PieceCacheId, PieceCacheOffset, PlotCache};
 use crate::node_client::NodeClient;
 use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
@@ -938,7 +938,7 @@ impl FarmerCache {
             };
             match cache.backend.read_piece(offset).await {
                 Ok(maybe_piece) => {
-                    return maybe_piece;
+                    return maybe_piece.map(|(_piece_index, piece)| piece);
                 }
                 Err(error) => {
                     error!(
@@ -966,6 +966,23 @@ impl FarmerCache {
             if let Ok(Some(piece)) = cache.read_piece(&key).await {
                 return Some(piece);
             }
+        }
+
+        None
+    }
+
+    /// Find piece in cache and return its retrieval details
+    pub(crate) async fn find_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Option<(PieceCacheId, PieceCacheOffset)> {
+        let key = RecordKey::from(piece_index.to_multihash());
+
+        for cache in self.piece_caches.read().await.iter() {
+            let Some(&offset) = cache.stored_pieces.get(&key) else {
+                continue;
+            };
+            return Some((*cache.backend.id(), offset));
         }
 
         None

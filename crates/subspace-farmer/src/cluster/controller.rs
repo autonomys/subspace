@@ -6,9 +6,12 @@
 //! client implementations designed to work with cluster controller and a service function to drive
 //! the backend part of the controller.
 
+use crate::cluster::cache::ClusterCacheReadPieceRequest;
 use crate::cluster::nats_client::{
     GenericBroadcast, GenericNotification, GenericRequest, NatsClient,
 };
+use crate::farm::{PieceCacheId, PieceCacheOffset};
+use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
@@ -145,6 +148,17 @@ impl GenericRequest for ClusterControllerSegmentHeadersRequest {
     type Response = Vec<Option<SegmentHeader>>;
 }
 
+/// Find piece with specified index in cache
+#[derive(Debug, Clone, Encode, Decode)]
+struct ClusterControllerFindPieceInCacheRequest {
+    piece_index: PieceIndex,
+}
+
+impl GenericRequest for ClusterControllerFindPieceInCacheRequest {
+    const SUBJECT: &'static str = "subspace.controller.find-piece-in-cache";
+    type Response = Option<(PieceCacheId, PieceCacheOffset)>;
+}
+
 /// Request piece with specified index
 #[derive(Debug, Clone, Encode, Decode)]
 struct ClusterControllerPieceRequest {
@@ -170,6 +184,75 @@ impl PieceGetter for ClusterPieceGetter {
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let _guard = self.request_semaphore.acquire().await;
+
+        if let Some((piece_cache_id, piece_cache_offset)) = self
+            .nats_client
+            .request(
+                &ClusterControllerFindPieceInCacheRequest { piece_index },
+                None,
+            )
+            .await?
+        {
+            trace!(
+                %piece_index,
+                %piece_cache_id,
+                %piece_cache_offset,
+                "Found piece in cache, retrieving"
+            );
+
+            match self
+                .nats_client
+                .request(
+                    &ClusterCacheReadPieceRequest {
+                        offset: piece_cache_offset,
+                    },
+                    Some(&piece_cache_id.to_string()),
+                )
+                .await
+                .map_err(|error| error.to_string())
+                .flatten()
+            {
+                Ok(Some((retrieved_piece_index, piece))) => {
+                    if retrieved_piece_index == piece_index {
+                        trace!(
+                            %piece_index,
+                            %piece_cache_id,
+                            %piece_cache_offset,
+                            "Retrieved piece from cache successfully"
+                        );
+
+                        return Ok(Some(piece));
+                    } else {
+                        trace!(
+                            %piece_index,
+                            %piece_cache_id,
+                            %piece_cache_offset,
+                            "Retrieving piece was replaced in cache during retrieval"
+                        );
+                    }
+                }
+                Ok(None) => {
+                    trace!(
+                        %piece_index,
+                        %piece_cache_id,
+                        %piece_cache_offset,
+                        "Piece cache didn't have piece at offset"
+                    );
+                }
+                Err(error) => {
+                    debug!(
+                        %piece_index,
+                        %piece_cache_id,
+                        %piece_cache_offset,
+                        %error,
+                        "Retrieving piece from cache failed"
+                    );
+                }
+            }
+        } else {
+            trace!(%piece_index, "Piece not found in cache");
+        }
+
         Ok(self
             .nats_client
             .request(&ClusterControllerPieceRequest { piece_index }, None)
@@ -407,6 +490,7 @@ pub async fn controller_service<NC, PG>(
     nats_client: &NatsClient,
     node_client: &NC,
     piece_getter: &PG,
+    farmer_cache: &FarmerCache,
     instance: &str,
 ) -> anyhow::Result<()>
 where
@@ -433,6 +517,9 @@ where
             result
         },
         result = segment_headers_responder(nats_client, node_client).fuse() => {
+            result
+        },
+        result = find_piece_responder(nats_client, farmer_cache).fuse() => {
             result
         },
         result = piece_responder(nats_client, piece_getter).fuse() => {
@@ -813,6 +900,82 @@ async fn process_segment_headers_request<NC>(
     }
 }
 
+async fn find_piece_responder(
+    nats_client: &NatsClient,
+    farmer_cache: &FarmerCache,
+) -> anyhow::Result<()> {
+    // Initialize with pending future so it never ends
+    let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
+        Box::pin(pending()) as Pin<Box<_>>,
+    ]);
+
+    let subscription = nats_client
+        .queue_subscribe(
+            ClusterControllerFindPieceInCacheRequest::SUBJECT,
+            "subspace.controller".to_string(),
+        )
+        .await
+        .map_err(|error| anyhow!("Failed to subscribe to find piece requests: {error}"))?;
+    debug!(?subscription, "Find piece requests subscription");
+    let mut subscription = subscription.fuse();
+
+    loop {
+        select! {
+            maybe_message = subscription.next() => {
+                let Some(message) = maybe_message else {
+                    break;
+                };
+
+                // Create background task for concurrent processing
+                processing.push(Box::pin(process_find_piece_request(
+                    nats_client,
+                    farmer_cache,
+                    message,
+                )));
+            }
+            _ = processing.next() => {
+                // Nothing to do here
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn process_find_piece_request(
+    nats_client: &NatsClient,
+    farmer_cache: &FarmerCache,
+    message: Message,
+) {
+    let Some(reply_subject) = message.reply else {
+        return;
+    };
+
+    let request =
+        match ClusterControllerFindPieceInCacheRequest::decode(&mut message.payload.as_ref()) {
+            Ok(request) => request,
+            Err(error) => {
+                warn!(
+                    %error,
+                    message = %hex::encode(message.payload),
+                    "Failed to decode find piece request"
+                );
+                return;
+            }
+        };
+    trace!(?request, "Find piece request");
+
+    let maybe_retrieval_details: <ClusterControllerFindPieceInCacheRequest as GenericRequest>::Response =
+        farmer_cache.find_piece(request.piece_index).await;
+
+    if let Err(error) = nats_client
+        .publish(reply_subject, maybe_retrieval_details.encode().into())
+        .await
+    {
+        warn!(%error, "Failed to send find piece response");
+    }
+}
+
 async fn piece_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> anyhow::Result<()>
 where
     PG: PieceGetter + Sync,
@@ -876,9 +1039,6 @@ where
     };
     trace!(?request, "Piece request");
 
-    // TODO: It would be great to send cached pieces from cache instance directly to requested
-    //  rather than proxying through controller, but it is awkward with current architecture
-
     let maybe_piece: <ClusterControllerPieceRequest as GenericRequest>::Response =
         match piece_getter.get_piece(request.piece_index).await {
             Ok(maybe_piece) => maybe_piece,
@@ -896,6 +1056,6 @@ where
         .publish(reply_subject, maybe_piece.encode().into())
         .await
     {
-        warn!(%error, "Failed to send farmer app info response");
+        warn!(%error, "Failed to send get piece response");
     }
 }

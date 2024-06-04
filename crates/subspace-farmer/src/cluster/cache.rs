@@ -64,13 +64,13 @@ impl GenericRequest for ClusterCacheReadPieceIndexRequest {
 
 /// Read piece from cache
 #[derive(Debug, Clone, Encode, Decode)]
-struct ClusterCacheReadPieceRequest {
-    offset: PieceCacheOffset,
+pub(super) struct ClusterCacheReadPieceRequest {
+    pub(super) offset: PieceCacheOffset,
 }
 
 impl GenericRequest for ClusterCacheReadPieceRequest {
     const SUBJECT: &'static str = "subspace.cache.*.read-piece";
-    type Response = Result<Option<Piece>, String>;
+    type Response = Result<Option<(PieceIndex, Piece)>, String>;
 }
 
 /// Request plotted from farmer, request
@@ -153,7 +153,10 @@ impl PieceCache for ClusterPieceCache {
             .await??)
     }
 
-    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
+    async fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<(PieceIndex, Piece)>, FarmError> {
         Ok(self
             .nats_client
             .request(

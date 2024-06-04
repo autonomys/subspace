@@ -147,7 +147,10 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
-    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError>;
+    async fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<(PieceIndex, Piece)>, FarmError>;
 }
 
 #[derive(Debug, Copy, Clone, Encode, Decode)]

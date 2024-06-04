@@ -150,7 +150,10 @@ impl farm::PieceCache for PieceCache {
         .await??)
     }
 
-    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
+    async fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<(PieceIndex, Piece)>, FarmError> {
         // TODO: On Windows spawning blocking task that allows concurrent reads causes huge memory
         //  usage. No idea why it happens, but not spawning anything at all helps for some reason.
         //  Someone at some point should figure it out and fix, but it will probably be not me
@@ -322,7 +325,7 @@ impl PieceCache {
     pub(crate) fn read_piece(
         &self,
         offset: PieceCacheOffset,
-    ) -> Result<Option<Piece>, PieceCacheError> {
+    ) -> Result<Option<(PieceIndex, Piece)>, PieceCacheError> {
         let PieceCacheOffset(offset) = offset;
         if offset >= self.inner.max_num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
@@ -333,10 +336,10 @@ impl PieceCache {
         }
 
         let mut element = vec![0; Self::element_size() as usize];
-        if self.read_piece_internal(offset, &mut element)?.is_some() {
+        if let Some(piece_index) = self.read_piece_internal(offset, &mut element)? {
             let mut piece = Piece::default();
             piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
-            Ok(Some(piece))
+            Ok(Some((piece_index, piece)))
         } else {
             Ok(None)
         }
