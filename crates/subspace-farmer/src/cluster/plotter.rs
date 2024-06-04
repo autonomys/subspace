@@ -36,7 +36,10 @@ use tracing::{debug, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 const FREE_CAPACITY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
-const PING_INTERVAL: Duration = Duration::from_secs(5);
+/// Intervals between pings from plotter server to client
+const PING_INTERVAL: Duration = Duration::from_secs(10);
+/// Timeout after which plotter that doesn't send pings is assumed to be down
+const PING_TIMEOUT: Duration = Duration::from_mins(1);
 
 pub type HandlerFn3<A, B, C> = Arc<dyn Fn(&A, &B, &C) + Send + Sync + 'static>;
 type Handler3<A, B, C> = Bag<HandlerFn3<A, B, C>, A, B, C>;
@@ -382,7 +385,7 @@ impl ClusterPlotter {
                 let (mut sector_sender, sector_receiver) = mpsc::channel(1);
                 let mut maybe_sector_receiver = Some(sector_receiver);
                 loop {
-                    match tokio::time::timeout(PING_INTERVAL * 2, response_stream.next()).await {
+                    match tokio::time::timeout(PING_TIMEOUT, response_stream.next()).await {
                         Ok(Some(response)) => {
                             match process_response_notification(
                                 &start,
