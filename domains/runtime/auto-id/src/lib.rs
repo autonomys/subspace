@@ -526,6 +526,7 @@ mod benches {
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
+        [pallet_messenger, Messenger]
     );
 }
 

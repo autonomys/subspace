@@ -3,18 +3,21 @@ use crate::mock::chain_a::{
     USER_ACCOUNT,
 };
 use crate::mock::{
-    chain_a, chain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    AccountId, Balance, TestExternalities,
+    chain_a, chain_b, consensus_chain, storage_proof_of_inbox_message_responses,
+    storage_proof_of_outbox_messages, AccountId, Balance, TestExternalities,
 };
 use crate::{
-    ChainAllowlist, Channel, ChannelId, ChannelState, Channels, CloseChannelBy, Error, FeeModel,
-    Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet, U256,
+    BalanceOf, ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
+    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult,
+    OutboxResponses, Pallet, U256,
 };
+use frame_support::traits::fungible::Inspect;
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
+use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     ChainId, CrossDomainMessage, InitiateChannelParams, MessageWeightTag, Payload, Proof,
@@ -664,6 +667,74 @@ fn test_close_channel_between_chains() {
 }
 
 #[test]
+fn test_update_consensus_channel_allowlist() {
+    let mut consensus_chain_test_ext = consensus_chain::new_test_ext();
+    let channel_id = U256::zero();
+    // open channel between chain_a and chain_b
+    consensus_chain_test_ext.execute_with(|| {
+        Channels::<consensus_chain::Runtime>::set(
+            chain_b::SelfChainId::get(),
+            channel_id,
+            Some(Channel {
+                channel_id,
+                state: ChannelState::Open,
+                next_inbox_nonce: Default::default(),
+                next_outbox_nonce: Default::default(),
+                latest_response_received_message_nonce: None,
+                max_outgoing_messages: 10,
+                fee: FeeModel {
+                    relay_fee: Default::default(),
+                },
+                maybe_owner: None,
+            }),
+        );
+    });
+
+    let chain_allowlist = ChainAllowlistUpdate::Remove(chain_b::SelfChainId::get());
+    consensus_chain_test_ext.execute_with(|| {
+        let channel =
+            Channels::<consensus_chain::Runtime>::get(chain_b::SelfChainId::get(), channel_id)
+                .unwrap();
+        assert_eq!(channel.state, ChannelState::Open);
+
+        Pallet::<consensus_chain::Runtime>::update_consensus_chain_allowlist(
+            consensus_chain::RuntimeOrigin::root(),
+            chain_allowlist,
+        )
+        .unwrap();
+    });
+}
+
+#[test]
+fn test_update_domain_channel_allowlist() {
+    let mut chain_a_test_ext = chain_a::new_test_ext();
+    let mut chain_b_test_ext = chain_b::new_test_ext();
+    // open channel between chain_a and chain_b
+    // chain_a initiates the channel open
+    let channel_id = open_channel_between_chains(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        Default::default(),
+    );
+
+    let chain_allowlist = DomainAllowlistUpdates {
+        allow_chains: Default::default(),
+        remove_chains: BTreeSet::from([chain_b::SelfChainId::get()]),
+    };
+    chain_a_test_ext.execute_with(|| {
+        let channel =
+            Channels::<chain_a::Runtime>::get(chain_b::SelfChainId::get(), channel_id).unwrap();
+        assert_eq!(channel.state, ChannelState::Open);
+
+        Pallet::<chain_a::Runtime>::update_domain_allowlist(
+            RuntimeOrigin::none(),
+            chain_allowlist.clone(),
+        )
+        .unwrap();
+    });
+}
+
+#[test]
 fn test_send_message_between_chains() {
     let mut chain_a_test_ext = chain_a::new_test_ext();
     let mut chain_b_test_ext = chain_b::new_test_ext();
@@ -796,6 +867,116 @@ fn test_transport_funds_between_chains() {
 }
 
 #[test]
+fn test_transport_funds_between_chains_if_src_chain_disallows_after_message_is_sent() {
+    let mut chain_a_test_ext = chain_a::new_test_ext();
+    let mut chain_b_test_ext = chain_b::new_test_ext();
+
+    // open channel between chain_a and chain_b
+    // chain_a initiates the channel open
+    let channel_id = open_channel_between_chains(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        FeeModel { relay_fee: 1 },
+    );
+
+    // initiate transfer
+    initiate_transfer_on_chain(&mut chain_a_test_ext);
+
+    // remove chain_b from allowlist
+    chain_a_test_ext.execute_with(ChainAllowlist::<chain_a::Runtime>::kill);
+
+    // relay message
+    channel_relay_request_and_response(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        channel_id,
+        Nonce::one(),
+        false,
+        Default::default(),
+        Some(Endpoint::Id(100)),
+    );
+
+    // post check should be successful since the chain_a already initiated the
+    // transfer before removing chain_b from allowlist
+    verify_transfer_on_chain(&mut chain_a_test_ext, &mut chain_b_test_ext)
+}
+
+#[test]
+fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_sent() {
+    let mut chain_a_test_ext = chain_a::new_test_ext();
+    let mut chain_b_test_ext = chain_b::new_test_ext();
+
+    // open channel between chain_a and chain_b
+    // chain_a initiates the channel open
+    let channel_id = open_channel_between_chains(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        FeeModel { relay_fee: 1 },
+    );
+
+    // initiate transfer
+    let account_id = 1;
+    let pre_transfer_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
+    });
+
+    initiate_transfer_on_chain(&mut chain_a_test_ext);
+
+    let post_transfer_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
+    });
+    let fee = 100000002;
+    assert_eq!(pre_transfer_balance - 500 - fee, post_transfer_balance);
+
+    // remove chain_b from allowlist
+    chain_b_test_ext.execute_with(ChainAllowlist::<chain_b::Runtime>::kill);
+
+    // relay message
+    channel_relay_request_and_response(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        channel_id,
+        Nonce::one(),
+        false,
+        Default::default(),
+        Some(Endpoint::Id(100)),
+    );
+
+    // post check should be not be successful since the chain_b rejected the transfer
+    chain_a_test_ext.execute_with(|| {
+        chain_a::System::assert_has_event(chain_a::RuntimeEvent::Transporter(
+            pallet_transporter::Event::<chain_a::Runtime>::OutgoingTransferFailed {
+                chain_id: chain_b::SelfChainId::get(),
+                message_id: (U256::zero(), U256::one()),
+                err: Error::<chain_a::Runtime>::ChainNotAllowed.into(),
+            },
+        ));
+        assert!(chain_a::Transporter::outgoing_transfers(
+            chain_b::SelfChainId::get(),
+            (U256::zero(), U256::one()),
+        )
+        .is_none())
+    });
+
+    // chain_b should not have successful event from transporter
+    // just inbox message response
+    chain_b_test_ext.execute_with(|| {
+        chain_b::System::assert_has_event(chain_b::RuntimeEvent::Messenger(crate::Event::<
+            chain_b::Runtime,
+        >::InboxMessageResponse {
+            chain_id: chain_a::SelfChainId::get(),
+            channel_id: U256::zero(),
+            nonce: U256::one(),
+        }));
+    });
+
+    let post_response_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
+    });
+    assert_eq!(post_response_balance, pre_transfer_balance - fee)
+}
+
+#[test]
 fn test_transport_funds_between_chains_failed_low_balance() {
     let mut chain_a_test_ext = chain_a::new_test_ext();
     let mut chain_b_test_ext = chain_b::new_test_ext();
@@ -832,6 +1013,7 @@ fn test_transport_funds_between_chains_failed_no_open_channel() {
     // initiate transfer
     let account_id = 1;
     chain_a_test_ext.execute_with(|| {
+        ChainAllowlist::<chain_a::Runtime>::set(BTreeSet::from([chain_b::SelfChainId::get()]));
         let res = chain_a::Transporter::transfer(
             chain_a::RuntimeOrigin::signed(account_id),
             Location {
