@@ -17,7 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, missing_debug_implementations)]
+#![warn(rust_2018_idioms)]
 #![feature(let_chains, variant_count)]
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -729,7 +729,6 @@ mod pallet {
 
             ChainAllowlist::<T>::mutate(|list| {
                 // remove chains from set
-                // TODO: should we close the existing channels to the following chains?
                 remove_chains.into_iter().for_each(|chain_id| {
                     list.remove(&chain_id);
                 });
@@ -806,6 +805,12 @@ mod pallet {
             dst_chain_id: ChainId,
             req: EndpointRequest,
         ) -> Result<Self::MessageId, DispatchError> {
+            let allowed_chains = ChainAllowlist::<T>::get();
+            ensure!(
+                allowed_chains.contains(&dst_chain_id),
+                Error::<T>::ChainNotAllowed
+            );
+
             let (channel_id, fee_model) =
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 

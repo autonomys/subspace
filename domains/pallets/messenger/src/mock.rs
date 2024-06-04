@@ -16,7 +16,7 @@ pub(crate) type AccountId = u64;
 pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
-    ($runtime:ty, $chain_id:literal) => {
+    ($runtime:ty, $chain_id:expr) => {
         #[cfg(not(feature = "runtime-benchmarks"))]
         use crate::mock::MockEndpoint;
         use crate::mock::{AccountId, Balance, MessageId, TestExternalities};
@@ -219,11 +219,15 @@ impl EndpointHandler<MessageId> for MockEndpoint {
 }
 
 pub(crate) mod chain_a {
-    impl_runtime!(Runtime, 1);
+    impl_runtime!(Runtime, ChainId::Domain(1.into()));
 }
 
 pub(crate) mod chain_b {
-    impl_runtime!(Runtime, 2);
+    impl_runtime!(Runtime, ChainId::Domain(2.into()));
+}
+
+pub(crate) mod consensus_chain {
+    impl_runtime!(Runtime, ChainId::Consensus);
 }
 
 fn storage_proof_for_key<T: Config>(

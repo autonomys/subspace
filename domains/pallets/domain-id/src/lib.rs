@@ -58,8 +58,14 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        #[cfg(not(feature = "runtime-benchmarks"))]
         pub fn self_domain_id() -> DomainId {
             SelfDomainId::<T>::get().expect("Domain ID must be set during domain instantiation")
+        }
+
+        #[cfg(feature = "runtime-benchmarks")]
+        pub fn self_domain_id() -> DomainId {
+            SelfDomainId::<T>::get().unwrap_or(0.into())
         }
     }
 }

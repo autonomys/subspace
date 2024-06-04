@@ -2,8 +2,15 @@
 
 use super::*;
 use crate::{CloseChannelBy, Pallet as Messenger};
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
+use frame_support::traits::fungible::Mutate;
 use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
@@ -14,6 +21,8 @@ use sp_messenger::messages::{
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 
 #[benchmarks]
 mod benchmarks {
@@ -25,9 +34,21 @@ mod benchmarks {
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_params = dummy_channel_params::<T>();
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
+        let account = account("account", 0, 0);
+        T::Currency::set_balance(
+            &account,
+            T::ChannelReserveFee::get() + T::Currency::minimum_balance(),
+        );
+
+        let list = BTreeSet::from([dst_chain_id]);
+        ChainAllowlist::<T>::put(list);
 
         #[extrinsic_call]
-        _(RawOrigin::Root, dst_chain_id, channel_params);
+        _(
+            RawOrigin::Signed(account.clone()),
+            dst_chain_id,
+            channel_params,
+        );
 
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
@@ -57,6 +78,8 @@ mod benchmarks {
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
+        let list = BTreeSet::from([dst_chain_id]);
+        ChainAllowlist::<T>::put(list);
         assert_ok!(Messenger::<T>::do_init_channel(
             dst_chain_id,
             dummy_channel_params::<T>(),
@@ -223,6 +246,8 @@ mod benchmarks {
         params: InitiateChannelParams<BalanceOf<T>>,
     ) -> ChannelId {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
+        let list = BTreeSet::from([dst_chain_id]);
+        ChainAllowlist::<T>::put(list);
         assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params, None));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);

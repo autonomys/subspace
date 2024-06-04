@@ -1,6 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::pallet::ChainAllowlist;
 use crate::{
     BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, CloseChannelBy, Config,
     Error, Event, InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
@@ -125,6 +126,10 @@ impl<T: Config> Pallet<T> {
                 let response = if let Some(endpoint_handler) =
                     T::get_endpoint_handler(&req.dst_endpoint)
                 {
+                    if !ChainAllowlist::<T>::get().contains(&dst_chain_id) {
+                        return Err(Error::<T>::ChainNotAllowed.into());
+                    }
+
                     if msg_weight_tag != MessageWeightTag::EndpointRequest(req.dst_endpoint.clone())
                     {
                         return Err(Error::<T>::WeightTagNotMatch.into());
@@ -215,8 +220,13 @@ impl<T: Config> Pallet<T> {
         req: ProtocolMessageRequest<BalanceOf<T>>,
         weight_tag: &MessageWeightTag,
     ) -> Result<(), DispatchError> {
+        let is_chain_allowed = ChainAllowlist::<T>::get().contains(&chain_id);
         match req {
             ProtocolMessageRequest::ChannelOpen(_) => {
+                if !is_chain_allowed {
+                    return Err(Error::<T>::ChainNotAllowed.into());
+                }
+
                 if weight_tag != &MessageWeightTag::ProtocolChannelOpen {
                     return Err(Error::<T>::WeightTagNotMatch.into());
                 }
