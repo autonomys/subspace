@@ -101,16 +101,16 @@ where
     IQS: ImportQueueService<Block> + ?Sized,
 {
     {
-        let max_segment_index = segment_headers_store.max_segment_index().ok_or_else(|| {
+        let last_segment_header = segment_headers_store.last_segment_header().ok_or_else(|| {
             sc_service::Error::Other(
                 "Archiver needs to be initialized before syncing from DSN to populate the very \
-                    first segment"
+                first segment"
                     .to_string(),
             )
         })?;
 
         let new_segment_headers = segment_header_downloader
-            .get_segment_headers(max_segment_index)
+            .get_segment_headers(&last_segment_header)
             .await
             .map_err(|error| error.to_string())?;
 
