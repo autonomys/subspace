@@ -162,7 +162,7 @@ where
         None
     };
 
-    let node_client = ClusterNodeClient::new(nats_client.clone());
+    let node_client = ClusterNodeClient::new(nats_client.clone()).await?;
 
     let farmer_app_info = node_client
         .farmer_app_info()

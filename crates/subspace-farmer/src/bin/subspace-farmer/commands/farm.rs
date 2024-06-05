@@ -48,7 +48,7 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::{Barrier, Semaphore};
-use tracing::{debug, error, info, info_span, warn, Instrument};
+use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_MAX_RETRIES: u16 = 7;
@@ -508,7 +508,6 @@ where
     ));
 
     let (farms, plotting_delay_senders) = {
-        let node_rpc_url = &node_rpc_url;
         let info_mutex = &AsyncMutex::new(());
         let faster_read_sector_record_chunks_mode_barrier =
             Arc::new(Barrier::new(disk_farms.len()));
@@ -523,6 +522,7 @@ where
             .zip(plotting_delay_receivers)
             .enumerate()
             .map(|(farm_index, (disk_farm, plotting_delay_receiver))| {
+                let node_client = node_client.clone();
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
@@ -534,14 +534,6 @@ where
                     Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
-                    debug!(url = %node_rpc_url, "Connecting to node RPC");
-                    let node_client = match NodeRpcClient::new(node_rpc_url).await {
-                        Ok(node_client) => node_client,
-                        Err(error) => {
-                            return (farm_index, Err(error.into()));
-                        }
-                    };
-
                     let farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),

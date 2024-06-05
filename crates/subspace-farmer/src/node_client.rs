@@ -48,7 +48,7 @@ pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
     /// Get segment headers for the segments
     async fn segment_headers(
         &self,
-        segment_indexes: Vec<SegmentIndex>,
+        segment_indices: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
     /// Get piece by index.
