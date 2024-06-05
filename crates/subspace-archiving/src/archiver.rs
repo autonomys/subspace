@@ -173,9 +173,7 @@ pub enum SegmentItem {
 
 /// Newly archived segment as a combination of segment header hash, segment index and corresponding
 /// archived history segment containing pieces
-#[derive(Debug, Clone, Eq, PartialEq, Decode, Encode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NewArchivedSegment {
     /// Segment header
     pub segment_header: SegmentHeader,

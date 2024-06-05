@@ -316,8 +316,7 @@ impl RecordedHistorySegment {
 }
 
 /// Archived history segment after archiving is applied.
-#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct ArchivedHistorySegment(FlatPieces);
 
@@ -325,13 +324,6 @@ impl Default for ArchivedHistorySegment {
     #[inline]
     fn default() -> Self {
         Self(FlatPieces::new(Self::NUM_PIECES))
-    }
-}
-
-impl MaxEncodedLen for ArchivedHistorySegment {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
     }
 }
 

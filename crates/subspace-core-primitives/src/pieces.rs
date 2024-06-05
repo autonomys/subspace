@@ -1236,22 +1236,7 @@ impl Piece {
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Deref,
-    DerefMut,
-    AsRef,
-    AsMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
+    Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, DerefMut, AsRef, AsMut,
 )]
 #[repr(transparent)]
 pub struct PieceArray([u8; Piece::SIZE]);
@@ -1435,22 +1420,8 @@ impl From<Box<PieceArray>> for Vec<u8> {
     }
 }
 
-/// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(
-    Debug,
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Deref,
-    DerefMut,
-)]
+/// Flat representation of multiple pieces concatenated for more efficient for processing
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Deref, DerefMut)]
 pub struct FlatPieces(Vec<PieceArray>);
 
 impl FlatPieces {
@@ -1477,12 +1448,6 @@ impl FlatPieces {
             pieces.set_len(pieces.capacity());
         }
         Self(pieces)
-    }
-
-    /// Extract internal representation.
-    #[inline]
-    pub fn into_inner(self) -> Vec<PieceArray> {
-        self.0
     }
 
     /// Iterator over source pieces (even indices).
@@ -1550,12 +1515,5 @@ impl FlatPieces {
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
         self.0.par_iter_mut().skip(1).step_by(2)
-    }
-}
-
-impl From<PieceArray> for FlatPieces {
-    #[inline]
-    fn from(value: PieceArray) -> Self {
-        Self(vec![value])
     }
 }
