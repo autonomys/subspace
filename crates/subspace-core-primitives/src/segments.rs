@@ -6,7 +6,6 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::iter::Step;
-use core::mem;
 use core::num::NonZeroU64;
 use derive_more::{
     Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul, MulAssign, Sub,
@@ -282,19 +281,16 @@ impl Default for RecordedHistorySegment {
 impl AsRef<[u8]> for RecordedHistorySegment {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let raw_records: &[[u8; RawRecord::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
-        raw_records.flatten()
+        RawRecord::slice_to_repr(&self.0).flatten().flatten()
     }
 }
 
 impl AsMut<[u8]> for RecordedHistorySegment {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let raw_records: &mut [[u8; RawRecord::SIZE]] =
-            unsafe { mem::transmute(self.0.as_mut_slice()) };
-        raw_records.flatten_mut()
+        RawRecord::slice_mut_to_repr(&mut self.0)
+            .flatten_mut()
+            .flatten_mut()
     }
 }
 
