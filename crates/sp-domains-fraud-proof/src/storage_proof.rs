@@ -42,6 +42,10 @@ pub enum VerificationError {
     BlockDigestStorageProof(StorageProofVerificationError),
     RuntimeRegistryStorageProof(StorageProofVerificationError),
     DynamicCostOfStorageStorageProof(StorageProofVerificationError),
+    DigestStorageProof(StorageProofVerificationError),
+    BlockFessStorageProof(StorageProofVerificationError),
+    TransfersStorageProof(StorageProofVerificationError),
+    ExtrinsicStorageProof(StorageProofVerificationError),
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]

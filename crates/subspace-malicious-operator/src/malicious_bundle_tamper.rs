@@ -6,12 +6,13 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BlockFees, BundleValidity, HeaderHashingFor, InvalidBundleType, OperatorPublicKey,
+    BlockFees, BundleValidity, ChainId, HeaderHashingFor, InvalidBundleType, OperatorPublicKey,
     OperatorSignature,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
+use sp_weights::Weight;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::sync::Arc;
@@ -23,11 +24,12 @@ const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 #[allow(dead_code)]
 #[derive(Debug)]
 enum BadReceiptType {
-    BlockFees,
-    ExecutionTrace,
-    ExtrinsicsRoot,
-    DomainBlockHash,
     InboxedBundle,
+    ExtrinsicsRoot,
+    ExecutionTrace,
+    BlockFees,
+    Transfers,
+    DomainBlockHash,
     ParentReceipt,
 }
 
@@ -79,11 +81,11 @@ where
         opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), Box<dyn Error>> {
-        if Random::probability(0.5) {
+        if Random::probability(0.2) {
             self.make_receipt_fraudulent(&mut opaque_bundle.sealed_header.header.receipt)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
-        if Random::probability(0.3) {
+        if Random::probability(0.1) {
             self.make_bundle_invalid(opaque_bundle)?;
             self.reseal_bundle(opaque_bundle, operator_signing_key)?;
         }
@@ -107,14 +109,14 @@ where
         }
 
         let random_seed = Random::seed();
-        let bad_receipt_type = match random_seed % 5 {
-            0 => BadReceiptType::BlockFees,
-            1 => BadReceiptType::ExecutionTrace,
-            2 => BadReceiptType::ExtrinsicsRoot,
-            3 => BadReceiptType::DomainBlockHash,
-            4 => BadReceiptType::ParentReceipt,
-            // TODO: enable once `https://github.com/subspace/subspace/issues/2287` is resolved
-            // 5 => BadReceiptType::InboxedBundle,
+        let bad_receipt_type = match random_seed % 7 {
+            0 => BadReceiptType::InboxedBundle,
+            1 => BadReceiptType::ExtrinsicsRoot,
+            2 => BadReceiptType::ExecutionTrace,
+            3 => BadReceiptType::BlockFees,
+            4 => BadReceiptType::Transfers,
+            5 => BadReceiptType::DomainBlockHash,
+            6 => BadReceiptType::ParentReceipt,
             _ => return Ok(()),
         };
 
@@ -130,10 +132,32 @@ where
                 receipt.block_fees =
                     BlockFees::new(random_seed.into(), random_seed.into(), random_seed.into());
             }
-            // TODO: modify the length of `execution_trace` once the honest operator can handle
+            BadReceiptType::Transfers => {
+                receipt.transfers.transfers_in =
+                    BTreeMap::from_iter([(ChainId::consensus_chain_id(), random_seed.into())]);
+                receipt.transfers.transfers_out =
+                    BTreeMap::from_iter([(0.into(), random_seed.into())]);
+                receipt.transfers.rejected_transfers_claimed =
+                    BTreeMap::from_iter([(random_seed.into(), random_seed.into())]);
+                receipt.transfers.transfers_rejected =
+                    BTreeMap::from_iter([(1.into(), random_seed.into())]);
+            }
             BadReceiptType::ExecutionTrace => {
                 let mismatch_index = random_seed as usize % receipt.execution_trace.len();
-                receipt.execution_trace[mismatch_index] = Default::default();
+                match random_seed as usize % 3 {
+                    0 => receipt.execution_trace.push(Default::default()),
+                    1 => {
+                        receipt.execution_trace = receipt
+                            .execution_trace
+                            .clone()
+                            .drain(..)
+                            .take(mismatch_index + 1)
+                            .collect();
+                    }
+                    2 => receipt.execution_trace[mismatch_index] = Default::default(),
+                    _ => unreachable!(),
+                };
+                receipt.final_state_root = *receipt.execution_trace.last().unwrap();
                 receipt.execution_trace_root = {
                     let trace: Vec<_> = receipt
                         .execution_trace
@@ -196,28 +220,20 @@ where
             // since the consensus runtime will perform the these checks and reject the bundle directly
             BadReceiptType::InboxedBundle => {
                 let mismatch_index = random_seed as usize % receipt.inboxed_bundles.len();
-                let reverse_type = random_seed % 2 == 0;
-                receipt.inboxed_bundles[mismatch_index].bundle =
-                    match receipt.inboxed_bundles[mismatch_index].bundle {
-                        BundleValidity::Valid(_) => {
-                            if reverse_type {
-                                BundleValidity::Invalid(InvalidBundleType::InherentExtrinsic(
-                                    mismatch_index as u32,
-                                ))
-                            } else {
-                                BundleValidity::Valid(Default::default())
-                            }
-                        }
-                        BundleValidity::Invalid(_) => {
-                            if reverse_type {
-                                BundleValidity::Valid(Default::default())
-                            } else {
-                                BundleValidity::Invalid(InvalidBundleType::InherentExtrinsic(
-                                    mismatch_index as u32,
-                                ))
-                            }
-                        }
+                receipt.inboxed_bundles[mismatch_index].bundle = if random_seed % 2 == 0 {
+                    BundleValidity::Valid(Default::default())
+                } else {
+                    let extrincis_index = random_seed % 2;
+                    let invalid_bundle_type = match random_seed as usize % 5 {
+                        0 => InvalidBundleType::UndecodableTx(extrincis_index),
+                        1 => InvalidBundleType::OutOfRangeTx(extrincis_index),
+                        2 => InvalidBundleType::IllegalTx(extrincis_index),
+                        3 => InvalidBundleType::InherentExtrinsic(extrincis_index),
+                        4 => InvalidBundleType::InvalidBundleWeight,
+                        _ => unreachable!(),
                     };
+                    BundleValidity::Invalid(invalid_bundle_type)
+                }
             }
         }
 
@@ -239,13 +255,15 @@ where
         opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
     ) -> Result<(), Box<dyn Error>> {
         let random_seed = Random::seed();
-        let invalid_bundle_type = match random_seed % 1 {
-            0 => InvalidBundleType::InherentExtrinsic(0),
-            // TODO: enable `UndecodableTx` and `IllegalTx` once the fraud proof is implemented
-            // and support other invalid bundle types
-            // 1 => InvalidBundleType::UndecodableTx(0),
-            // 2 => InvalidBundleType::IllegalTx(0),
-            _ => return Ok(()),
+        let invalid_bundle_type = match random_seed % 4 {
+            0 => InvalidBundleType::UndecodableTx(0),
+            1 => InvalidBundleType::IllegalTx(0),
+            2 => InvalidBundleType::InherentExtrinsic(0),
+            3 => InvalidBundleType::InvalidBundleWeight,
+            // TODO: `OutOfRangeTx` invalid bundle is tricky to simulate because the
+            // tx range is dynamically change based on the `proof_of_election.vrf_hash`
+            // 1 => InvalidBundleType::OutOfRangeTx(0),
+            _ => unreachable!(),
         };
         tracing::info!(
             ?invalid_bundle_type,
@@ -271,10 +289,24 @@ where
                 OpaqueExtrinsic::from_bytes(&inherent_tx.encode())
                     .expect("We have just encoded a valid extrinsic; qed")
             }
+            InvalidBundleType::InvalidBundleWeight => {
+                opaque_bundle.sealed_header.header.estimated_bundle_weight =
+                    Weight::from_all(123456);
+                return Ok(());
+            }
             _ => return Ok(()),
         };
 
         opaque_bundle.extrinsics.push(invalid_tx);
+
+        Ok(())
+    }
+
+    fn reseal_bundle(
+        &self,
+        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
+        operator_signing_key: &OperatorPublicKey,
+    ) -> Result<(), Box<dyn Error>> {
         opaque_bundle.sealed_header.header.bundle_extrinsics_root =
             HeaderHashingFor::<Block::Header>::ordered_trie_root(
                 opaque_bundle
@@ -284,22 +316,15 @@ where
                     .collect(),
                 sp_core::storage::StateVersion::V1,
             );
-        Ok(())
-    }
 
-    fn reseal_bundle(
-        &self,
-        opaque_bundle: &mut OpaqueBundleFor<Block, CBlock>,
-        operator_signing_key: &OperatorPublicKey,
-    ) -> Result<(), Box<dyn Error>> {
-        let sealed_header = &mut opaque_bundle.sealed_header;
-        sealed_header.signature = {
+        let pre_hash = opaque_bundle.sealed_header.pre_hash();
+        opaque_bundle.sealed_header.signature = {
             let s = self
                 .keystore
                 .sr25519_sign(
                     OperatorPublicKey::ID,
                     operator_signing_key.as_ref(),
-                    sealed_header.pre_hash().as_ref(),
+                    pre_hash.as_ref(),
                 )?
                 .expect("The malicious operator's key pair must exist");
             OperatorSignature::decode(&mut s.as_ref())

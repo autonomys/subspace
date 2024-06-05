@@ -106,6 +106,10 @@ fn main() -> Result<(), Error> {
             consensus_chain_config.network.boot_nodes = cli.run.network_params.bootnodes;
         }
 
+        // Enable MMR indexing so the malicious operator can generate fraud proof
+        // otherwise the node will stop running
+        consensus_chain_config.offchain_worker.indexing_enabled = true;
+
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
 

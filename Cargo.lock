@@ -12483,6 +12483,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-transaction-pool",
+ "sp-weights",
  "subspace-core-primitives",
  "subspace-networking",
  "subspace-proof-of-space",

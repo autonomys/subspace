@@ -5,7 +5,7 @@ use crate::fraud_proof::{
     InvalidBundlesProof, InvalidBundlesProofData, InvalidExtrinsicsRootProof,
     InvalidStateTransitionProof, ValidBundleProof, VerificationError,
 };
-use crate::storage_proof::*;
+use crate::storage_proof::{self, *};
 use crate::{
     fraud_proof_runtime_interface, DomainInherentExtrinsic, DomainStorageKeyRequest,
     StatelessDomainRuntimeCall,
@@ -313,7 +313,9 @@ where
         digest_storage_proof,
         digest_storage_key,
     )
-    .map_err(|_| VerificationError::InvalidStorageProof)?;
+    .map_err(|err| {
+        VerificationError::StorageProof(storage_proof::VerificationError::DigestStorageProof(err))
+    })?;
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
         bad_receipt.domain_block_number,
@@ -365,7 +367,11 @@ where
             storage_proof.clone(),
             StorageKey(storage_key),
         )
-        .map_err(|_| VerificationError::InvalidStorageProof)?;
+        .map_err(|err| {
+            VerificationError::StorageProof(
+                storage_proof::VerificationError::BlockFessStorageProof(err),
+            )
+        })?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
     if bad_receipt.block_fees == block_fees {
@@ -410,7 +416,11 @@ where
         storage_proof.clone(),
         StorageKey(storage_key),
     )
-    .map_err(|_| VerificationError::InvalidStorageProof)?;
+    .map_err(|err| {
+        VerificationError::StorageProof(storage_proof::VerificationError::TransfersStorageProof(
+            err,
+        ))
+    })?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
     if bad_receipt.transfers == transfers {
@@ -488,7 +498,11 @@ fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
         proof_data,
         storage_key,
     )
-    .map_err(|_e| VerificationError::InvalidProof)
+    .map_err(|err| {
+        VerificationError::StorageProof(storage_proof::VerificationError::ExtrinsicStorageProof(
+            err,
+        ))
+    })
 }
 
 pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
