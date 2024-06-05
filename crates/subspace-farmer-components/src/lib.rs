@@ -63,9 +63,9 @@ impl PieceGetter for ArchivedHistorySegment {
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self
-            .get(usize::try_from(u64::from(piece_index))?)
-            .map(Piece::from))
+        let position = usize::try_from(u64::from(piece_index))?;
+
+        Ok(self.pieces().nth(position))
     }
 }
 

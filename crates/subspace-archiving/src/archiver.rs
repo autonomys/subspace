@@ -825,13 +825,13 @@ impl Archiver {
         self.prev_segment_header_hash = segment_header.hash();
 
         // Add segment header to the beginning of the buffer to be the first thing included in the
-        //  nextsegment
+        // next segment
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
         NewArchivedSegment {
             segment_header,
-            pieces,
+            pieces: pieces.to_shared(),
             object_mapping,
         }
     }

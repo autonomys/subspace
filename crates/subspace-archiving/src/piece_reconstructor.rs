@@ -213,14 +213,12 @@ impl PiecesReconstructor {
                         ArchivedHistorySegment::NUM_PIECES,
                         position as u32,
                     )
-                    // TODO: Update this proof here and in other places, we don't use Merkle
-                    //  trees anymore
                     .expect("Position is statically known to be valid; qed")
                     .to_bytes(),
             );
         });
 
-        Ok(pieces)
+        Ok(pieces.to_shared())
     }
 
     /// Returns the missing piece for a segment using given set of pieces of a segment of the archived

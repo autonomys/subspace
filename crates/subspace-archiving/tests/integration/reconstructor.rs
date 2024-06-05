@@ -11,7 +11,7 @@ use subspace_core_primitives::{
 };
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
-    pieces.iter().map(Piece::from).map(Some).collect()
+    pieces.pieces().map(Some).collect()
 }
 
 #[test]

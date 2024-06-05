@@ -59,7 +59,7 @@ use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockHash, HistorySize, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
+    BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
     Solution,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -144,7 +144,7 @@ pub trait SubspaceRpcApi {
     ) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
     #[method(name = "subspace_piece", blocking)]
-    fn piece(&self, piece_index: PieceIndex) -> Result<Option<Vec<u8>>, Error>;
+    fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
 
     #[method(name = "subspace_acknowledgeArchivedSegmentHeader")]
     async fn acknowledge_archived_segment_header(
@@ -698,7 +698,7 @@ where
         Ok(())
     }
 
-    fn piece(&self, requested_piece_index: PieceIndex) -> Result<Option<Vec<u8>>, Error> {
+    fn piece(&self, requested_piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
         self.deny_unsafe.check_if_safe()?;
 
         let archived_segment = {
@@ -740,12 +740,12 @@ where
             }
         };
 
-        let pieces = &archived_segment.pieces;
         if requested_piece_index.segment_index() == archived_segment.segment_header.segment_index()
         {
-            return Ok(Some(
-                pieces[requested_piece_index.position() as usize].to_vec(),
-            ));
+            return Ok(archived_segment
+                .pieces
+                .pieces()
+                .nth(requested_piece_index.position() as usize));
         }
 
         Ok(None)
