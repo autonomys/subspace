@@ -12281,6 +12281,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "bytes",
  "criterion",
  "derive_more",
  "hex",
@@ -12354,6 +12355,7 @@ dependencies = [
  "base58",
  "blake2 0.10.6",
  "blake3",
+ "bytes",
  "bytesize",
  "clap",
  "criterion",

@@ -8,6 +8,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::utils::AsyncJoinOnDrop;
 use async_trait::async_trait;
+use bytes::BytesMut;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
@@ -325,10 +326,12 @@ impl PieceCache {
             });
         }
 
-        let mut element = vec![0; Self::element_size() as usize];
+        let mut element = BytesMut::zeroed(Self::element_size() as usize);
         if self.read_piece_internal(offset, &mut element)?.is_some() {
-            let mut piece = Piece::default();
-            piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
+            let element = element.freeze();
+            let piece =
+                Piece::try_from(element.slice_ref(&element[PieceIndex::SIZE..][..Piece::SIZE]))
+                    .expect("Correct length; qed");
             Ok(Some(piece))
         } else {
             Ok(None)

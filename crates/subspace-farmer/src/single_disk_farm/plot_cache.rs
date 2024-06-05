@@ -7,6 +7,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
+use bytes::BytesMut;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(not(windows))]
@@ -252,11 +253,14 @@ impl DiskPlotCache {
         let key = key.clone();
 
         let read_fut = tokio::task::spawn_blocking(move || {
-            let mut element = vec![0; Self::element_size() as usize];
+            let mut element = BytesMut::zeroed(Self::element_size() as usize);
             match Self::read_piece_internal(&file, offset, &mut element) {
                 Ok(Some(_piece_index)) => {
-                    let mut piece = Piece::default();
-                    piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
+                    let element = element.freeze();
+                    let piece = Piece::try_from(
+                        element.slice_ref(&element[PieceIndex::SIZE..][..Piece::SIZE]),
+                    )
+                    .expect("Correct length; qed");
                     Some(piece)
                 }
                 _ => {

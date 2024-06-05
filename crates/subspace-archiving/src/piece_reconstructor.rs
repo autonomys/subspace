@@ -250,6 +250,6 @@ impl PiecesReconstructor {
                 .to_bytes(),
         );
 
-        Ok(piece)
+        Ok(piece.to_shared())
     }
 }

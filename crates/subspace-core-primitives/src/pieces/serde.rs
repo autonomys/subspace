@@ -1,8 +1,8 @@
-use crate::{FlatPieces, Piece, PieceArray};
+use crate::pieces::{FlatPieces, Piece, PieceArray};
 use hex::{decode_to_slice, FromHex, FromHexError};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-impl FromHex for PieceArray {
+impl FromHex for Piece {
     type Error = FromHexError;
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
@@ -18,16 +18,16 @@ impl FromHex for PieceArray {
 
         decode_to_slice(hex, out.as_mut_slice())?;
 
-        Ok(out)
+        Ok(out.to_shared())
     }
 }
 
-impl Serialize for PieceArray {
+impl Serialize for Piece {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        Serializer::serialize_newtype_struct(serializer, "PieceArray", {
+        Serializer::serialize_newtype_struct(serializer, "Piece", {
             struct SerializeWith<'a> {
                 values: &'a [u8],
             }
@@ -46,7 +46,7 @@ impl Serialize for PieceArray {
     }
 }
 
-impl<'de> Deserialize<'de> for PieceArray {
+impl<'de> Deserialize<'de> for Piece {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -54,10 +54,10 @@ impl<'de> Deserialize<'de> for PieceArray {
         struct Visitor;
 
         impl<'de> de::Visitor<'de> for Visitor {
-            type Value = PieceArray;
+            type Value = Piece;
 
             fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                formatter.write_str("tuple struct PieceArray")
+                formatter.write_str("tuple struct Piece")
             }
 
             #[inline]
@@ -74,7 +74,7 @@ impl<'de> Deserialize<'de> for PieceArray {
                 A: de::SeqAccess<'de>,
             {
                 struct DeserializeWith {
-                    value: PieceArray,
+                    value: Piece,
                 }
                 impl<'de> Deserialize<'de> for DeserializeWith {
                     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -91,11 +91,11 @@ impl<'de> Deserialize<'de> for PieceArray {
                     .map(|wrap| wrap.value)
                     .ok_or(de::Error::invalid_length(
                         0usize,
-                        &"tuple struct PieceArray with 1 element",
+                        &"tuple struct Piece with 1 element",
                     ))
             }
         }
-        Deserializer::deserialize_newtype_struct(deserializer, "PieceArray", Visitor)
+        Deserializer::deserialize_newtype_struct(deserializer, "Piece", Visitor)
     }
 }
 
