@@ -44,6 +44,7 @@ use subspace_farmer::utils::{
 };
 use subspace_farmer::Identity;
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -277,7 +278,7 @@ where
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
             allocated_space: plot_size.as_u64(),
-            read_sector_record_chunks_mode: None,
+            read_sector_record_chunks_mode: Some(ReadSectorRecordChunksMode::ConcurrentChunks),
         }];
 
         Some(tmp_directory)
