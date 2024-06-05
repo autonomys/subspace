@@ -5175,9 +5175,9 @@ dependencies = [
 
 [[package]]
 name = "instant"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
+checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
 ]
@@ -5607,7 +5607,7 @@ dependencies = [
  "libp2p-ping 0.44.0",
  "libp2p-plaintext",
  "libp2p-quic 0.10.2",
- "libp2p-request-response 0.26.1",
+ "libp2p-request-response 0.26.3",
  "libp2p-swarm 0.44.2",
  "libp2p-tcp 0.41.0",
  "libp2p-upnp",
@@ -5655,7 +5655,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.2",
  "libp2p-identity 0.2.8",
- "libp2p-request-response 0.26.1",
+ "libp2p-request-response 0.26.3",
  "libp2p-swarm 0.44.2",
  "quick-protobuf",
  "quick-protobuf-codec 0.2.0",
@@ -6185,9 +6185,9 @@ dependencies = [
 
 [[package]]
 name = "libp2p-request-response"
-version = "0.26.1"
+version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e12823250fe0c45bdddea6eefa2be9a609aff1283ff4e1d8a294fdbb89572f6f"
+checksum = "c314fe28368da5e3a262553fb0ad575c1c8934c461e10de10265551478163836"
 dependencies = [
  "async-trait",
  "futures",
