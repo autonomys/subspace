@@ -497,13 +497,19 @@ where
             }
 
             downloaded_pieces_count += 1;
-            let progress = downloaded_pieces_count as f32 / pieces_to_download_total as f32 * 100.0;
-            if downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
-                self.piece_caches.write().await.clone_from(&caches);
+            // Do not print anything or send progress notification after last piece until piece
+            // cache is written fully below
+            if downloaded_pieces_count != pieces_to_download_total {
+                let progress =
+                    downloaded_pieces_count as f32 / pieces_to_download_total as f32 * 100.0;
+                if downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
+                    self.piece_caches.write().await.clone_from(&caches);
 
-                info!("Piece cache sync {progress:.2}% complete");
+                    info!("Piece cache sync {progress:.2}% complete");
+                }
+
+                self.handlers.progress.call_simple(&progress);
             }
-            self.handlers.progress.call_simple(&progress);
         }
 
         *self.piece_caches.write().await = caches;
