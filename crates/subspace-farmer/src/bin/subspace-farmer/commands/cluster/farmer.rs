@@ -32,6 +32,7 @@ use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     recommended_number_of_farming_threads, run_future_in_dedicated_thread, AsyncJoinOnDrop,
 };
+use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_proof_of_space::Table;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};
@@ -139,7 +140,7 @@ where
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
             allocated_space: plot_size.as_u64(),
-            read_sector_record_chunks_mode: None,
+            read_sector_record_chunks_mode: Some(ReadSectorRecordChunksMode::ConcurrentChunks),
         }];
 
         Some(tmp_directory)
