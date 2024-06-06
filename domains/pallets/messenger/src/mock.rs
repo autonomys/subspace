@@ -38,6 +38,7 @@ macro_rules! impl_runtime {
         use sp_domains::MessengerHoldIdentifier;
         use frame_support::traits::VariantCount;
         use core::mem;
+        use sp_runtime::Perbill;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -59,6 +60,7 @@ macro_rules! impl_runtime {
         parameter_types! {
             pub SelfChainId: ChainId = $chain_id.into();
             pub const ChannelReserveFee: Balance = 10;
+            pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
         }
 
         #[derive(
@@ -90,6 +92,7 @@ macro_rules! impl_runtime {
             type StorageKeys = ();
             type DomainOwner = ();
             type ChannelReserveFee = ChannelReserveFee;
+            type ChannelInitReservePortion = ChannelInitReservePortion;
             type HoldIdentifier = MockHoldIdentifer;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(

@@ -595,6 +595,7 @@ impl sp_messenger::StorageKeys for StorageKeys {
 
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
+    pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -619,6 +620,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainOwner = Domains;
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
+    type ChannelInitReservePortion = ChannelInitReservePortion;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

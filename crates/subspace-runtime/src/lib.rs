@@ -83,7 +83,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
@@ -507,6 +507,7 @@ impl sp_messenger::StorageKeys for StorageKeys {
 parameter_types! {
     // TODO: update value
     pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -531,6 +532,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainOwner = Domains;
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
+    type ChannelInitReservePortion = ChannelInitReservePortion;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

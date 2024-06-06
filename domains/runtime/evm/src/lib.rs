@@ -516,6 +516,7 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
 
 parameter_types! {
     pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -540,6 +541,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainOwner = ();
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
+    type ChannelInitReservePortion = ChannelInitReservePortion;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

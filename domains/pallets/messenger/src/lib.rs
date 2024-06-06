@@ -161,7 +161,7 @@ mod pallet {
     use sp_messenger::{
         InherentError, InherentType, OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
     };
-    use sp_runtime::ArithmeticError;
+    use sp_runtime::{ArithmeticError, Perbill};
     use sp_subspace_mmr::MmrProofVerifier;
     #[cfg(feature = "std")]
     use std::collections::BTreeSet;
@@ -201,6 +201,10 @@ mod pallet {
         /// Channel reserve fee to open a channel.
         #[pallet::constant]
         type ChannelReserveFee: Get<BalanceOf<Self>>;
+        /// Portion of Channel reserve taken by the protocol
+        /// if the channel is in init state and is requested to be closed.
+        #[pallet::constant]
+        type ChannelInitReservePortion: Get<Perbill>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
