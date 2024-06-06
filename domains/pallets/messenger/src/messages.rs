@@ -3,8 +3,9 @@ extern crate alloc;
 
 use crate::pallet::ChainAllowlist;
 use crate::{
-    BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, CloseChannelBy, Config,
-    Error, Event, InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
+    BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, ChannelState, Channels,
+    CloseChannelBy, Config, Error, Event, InboxResponses, Nonce, Outbox, OutboxMessageResult,
+    Pallet,
 };
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
@@ -223,6 +224,12 @@ impl<T: Config> Pallet<T> {
 
         if msg_weight_tag != &MessageWeightTag::EndpointRequest(req.dst_endpoint.clone()) {
             return Err(Error::<T>::WeightTagNotMatch.into());
+        }
+
+        let channel =
+            Channels::<T>::get(dst_chain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
+        if channel.state != ChannelState::Open {
+            return Err(Error::<T>::InvalidChannelState.into());
         }
 
         // store fees for inbox message execution
