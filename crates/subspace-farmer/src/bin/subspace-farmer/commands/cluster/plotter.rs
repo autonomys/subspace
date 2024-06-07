@@ -158,7 +158,8 @@ where
             .into_iter()
             .zip(replotting_thread_pool_core_indices),
         plotting_thread_priority.into(),
-    )?;
+    )
+    .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let global_mutex = Arc::default();
     let cpu_plotter = CpuPlotter::<_, PosTable>::new(
         piece_getter,
@@ -173,6 +174,8 @@ where
     // TODO: Metrics
 
     Ok(Box::pin(async move {
-        plotter_service(&nats_client, &cpu_plotter).await
+        plotter_service(&nats_client, &cpu_plotter)
+            .await
+            .map_err(|error| anyhow!("Ploter service failed: {error}"))
     }))
 }

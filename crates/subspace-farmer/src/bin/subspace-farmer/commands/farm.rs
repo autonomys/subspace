@@ -278,7 +278,8 @@ where
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
             .prefix("subspace-farmer-")
-            .tempdir()?;
+            .tempdir()
+            .map_err(|error| anyhow!("Failed to create temporary directory: {error}"))?;
 
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
@@ -309,7 +310,9 @@ where
     let plotted_pieces = Arc::new(AsyncRwLock::new(PlottedPieces::default()));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
-    let node_client = NodeRpcClient::new(&node_rpc_url).await?;
+    let node_client = NodeRpcClient::new(&node_rpc_url)
+        .await
+        .map_err(|error| anyhow!("Failed to connect to node RPC: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
@@ -360,7 +363,8 @@ where
             node_client.clone(),
             farmer_cache.clone(),
             should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
-        )?
+        )
+        .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
 
     let _prometheus_worker = if should_start_prometheus_server {
@@ -499,7 +503,8 @@ where
             .into_iter()
             .zip(replotting_thread_pool_core_indices),
         plotting_thread_priority.into(),
-    )?;
+    )
+    .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
@@ -682,7 +687,7 @@ where
         let farm_index = farm_index.try_into().map_err(|_error| {
             anyhow!(
                 "More than 256 plots are not supported, consider running multiple farmer \
-                    instances"
+                instances"
             )
         })?;
 
