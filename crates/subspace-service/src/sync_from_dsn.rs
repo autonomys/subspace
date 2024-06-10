@@ -4,8 +4,9 @@ pub(crate) mod segment_header_downloader;
 pub(crate) mod snap_sync;
 pub(crate) mod snap_sync_engine;
 
-use crate::sync_from_dsn::import_blocks::{import_blocks_from_dsn, DsnSyncPieceGetter};
+use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
+use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
@@ -17,11 +18,14 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use sp_runtime::Saturating;
+use std::error::Error;
+use std::fmt;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::SegmentIndex;
+use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
 use tracing::{debug, info, warn};
 
@@ -33,6 +37,41 @@ const CHECK_ONLINE_STATUS_INTERVAL: Duration = Duration::from_secs(1);
 const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
+
+/// Trait representing a way to get pieces for DSN sync purposes
+#[async_trait]
+pub trait DsnSyncPieceGetter: fmt::Debug {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
+#[async_trait]
+impl<T> DsnSyncPieceGetter for Arc<T>
+where
+    T: DsnSyncPieceGetter + Send + Sync + ?Sized,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_ref().get_piece(piece_index).await
+    }
+}
+
+#[async_trait]
+impl<PV> DsnSyncPieceGetter for PieceProvider<PV>
+where
+    PV: PieceValidator,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        Ok(self.get_piece_from_cache(piece_index).await)
+    }
+}
 
 #[derive(Debug)]
 enum NotificationReason {

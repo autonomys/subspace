@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use async_trait::async_trait;
+use crate::sync_from_dsn::DsnSyncPieceGetter;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
@@ -27,53 +27,14 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use sp_runtime::Saturating;
-use std::error::Error;
-use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockNumber, Piece, PieceIndex, RecordedHistorySegment, SegmentIndex,
+    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tokio::sync::Semaphore;
 use tracing::warn;
-
-/// Trait representing a way to get pieces for DSN sync purposes
-#[async_trait]
-pub trait DsnSyncPieceGetter: fmt::Debug {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
-
-#[async_trait]
-impl<T> DsnSyncPieceGetter for Arc<T>
-where
-    T: DsnSyncPieceGetter + Send + Sync + ?Sized,
-{
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.as_ref().get_piece(piece_index).await
-    }
-}
-
-#[async_trait]
-impl<PV> DsnSyncPieceGetter for PieceProvider<PV>
-where
-    PV: PieceValidator,
-{
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self.get_piece_from_cache(piece_index).await)
-    }
-}
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
 /// essentially used to ensure we use a bounded amount of RAM during sync process.

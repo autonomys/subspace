@@ -1,5 +1,5 @@
 use crate::dsn::DsnConfig;
-use crate::sync_from_dsn::import_blocks::DsnSyncPieceGetter;
+use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
