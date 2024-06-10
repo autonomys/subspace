@@ -953,7 +953,7 @@ mod pallet {
                                 Precision::Exact,
                                 Fortitude::Force,
                             )?;
-                            T::OnXDMRewards::on_xdm_rewards(protocol_fee);
+                            T::OnXDMRewards::on_chain_protocol_fees(chain_id, protocol_fee);
                             release_amount
                         }
                     };

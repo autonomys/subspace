@@ -40,7 +40,7 @@ use crate::domain_registry::Error as DomainRegistryError;
 use crate::runtime_registry::into_complete_raw_genesis;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
-use crate::staking::OperatorStatus;
+use crate::staking::{do_reward_operators, OperatorStatus};
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
@@ -222,7 +222,7 @@ mod pallet {
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnDomainInstantiated,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated,
         OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
         RuntimeObject, RuntimeType,
     };
@@ -418,6 +418,9 @@ mod pallet {
 
         /// Fraud proof storage key provider
         type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider;
+
+        /// Hook to handle chain rewards.
+        type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -2377,6 +2380,18 @@ impl<T: Config> Pallet<T> {
         T::WeightInfo::operator_reward_tax_and_restake(rewarded_operator_count).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(finalized_operator_count),
         )
+    }
+
+    /// Reward the active operators of this domain epoch.
+    pub fn reward_domain_operators(domain_id: DomainId, rewards: BalanceOf<T>) {
+        // If domain is not instantiated, then we don't care at the moment.
+        if let Some(domain_stake_summary) = DomainStakingSummary::<T>::get(domain_id) {
+            let operators = domain_stake_summary
+                .current_epoch_rewards
+                .into_keys()
+                .collect::<Vec<OperatorId>>();
+            let _ = do_reward_operators::<T>(domain_id, operators.into_iter(), rewards);
+        }
     }
 
     #[cfg(not(feature = "runtime-benchmarks"))]

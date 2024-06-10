@@ -450,6 +450,14 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
             let _ = Balances::deposit_creating(&block_author, reward);
         }
     }
+
+    fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance) {
+        // on consensus chain, reward the domain operators
+        // balance is already on this consensus runtime
+        if let ChainId::Domain(domain_id) = chain_id {
+            Domains::reward_domain_operators(domain_id, fees)
+        }
+    }
 }
 
 pub struct MmrProofVerifier;
@@ -629,6 +637,21 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
     }
 }
 
+pub struct OnChainRewards;
+
+impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
+    fn on_chain_rewards(chain_id: ChainId, reward: Balance) {
+        match chain_id {
+            ChainId::Consensus => {
+                if let Some(block_author) = Subspace::find_block_reward_address() {
+                    let _ = Balances::deposit_creating(&block_author, reward);
+                }
+            }
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+        }
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -668,6 +691,7 @@ impl pallet_domains::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
+    type OnChainRewards = OnChainRewards;
 }
 
 parameter_types! {

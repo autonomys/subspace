@@ -93,7 +93,8 @@ use subspace_core_primitives::{
     SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, Hash, Moment, Nonce, Signature, MIN_REPLICATION_FACTOR,
+    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
+    MIN_REPLICATION_FACTOR,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -707,6 +708,21 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
     }
 }
 
+pub struct OnChainRewards;
+
+impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
+    fn on_chain_rewards(chain_id: ChainId, reward: Balance) {
+        match chain_id {
+            ChainId::Consensus => {
+                if let Some(block_author) = Subspace::find_block_reward_address() {
+                    let _ = Balances::deposit_creating(&block_author, reward);
+                }
+            }
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+        }
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -746,6 +762,7 @@ impl pallet_domains::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
+    type OnChainRewards = OnChainRewards;
 }
 
 parameter_types! {

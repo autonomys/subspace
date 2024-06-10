@@ -39,10 +39,13 @@ pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
 /// Trait to handle XDM rewards.
 pub trait OnXDMRewards<Balance> {
     fn on_xdm_rewards(rewards: Balance);
+    fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance);
 }
 
 impl<Balance> OnXDMRewards<Balance> for () {
     fn on_xdm_rewards(_: Balance) {}
+
+    fn on_chain_protocol_fees(_chain_id: ChainId, _fees: Balance) {}
 }
 
 /// Trait that return various storage keys for storages on Consensus chain and domains
