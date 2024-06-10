@@ -5,9 +5,9 @@ extern crate alloc;
 
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
-    DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf,
-    HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor, LatestConfirmedDomainBlock,
-    LatestSubmittedER, Pallet, ReceiptHashFor,
+    DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeAt, ExecutionInbox,
+    ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor,
+    LatestConfirmedDomainBlock, LatestSubmittedER, Pallet, ReceiptHashFor,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -46,6 +46,8 @@ pub enum Error {
     DomainTransfersTracking,
     InvalidDomainTransfers,
     OverwritingER,
+    RuntimeNotFound,
+    LastBlockNotFound,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -211,18 +213,29 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         return Err(Error::InvalidExecutionTrace);
     }
 
+    let maybe_domain_runtime_upgraded_at = {
+        let runtime_id = Pallet::<T>::runtime_id(domain_id).ok_or(Error::RuntimeNotFound)?;
+        DomainRuntimeUpgradeAt::<T>::get(runtime_id).remove(consensus_block_number)
+    };
+
     // Check if the ER is derived from the correct consensus block in the current chain
     let excepted_consensus_block_hash =
         match ConsensusBlockHash::<T>::get(domain_id, consensus_block_number) {
             Some(hash) => hash,
-            // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
-            // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
-            // is unavailable at this point.
             None => {
+                // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+                // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+                // is unavailable at this point.
                 let parent_block_number =
                     frame_system::Pallet::<T>::current_block_number() - One::one();
                 if *consensus_block_number == parent_block_number {
                     frame_system::Pallet::<T>::parent_hash()
+
+                // The domain runtime upgrade is forced to happen even if there is no bundle, in this case,
+                // the `ConsensusBlockHash` will be empty so we need to get the consensus block hash from
+                // `DomainRuntimeUpgradeAt`
+                } else if let Some(upgraded_at_hash) = maybe_domain_runtime_upgraded_at {
+                    upgraded_at_hash
                 } else {
                     return Err(Error::UnavailableConsensusBlockHash);
                 }
@@ -241,7 +254,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     let expected_extrinsics_roots: Vec<_> =
         execution_inbox.iter().map(|b| b.extrinsics_root).collect();
     ensure!(
-        !bundles_extrinsics_roots.is_empty()
+        (!bundles_extrinsics_roots.is_empty() || maybe_domain_runtime_upgraded_at.is_some())
             && bundles_extrinsics_roots == expected_extrinsics_roots,
         Error::InvalidExtrinsicsRoots
     );

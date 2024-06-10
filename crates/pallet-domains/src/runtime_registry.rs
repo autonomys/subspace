@@ -3,7 +3,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
+use crate::pallet::{
+    DomainRuntimeUpgrades, NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades,
+};
 use crate::{BalanceOf, Config, Event};
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -286,6 +288,9 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
             runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
             runtime_obj.updated_at = at;
         });
+
+        // Record the runtime upgrade
+        DomainRuntimeUpgrades::<T>::mutate(|upgrades| upgrades.push(runtime_id));
 
         // deposit digest log for light clients
         frame_system::Pallet::<T>::deposit_log(DigestItem::domain_runtime_upgrade(runtime_id));

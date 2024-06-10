@@ -34,7 +34,7 @@ pub mod weights;
 
 extern crate alloc;
 
-use crate::block_tree::verify_execution_receipt;
+use crate::block_tree::{verify_execution_receipt, Error as BlockTreeError};
 use crate::bundle_storage_fund::storage_fund_account;
 use crate::domain_registry::Error as DomainRegistryError;
 use crate::runtime_registry::into_complete_raw_genesis;
@@ -234,6 +234,7 @@ mod pallet {
     };
     use sp_runtime::Saturating;
     use sp_std::boxed::Box;
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_subspace_mmr::MmrProofVerifier;
@@ -684,6 +685,18 @@ mod pallet {
     #[pallet::storage]
     pub(super) type AccumulatedTreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
+    /// Storage used to keep track of which consensus block the domain runtime upgrade happen.
+    ///
+    /// TODO: determine and clear the unneeded domain runtime upgrade record
+    #[pallet::storage]
+    pub(super) type DomainRuntimeUpgradeAt<T: Config> =
+        StorageMap<_, Identity, RuntimeId, BTreeMap<BlockNumberFor<T>, T::Hash>, ValueQuery>;
+
+    /// Temporary storage keep track of domain runtime upgrade happen in the current block, cleared
+    /// in the next block initialization.
+    #[pallet::storage]
+    pub type DomainRuntimeUpgrades<T> = StorageValue<_, Vec<RuntimeId>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -1096,8 +1109,19 @@ mod pallet {
             // consensus block, which also mean a domain block will be produced thus update `HeadDomainNumber`
             // to this domain block's block number.
             if SuccessfulBundles::<T>::get(domain_id).is_empty() {
+                // Domain runtime upgrade is forced happened even if there is no bundle submitted for a given domain
+                // it will still derive a domain block for the upgrade, so we need to increase the `HeadDomainNumber`
+                // by the number of runtime upgrade happen since last block to account for these blocks.
+                //
+                // NOTE: if a domain runtime upgrade happened in the current block it won't be accounted into
+                // `missed_upgrade` because `DomainRuntimeUpgradeAt` is updated in the next block's initialization.
+                let missed_upgrade =
+                    Self::missed_domain_runtime_upgrade(domain_id).map_err(Error::<T>::from)?;
+
                 let next_number = HeadDomainNumber::<T>::get(domain_id)
                     .checked_add(&One::one())
+                    .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?
+                    .checked_add(&missed_upgrade.into())
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
                 HeadDomainNumber::<T>::set(domain_id, next_number);
             }
@@ -1550,13 +1574,20 @@ mod pallet {
     // TODO: proper benchmark
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(block_number: BlockNumberFor<T>) -> Weight {
-            // Do scheduled domain runtime upgrade
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+
+            // Record any previous domain runtime upgrade in `DomainRuntimeUpgradeAt` and then do the
+            // domain runtime upgrade scheduled in the current block
+            for runtime_id in DomainRuntimeUpgrades::<T>::take() {
+                DomainRuntimeUpgradeAt::<T>::mutate(runtime_id, |upgrade_record| {
+                    upgrade_record.insert(parent_number, parent_hash)
+                });
+            }
             do_upgrade_runtimes::<T>(block_number);
 
             // Store the hash of the parent consensus block for domain that have bundles submitted
             // in that consensus block
-            let parent_number = block_number - One::one();
-            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
                 T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
@@ -2484,6 +2515,28 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(leaf_data.state_root())
+    }
+
+    // Return the number of domain runtime upgrade happened since `last_domain_block_number`
+    fn missed_domain_runtime_upgrade(domain_id: DomainId) -> Result<u32, BlockTreeError> {
+        let runtime_id = Self::runtime_id(domain_id).ok_or(BlockTreeError::RuntimeNotFound)?;
+        let last_domain_block_number = HeadDomainNumber::<T>::get(domain_id);
+
+        // The consensus block number that derive the last domain block
+        let last_block_at =
+            ExecutionInbox::<T>::iter_key_prefix((domain_id, last_domain_block_number))
+                .next()
+                // If there is no `ExecutionInbox` exist for the `last_domain_block_number` it means
+                // there is no bundle submitted for the domain since it is instantiated, in this case,
+                // we use the `domain_obj.created_at` (which derive the genesis block).
+                .or(DomainRegistry::<T>::get(domain_id).map(|domain_obj| domain_obj.created_at))
+                .ok_or(BlockTreeError::LastBlockNotFound)?;
+
+        Ok(DomainRuntimeUpgradeAt::<T>::get(runtime_id)
+            .into_keys()
+            .rev()
+            .take_while(|upgraded_at| *upgraded_at > last_block_at)
+            .count() as u32)
     }
 }
 
