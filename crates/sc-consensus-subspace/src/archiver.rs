@@ -74,6 +74,7 @@ use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -83,6 +84,8 @@ use tracing::{debug, info, warn};
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
 const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 6;
+/// Do not wait for acknowledgements beyond this time limit
+const ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// How deep (in segments) should block be in order to be finalized.
 ///
@@ -1037,7 +1040,7 @@ async fn send_archived_segment_notification(
 ) {
     let segment_index = archived_segment.segment_header.segment_index();
     let (acknowledgement_sender, mut acknowledgement_receiver) =
-        tracing_unbounded::<()>("subspace_acknowledgement", 100);
+        tracing_unbounded::<()>("subspace_acknowledgement", 1000);
     // Keep `archived_segment` around until all acknowledgements are received since some receivers
     // might use weak references
     let archived_segment = Arc::new(archived_segment);
@@ -1048,10 +1051,22 @@ async fn send_archived_segment_notification(
 
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
-    while acknowledgement_receiver.next().await.is_some() {
-        debug!(
-            "Archived segment notification acknowledged: {}",
-            segment_index
+    let wait_fut = async {
+        while acknowledgement_receiver.next().await.is_some() {
+            debug!(
+                "Archived segment notification acknowledged: {}",
+                segment_index
+            );
+        }
+    };
+
+    if tokio::time::timeout(ACKNOWLEDGEMENT_TIMEOUT, wait_fut)
+        .await
+        .is_err()
+    {
+        warn!(
+            "Archived segment notification was not acknowledged and reached timeout, continue \
+            regardless"
         );
     }
 }
