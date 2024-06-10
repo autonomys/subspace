@@ -32,6 +32,15 @@ pub enum ReadingError {
         /// Low-level error
         error: io::Error,
     },
+    /// Missing proof of space proof.
+    ///
+    /// This is either hardware issue or if happens for everyone all the time an implementation
+    /// bug.
+    #[error("Missing PoS proof for s-bucket {s_bucket}")]
+    MissingPosProof {
+        /// S-bucket
+        s_bucket: SBucket,
+    },
     /// Invalid chunk, possible disk corruption
     #[error(
         "Invalid chunk at location {chunk_location} s-bucket {s_bucket} encoded \
@@ -79,6 +88,7 @@ impl ReadingError {
     pub fn is_fatal(&self) -> bool {
         match self {
             ReadingError::FailedToReadChunk { .. } => false,
+            ReadingError::MissingPosProof { .. } => false,
             ReadingError::InvalidChunk { .. } => false,
             ReadingError::FailedToErasureDecodeRecord { .. } => false,
             ReadingError::WrongRecordSizeAfterDecoding { .. } => false,
@@ -219,7 +229,7 @@ where
                     if encoded_chunk_used {
                         let proof = pos_table
                             .find_proof(s_bucket.into())
-                            .expect("encoded_chunk_used implies proof exists for this chunk; qed");
+                            .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                         record_chunk =
                             Simd::to_array(Simd::from(record_chunk) ^ Simd::from(proof.hash()));
@@ -276,9 +286,8 @@ where
 
                         // Decode chunk if necessary
                         if encoded_chunk_used {
-                            let proof = pos_table.find_proof(s_bucket.into()).expect(
-                                "encoded_chunk_used implies proof exists for this chunk; qed",
-                            );
+                            let proof = pos_table.find_proof(s_bucket.into())
+                                .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                             record_chunk = Simd::to_array(
                                 Simd::from(record_chunk) ^ Simd::from(proof.hash()),
