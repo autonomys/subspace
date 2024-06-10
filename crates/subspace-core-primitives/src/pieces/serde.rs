@@ -139,7 +139,7 @@ impl Serialize for FlatPieces {
                 }
             }
             &SerializeWith {
-                values: self.as_ref(),
+                values: PieceArray::slice_to_repr(self).flatten(),
             }
         })
     }
