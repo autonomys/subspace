@@ -1,7 +1,9 @@
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
 use crate::utils::plotted_pieces::PlottedPieces;
-use async_lock::{Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock};
+use async_lock::{
+    Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
+};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
@@ -11,6 +13,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -102,6 +105,7 @@ struct Inner<FarmIndex, PV, NC> {
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
     in_progress_pieces: Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
+    request_semaphore: Arc<Semaphore>,
 }
 
 pub struct FarmerPieceGetter<FarmIndex, PV, NC> {
@@ -137,7 +141,9 @@ where
         node_client: NC,
         plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
         dsn_cache_retry_policy: DsnCacheRetryPolicy,
+        request_concurrency: NonZeroUsize,
     ) -> Self {
+        let request_semaphore = Arc::new(Semaphore::new(request_concurrency.get()));
         Self {
             inner: Arc::new(Inner {
                 piece_provider,
@@ -146,12 +152,15 @@ where
                 plotted_pieces,
                 dsn_cache_retry_policy,
                 in_progress_pieces: Mutex::default(),
+                request_semaphore,
             }),
         }
     }
 
     /// Fast way to get piece using various caches
     pub async fn get_piece_fast(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let _guard = self.inner.request_semaphore.acquire().await;
+
         match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
             InProgressPiece::Getting(in_progress_piece_getting) => {
                 // Try to get the piece without releasing lock to make sure successfully
@@ -221,6 +230,8 @@ where
 
     /// Slow way to get piece using archival storage
     pub async fn get_piece_slow(&self, piece_index: PieceIndex) -> Option<Piece> {
+        let _guard = self.inner.request_semaphore.acquire().await;
+
         match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
             InProgressPiece::Getting(in_progress_piece_getting) => {
                 // Try to get the piece without releasing lock to make sure successfully
@@ -358,6 +369,8 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        let _guard = self.inner.request_semaphore.acquire().await;
+
         match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
             InProgressPiece::Getting(in_progress_piece_getting) => {
                 // Try to get the piece without releasing lock to make sure successfully
