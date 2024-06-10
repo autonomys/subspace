@@ -11,79 +11,25 @@ use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use crate::cluster::nats_client::{
     GenericBroadcast, GenericRequest, GenericStreamRequest, NatsClient, StreamRequest,
 };
-use crate::farm::{FarmError, PieceCache, PieceCacheOffset};
+use crate::farm::{FarmError, PieceCache, PieceCacheId, PieceCacheOffset};
 use anyhow::anyhow;
 use async_nats::Message;
 use async_trait::async_trait;
-use derive_more::Display;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
+use parity_scale_codec::{Decode, Encode};
 use std::future::{pending, Future};
 use std::pin::{pin, Pin};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, info, trace, warn};
-use ulid::Ulid;
-
-/// An ephemeral identifier for a cache
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display)]
-pub enum ClusterCacheId {
-    Ulid(Ulid),
-}
-
-impl Encode for ClusterCacheId {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        1_usize
-            + match self {
-                ClusterCacheId::Ulid(ulid) => 0_usize.saturating_add(Encode::size_hint(&ulid.0)),
-            }
-    }
-
-    #[inline]
-    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
-        match self {
-            ClusterCacheId::Ulid(ulid) => {
-                output.push_byte(0);
-                Encode::encode_to(&ulid.0, output);
-            }
-        }
-    }
-}
-
-impl EncodeLike for ClusterCacheId {}
-
-impl Decode for ClusterCacheId {
-    #[inline]
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        match input
-            .read_byte()
-            .map_err(|e| e.chain("Could not decode `CacheId`, failed to read variant byte"))?
-        {
-            0 => u128::decode(input)
-                .map(|ulid| ClusterCacheId::Ulid(Ulid(ulid)))
-                .map_err(|e| e.chain("Could not decode `CacheId::Ulid.0`")),
-            _ => Err("Could not decode `CacheId`, variant doesn't exist".into()),
-        }
-    }
-}
-
-#[allow(clippy::new_without_default)]
-impl ClusterCacheId {
-    /// Creates new ID
-    #[inline]
-    pub fn new() -> Self {
-        Self::Ulid(Ulid::new())
-    }
-}
 
 /// Broadcast with identification details by caches
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct ClusterCacheIdentifyBroadcast {
     /// Cache ID
-    pub cache_id: ClusterCacheId,
+    pub cache_id: PieceCacheId,
     /// Max number of elements in this cache
     pub max_num_elements: u32,
 }
@@ -118,13 +64,13 @@ impl GenericRequest for ClusterCacheReadPieceIndexRequest {
 
 /// Read piece from cache
 #[derive(Debug, Clone, Encode, Decode)]
-struct ClusterCacheReadPieceRequest {
-    offset: PieceCacheOffset,
+pub(super) struct ClusterCacheReadPieceRequest {
+    pub(super) offset: PieceCacheOffset,
 }
 
 impl GenericRequest for ClusterCacheReadPieceRequest {
     const SUBJECT: &'static str = "subspace.cache.*.read-piece";
-    type Response = Result<Option<Piece>, String>;
+    type Response = Result<Option<(PieceIndex, Piece)>, String>;
 }
 
 /// Request plotted from farmer, request
@@ -139,6 +85,7 @@ impl GenericStreamRequest for ClusterCacheContentsRequest {
 /// Cluster cache implementation
 #[derive(Debug)]
 pub struct ClusterPieceCache {
+    cache_id: PieceCacheId,
     cache_id_string: String,
     max_num_elements: u32,
     nats_client: NatsClient,
@@ -146,6 +93,10 @@ pub struct ClusterPieceCache {
 
 #[async_trait]
 impl PieceCache for ClusterPieceCache {
+    fn id(&self) -> &PieceCacheId {
+        &self.cache_id
+    }
+
     #[inline]
     fn max_num_elements(&self) -> u32 {
         self.max_num_elements
@@ -202,7 +153,10 @@ impl PieceCache for ClusterPieceCache {
             .await??)
     }
 
-    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
+    async fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<(PieceIndex, Piece)>, FarmError> {
         Ok(self
             .nats_client
             .request(
@@ -218,11 +172,12 @@ impl ClusterPieceCache {
     /// [`ClusterCacheIdentifyBroadcast`]
     #[inline]
     pub fn new(
-        cache_id: ClusterCacheId,
+        cache_id: PieceCacheId,
         max_num_elements: u32,
         nats_client: NatsClient,
     ) -> ClusterPieceCache {
         Self {
+            cache_id,
             cache_id_string: cache_id.to_string(),
             max_num_elements,
             nats_client,
@@ -232,7 +187,7 @@ impl ClusterPieceCache {
 
 #[derive(Debug)]
 struct CacheDetails<'a, C> {
-    cache_id: ClusterCacheId,
+    cache_id: PieceCacheId,
     cache_id_string: String,
     cache: &'a C,
 }
@@ -251,7 +206,7 @@ where
     let caches_details = caches
         .iter()
         .map(|cache| {
-            let cache_id = ClusterCacheId::new();
+            let cache_id = *cache.id();
 
             info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
 

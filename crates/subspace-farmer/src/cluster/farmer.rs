@@ -57,13 +57,13 @@ impl GenericBroadcast for ClusterFarmerIdentifyFarmBroadcast {
 
 /// Broadcast with sector updates by farmers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterFarmerSectorUpdateBroadcast {
+struct ClusterFarmerSectorUpdateBroadcast {
     /// Farm ID
-    pub farm_id: FarmId,
+    farm_id: FarmId,
     /// Sector index
-    pub sector_index: SectorIndex,
+    sector_index: SectorIndex,
     /// Sector update
-    pub sector_update: SectorUpdate,
+    sector_update: SectorUpdate,
 }
 
 impl GenericBroadcast for ClusterFarmerSectorUpdateBroadcast {
@@ -72,11 +72,11 @@ impl GenericBroadcast for ClusterFarmerSectorUpdateBroadcast {
 
 /// Broadcast with farming notifications by farmers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterFarmerFarmingNotificationBroadcast {
+struct ClusterFarmerFarmingNotificationBroadcast {
     /// Farm ID
-    pub farm_id: FarmId,
+    farm_id: FarmId,
     /// Farming notification
-    pub farming_notification: FarmingNotification,
+    farming_notification: FarmingNotification,
 }
 
 impl GenericBroadcast for ClusterFarmerFarmingNotificationBroadcast {
@@ -85,11 +85,11 @@ impl GenericBroadcast for ClusterFarmerFarmingNotificationBroadcast {
 
 /// Broadcast with solutions by farmers
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterFarmerSolutionBroadcast {
+struct ClusterFarmerSolutionBroadcast {
     /// Farm ID
-    pub farm_id: FarmId,
+    farm_id: FarmId,
     /// Solution response
-    pub solution_response: SolutionResponse,
+    solution_response: SolutionResponse,
 }
 
 impl GenericBroadcast for ClusterFarmerSolutionBroadcast {
