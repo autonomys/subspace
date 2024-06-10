@@ -48,6 +48,17 @@ impl<Balance> OnXDMRewards<Balance> for () {
     fn on_chain_protocol_fees(_chain_id: ChainId, _fees: Balance) {}
 }
 
+/// Trait to check if the domain is registered.
+pub trait DomainRegistration {
+    fn is_domain_registered(domain_id: DomainId) -> bool;
+}
+
+impl DomainRegistration for () {
+    fn is_domain_registered(_domain_id: DomainId) -> bool {
+        false
+    }
+}
+
 /// Trait that return various storage keys for storages on Consensus chain and domains
 pub trait StorageKeys {
     /// Returns the storage key for confirmed domain block on conensus chain

@@ -159,7 +159,8 @@ mod pallet {
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        InherentError, InherentType, OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
+        DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
+        INHERENT_IDENTIFIER,
     };
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
     use sp_subspace_mmr::MmrProofVerifier;
@@ -205,6 +206,8 @@ mod pallet {
         /// if the channel is in init state and is requested to be closed.
         #[pallet::constant]
         type ChannelInitReservePortion: Get<Perbill>;
+        /// Type to check if a given domain is registered on Consensus chain.
+        type DomainRegistration: DomainRegistration;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -666,6 +669,13 @@ mod pallet {
                 Error::<T>::InvalidAllowedChain
             );
 
+            if let ChainAllowlistUpdate::Add(ChainId::Domain(domain_id)) = update {
+                ensure!(
+                    T::DomainRegistration::is_domain_registered(domain_id),
+                    Error::<T>::InvalidChain
+                );
+            }
+
             ChainAllowlist::<T>::mutate(|list| match update {
                 ChainAllowlistUpdate::Add(chain_id) => list.insert(chain_id),
                 ChainAllowlistUpdate::Remove(chain_id) => list.remove(&chain_id),
@@ -694,6 +704,13 @@ mod pallet {
 
             if let Some(dst_domain_id) = update.chain_id().maybe_domain_chain() {
                 ensure!(dst_domain_id != domain_id, Error::<T>::InvalidAllowedChain);
+            }
+
+            if let ChainAllowlistUpdate::Add(ChainId::Domain(domain_id)) = update {
+                ensure!(
+                    T::DomainRegistration::is_domain_registered(domain_id),
+                    Error::<T>::InvalidChain
+                );
             }
 
             DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_domain_updates| {

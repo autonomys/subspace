@@ -2500,6 +2500,11 @@ impl<T: Config> Pallet<T> {
 
         Ok(leaf_data.state_root())
     }
+
+    /// Returns true if the Domain is registered.
+    pub fn is_domain_registered(domain_id: DomainId) -> bool {
+        DomainStakingSummary::<T>::contains_key(domain_id)
+    }
 }
 
 impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {

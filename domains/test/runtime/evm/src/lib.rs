@@ -530,6 +530,7 @@ impl pallet_messenger::Config for Runtime {
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
+    type DomainRegistration = ();
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

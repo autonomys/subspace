@@ -39,6 +39,7 @@ macro_rules! impl_runtime {
         use frame_support::traits::VariantCount;
         use core::mem;
         use sp_runtime::Perbill;
+        use sp_domains::DomainId;
 
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -80,6 +81,13 @@ macro_rules! impl_runtime {
             }
         }
 
+        pub struct DomainRegistration;
+        impl sp_messenger::DomainRegistration for DomainRegistration {
+            fn is_domain_registered(_domain_id: DomainId) -> bool {
+                true
+            }
+        }
+
         impl crate::Config for $runtime {
             type RuntimeEvent = RuntimeEvent;
             type SelfChainId = SelfChainId;
@@ -94,6 +102,7 @@ macro_rules! impl_runtime {
             type ChannelReserveFee = ChannelReserveFee;
             type ChannelInitReservePortion = ChannelInitReservePortion;
             type HoldIdentifier = MockHoldIdentifer;
+            type DomainRegistration = DomainRegistration;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 #[allow(unused_variables)] endpoint: &Endpoint,

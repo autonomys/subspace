@@ -594,6 +594,13 @@ impl sp_messenger::StorageKeys for StorageKeys {
     }
 }
 
+pub struct DomainRegistration;
+impl sp_messenger::DomainRegistration for DomainRegistration {
+    fn is_domain_registered(domain_id: DomainId) -> bool {
+        Domains::is_domain_registered(domain_id)
+    }
+}
+
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
@@ -622,6 +629,7 @@ impl pallet_messenger::Config for Runtime {
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
+    type DomainRegistration = DomainRegistration;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
