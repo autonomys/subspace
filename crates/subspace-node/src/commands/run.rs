@@ -17,6 +17,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
+use sc_network::config::SyncMode;
 use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -155,6 +156,13 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     //  https://github.com/paritytech/polkadot-sdk/issues/4671 is implemented
                     consensus_state_pruning = PruningMode::ArchiveCanonical;
                     subspace_configuration.base.state_pruning = Some(PruningMode::ArchiveCanonical);
+
+                    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
+                    if subspace_configuration.base.network.sync_mode.light_state() {
+                        // In case of archival pruning mode sync mode needs to be set to full or
+                        // else Substrate network will fail to initialize
+                        subspace_configuration.base.network.sync_mode = SyncMode::Full;
+                    }
 
                     subspace_service::new_partial::<PosTable, RuntimeApi>(
                         &subspace_configuration,
