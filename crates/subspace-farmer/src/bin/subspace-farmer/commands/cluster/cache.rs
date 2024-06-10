@@ -118,7 +118,8 @@ pub(super) async fn cache(
     let tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
             .prefix("subspace-cache-")
-            .tempdir()?;
+            .tempdir()
+            .map_err(|error| anyhow!("Failed to create temporary directory: {error}"))?;
 
         disk_caches = vec![DiskCache {
             directory: tmp_directory.as_ref().to_path_buf(),
@@ -171,7 +172,8 @@ pub(super) async fn cache(
             &cache_group,
             CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
         )
-        .await?;
+        .await
+        .map_err(|error| anyhow!("Cache service failed: {error}"))?;
 
         drop(tmp_directory);
 

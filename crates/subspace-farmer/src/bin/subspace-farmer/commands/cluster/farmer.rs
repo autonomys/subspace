@@ -135,7 +135,8 @@ where
     let tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
             .prefix("subspace-farmer-")
-            .tempdir()?;
+            .tempdir()
+            .map_err(|error| anyhow!("Failed to create temporary directory: {error}"))?;
 
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
@@ -163,7 +164,9 @@ where
         None
     };
 
-    let node_client = ClusterNodeClient::new(nats_client.clone()).await?;
+    let node_client = ClusterNodeClient::new(nats_client.clone())
+        .await
+        .map_err(|error| anyhow!("Failed to create cluster node client: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
@@ -357,7 +360,11 @@ where
         FARMER_IDENTIFICATION_BROADCAST_INTERVAL,
     );
     let farmer_service_fut = run_future_in_dedicated_thread(
-        move || farmer_service_fut,
+        move || async move {
+            farmer_service_fut
+                .await
+                .map_err(|error| anyhow!("Farmer service failed: {error}"))
+        },
         "controller-service".to_string(),
     )?;
 

@@ -97,7 +97,8 @@ pub(super) async fn controller(
     let (base_path, tmp_directory) = if tmp {
         let tmp_directory = tempfile::Builder::new()
             .prefix("subspace-cluster-controller-")
-            .tempdir()?;
+            .tempdir()
+            .map_err(|error| anyhow!("Failed to create temporary directory: {error}"))?;
 
         (tmp_directory.as_ref().to_path_buf(), Some(tmp_directory))
     } else {
@@ -111,7 +112,9 @@ pub(super) async fn controller(
     let plotted_pieces = Arc::new(AsyncRwLock::new(PlottedPieces::<FarmIndex>::default()));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
-    let node_client = NodeRpcClient::new(&node_rpc_url).await?;
+    let node_client = NodeRpcClient::new(&node_rpc_url)
+        .await
+        .map_err(|error| anyhow!("Failed to connect to node RPC: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
@@ -144,7 +147,8 @@ pub(super) async fn controller(
             node_client.clone(),
             farmer_cache.clone(),
             Some(registry),
-        )?
+        )
+        .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
 
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -198,6 +202,7 @@ pub(super) async fn controller(
                     &instance,
                 )
                 .await
+                .map_err(|error| anyhow!("Controller service failed: {error}"))
             }
         },
         "controller-service".to_string(),
