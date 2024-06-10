@@ -53,7 +53,7 @@ use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
 use futures::StreamExt;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
@@ -99,7 +99,7 @@ struct SegmentHeadersStoreInner<AS> {
     aux_store: Arc<AS>,
     next_key_index: AtomicU16,
     /// In-memory cache of segment headers
-    cache: Mutex<Vec<SegmentHeader>>,
+    cache: RwLock<Vec<SegmentHeader>>,
 }
 
 /// Persistent storage of segment headers.
@@ -163,7 +163,7 @@ where
             inner: Arc::new(SegmentHeadersStoreInner {
                 aux_store,
                 next_key_index: AtomicU16::new(next_key_index),
-                cache: Mutex::new(cache),
+                cache: RwLock::new(cache),
             }),
             confirmation_depth_k,
         })
@@ -171,12 +171,12 @@ where
 
     /// Returns last observed segment header
     pub fn last_segment_header(&self) -> Option<SegmentHeader> {
-        self.inner.cache.lock().last().cloned()
+        self.inner.cache.read().last().cloned()
     }
 
     /// Returns last observed segment index
     pub fn max_segment_index(&self) -> Option<SegmentIndex> {
-        let segment_index = self.inner.cache.lock().len().checked_sub(1)? as u64;
+        let segment_index = self.inner.cache.read().len().checked_sub(1)? as u64;
         Some(SegmentIndex::from(segment_index))
     }
 
@@ -240,7 +240,7 @@ where
 
             self.inner.aux_store.insert_aux(&insert_data, &[])?;
         }
-        self.inner.cache.lock().extend(segment_headers_to_store);
+        self.inner.cache.write().extend(segment_headers_to_store);
 
         Ok(())
     }
@@ -249,7 +249,7 @@ where
     pub fn get_segment_header(&self, segment_index: SegmentIndex) -> Option<SegmentHeader> {
         self.inner
             .cache
-            .lock()
+            .read()
             .get(u64::from(segment_index) as usize)
             .copied()
     }
@@ -319,11 +319,13 @@ where
                     break;
                 }
             } else {
-                return Vec::new(); // no segment headers required
+                // No segment headers required
+                return Vec::new();
             }
         }
 
-        Vec::new() // no segment headers required
+        // No segment headers required
+        Vec::new()
     }
 }
 
