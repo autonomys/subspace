@@ -487,5 +487,5 @@ where
         return Err(ReadingError::ChecksumMismatch);
     }
 
-    Ok(piece)
+    Ok(piece.to_shared())
 }

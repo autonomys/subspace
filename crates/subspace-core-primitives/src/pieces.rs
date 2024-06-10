@@ -3,6 +3,8 @@ mod serde;
 #[cfg(test)]
 mod tests;
 
+extern crate alloc;
+
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::Scalar;
 use crate::segments::{ArchivedHistorySegment, SegmentIndex};
@@ -11,13 +13,16 @@ use crate::RecordedHistorySegment;
 use ::serde::{Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
+use alloc::fmt;
+#[cfg(not(feature = "std"))]
+use alloc::format;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
-use alloc::vec;
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use bytes::{Bytes, BytesMut};
 use core::array::TryFromSliceError;
+use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::num::TryFromIntError;
 use core::ops::{Deref, DerefMut};
@@ -26,10 +31,11 @@ use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
 };
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use scale_info::TypeInfo;
+use scale_info::build::Fields;
+use scale_info::{Path, Type, TypeInfo};
 
 /// S-bucket used in consensus
 #[derive(
@@ -968,6 +974,65 @@ impl TryFrom<ChunkWitness> for Witness {
     }
 }
 
+#[derive(Debug)]
+enum CowBytes {
+    Shared(Bytes),
+    Owned(BytesMut),
+}
+
+impl PartialEq for CowBytes {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref().eq(other.as_ref())
+    }
+}
+
+impl Eq for CowBytes {}
+
+impl Hash for CowBytes {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
+    }
+}
+
+impl Clone for CowBytes {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Shared(bytes) => Self::Shared(bytes.clone()),
+            // Always return shared clone
+            Self::Owned(bytes) => Self::Shared(Bytes::copy_from_slice(bytes)),
+        }
+    }
+}
+
+impl AsRef<[u8]> for CowBytes {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            CowBytes::Shared(bytes) => bytes.as_ref(),
+            CowBytes::Owned(bytes) => bytes.as_ref(),
+        }
+    }
+}
+
+impl AsMut<[u8]> for CowBytes {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        match self {
+            CowBytes::Shared(bytes) => {
+                *self = CowBytes::Owned(BytesMut::from(bytes.as_ref()));
+
+                let CowBytes::Owned(bytes) = self else {
+                    unreachable!("Just replaced; qed");
+                };
+
+                bytes.as_mut()
+            }
+            CowBytes::Owned(bytes) => {
+                return bytes.as_mut();
+            }
+        }
+    }
+}
+
 /// A piece of archival history in Subspace Network.
 ///
 /// This version is allocated on the heap, for stack-allocated piece see [`PieceArray`].
@@ -975,52 +1040,138 @@ impl TryFrom<ChunkWitness> for Witness {
 /// Internally piece contains a record and corresponding witness that together with segment
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece(Box<PieceArray>);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Piece(CowBytes);
+
+impl Encode for Piece {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        self.as_ref().size_hint()
+    }
+
+    #[inline]
+    fn encode_to<O: Output + ?Sized>(&self, output: &mut O) {
+        self.as_ref().encode_to(output)
+    }
+
+    #[inline]
+    fn encode(&self) -> Vec<u8> {
+        self.as_ref().encode()
+    }
+
+    #[inline]
+    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        self.as_ref().using_encoded(f)
+    }
+}
+
+impl EncodeLike for Piece {}
+
+impl Decode for Piece {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        let bytes =
+            Bytes::decode(input).map_err(|error| error.chain("Could not decode `Piece`"))?;
+
+        if bytes.len() != Self::SIZE {
+            return Err(
+                parity_scale_codec::Error::from("Incorrect Piece length").chain(format!(
+                    "Expected {} bytes, found {} bytes",
+                    Self::SIZE,
+                    bytes.len()
+                )),
+            );
+        }
+
+        Ok(Piece(CowBytes::Shared(bytes)))
+    }
+}
+
+impl TypeInfo for Piece {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        Type::builder()
+            .path(Path::new("Piece", module_path!()))
+            .docs(&["A piece of archival history in Subspace Network"])
+            .composite(
+                Fields::unnamed().field(|f| f.ty::<[u8; Piece::SIZE]>().type_name("PieceArray")),
+            )
+    }
+}
 
 impl Default for Piece {
     #[inline]
     fn default() -> Self {
-        Self(PieceArray::new_boxed())
+        Self(CowBytes::Owned(BytesMut::zeroed(Self::SIZE)))
     }
 }
 
 impl From<Piece> for Vec<u8> {
     #[inline]
     fn from(piece: Piece) -> Self {
-        piece.0.to_vec()
+        match piece.0 {
+            CowBytes::Shared(bytes) => bytes.to_vec(),
+            CowBytes::Owned(bytes) => Vec::from(bytes),
+        }
     }
 }
 
 impl TryFrom<&[u8]> for Piece {
-    type Error = TryFromSliceError;
+    type Error = ();
 
     #[inline]
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        let slice = <&[u8; Self::SIZE]>::try_from(slice)?;
-        let mut piece = Self::default();
-        piece.copy_from_slice(slice);
-        Ok(piece)
+        if slice.len() != Self::SIZE {
+            return Err(());
+        }
+
+        Ok(Self(CowBytes::Shared(Bytes::copy_from_slice(slice))))
     }
 }
 
 impl TryFrom<Vec<u8>> for Piece {
-    type Error = TryFromSliceError;
+    type Error = ();
 
     #[inline]
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
-        // TODO: Maybe possible to transmute boxed slice into boxed array
-        Self::try_from(vec.as_slice())
+        if vec.len() != Self::SIZE {
+            return Err(());
+        }
+
+        Ok(Self(CowBytes::Shared(Bytes::from(vec))))
+    }
+}
+
+impl TryFrom<Bytes> for Piece {
+    type Error = ();
+
+    #[inline]
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        if bytes.len() != Self::SIZE {
+            return Err(());
+        }
+
+        Ok(Self(CowBytes::Shared(bytes)))
+    }
+}
+
+impl TryFrom<BytesMut> for Piece {
+    type Error = ();
+
+    #[inline]
+    fn try_from(bytes: BytesMut) -> Result<Self, Self::Error> {
+        if bytes.len() != Self::SIZE {
+            return Err(());
+        }
+
+        Ok(Self(CowBytes::Owned(bytes)))
     }
 }
 
 impl From<&PieceArray> for Piece {
     #[inline]
     fn from(value: &PieceArray) -> Self {
-        let mut piece = Piece::default();
-        piece.as_mut().copy_from_slice(value.as_ref());
-        piece
+        Self(CowBytes::Shared(Bytes::copy_from_slice(value.as_ref())))
     }
 }
 
@@ -1029,34 +1180,50 @@ impl Deref for Piece {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.0
+        <&[u8; Self::SIZE]>::try_from(self.as_ref())
+            .expect("Slice of memory has correct length; qed")
+            .into()
     }
 }
 
 impl DerefMut for Piece {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        <&mut [u8; Self::SIZE]>::try_from(self.as_mut())
+            .expect("Slice of memory has correct length; qed")
+            .into()
     }
 }
 
 impl AsRef<[u8]> for Piece {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
+        self.0.as_ref()
     }
 }
 
 impl AsMut<[u8]> for Piece {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut_slice()
+        self.0.as_mut()
     }
 }
 
 impl Piece {
     /// Size of a piece (in bytes).
     pub const SIZE: usize = Record::SIZE + RecordCommitment::SIZE + RecordWitness::SIZE;
+
+    /// Ensure piece contains cheaply cloneable shared data.
+    ///
+    /// Internally piece uses CoW mechanism and can store either mutable owned data or data that is
+    /// cheap to clone, calling this method will ensure further clones will not result in additional
+    /// memory allocations.
+    pub fn to_shared(self) -> Self {
+        Self(match self.0 {
+            CowBytes::Shared(bytes) => CowBytes::Shared(bytes),
+            CowBytes::Owned(bytes) => CowBytes::Shared(bytes.freeze()),
+        })
+    }
 }
 
 /// A piece of archival history in Subspace Network.
@@ -1067,22 +1234,7 @@ impl Piece {
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Deref,
-    DerefMut,
-    AsRef,
-    AsMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
+    Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, DerefMut, AsRef, AsMut,
 )]
 #[repr(transparent)]
 pub struct PieceArray([u8; Piece::SIZE]);
@@ -1258,115 +1410,162 @@ impl PieceArray {
     }
 }
 
-/// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(
-    Debug,
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Deref,
-    DerefMut,
-)]
-pub struct FlatPieces(Vec<PieceArray>);
+impl From<Box<PieceArray>> for Vec<u8> {
+    fn from(value: Box<PieceArray>) -> Self {
+        let mut value = mem::ManuallyDrop::new(value);
+        // SAFETY: Always contains fixed allocation of bytes
+        unsafe { Vec::from_raw_parts(value.as_mut_ptr(), Piece::SIZE, Piece::SIZE) }
+    }
+}
+
+/// Flat representation of multiple pieces concatenated for more efficient for processing
+#[derive(Clone, PartialEq, Eq)]
+pub struct FlatPieces(CowBytes);
+
+impl fmt::Debug for FlatPieces {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FlatPieces").finish_non_exhaustive()
+    }
+}
+
+impl Deref for FlatPieces {
+    type Target = [PieceArray];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        let bytes = self.0.as_ref();
+        // SAFETY: Bytes slice has length of multiples of piece size and lifetimes of returned data
+        // are preserved
+        let pieces = unsafe {
+            slice::from_raw_parts(
+                bytes.as_ptr() as *const [u8; Piece::SIZE],
+                bytes.len() / Piece::SIZE,
+            )
+        };
+        PieceArray::slice_from_repr(pieces)
+    }
+}
+
+impl DerefMut for FlatPieces {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let bytes = self.0.as_mut();
+        // SAFETY: Bytes slice has length of multiples of piece size and lifetimes of returned data
+        // are preserved
+        let pieces = unsafe {
+            slice::from_raw_parts_mut(
+                bytes.as_mut_ptr() as *mut [u8; Piece::SIZE],
+                bytes.len() / Piece::SIZE,
+            )
+        };
+        PieceArray::slice_mut_from_repr(pieces)
+    }
+}
 
 impl FlatPieces {
-    /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
+    /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes
     #[inline]
     pub fn new(piece_count: usize) -> Self {
-        let mut pieces = Vec::with_capacity(piece_count);
-        {
-            let slice = pieces.spare_capacity_mut();
-            // SAFETY: Same memory layout due to `#[repr(transparent)]` on `PieceArray` and
-            // `MaybeUninit<[T; N]>` is guaranteed to have the same layout as `[MaybeUninit<T>; N]`
-            let slice = unsafe {
-                slice::from_raw_parts_mut(
-                    slice.as_mut_ptr() as *mut [mem::MaybeUninit<u8>; Piece::SIZE],
-                    piece_count,
-                )
-            };
-            for byte in slice.flatten_mut() {
-                byte.write(0);
-            }
-        }
-        // SAFETY: All values are initialized above.
-        unsafe {
-            pieces.set_len(pieces.capacity());
-        }
-        Self(pieces)
+        Self(CowBytes::Owned(BytesMut::zeroed(piece_count * Piece::SIZE)))
     }
 
-    /// Extract internal representation.
+    /// Iterate over all pieces.
+    ///
+    /// NOTE: Unless [`Self::to_shared`] was called first, iterator may have to allocate each piece
+    /// from scratch, which is rarely a desired behavior.
     #[inline]
-    pub fn into_inner(self) -> Vec<PieceArray> {
-        self.0
+    pub fn pieces(&self) -> Box<dyn ExactSizeIterator<Item = Piece> + '_> {
+        match &self.0 {
+            CowBytes::Shared(bytes) => Box::new(
+                bytes
+                    .chunks_exact(Piece::SIZE)
+                    .map(|slice| Piece(CowBytes::Shared(bytes.slice_ref(slice)))),
+            ),
+            CowBytes::Owned(bytes) => Box::new(
+                bytes
+                    .chunks_exact(Piece::SIZE)
+                    .map(|slice| Piece(CowBytes::Shared(Bytes::copy_from_slice(slice)))),
+            ),
+        }
     }
 
-    /// Iterator over source pieces (even indices).
+    /// Iterator over source pieces (even indices)
+    #[inline]
+    pub fn source_pieces(&self) -> impl ExactSizeIterator<Item = Piece> + '_ {
+        self.pieces().step_by(2)
+    }
+
+    /// Iterator over source pieces (even indices)
     #[inline]
     pub fn source(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
-        self.0.iter().step_by(2)
+        self.iter().step_by(2)
     }
 
-    /// Mutable iterator over source pieces (even indices).
+    /// Mutable iterator over source pieces (even indices)
     #[inline]
     pub fn source_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
-        self.0.iter_mut().step_by(2)
+        self.iter_mut().step_by(2)
     }
 
-    /// Iterator over parity pieces (odd indices).
+    /// Iterator over parity pieces (odd indices)
+    #[inline]
+    pub fn parity_pieces(&self) -> impl ExactSizeIterator<Item = Piece> + '_ {
+        self.pieces().skip(1).step_by(2)
+    }
+
+    /// Iterator over parity pieces (odd indices)
     #[inline]
     pub fn parity(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
-        self.0.iter().skip(1).step_by(2)
+        self.iter().skip(1).step_by(2)
     }
 
-    /// Mutable iterator over parity pieces (odd indices).
+    /// Mutable iterator over parity pieces (odd indices)
     #[inline]
     pub fn parity_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
-        self.0.iter_mut().skip(1).step_by(2)
+        self.iter_mut().skip(1).step_by(2)
+    }
+
+    /// Ensure flat pieces contains cheaply cloneable shared data.
+    ///
+    /// Internally flat pieces uses CoW mechanism and can store either mutable owned data or data
+    /// that is cheap to clone, calling this method will ensure further clones and returned pieces
+    /// will not result in additional memory allocations.
+    pub fn to_shared(self) -> Self {
+        Self(match self.0 {
+            CowBytes::Shared(bytes) => CowBytes::Shared(bytes),
+            CowBytes::Owned(bytes) => CowBytes::Shared(bytes.freeze()),
+        })
     }
 }
 
 #[cfg(feature = "parallel")]
 impl FlatPieces {
-    /// Parallel iterator over source pieces (even indices).
+    /// Parallel iterator over source pieces (even indices)
     #[inline]
     pub fn par_source(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
-        self.0.par_iter().step_by(2)
+        self.par_iter().step_by(2)
     }
 
-    /// Mutable parallel iterator over source pieces (even indices).
+    /// Mutable parallel iterator over source pieces (even indices)
     #[inline]
     pub fn par_source_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
-        self.0.par_iter_mut().step_by(2)
+        self.par_iter_mut().step_by(2)
     }
 
-    /// Parallel iterator over parity pieces (odd indices).
+    /// Parallel iterator over parity pieces (odd indices)
     #[inline]
     pub fn par_parity(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
-        self.0.par_iter().skip(1).step_by(2)
+        self.par_iter().skip(1).step_by(2)
     }
 
-    /// Mutable parallel iterator over parity pieces (odd indices).
+    /// Mutable parallel iterator over parity pieces (odd indices)
     #[inline]
     pub fn par_parity_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
-        self.0.par_iter_mut().skip(1).step_by(2)
-    }
-}
-
-impl From<PieceArray> for FlatPieces {
-    #[inline]
-    fn from(value: PieceArray) -> Self {
-        Self(vec![value])
+        self.par_iter_mut().skip(1).step_by(2)
     }
 }

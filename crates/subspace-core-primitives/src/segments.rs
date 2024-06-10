@@ -316,8 +316,7 @@ impl RecordedHistorySegment {
 }
 
 /// Archived history segment after archiving is applied.
-#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct ArchivedHistorySegment(FlatPieces);
 
@@ -325,13 +324,6 @@ impl Default for ArchivedHistorySegment {
     #[inline]
     fn default() -> Self {
         Self(FlatPieces::new(Self::NUM_PIECES))
-    }
-}
-
-impl MaxEncodedLen for ArchivedHistorySegment {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
     }
 }
 
@@ -343,6 +335,16 @@ impl ArchivedHistorySegment {
     /// Size of archived history segment in bytes.
     ///
     /// It includes erasure coded [`crate::pieces::PieceArray`]s (both source and parity) that are
-    /// composed from [`crate::pieces::Record`]s together with corresponding commitments and witnesses.
+    /// composed of [`crate::pieces::Record`]s together with corresponding commitments and
+    /// witnesses.
     pub const SIZE: usize = Piece::SIZE * Self::NUM_PIECES;
+
+    /// Ensure archived history segment contains cheaply cloneable shared data.
+    ///
+    /// Internally archived history segment uses CoW mechanism and can store either mutable owned
+    /// data or data that is cheap to clone, calling this method will ensure further clones and
+    /// returned pieces will not result in additional memory allocations.
+    pub fn to_shared(self) -> Self {
+        Self(self.0.to_shared())
+    }
 }

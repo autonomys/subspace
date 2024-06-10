@@ -249,19 +249,10 @@ impl NodeClient for NodeRpcClient {
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
         let _permit = self.piece_request_semaphore.acquire().await?;
-        let result: Option<Vec<u8>> = self
+        Ok(self
             .client
             .request("subspace_piece", rpc_params![&piece_index])
-            .await?;
-
-        if let Some(bytes) = result {
-            let piece = Piece::try_from(bytes.as_slice())
-                .map_err(|_| format!("Cannot convert piece. PieceIndex={}", piece_index))?;
-
-            return Ok(Some(piece));
-        }
-
-        Ok(None)
+            .await?)
     }
 
     async fn acknowledge_archived_segment_header(

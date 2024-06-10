@@ -173,9 +173,7 @@ pub enum SegmentItem {
 
 /// Newly archived segment as a combination of segment header hash, segment index and corresponding
 /// archived history segment containing pieces
-#[derive(Debug, Clone, Eq, PartialEq, Decode, Encode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NewArchivedSegment {
     /// Segment header
     pub segment_header: SegmentHeader,
@@ -734,32 +732,30 @@ impl Archiver {
             #[cfg(feature = "parallel")]
             let source_pieces = pieces.par_source();
 
-            let iter = source_pieces
-                .skip(existing_commitments)
-                .map(|piece| {
-                    piece.record().iter().map(|scalar_bytes| {
-                        Scalar::try_from(scalar_bytes).expect(
-                            "Source pieces were just created and are guaranteed to contain \
+            let iter = source_pieces.skip(existing_commitments).map(|piece| {
+                let record_chunks = piece.record().iter().map(|scalar_bytes| {
+                    Scalar::try_from(scalar_bytes).expect(
+                        "Source pieces were just created and are guaranteed to contain \
                             valid scalars; qed",
-                        )
-                    })
-                })
-                .map(|record_chunks| {
-                    let number_of_chunks = record_chunks.len();
-                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
-
-                    record_chunks.collect_into(&mut scalars);
-
-                    // Number of scalars for KZG must be a power of two elements
-                    scalars.resize(scalars.capacity(), Scalar::default());
-
-                    let polynomial = self.kzg.poly(&scalars).expect(
-                        "KZG instance must be configured to support this many scalars; qed",
-                    );
-                    self.kzg
-                        .commit(&polynomial)
-                        .expect("KZG instance must be configured to support this many scalars; qed")
+                    )
                 });
+
+                let number_of_chunks = record_chunks.len();
+                let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+                record_chunks.collect_into(&mut scalars);
+
+                // Number of scalars for KZG must be a power of two elements
+                scalars.resize(scalars.capacity(), Scalar::default());
+
+                let polynomial = self
+                    .kzg
+                    .poly(&scalars)
+                    .expect("KZG instance must be configured to support this many scalars; qed");
+                self.kzg
+                    .commit(&polynomial)
+                    .expect("KZG instance must be configured to support this many scalars; qed")
+            });
 
             #[cfg(not(feature = "parallel"))]
             iter.collect_into(&mut *self.incremental_record_commitments);
@@ -829,13 +825,13 @@ impl Archiver {
         self.prev_segment_header_hash = segment_header.hash();
 
         // Add segment header to the beginning of the buffer to be the first thing included in the
-        //  nextsegment
+        // next segment
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
         NewArchivedSegment {
             segment_header,
-            pieces,
+            pieces: pieces.to_shared(),
             object_mapping,
         }
     }

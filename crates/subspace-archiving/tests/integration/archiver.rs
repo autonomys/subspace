@@ -11,8 +11,8 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, PieceArray,
-    Record, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, Piece, Record,
+    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
@@ -49,7 +49,7 @@ fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> 
 #[track_caller]
 fn compare_block_objects_to_piece_objects<'a>(
     block_objects: impl Iterator<Item = (&'a [u8], &'a BlockObject)>,
-    piece_objects: impl Iterator<Item = (&'a PieceArray, &'a PieceObject)>,
+    piece_objects: impl Iterator<Item = (Piece, &'a PieceObject)>,
 ) {
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
@@ -177,7 +177,7 @@ fn archiver() {
             .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter()));
         let piece_objects = first_archived_segment
             .pieces
-            .source()
+            .source_pieces()
             .zip(&first_archived_segment.object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
@@ -267,7 +267,7 @@ fn archiver() {
             iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter().skip(2));
         let piece_objects = archived_segments[0]
             .pieces
-            .source()
+            .source_pieces()
             .zip(&archived_segments[0].object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 

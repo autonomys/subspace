@@ -11,7 +11,7 @@ use subspace_core_primitives::{
 };
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
-    pieces.iter().map(Piece::from).map(Some).collect()
+    pieces.pieces().map(Some).collect()
 }
 
 #[test]
@@ -272,8 +272,7 @@ fn partial_data() {
             .unwrap()
             .add_segment(
                 &pieces
-                    .source()
-                    .map(Piece::from)
+                    .source_pieces()
                     .map(Some)
                     .zip(iter::repeat(None).take(RecordedHistorySegment::NUM_RAW_RECORDS))
                     .flat_map(|(a, b)| [a, b])
@@ -293,9 +292,8 @@ fn partial_data() {
                     .take(RecordedHistorySegment::NUM_RAW_RECORDS)
                     .chain(
                         pieces
-                            .iter()
+                            .pieces()
                             .skip(RecordedHistorySegment::NUM_RAW_RECORDS)
-                            .map(Piece::from)
                             .map(Some),
                     )
                     .collect::<Vec<_>>(),
@@ -307,7 +305,7 @@ fn partial_data() {
 
     {
         // Mix of data and parity shards
-        let mut pieces = pieces.iter().map(Piece::from).map(Some).collect::<Vec<_>>();
+        let mut pieces = pieces.pieces().map(Some).collect::<Vec<_>>();
         pieces[ArchivedHistorySegment::NUM_PIECES / 4..]
             .iter_mut()
             .take(RecordedHistorySegment::NUM_RAW_RECORDS)
@@ -341,9 +339,8 @@ fn invalid_usage() {
         let result = Reconstructor::new().unwrap().add_segment(
             &archived_segments[0]
                 .pieces
-                .iter()
+                .pieces()
                 .take(RecordedHistorySegment::NUM_RAW_RECORDS - 1)
-                .map(Piece::from)
                 .map(Some)
                 .chain(iter::repeat(None))
                 .take(ArchivedHistorySegment::NUM_PIECES)
