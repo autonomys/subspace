@@ -179,9 +179,17 @@ pub(super) async fn controller(
         {
             let nats_client = nats_client.clone();
             let instance = instance.clone();
+            let farmer_cache = farmer_cache.clone();
 
             move || async move {
-                controller_service(&nats_client, &node_client, &piece_getter, &instance).await
+                controller_service(
+                    &nats_client,
+                    &node_client,
+                    &piece_getter,
+                    &farmer_cache,
+                    &instance,
+                )
+                .await
             }
         },
         "controller-service".to_string(),

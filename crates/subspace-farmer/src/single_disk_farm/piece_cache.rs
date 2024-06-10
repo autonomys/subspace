@@ -1,5 +1,5 @@
 use crate::farm;
-use crate::farm::{FarmError, PieceCacheOffset};
+use crate::farm::{FarmError, FarmId, PieceCacheId, PieceCacheOffset};
 use crate::piece_cache::PieceCache;
 use async_trait::async_trait;
 use futures::{stream, Stream};
@@ -9,11 +9,16 @@ use subspace_core_primitives::{Piece, PieceIndex};
 /// faster
 #[derive(Debug, Clone)]
 pub struct DiskPieceCache {
+    id: PieceCacheId,
     maybe_piece_cache: Option<PieceCache>,
 }
 
 #[async_trait]
 impl farm::PieceCache for DiskPieceCache {
+    fn id(&self) -> &PieceCacheId {
+        &self.id
+    }
+
     fn max_num_elements(&self) -> u32 {
         if let Some(piece_cache) = &self.maybe_piece_cache {
             piece_cache.max_num_elements()
@@ -64,7 +69,10 @@ impl farm::PieceCache for DiskPieceCache {
         }
     }
 
-    async fn read_piece(&self, offset: PieceCacheOffset) -> Result<Option<Piece>, FarmError> {
+    async fn read_piece(
+        &self,
+        offset: PieceCacheOffset,
+    ) -> Result<Option<(PieceIndex, Piece)>, FarmError> {
         if let Some(piece_cache) = &self.maybe_piece_cache {
             farm::PieceCache::read_piece(piece_cache, offset).await
         } else {
@@ -74,7 +82,14 @@ impl farm::PieceCache for DiskPieceCache {
 }
 
 impl DiskPieceCache {
-    pub(crate) fn new(maybe_piece_cache: Option<PieceCache>) -> Self {
-        Self { maybe_piece_cache }
+    pub(crate) fn new(farm_id: FarmId, maybe_piece_cache: Option<PieceCache>) -> Self {
+        // Convert farm ID into cache ID for single disk farm
+        let FarmId::Ulid(id) = farm_id;
+        let id = PieceCacheId::Ulid(id);
+
+        Self {
+            id,
+            maybe_piece_cache,
+        }
     }
 }

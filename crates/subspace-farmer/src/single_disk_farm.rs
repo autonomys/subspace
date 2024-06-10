@@ -1362,11 +1362,14 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = DiskPieceCache::new(if cache_capacity == 0 {
-            None
-        } else {
-            Some(PieceCache::open(directory, cache_capacity)?)
-        });
+        let piece_cache = DiskPieceCache::new(
+            *single_disk_farm_info.id(),
+            if cache_capacity == 0 {
+                None
+            } else {
+                Some(PieceCache::open(directory, cache_capacity)?)
+            },
+        );
         let plot_cache = DiskPlotCache::new(
             &plot_file,
             &sectors_metadata,
