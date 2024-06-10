@@ -14,7 +14,7 @@ include = [
 [dependencies]
 anyhow = "1.0.82"
 async-lock = "3.3.0"
-async-nats = "0.35.0"
+async-nats = "0.35.1"
 async-trait = "0.1.80"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"

@@ -18,7 +18,6 @@ use prometheus_client::registry::Registry;
 use std::env::current_exe;
 use std::mem;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::utils::AsyncJoinOnDrop;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -53,12 +52,6 @@ struct SharedArgs {
     /// which can be done by starting NATS server with config file containing `max_payload = 2MB`.
     #[arg(long, alias = "nats-server", required = true)]
     nats_servers: Vec<ServerAddr>,
-    /// Size of connection pool of NATS clients.
-    ///
-    /// Pool size can be increased in case of large number of farms or high plotting capacity of
-    /// this instance.
-    #[arg(long, default_value = "8")]
-    nats_pool_size: NonZeroUsize,
     /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
@@ -101,7 +94,6 @@ where
     } = cluster_args;
     let SharedArgs {
         nats_servers,
-        nats_pool_size,
         prometheus_listen_on,
     } = shared_args;
     let ClusterSubcommands { mut subcommand } = subcommands;
@@ -112,7 +104,6 @@ where
             max_elapsed_time: None,
             ..ExponentialBackoff::default()
         },
-        nats_pool_size,
     )
     .await
     .map_err(|error| anyhow!("Failed to connect to NATS server: {error}"))?;
