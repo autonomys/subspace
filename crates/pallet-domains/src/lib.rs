@@ -1145,8 +1145,7 @@ mod pallet {
             T::WeightInfo::submit_fraud_proof().saturating_add(
                 T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
             ),
-            DispatchClass::Operational,
-            Pays::No
+            DispatchClass::Operational
         ))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,

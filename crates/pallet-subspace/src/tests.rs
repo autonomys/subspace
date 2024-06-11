@@ -487,12 +487,6 @@ fn store_segment_header_works() {
 
         let segment_header = create_segment_header(SegmentIndex::ZERO);
 
-        let call = Call::<Test>::store_segment_headers {
-            segment_headers: vec![segment_header],
-        };
-        // Segment headers don't require fee
-        assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
-
         Subspace::store_segment_headers(RuntimeOrigin::none(), vec![segment_header]).unwrap();
         assert_eq!(
             System::events(),

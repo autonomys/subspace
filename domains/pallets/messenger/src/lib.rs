@@ -619,7 +619,7 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::call_index(2)]
-        #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
+        #[pallet::weight(T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
         pub fn relay_message(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
@@ -632,7 +632,7 @@ mod pallet {
 
         /// Receives a response from the dst_chain for a message in Outbox.
         #[pallet::call_index(3)]
-        #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
+        #[pallet::weight(T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
