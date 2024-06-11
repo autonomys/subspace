@@ -1311,9 +1311,25 @@ impl_runtime_apis! {
 
             let is_transactional = false;
             let validate = true;
-            let weight_limit = None;
-            let proof_size_base_cost = None;
             let evm_config = config.as_ref().unwrap_or(<Runtime as pallet_evm::Config>::config());
+
+            let gas_limit = gas_limit.min(u64::MAX.into());
+
+            let transaction_data = TransactionData::new(
+                pallet_ethereum::TransactionAction::Call(to),
+                data.clone(),
+                nonce.unwrap_or_default(),
+                gas_limit,
+                None,
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                value,
+                Some(<Runtime as pallet_evm::Config>::ChainId::get()),
+                access_list.clone().unwrap_or_default(),
+            );
+
+            let (weight_limit, proof_size_base_cost) = pallet_ethereum::Pallet::<Runtime>::transaction_weight(&transaction_data);
+
             <Runtime as pallet_evm::Config>::Runner::call(
                 from,
                 to,
