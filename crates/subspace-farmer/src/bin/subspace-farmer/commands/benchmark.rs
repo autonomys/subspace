@@ -1,6 +1,6 @@
 use crate::PosTable;
 use anyhow::anyhow;
-use clap::Subcommand;
+use clap::{Parser, Subcommand};
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 use parking_lot::Mutex;
 use std::collections::HashSet;
@@ -19,77 +19,67 @@ use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
 
+#[derive(Debug, Parser)]
+pub(crate) struct AuditOptions {
+    /// Number of samples to collect for benchmarking purposes
+    #[arg(long, default_value_t = 10)]
+    sample_size: usize,
+    /// Also run `single` benchmark (only useful for developers, not used by default)
+    #[arg(long)]
+    with_single: bool,
+    /// Disk farm to audit
+    ///
+    /// Example:
+    ///   /path/to/directory
+    disk_farm: PathBuf,
+    /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
+    filter: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub(crate) struct ProveOptions {
+    /// Number of samples to collect for benchmarking purposes
+    #[arg(long, default_value_t = 10)]
+    sample_size: usize,
+    /// Also run `single` benchmark (only useful for developers, not used by default)
+    #[arg(long)]
+    with_single: bool,
+    /// Disk farm to prove
+    ///
+    /// Example:
+    ///   /path/to/directory
+    disk_farm: PathBuf,
+    /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
+    filter: Option<String>,
+    /// Limit number of sectors audited to specified number, this limits amount of memory used by benchmark (normal
+    /// farming process doesn't use this much RAM)
+    #[arg(long)]
+    limit_sector_count: Option<usize>,
+}
+
 /// Arguments for benchmark
 #[derive(Debug, Subcommand)]
 pub(crate) enum BenchmarkArgs {
     /// Auditing benchmark
-    Audit {
-        /// Number of samples to collect for benchmarking purposes
-        #[arg(long, default_value_t = 10)]
-        sample_size: usize,
-        /// Also run `single` benchmark (only useful for developers, not used by default)
-        #[arg(long)]
-        with_single: bool,
-        /// Disk farm to audit
-        ///
-        /// Example:
-        ///   /path/to/directory
-        disk_farm: PathBuf,
-        /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
-        filter: Option<String>,
-    },
+    Audit(AuditOptions),
     /// Proving benchmark
-    Prove {
-        /// Number of samples to collect for benchmarking purposes
-        #[arg(long, default_value_t = 10)]
-        sample_size: usize,
-        /// Also run `single` benchmark (only useful for developers, not used by default)
-        #[arg(long)]
-        with_single: bool,
-        /// Disk farm to prove
-        ///
-        /// Example:
-        ///   /path/to/directory
-        disk_farm: PathBuf,
-        /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
-        filter: Option<String>,
-        /// Limit number of sectors audited to specified number, this limits amount of memory used by benchmark (normal
-        /// farming process doesn't use this much RAM)
-        #[arg(long)]
-        limit_sector_count: Option<usize>,
-    },
+    Prove(ProveOptions),
 }
 
 pub(crate) fn benchmark(benchmark_args: BenchmarkArgs) -> anyhow::Result<()> {
     match benchmark_args {
-        BenchmarkArgs::Audit {
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-        } => audit(sample_size, with_single, disk_farm, filter),
-        BenchmarkArgs::Prove {
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-            limit_sector_count,
-        } => prove(
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-            limit_sector_count,
-        ),
+        BenchmarkArgs::Audit(audit_options) => audit(audit_options),
+        BenchmarkArgs::Prove(prove_options) => prove(prove_options),
     }
 }
 
-fn audit(
-    sample_size: usize,
-    with_single: bool,
-    disk_farm: PathBuf,
-    filter: Option<String>,
-) -> anyhow::Result<()> {
+fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
+    let AuditOptions {
+        sample_size,
+        with_single,
+        disk_farm,
+        filter,
+    } = audit_options;
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {
@@ -246,13 +236,14 @@ fn audit(
     Ok(())
 }
 
-fn prove(
-    sample_size: usize,
-    with_single: bool,
-    disk_farm: PathBuf,
-    filter: Option<String>,
-    limit_sector_count: Option<usize>,
-) -> anyhow::Result<()> {
+fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
+    let ProveOptions {
+        sample_size,
+        with_single,
+        disk_farm,
+        filter,
+        limit_sector_count,
+    } = prove_options;
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {
