@@ -30,6 +30,7 @@ use sp_messenger::messages::ChainId;
 use std::env;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
+use subspace_service::config::ChainSyncMode;
 use tracing::{debug, error, info, info_span, warn};
 
 /// Options for running a node
@@ -114,6 +115,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     );
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
     info!("💾 Node path: {}", base_path.display());
+
+    if maybe_domain_configuration.is_some() && subspace_configuration.sync == ChainSyncMode::Snap {
+        return Err(Error::Other(
+            "Snap sync mode is not supported for domains".to_string(),
+        ));
+    }
 
     if maybe_domain_configuration.is_some()
         && (matches!(
