@@ -29,9 +29,9 @@ pub struct FeeModel<Balance> {
     pub relay_fee: Balance,
 }
 
-/// Parameters for a new channel between two chains.
+/// Channel open parameters
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams<Balance> {
+pub struct ChannelOpenParams<Balance> {
     pub max_outgoing_messages: u32,
     pub fee_model: FeeModel<Balance>,
 }
@@ -40,7 +40,7 @@ pub struct InitiateChannelParams<Balance> {
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum ProtocolMessageRequest<Balance> {
     /// Request to open a channel with foreign chain.
-    ChannelOpen(InitiateChannelParams<Balance>),
+    ChannelOpen(ChannelOpenParams<Balance>),
     /// Request to close an open channel with foreign chain.
     ChannelClose,
 }

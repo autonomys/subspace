@@ -53,7 +53,8 @@ use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::{DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
+    MessageKey,
 };
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
@@ -483,6 +484,7 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
 parameter_types! {
     pub const ChannelReserveFee: Balance = SSC;
     pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
+    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
 }
 
 pub struct StorageKeys;
@@ -531,6 +533,7 @@ impl pallet_messenger::Config for Runtime {
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
+    type ChannelFeeModel = ChannelFeeModel;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
