@@ -84,6 +84,7 @@ mod benchmarks {
             dst_chain_id,
             dummy_channel_params::<T>(),
             None,
+            true,
         ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
@@ -248,7 +249,12 @@ mod benchmarks {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         let list = BTreeSet::from([dst_chain_id]);
         ChainAllowlist::<T>::put(list);
-        assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params, None));
+        assert_ok!(Messenger::<T>::do_init_channel(
+            dst_chain_id,
+            params,
+            None,
+            true
+        ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
 

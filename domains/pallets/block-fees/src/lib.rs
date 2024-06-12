@@ -34,7 +34,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
     use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_domains::BlockFees;
+    use sp_domains::{BlockFees, ChainId};
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating};
     use sp_runtime::{FixedPointOperand, SaturatedConversion};
     use sp_std::fmt::Debug;
@@ -191,6 +191,17 @@ mod pallet {
             CollectedBlockFees::<T>::mutate(|block_fees| {
                 block_fees.burned_balance =
                     block_fees.burned_balance.saturating_add(burned_balance);
+            });
+        }
+
+        /// Note chain reward fees.
+        pub fn note_chain_rewards(chain_id: ChainId, balance: T::Balance) {
+            CollectedBlockFees::<T>::mutate(|block_fees| {
+                let total_balance = match block_fees.chain_rewards.get(&chain_id) {
+                    None => balance,
+                    Some(prev_balance) => prev_balance.saturating_add(balance),
+                };
+                block_fees.chain_rewards.insert(chain_id, total_balance)
             });
         }
 
