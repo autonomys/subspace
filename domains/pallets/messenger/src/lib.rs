@@ -46,6 +46,12 @@ use sp_messenger::messages::{
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
+pub(crate) mod verification_errors {
+    pub(crate) const INVALID_CHANNEL: u8 = 100;
+    pub(crate) const INVALID_NONCE: u8 = 101;
+    pub(crate) const NONCE_OVERFLOW: u8 = 102;
+}
+
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum ChannelState {
@@ -287,12 +293,11 @@ mod pallet {
     pub(super) type OutboxResponses<T: Config> =
         StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
-    /// A temporary storage to store all the messages to be relayed in this block.
-    /// Will be cleared on the initialization on next block.
+    /// Storage to store the weight tags for all the outbox and inbox response messages.
     #[pallet::storage]
-    #[pallet::getter(fn block_messages)]
-    pub(super) type BlockMessages<T: Config> =
-        StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
+    #[pallet::getter(fn message_weight_tags)]
+    pub(super) type MessageWeightTags<T: Config> =
+        StorageValue<_, crate::messages::MessageWeightTags, OptionQuery>;
 
     /// An allowlist of chains that can open channel with this chain.
     #[pallet::storage]
@@ -544,14 +549,6 @@ mod pallet {
 
         /// Failed to unlock the balance
         BalanceUnlock,
-    }
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            BlockMessages::<T>::kill();
-            T::DbWeight::get().writes(1)
-        }
     }
 
     #[pallet::call]
@@ -1159,18 +1156,20 @@ mod pallet {
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
-            let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
-                // unknown channel. return
-                None => {
-                    log::error!("Unexpected inbox message response: {:?}", xdm,);
-                    return Err(InvalidTransaction::Call.into());
-                }
-                Some(channel) => match channel.latest_response_received_message_nonce {
-                    None => Some(Nonce::zero()),
-                    Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
-                },
-            }
-            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
+            let next_nonce =
+                match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
+                    // unknown channel. return
+                    None => {
+                        log::error!("Unexpected inbox message response: {:?}", xdm,);
+                        return Err(InvalidTransaction::Call.into());
+                    }
+                    Some(channel) => match channel.latest_response_received_message_nonce {
+                        None => Nonce::zero(),
+                        Some(last_nonce) => last_nonce.checked_add(Nonce::one()).ok_or(
+                            InvalidTransaction::Custom(crate::verification_errors::NONCE_OVERFLOW),
+                        )?,
+                    },
+                };
 
             // derive the key as stored on the src_chain.
             let key = StorageKey(
@@ -1207,11 +1206,17 @@ mod pallet {
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for chain.
             let next_channel_id = NextChannelId::<T>::get(xdm.src_chain_id);
-            ensure!(xdm.channel_id <= next_channel_id, InvalidTransaction::Call);
+            ensure!(
+                xdm.channel_id <= next_channel_id,
+                InvalidTransaction::Custom(crate::verification_errors::INVALID_CHANNEL)
+            );
 
             // verify nonce
             // nonce should be either be next or in future.
-            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
+            ensure!(
+                xdm.nonce >= next_nonce,
+                InvalidTransaction::Custom(crate::verification_errors::INVALID_NONCE)
+            );
 
             let state_root =
                 T::MmrProofVerifier::verify_proof_and_extract_leaf(xdm.proof.consensus_mmr_proof())

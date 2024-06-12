@@ -1,4 +1,4 @@
-use crate::pallet::{InboxFee, InboxResponses, OutboxFee};
+use crate::pallet::{InboxFee, InboxResponses, MessageWeightTags, OutboxFee};
 use crate::{BalanceOf, Config, Error, Pallet};
 use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::{Fortitude, Precision};
@@ -74,6 +74,15 @@ impl<T: Config> Pallet<T> {
         let mut current_nonce = latest_confirmed_nonce;
 
         while let Some(nonce) = current_nonce {
+            // clear weight tags for inbox response messages
+            MessageWeightTags::<T>::mutate(|maybe_messages| {
+                let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+                messages
+                    .inbox_responses
+                    .remove(&(dst_chain_id, (channel_id, nonce)));
+                *maybe_messages = Some(messages)
+            });
+
             // for every inbox response we take, distribute the reward to the operators.
             if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
                 return Ok(());
