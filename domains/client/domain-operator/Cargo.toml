@@ -41,7 +41,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
 thiserror = "1.0.59"
-tokio = { version = "1.37.0", features = ["macros"] }
+tokio = { version = "1.38.0", features = ["macros"] }
 
 [dev-dependencies]
 domain-test-service = { version = "0.1.0", path = "../../test/service" }

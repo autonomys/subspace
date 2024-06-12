@@ -64,7 +64,7 @@ subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-cli
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 tempfile = "3.10.1"
-tokio = "1.37.0"
+tokio = "1.38.0"
 
 [features]
 default = ["std"]

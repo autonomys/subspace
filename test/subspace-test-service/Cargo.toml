@@ -66,7 +66,7 @@ subspace-test-primitives = { version = "0.1.0", path = "../subspace-test-primiti
 subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
 substrate-test-client = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
-tokio = "1.37.0"
+tokio = "1.38.0"
 tracing = "0.1.40"
 
 [dev-dependencies]
