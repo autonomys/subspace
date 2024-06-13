@@ -5,7 +5,7 @@ extern crate alloc;
 
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
-    DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeAt, ExecutionInbox,
+    DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords, ExecutionInbox,
     ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor,
     LatestConfirmedDomainBlock, LatestSubmittedER, Pallet, ReceiptHashFor,
 };
@@ -13,6 +13,7 @@ use crate::{
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
+use frame_system::pallet_prelude::BlockNumberFor;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
@@ -215,7 +216,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 
     let maybe_domain_runtime_upgraded_at = {
         let runtime_id = Pallet::<T>::runtime_id(domain_id).ok_or(Error::RuntimeNotFound)?;
-        DomainRuntimeUpgradeAt::<T>::get(runtime_id).remove(consensus_block_number)
+        DomainRuntimeUpgradeRecords::<T>::get(runtime_id).remove(consensus_block_number)
     };
 
     // Check if the ER is derived from the correct consensus block in the current chain
@@ -233,9 +234,9 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 
                 // The domain runtime upgrade is forced to happen even if there is no bundle, in this case,
                 // the `ConsensusBlockHash` will be empty so we need to get the consensus block hash from
-                // `DomainRuntimeUpgradeAt`
-                } else if let Some(upgraded_at_hash) = maybe_domain_runtime_upgraded_at {
-                    upgraded_at_hash
+                // `DomainRuntimeUpgradeRecords`
+                } else if let Some(ref upgrade_entry) = maybe_domain_runtime_upgraded_at {
+                    upgrade_entry.at_hash
                 } else {
                     return Err(Error::UnavailableConsensusBlockHash);
                 }
@@ -390,6 +391,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 update_domain_transfers::<T>(domain_id, &execution_receipt.transfers, block_fees)
                     .map_err(|_| Error::DomainTransfersTracking)?;
 
+                update_domain_runtime_upgrade_records::<T>(
+                    domain_id,
+                    execution_receipt.consensus_block_number,
+                )?;
+
                 LatestConfirmedDomainBlock::<T>::insert(
                     domain_id,
                     ConfirmedDomainBlock {
@@ -483,6 +489,32 @@ fn update_domain_transfers<T: Config>(
     // deduct execution fees from domain
     T::DomainsTransfersTracker::reduce_domain_balance(domain_id, block_fees)?;
 
+    Ok(())
+}
+
+// Update the domain runtime upgrade record at `consensus_number` if there is one
+fn update_domain_runtime_upgrade_records<T: Config>(
+    domain_id: DomainId,
+    consensus_number: BlockNumberFor<T>,
+) -> Result<(), Error> {
+    let runtime_id = Pallet::<T>::runtime_id(domain_id).ok_or(Error::RuntimeNotFound)?;
+    let mut domain_runtime_upgrade_records = DomainRuntimeUpgradeRecords::<T>::get(runtime_id);
+
+    if let Some(upgrade_entry) = domain_runtime_upgrade_records.get_mut(&consensus_number) {
+        // Decrease the `reference_count` by one and remove the whole entry if it drop to zero
+        if upgrade_entry.reference_count > One::one() {
+            upgrade_entry.reference_count =
+                upgrade_entry.reference_count.saturating_sub(One::one());
+        } else {
+            domain_runtime_upgrade_records.remove(&consensus_number);
+        }
+
+        if !domain_runtime_upgrade_records.is_empty() {
+            DomainRuntimeUpgradeRecords::<T>::set(runtime_id, domain_runtime_upgrade_records);
+        } else {
+            DomainRuntimeUpgradeRecords::<T>::remove(runtime_id);
+        }
+    }
     Ok(())
 }
 

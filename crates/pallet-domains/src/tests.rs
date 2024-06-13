@@ -6,7 +6,7 @@ use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
-    DomainRuntimeUpgradeAt, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
+    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
     FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
     RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
@@ -890,10 +890,10 @@ fn test_domain_runtime_upgrade_record() {
         schedule_domain_runtime_upgrade::<Test>(runtime_id, upgrade_2);
 
         // Run to the block that the first upgrade happen, the upgrade should recorded in
-        // `DomainRuntimeUpgrades` but not `DomainRuntimeUpgradeAt`
+        // `DomainRuntimeUpgrades` but not `DomainRuntimeUpgradeRecords`
         run_to_block::<Test>(upgrade_1, H256::random());
         assert_eq!(DomainRuntimeUpgrades::<Test>::get(), vec![runtime_id]);
-        assert!(DomainRuntimeUpgradeAt::<Test>::get(runtime_id).is_empty());
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).is_empty());
 
         // In the next block after upgrade, the upgrade is accounted in `missed_domain_runtime_upgrade`
         run_to_block::<Test>(upgrade_1 + 1, H256::random());
@@ -901,10 +901,10 @@ fn test_domain_runtime_upgrade_record() {
         run_to_block::<Test>(upgrade_2 + 1, H256::random());
         assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(2));
 
-        // The upgrade record is moved from `DomainRuntimeUpgrades` to `DomainRuntimeUpgradeAt`
+        // The upgrade record is moved from `DomainRuntimeUpgrades` to `DomainRuntimeUpgradeRecords`
         assert!(DomainRuntimeUpgrades::<Test>::get().is_empty());
-        assert!(DomainRuntimeUpgradeAt::<Test>::get(runtime_id).contains_key(&upgrade_1));
-        assert!(DomainRuntimeUpgradeAt::<Test>::get(runtime_id).contains_key(&upgrade_2));
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&upgrade_1));
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&upgrade_2));
     });
 }
 
@@ -1004,7 +1004,9 @@ fn test_domain_runtime_upgrade_with_bundle() {
         // Since the new domain block contains both runtime upgrade and bundle, the gap between `HeadDomainNumber`
         // and `HeadReceiptNumber` remain the same and there is no `missed_domain_runtime_upgrade`
         run_to_block::<Test>(current_block + 7, H256::random());
-        assert!(DomainRuntimeUpgradeAt::<Test>::get(runtime_id).contains_key(&(current_block + 6)));
+        assert!(
+            DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&(current_block + 6))
+        );
         assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
         assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 3);
         assert_eq!(

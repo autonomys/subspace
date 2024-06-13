@@ -180,7 +180,8 @@ mod pallet {
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
-        register_runtime_at_genesis, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
+        register_runtime_at_genesis, DomainRuntimeUpgradeEntry, Error as RuntimeRegistryError,
+        ScheduledRuntimeUpgrade,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_mark_operators_as_slashed;
@@ -686,11 +687,14 @@ mod pallet {
     pub(super) type AccumulatedTreasuryFunds<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// Storage used to keep track of which consensus block the domain runtime upgrade happen.
-    ///
-    /// TODO: determine and clear the unneeded domain runtime upgrade record
     #[pallet::storage]
-    pub(super) type DomainRuntimeUpgradeAt<T: Config> =
-        StorageMap<_, Identity, RuntimeId, BTreeMap<BlockNumberFor<T>, T::Hash>, ValueQuery>;
+    pub(super) type DomainRuntimeUpgradeRecords<T: Config> = StorageMap<
+        _,
+        Identity,
+        RuntimeId,
+        BTreeMap<BlockNumberFor<T>, DomainRuntimeUpgradeEntry<T::Hash>>,
+        ValueQuery,
+    >;
 
     /// Temporary storage keep track of domain runtime upgrade happen in the current block, cleared
     /// in the next block initialization.
@@ -1114,7 +1118,7 @@ mod pallet {
                 // by the number of runtime upgrade happen since last block to account for these blocks.
                 //
                 // NOTE: if a domain runtime upgrade happened in the current block it won't be accounted into
-                // `missed_upgrade` because `DomainRuntimeUpgradeAt` is updated in the next block's initialization.
+                // `missed_upgrade` because `DomainRuntimeUpgradeRecords` is updated in the next block's initialization.
                 let missed_upgrade =
                     Self::missed_domain_runtime_upgrade(domain_id).map_err(Error::<T>::from)?;
 
@@ -1577,12 +1581,21 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            // Record any previous domain runtime upgrade in `DomainRuntimeUpgradeAt` and then do the
+            // Record any previous domain runtime upgrade in `DomainRuntimeUpgradeRecords` and then do the
             // domain runtime upgrade scheduled in the current block
             for runtime_id in DomainRuntimeUpgrades::<T>::take() {
-                DomainRuntimeUpgradeAt::<T>::mutate(runtime_id, |upgrade_record| {
-                    upgrade_record.insert(parent_number, parent_hash)
-                });
+                let reference_count = Self::domain_instance_count(runtime_id);
+                if !reference_count.is_zero() {
+                    DomainRuntimeUpgradeRecords::<T>::mutate(runtime_id, |upgrade_record| {
+                        upgrade_record.insert(
+                            parent_number,
+                            DomainRuntimeUpgradeEntry {
+                                at_hash: parent_hash,
+                                reference_count,
+                            },
+                        )
+                    });
+                }
             }
             do_upgrade_runtimes::<T>(block_number);
 
@@ -2532,11 +2545,20 @@ impl<T: Config> Pallet<T> {
                 .or(DomainRegistry::<T>::get(domain_id).map(|domain_obj| domain_obj.created_at))
                 .ok_or(BlockTreeError::LastBlockNotFound)?;
 
-        Ok(DomainRuntimeUpgradeAt::<T>::get(runtime_id)
+        Ok(DomainRuntimeUpgradeRecords::<T>::get(runtime_id)
             .into_keys()
             .rev()
             .take_while(|upgraded_at| *upgraded_at > last_block_at)
             .count() as u32)
+    }
+
+    // Return the number of domain instance that instantiated with the given runtime
+    fn domain_instance_count(runtime_id: RuntimeId) -> u32 {
+        // TODO: perhaps add another storage to keep track of this number so we don't need
+        // to iterate all the domain instances
+        DomainRegistry::<T>::iter()
+            .filter(|(_, domain_obj)| domain_obj.domain_config.runtime_id == runtime_id)
+            .count() as u32
     }
 }
 

@@ -54,6 +54,16 @@ impl Default for DomainRuntimeInfo {
     }
 }
 
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct DomainRuntimeUpgradeEntry<Hash> {
+    // The consensus block hash at which the upgrade happened
+    pub at_hash: Hash,
+    // The expected number of ER (from differnt domains) that derive from the consensus
+    // block `at_hash`, the `reference_count` will decrease by one as one such ER is
+    // confirmed and the whole entry will remove from the state after it become zero.
+    pub reference_count: u32,
+}
+
 fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
     total_issuance: BalanceOf<T>,
     balances: Vec<(AccountId, BalanceOf<T>)>,
