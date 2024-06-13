@@ -125,6 +125,12 @@ pub(crate) enum CloseChannelBy<AccountId> {
     Sudo,
 }
 
+/// Parameters for a new channel between two chains.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub struct InitiateChannelParams {
+    pub max_outgoing_messages: u32,
+}
+
 /// Hold identifier trait for messenger specific balance holds
 pub trait HoldIdentifier<T: Config> {
     fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> FungibleHoldId<T>;
@@ -135,8 +141,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        U256,
+        FeeModel, HoldIdentifier, InitiateChannelParams, Nonce, OutboxMessageResult, StateRootOf,
+        ValidatedRelayMessage, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -155,7 +161,7 @@ mod pallet {
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
+        ChainId, ChannelOpenParams, CrossDomainMessage, Message, MessageId, MessageKey,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
@@ -208,6 +214,8 @@ mod pallet {
         type ChannelInitReservePortion: Get<Perbill>;
         /// Type to check if a given domain is registered on Consensus chain.
         type DomainRegistration: DomainRegistration;
+        /// Channels fee model
+        type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -564,13 +572,21 @@ mod pallet {
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_chain_id: ChainId,
-            params: InitiateChannelParams<BalanceOf<T>>,
+            params: InitiateChannelParams,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
+            let channel_open_params = ChannelOpenParams {
+                max_outgoing_messages: params.max_outgoing_messages,
+                fee_model: T::ChannelFeeModel::get(),
+            };
 
             // initiate the channel config
-            let channel_id =
-                Self::do_init_channel(dst_chain_id, params, Some(owner.clone()), true)?;
+            let channel_id = Self::do_init_channel(
+                dst_chain_id,
+                channel_open_params,
+                Some(owner.clone()),
+                true,
+            )?;
 
             // reserve channel open fees
             let hold_id = T::HoldIdentifier::messenger_channel(dst_chain_id, channel_id);
@@ -590,7 +606,7 @@ mod pallet {
                 dst_chain_id,
                 channel_id,
                 VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelOpen(params),
+                    ProtocolMessageRequest::ChannelOpen(channel_open_params),
                 ))),
             )?;
 
@@ -862,7 +878,7 @@ mod pallet {
             let fee_model = FeeModel {
                 relay_fee: Default::default(),
             };
-            let init_params = InitiateChannelParams {
+            let init_params = ChannelOpenParams {
                 max_outgoing_messages: 100,
                 fee_model,
             };
@@ -992,7 +1008,7 @@ mod pallet {
 
         pub(crate) fn do_init_channel(
             dst_chain_id: ChainId,
-            init_params: InitiateChannelParams<BalanceOf<T>>,
+            init_params: ChannelOpenParams<BalanceOf<T>>,
             maybe_owner: Option<T::AccountId>,
             check_allowlist: bool,
         ) -> Result<ChannelId, DispatchError> {
