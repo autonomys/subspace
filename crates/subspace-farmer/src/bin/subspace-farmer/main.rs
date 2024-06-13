@@ -12,7 +12,7 @@ mod utils;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use subspace_farmer::single_disk_farm::SingleDiskFarm;
+use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
@@ -53,6 +53,11 @@ enum Command {
         /// Disable farm locking, for example if file system doesn't support it
         #[arg(long)]
         disable_farm_locking: bool,
+        /// Scrub target
+        ///
+        /// Possible values are: `all`, `metadata`, `plot` and `cache`
+        #[arg(long, default_value_t = ScrubTarget::All)]
+        target: ScrubTarget,
         /// Check for errors, but do not attempt to correct them
         #[arg(long)]
         dry_run: bool,
@@ -110,12 +115,13 @@ async fn main() -> anyhow::Result<()> {
         Command::Scrub {
             disk_farms,
             disable_farm_locking,
+            target,
             dry_run,
         } => {
             if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
-                commands::scrub(&disk_farms, disable_farm_locking, dry_run);
+                commands::scrub(&disk_farms, disable_farm_locking, target, dry_run);
             }
         }
         Command::Wipe { disk_farms } => {

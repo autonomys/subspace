@@ -1,9 +1,14 @@
 use rayon::prelude::*;
 use std::path::PathBuf;
-use subspace_farmer::single_disk_farm::SingleDiskFarm;
+use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use tracing::{error, info, info_span};
 
-pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool, dry_run: bool) {
+pub(crate) fn scrub(
+    disk_farms: &[PathBuf],
+    disable_farm_locking: bool,
+    target: ScrubTarget,
+    dry_run: bool,
+) {
     disk_farms
         .into_par_iter()
         .enumerate()
@@ -15,7 +20,7 @@ pub(crate) fn scrub(disk_farms: &[PathBuf], disable_farm_locking: bool, dry_run:
                 "Start scrubbing farm"
             );
 
-            match SingleDiskFarm::scrub(directory, disable_farm_locking, dry_run) {
+            match SingleDiskFarm::scrub(directory, disable_farm_locking, target, dry_run) {
                 Ok(()) => {
                     info!(
                         path = %directory.display(),
