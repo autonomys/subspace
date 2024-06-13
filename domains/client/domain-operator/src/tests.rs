@@ -38,7 +38,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidExtrinsicsRootProof, InvalidTransfersProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
-use sp_messenger::messages::{CrossDomainMessage, FeeModel, InitiateChannelParams, Proof};
+use sp_messenger::messages::{CrossDomainMessage, Proof};
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
@@ -3474,14 +3474,12 @@ async fn test_cross_domains_messages_should_work() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Open channel between the Consensus chain and EVM domains
-    let fee_model = FeeModel { relay_fee: 1 };
     alice
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_chain_id: ChainId::Consensus,
-                params: InitiateChannelParams {
+                params: pallet_messenger::InitiateChannelParams {
                     max_outgoing_messages: 100,
-                    fee_model,
                 },
             },
         ))

@@ -53,7 +53,7 @@ use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
 use futures::StreamExt;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
@@ -74,6 +74,7 @@ use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -83,6 +84,8 @@ use tracing::{debug, info, warn};
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
 const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 6;
+/// Do not wait for acknowledgements beyond this time limit
+const ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// How deep (in segments) should block be in order to be finalized.
 ///
@@ -99,7 +102,7 @@ struct SegmentHeadersStoreInner<AS> {
     aux_store: Arc<AS>,
     next_key_index: AtomicU16,
     /// In-memory cache of segment headers
-    cache: Mutex<Vec<SegmentHeader>>,
+    cache: RwLock<Vec<SegmentHeader>>,
 }
 
 /// Persistent storage of segment headers.
@@ -163,7 +166,7 @@ where
             inner: Arc::new(SegmentHeadersStoreInner {
                 aux_store,
                 next_key_index: AtomicU16::new(next_key_index),
-                cache: Mutex::new(cache),
+                cache: RwLock::new(cache),
             }),
             confirmation_depth_k,
         })
@@ -171,12 +174,12 @@ where
 
     /// Returns last observed segment header
     pub fn last_segment_header(&self) -> Option<SegmentHeader> {
-        self.inner.cache.lock().last().cloned()
+        self.inner.cache.read().last().cloned()
     }
 
     /// Returns last observed segment index
     pub fn max_segment_index(&self) -> Option<SegmentIndex> {
-        let segment_index = self.inner.cache.lock().len().checked_sub(1)? as u64;
+        let segment_index = self.inner.cache.read().len().checked_sub(1)? as u64;
         Some(SegmentIndex::from(segment_index))
     }
 
@@ -240,7 +243,7 @@ where
 
             self.inner.aux_store.insert_aux(&insert_data, &[])?;
         }
-        self.inner.cache.lock().extend(segment_headers_to_store);
+        self.inner.cache.write().extend(segment_headers_to_store);
 
         Ok(())
     }
@@ -249,7 +252,7 @@ where
     pub fn get_segment_header(&self, segment_index: SegmentIndex) -> Option<SegmentHeader> {
         self.inner
             .cache
-            .lock()
+            .read()
             .get(u64::from(segment_index) as usize)
             .copied()
     }
@@ -319,11 +322,13 @@ where
                     break;
                 }
             } else {
-                return Vec::new(); // no segment headers required
+                // No segment headers required
+                return Vec::new();
             }
         }
 
-        Vec::new() // no segment headers required
+        // No segment headers required
+        Vec::new()
     }
 }
 
@@ -1037,7 +1042,7 @@ async fn send_archived_segment_notification(
 ) {
     let segment_index = archived_segment.segment_header.segment_index();
     let (acknowledgement_sender, mut acknowledgement_receiver) =
-        tracing_unbounded::<()>("subspace_acknowledgement", 100);
+        tracing_unbounded::<()>("subspace_acknowledgement", 1000);
     // Keep `archived_segment` around until all acknowledgements are received since some receivers
     // might use weak references
     let archived_segment = Arc::new(archived_segment);
@@ -1048,10 +1053,22 @@ async fn send_archived_segment_notification(
 
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
-    while acknowledgement_receiver.next().await.is_some() {
-        debug!(
-            "Archived segment notification acknowledged: {}",
-            segment_index
+    let wait_fut = async {
+        while acknowledgement_receiver.next().await.is_some() {
+            debug!(
+                "Archived segment notification acknowledged: {}",
+                segment_index
+            );
+        }
+    };
+
+    if tokio::time::timeout(ACKNOWLEDGEMENT_TIMEOUT, wait_fut)
+        .await
+        .is_err()
+    {
+        warn!(
+            "Archived segment notification was not acknowledged and reached timeout, continue \
+            regardless"
         );
     }
 }

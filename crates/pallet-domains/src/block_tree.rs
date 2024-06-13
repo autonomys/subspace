@@ -18,8 +18,8 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    ChainId, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt, OperatorId,
-    Transfers,
+    ChainId, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt,
+    OnChainRewards, OperatorId, Transfers,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
@@ -395,6 +395,15 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     domain_id,
                     execution_receipt.consensus_block_number,
                 )?;
+
+                // handle chain rewards from the domain
+                execution_receipt
+                    .block_fees
+                    .chain_rewards
+                    .into_iter()
+                    .for_each(|(chain_id, reward)| {
+                        T::OnChainRewards::on_chain_rewards(chain_id, reward)
+                    });
 
                 LatestConfirmedDomainBlock::<T>::insert(
                     domain_id,

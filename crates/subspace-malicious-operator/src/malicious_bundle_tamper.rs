@@ -129,8 +129,12 @@ where
 
         match bad_receipt_type {
             BadReceiptType::BlockFees => {
-                receipt.block_fees =
-                    BlockFees::new(random_seed.into(), random_seed.into(), random_seed.into());
+                receipt.block_fees = BlockFees::new(
+                    random_seed.into(),
+                    random_seed.into(),
+                    random_seed.into(),
+                    BTreeMap::default(),
+                );
             }
             BadReceiptType::Transfers => {
                 receipt.transfers.transfers_in =

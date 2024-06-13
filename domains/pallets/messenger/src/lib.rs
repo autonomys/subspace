@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms)]
-#![feature(let_chains, variant_count)]
+#![feature(let_chains, variant_count, if_let_guard)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -125,6 +125,12 @@ pub(crate) enum CloseChannelBy<AccountId> {
     Sudo,
 }
 
+/// Parameters for a new channel between two chains.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub struct InitiateChannelParams {
+    pub max_outgoing_messages: u32,
+}
+
 /// Hold identifier trait for messenger specific balance holds
 pub trait HoldIdentifier<T: Config> {
     fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> FungibleHoldId<T>;
@@ -135,8 +141,8 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, CloseChannelBy,
-        FeeModel, HoldIdentifier, Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage,
-        U256,
+        FeeModel, HoldIdentifier, InitiateChannelParams, Nonce, OutboxMessageResult, StateRootOf,
+        ValidatedRelayMessage, U256,
     };
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
@@ -155,13 +161,14 @@ mod pallet {
     use sp_domains::{DomainAllowlistUpdates, DomainId, DomainOwner};
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageKey,
+        ChainId, ChannelOpenParams, CrossDomainMessage, Message, MessageId, MessageKey,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::{
-        InherentError, InherentType, OnXDMRewards, StorageKeys, INHERENT_IDENTIFIER,
+        DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
+        INHERENT_IDENTIFIER,
     };
-    use sp_runtime::ArithmeticError;
+    use sp_runtime::{ArithmeticError, Perbill, Saturating};
     use sp_subspace_mmr::MmrProofVerifier;
     #[cfg(feature = "std")]
     use std::collections::BTreeSet;
@@ -201,6 +208,14 @@ mod pallet {
         /// Channel reserve fee to open a channel.
         #[pallet::constant]
         type ChannelReserveFee: Get<BalanceOf<Self>>;
+        /// Portion of Channel reserve taken by the protocol
+        /// if the channel is in init state and is requested to be closed.
+        #[pallet::constant]
+        type ChannelInitReservePortion: Get<Perbill>;
+        /// Type to check if a given domain is registered on Consensus chain.
+        type DomainRegistration: DomainRegistration;
+        /// Channels fee model
+        type ChannelFeeModel: Get<FeeModel<BalanceOf<Self>>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -557,12 +572,21 @@ mod pallet {
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_chain_id: ChainId,
-            params: InitiateChannelParams<BalanceOf<T>>,
+            params: InitiateChannelParams,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
+            let channel_open_params = ChannelOpenParams {
+                max_outgoing_messages: params.max_outgoing_messages,
+                fee_model: T::ChannelFeeModel::get(),
+            };
 
             // initiate the channel config
-            let channel_id = Self::do_init_channel(dst_chain_id, params, Some(owner.clone()))?;
+            let channel_id = Self::do_init_channel(
+                dst_chain_id,
+                channel_open_params,
+                Some(owner.clone()),
+                true,
+            )?;
 
             // reserve channel open fees
             let hold_id = T::HoldIdentifier::messenger_channel(dst_chain_id, channel_id);
@@ -582,7 +606,7 @@ mod pallet {
                 dst_chain_id,
                 channel_id,
                 VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                    ProtocolMessageRequest::ChannelOpen(params),
+                    ProtocolMessageRequest::ChannelOpen(channel_open_params),
                 ))),
             )?;
 
@@ -619,7 +643,7 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::call_index(2)]
-        #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
+        #[pallet::weight(T::WeightInfo::relay_message().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
         pub fn relay_message(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
@@ -632,7 +656,7 @@ mod pallet {
 
         /// Receives a response from the dst_chain for a message in Outbox.
         #[pallet::call_index(3)]
-        #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)), Pays::No))]
+        #[pallet::weight(T::WeightInfo::relay_message_response().saturating_add(Pallet::< T >::message_weight(& msg.weight_tag)))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
@@ -660,6 +684,13 @@ mod pallet {
                 update.chain_id() != T::SelfChainId::get(),
                 Error::<T>::InvalidAllowedChain
             );
+
+            if let ChainAllowlistUpdate::Add(ChainId::Domain(domain_id)) = update {
+                ensure!(
+                    T::DomainRegistration::is_domain_registered(domain_id),
+                    Error::<T>::InvalidChain
+                );
+            }
 
             ChainAllowlist::<T>::mutate(|list| match update {
                 ChainAllowlistUpdate::Add(chain_id) => list.insert(chain_id),
@@ -689,6 +720,13 @@ mod pallet {
 
             if let Some(dst_domain_id) = update.chain_id().maybe_domain_chain() {
                 ensure!(dst_domain_id != domain_id, Error::<T>::InvalidAllowedChain);
+            }
+
+            if let ChainAllowlistUpdate::Add(ChainId::Domain(domain_id)) = update {
+                ensure!(
+                    T::DomainRegistration::is_domain_registered(domain_id),
+                    Error::<T>::InvalidChain
+                );
             }
 
             DomainChainAllowlistUpdate::<T>::mutate(domain_id, |maybe_domain_updates| {
@@ -840,11 +878,11 @@ mod pallet {
             let fee_model = FeeModel {
                 relay_fee: Default::default(),
             };
-            let init_params = InitiateChannelParams {
+            let init_params = ChannelOpenParams {
                 max_outgoing_messages: 100,
                 fee_model,
             };
-            let channel_id = Self::do_init_channel(dst_chain_id, init_params, None)?;
+            let channel_id = Self::do_init_channel(dst_chain_id, init_params, None, true)?;
             Self::do_open_channel(dst_chain_id, channel_id)?;
             Ok(())
         }
@@ -924,7 +962,7 @@ mod pallet {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
 
                 ensure!(
-                    channel.state == ChannelState::Open,
+                    channel.state != ChannelState::Closed,
                     Error::<T>::InvalidChannelState
                 );
 
@@ -935,7 +973,24 @@ mod pallet {
                 if let Some(owner) = &channel.maybe_owner {
                     let hold_id = T::HoldIdentifier::messenger_channel(chain_id, channel_id);
                     let locked_amount = T::Currency::balance_on_hold(&hold_id, owner);
-                    T::Currency::release(&hold_id, owner, locked_amount, Precision::Exact)
+                    let amount_to_release = {
+                        if channel.state == ChannelState::Open {
+                            locked_amount
+                        } else {
+                            let protocol_fee = T::ChannelInitReservePortion::get() * locked_amount;
+                            let release_amount = locked_amount.saturating_sub(protocol_fee);
+                            T::Currency::burn_held(
+                                &hold_id,
+                                owner,
+                                protocol_fee,
+                                Precision::Exact,
+                                Fortitude::Force,
+                            )?;
+                            T::OnXDMRewards::on_chain_protocol_fees(chain_id, protocol_fee);
+                            release_amount
+                        }
+                    };
+                    T::Currency::release(&hold_id, owner, amount_to_release, Precision::Exact)
                         .map_err(|_| Error::<T>::BalanceUnlock)?;
                 }
 
@@ -953,19 +1008,22 @@ mod pallet {
 
         pub(crate) fn do_init_channel(
             dst_chain_id: ChainId,
-            init_params: InitiateChannelParams<BalanceOf<T>>,
+            init_params: ChannelOpenParams<BalanceOf<T>>,
             maybe_owner: Option<T::AccountId>,
+            check_allowlist: bool,
         ) -> Result<ChannelId, DispatchError> {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
                 Error::<T>::InvalidChain,
             );
 
-            let chain_allowlist = ChainAllowlist::<T>::get();
-            ensure!(
-                chain_allowlist.contains(&dst_chain_id),
-                Error::<T>::ChainNotAllowed
-            );
+            if check_allowlist {
+                let chain_allowlist = ChainAllowlist::<T>::get();
+                ensure!(
+                    chain_allowlist.contains(&dst_chain_id),
+                    Error::<T>::ChainNotAllowed
+                );
+            }
 
             let channel_id = NextChannelId::<T>::get(dst_chain_id);
             let next_channel_id = channel_id
@@ -998,33 +1056,27 @@ mod pallet {
         pub fn validate_relay_message(
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
-            let mut should_init_channel = false;
-            let next_nonce = match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
-                None => {
-                    // if there is no channel config, this must the Channel open request.
-                    // so nonce is 0
-                    should_init_channel = true;
-                    log::debug!(
-                        "Initiating new channel: {:?} to chain: {:?}",
-                        xdm.channel_id,
-                        xdm.src_chain_id
-                    );
-                    Nonce::zero()
-                }
-                Some(channel) => {
-                    // Ensure channel is ready to receive messages
-                    log::debug!(
-                        "Message to channel: {:?} from chain: {:?}",
-                        xdm.channel_id,
-                        xdm.src_chain_id
-                    );
-                    ensure!(
-                        channel.state == ChannelState::Open,
-                        InvalidTransaction::Call
-                    );
-                    channel.next_inbox_nonce
-                }
-            };
+            let (next_nonce, maybe_channel) =
+                match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
+                    None => {
+                        // if there is no channel config, this must the Channel open request.
+                        // so nonce is 0
+                        log::debug!(
+                            "Initiating new channel: {:?} to chain: {:?}",
+                            xdm.channel_id,
+                            xdm.src_chain_id
+                        );
+                        (Nonce::zero(), None)
+                    }
+                    Some(channel) => {
+                        log::debug!(
+                            "Message to channel: {:?} from chain: {:?}",
+                            xdm.channel_id,
+                            xdm.src_chain_id
+                        );
+                        (channel.next_inbox_nonce, Some(channel))
+                    }
+                };
 
             // derive the key as stored on the src_chain.
             let key = StorageKey(
@@ -1038,23 +1090,46 @@ mod pallet {
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
 
-            // if there is no channel config, this must be the Channel open request
-            if should_init_channel {
-                match msg.payload {
-                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                        ProtocolMessageRequest::ChannelOpen(_),
-                    ))) => {}
-                    _ => {
-                        log::error!("Unexpected call instead of channel open request: {:?}", msg,);
-                        return Err(InvalidTransaction::Call.into());
+            let is_valid_call = match &msg.payload {
+                VersionedPayload::V0(payload) => match payload {
+                    Payload::Protocol(RequestResponse::Request(req)) => match req {
+                        // channel open should ensure there is no Channel present already
+                        ProtocolMessageRequest::ChannelOpen(_) => maybe_channel.is_none(),
+                        // we allow channel close only if it is init or open state
+                        ProtocolMessageRequest::ChannelClose => {
+                            if let Some(ref channel) = maybe_channel {
+                                !(channel.state == ChannelState::Closed)
+                            } else {
+                                false
+                            }
+                        }
+                    },
+                    // endpoint request messages are only allowed when
+                    // channel is open, or
+                    // channel is closed. Channel can be closed by dst_chain simultaneously
+                    // while src_chain already sent a message. We allow the message but return an
+                    // error in the response so that src_chain can revert any necessary actions
+                    Payload::Endpoint(RequestResponse::Request(_)) => {
+                        if let Some(ref channel) = maybe_channel {
+                            !(channel.state == ChannelState::Initiated)
+                        } else {
+                            false
+                        }
                     }
-                }
+                    // any other message variants are not allowed
+                    _ => false,
+                },
+            };
+
+            if !is_valid_call {
+                log::error!("Unexpected call instead of channel open request: {:?}", msg,);
+                return Err(InvalidTransaction::Call.into());
             }
 
             Ok(ValidatedRelayMessage {
                 msg,
                 next_nonce,
-                should_init_channel,
+                should_init_channel: maybe_channel.is_none(),
             })
         }
 
@@ -1069,15 +1144,18 @@ mod pallet {
                 {
                     // channel is being opened without an owner since this is a relay message
                     // from other chain
-                    Self::do_init_channel(msg.src_chain_id, params, None).map_err(|err| {
-                        log::error!(
-                            "Error initiating channel: {:?} with chain: {:?}: {:?}",
-                            msg.channel_id,
-                            msg.src_chain_id,
-                            err
-                        );
-                        InvalidTransaction::Call
-                    })?;
+                    // we do not check the allowlist to finish the end to end flow
+                    Self::do_init_channel(msg.src_chain_id, params, None, false).map_err(
+                        |err| {
+                            log::error!(
+                                "Error initiating channel: {:?} with chain: {:?}: {:?}",
+                                msg.channel_id,
+                                msg.src_chain_id,
+                                err
+                            );
+                            InvalidTransaction::Call
+                        },
+                    )?;
                 } else {
                     log::error!("Unexpected call instead of channel open request: {:?}", msg,);
                     return Err(InvalidTransaction::Call.into());

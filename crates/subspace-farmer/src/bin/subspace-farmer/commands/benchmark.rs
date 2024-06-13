@@ -1,8 +1,9 @@
 use crate::PosTable;
 use anyhow::anyhow;
-use clap::Subcommand;
+use clap::{Parser, Subcommand};
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 use parking_lot::Mutex;
+use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
@@ -14,82 +15,106 @@ use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer::utils::{recommended_number_of_farming_threads, tokio_rayon_spawn_handler};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
 
+#[derive(Debug, Parser)]
+pub(crate) struct AuditOptions {
+    /// Number of samples to collect for benchmarking purposes
+    #[arg(long, default_value_t = 10)]
+    sample_size: usize,
+    /// Also run `single` benchmark (only useful for developers, not used by default)
+    #[arg(long)]
+    with_single: bool,
+    /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
+    /// compute-intensive operations during proving), defaults to number of logical CPUs
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
+    /// not more than 32 threads
+    #[arg(long)]
+    farming_thread_pool_size: Option<NonZeroUsize>,
+    /// Disk farm to audit
+    ///
+    /// Example:
+    ///   /path/to/directory
+    disk_farm: PathBuf,
+    /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
+    filter: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub(crate) struct ProveOptions {
+    /// Number of samples to collect for benchmarking purposes
+    #[arg(long, default_value_t = 10)]
+    sample_size: usize,
+    /// Also run `single` benchmark (only useful for developers, not used by default)
+    #[arg(long)]
+    with_single: bool,
+    /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
+    /// compute-intensive operations during proving), defaults to number of logical CPUs
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
+    /// not more than 32 threads
+    #[arg(long)]
+    farming_thread_pool_size: Option<NonZeroUsize>,
+    /// Disk farm to prove
+    ///
+    /// Example:
+    ///   /path/to/directory
+    disk_farm: PathBuf,
+    /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
+    filter: Option<String>,
+    /// Limit number of sectors audited to specified number, this limits amount of memory used by benchmark (normal
+    /// farming process doesn't use this much RAM)
+    #[arg(long)]
+    limit_sector_count: Option<usize>,
+}
+
 /// Arguments for benchmark
 #[derive(Debug, Subcommand)]
 pub(crate) enum BenchmarkArgs {
     /// Auditing benchmark
-    Audit {
-        /// Number of samples to collect for benchmarking purposes
-        #[arg(long, default_value_t = 10)]
-        sample_size: usize,
-        /// Also run `single` benchmark (only useful for developers, not used by default)
-        #[arg(long)]
-        with_single: bool,
-        /// Disk farm to audit
-        ///
-        /// Example:
-        ///   /path/to/directory
-        disk_farm: PathBuf,
-        /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
-        filter: Option<String>,
-    },
+    Audit(AuditOptions),
     /// Proving benchmark
-    Prove {
-        /// Number of samples to collect for benchmarking purposes
-        #[arg(long, default_value_t = 10)]
-        sample_size: usize,
-        /// Also run `single` benchmark (only useful for developers, not used by default)
-        #[arg(long)]
-        with_single: bool,
-        /// Disk farm to prove
-        ///
-        /// Example:
-        ///   /path/to/directory
-        disk_farm: PathBuf,
-        /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
-        filter: Option<String>,
-        /// Limit number of sectors audited to specified number, this limits amount of memory used by benchmark (normal
-        /// farming process doesn't use this much RAM)
-        #[arg(long)]
-        limit_sector_count: Option<usize>,
-    },
+    Prove(ProveOptions),
+}
+
+fn create_thread_pool(
+    farming_thread_pool_size: Option<NonZeroUsize>,
+) -> Result<ThreadPool, ThreadPoolBuildError> {
+    let farming_thread_pool_size = farming_thread_pool_size
+        .map(|farming_thread_pool_size| farming_thread_pool_size.get())
+        .unwrap_or_else(recommended_number_of_farming_threads);
+
+    ThreadPoolBuilder::new()
+        .thread_name(move |thread_index| format!("benchmark.{thread_index}"))
+        .num_threads(farming_thread_pool_size)
+        .spawn_handler(tokio_rayon_spawn_handler())
+        .build()
 }
 
 pub(crate) fn benchmark(benchmark_args: BenchmarkArgs) -> anyhow::Result<()> {
     match benchmark_args {
-        BenchmarkArgs::Audit {
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-        } => audit(sample_size, with_single, disk_farm, filter),
-        BenchmarkArgs::Prove {
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-            limit_sector_count,
-        } => prove(
-            sample_size,
-            with_single,
-            disk_farm,
-            filter,
-            limit_sector_count,
-        ),
+        BenchmarkArgs::Audit(audit_options) => {
+            let thread_pool = create_thread_pool(audit_options.farming_thread_pool_size)?;
+            thread_pool.install(|| audit(audit_options))
+        }
+        BenchmarkArgs::Prove(prove_options) => {
+            let thread_pool = create_thread_pool(prove_options.farming_thread_pool_size)?;
+            thread_pool.install(|| prove(prove_options))
+        }
     }
 }
 
-fn audit(
-    sample_size: usize,
-    with_single: bool,
-    disk_farm: PathBuf,
-    filter: Option<String>,
-) -> anyhow::Result<()> {
+fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
+    let AuditOptions {
+        sample_size,
+        with_single,
+        farming_thread_pool_size: _,
+        disk_farm,
+        filter,
+    } = audit_options;
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {
@@ -246,13 +271,16 @@ fn audit(
     Ok(())
 }
 
-fn prove(
-    sample_size: usize,
-    with_single: bool,
-    disk_farm: PathBuf,
-    filter: Option<String>,
-    limit_sector_count: Option<usize>,
-) -> anyhow::Result<()> {
+fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
+    let ProveOptions {
+        sample_size,
+        with_single,
+        farming_thread_pool_size: _,
+        disk_farm,
+        filter,
+        limit_sector_count,
+    } = prove_options;
+
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {

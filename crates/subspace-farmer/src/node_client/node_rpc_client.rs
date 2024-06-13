@@ -8,27 +8,17 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
-use tokio::sync::Semaphore;
 use tracing::{info, trace, warn};
-
-/// Defines max_concurrent_requests constant in the node rpc client
-const RPC_MAX_CONCURRENT_REQUESTS: usize = 1_000_000;
-/// Node is having a hard time responding for many piece requests
-// TODO: Remove this once https://github.com/paritytech/jsonrpsee/issues/1189 is resolved
-const MAX_CONCURRENT_PIECE_REQUESTS: usize = 10;
-const REQUEST_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// `WsClient` wrapper.
 #[derive(Debug, Clone)]
 pub struct NodeRpcClient {
     client: Arc<WsClient>,
-    piece_request_semaphore: Arc<Semaphore>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
@@ -38,13 +28,10 @@ impl NodeRpcClient {
     pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(
             WsClientBuilder::default()
-                .max_concurrent_requests(RPC_MAX_CONCURRENT_REQUESTS)
                 .max_request_size(20 * 1024 * 1024)
-                .request_timeout(REQUEST_TIMEOUT)
                 .build(url)
                 .await?,
         );
-        let piece_request_semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_PIECE_REQUESTS));
 
         let mut segment_headers = Vec::<SegmentHeader>::new();
         let mut archived_segments_notifications = Box::pin(
@@ -136,7 +123,6 @@ impl NodeRpcClient {
 
         let node_client = Self {
             client,
-            piece_request_semaphore,
             segment_headers,
             _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         };
@@ -248,7 +234,6 @@ impl NodeClient for NodeRpcClient {
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
-        let _permit = self.piece_request_semaphore.acquire().await?;
         Ok(self
             .client
             .request("subspace_piece", rpc_params![&piece_index])

@@ -15,7 +15,7 @@ use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
-    CrossDomainMessage, InitiateChannelParams, Message, MessageWeightTag, Payload, Proof,
+    ChannelOpenParams, CrossDomainMessage, Message, MessageWeightTag, Payload, Proof,
     RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
@@ -32,7 +32,9 @@ mod benchmarks {
     fn initiate_channel() {
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
-        let channel_params = dummy_channel_params::<T>();
+        let channel_params = InitiateChannelParams {
+            max_outgoing_messages: 100,
+        };
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         let account = account("account", 0, 0);
         T::Currency::set_balance(
@@ -84,6 +86,7 @@ mod benchmarks {
             dst_chain_id,
             dummy_channel_params::<T>(),
             None,
+            true,
         ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
@@ -231,11 +234,11 @@ mod benchmarks {
         );
     }
 
-    fn dummy_channel_params<T: Config>() -> InitiateChannelParams<BalanceOf<T>> {
+    fn dummy_channel_params<T: Config>() -> ChannelOpenParams<BalanceOf<T>> {
         let fee_model = FeeModel {
             relay_fee: 1u32.into(),
         };
-        InitiateChannelParams {
+        ChannelOpenParams {
             max_outgoing_messages: 100,
             fee_model,
         }
@@ -243,12 +246,17 @@ mod benchmarks {
 
     fn open_channel<T: Config>(
         dst_chain_id: ChainId,
-        params: InitiateChannelParams<BalanceOf<T>>,
+        params: ChannelOpenParams<BalanceOf<T>>,
     ) -> ChannelId {
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
         let list = BTreeSet::from([dst_chain_id]);
         ChainAllowlist::<T>::put(list);
-        assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params, None));
+        assert_ok!(Messenger::<T>::do_init_channel(
+            dst_chain_id,
+            params,
+            None,
+            true
+        ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
 

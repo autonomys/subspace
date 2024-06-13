@@ -550,7 +550,7 @@ pub mod pallet {
         /// Submit new segment header to the blockchain. This is an inherent extrinsic and part of
         /// the Subspace consensus logic.
         #[pallet::call_index(1)]
-        #[pallet::weight((< T as Config >::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory, Pays::No))]
+        #[pallet::weight((< T as Config >::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory))]
         pub fn store_segment_headers(
             origin: OriginFor<T>,
             segment_headers: Vec<SegmentHeader>,
@@ -584,7 +584,7 @@ pub mod pallet {
 
         /// Farmer vote, currently only used for extra rewards to farmers.
         #[pallet::call_index(3)]
-        #[pallet::weight((< T as Config >::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
+        #[pallet::weight((< T as Config >::WeightInfo::vote(), DispatchClass::Operational))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]

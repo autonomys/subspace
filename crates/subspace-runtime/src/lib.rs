@@ -74,7 +74,7 @@ use sp_domains_fraud_proof::storage_proof::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, FeeModel, MessageId, MessageKey,
 };
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
@@ -83,7 +83,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
@@ -450,6 +450,14 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
             let _ = Balances::deposit_creating(&block_author, reward);
         }
     }
+
+    fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance) {
+        // on consensus chain, reward the domain operators
+        // balance is already on this consensus runtime
+        if let ChainId::Domain(domain_id) = chain_id {
+            Domains::reward_domain_operators(domain_id, fees)
+        }
+    }
 }
 
 pub struct MmrProofVerifier;
@@ -507,6 +515,16 @@ impl sp_messenger::StorageKeys for StorageKeys {
 parameter_types! {
     // TODO: update value
     pub const ChannelReserveFee: Balance = 100 * SSC;
+    pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
+    // TODO update the fee model
+    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
+}
+
+pub struct DomainRegistration;
+impl sp_messenger::DomainRegistration for DomainRegistration {
+    fn is_domain_registered(domain_id: DomainId) -> bool {
+        Domains::is_domain_registered(domain_id)
+    }
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -531,6 +549,9 @@ impl pallet_messenger::Config for Runtime {
     type DomainOwner = Domains;
     type HoldIdentifier = HoldIdentifier;
     type ChannelReserveFee = ChannelReserveFee;
+    type ChannelInitReservePortion = ChannelInitReservePortion;
+    type DomainRegistration = DomainRegistration;
+    type ChannelFeeModel = ChannelFeeModel;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -627,6 +648,21 @@ impl pallet_domains::BlockSlot<Runtime> for BlockSlot {
     }
 }
 
+pub struct OnChainRewards;
+
+impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
+    fn on_chain_rewards(chain_id: ChainId, reward: Balance) {
+        match chain_id {
+            ChainId::Consensus => {
+                if let Some(block_author) = Subspace::find_block_reward_address() {
+                    let _ = Balances::deposit_creating(&block_author, reward);
+                }
+            }
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+        }
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -666,6 +702,7 @@ impl pallet_domains::Config for Runtime {
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
+    type OnChainRewards = OnChainRewards;
 }
 
 parameter_types! {

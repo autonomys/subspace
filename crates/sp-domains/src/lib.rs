@@ -279,6 +279,10 @@ pub struct BlockFees<Balance> {
     pub domain_execution_fee: Balance,
     /// Burned balances on domain chain
     pub burned_balance: Balance,
+    /// Rewards for the chain.
+    // TODO: remove this before mainnet. Skipping to maintain compatibility with Gemini
+    #[codec(skip)]
+    pub chain_rewards: BTreeMap<ChainId, Balance>,
 }
 
 impl<Balance> BlockFees<Balance>
@@ -289,11 +293,13 @@ where
         domain_execution_fee: Balance,
         consensus_storage_fee: Balance,
         burned_balance: Balance,
+        chain_rewards: BTreeMap<ChainId, Balance>,
     ) -> Self {
         BlockFees {
             consensus_storage_fee,
             domain_execution_fee,
             burned_balance,
+            chain_rewards,
         }
     }
 
@@ -1391,6 +1397,15 @@ pub fn operator_block_fees_final_key() -> Vec<u8> {
 #[derive(Debug, Encode)]
 pub struct OperatorSigningKeyProofOfOwnershipData<AccountId> {
     pub operator_owner: AccountId,
+}
+
+/// Hook to handle chain rewards.
+pub trait OnChainRewards<Balance> {
+    fn on_chain_rewards(chain_id: ChainId, reward: Balance);
+}
+
+impl<Balance> OnChainRewards<Balance> for () {
+    fn on_chain_rewards(_chain_id: ChainId, _reward: Balance) {}
 }
 
 sp_api::decl_runtime_apis! {

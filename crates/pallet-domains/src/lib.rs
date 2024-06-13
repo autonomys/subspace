@@ -40,7 +40,7 @@ use crate::domain_registry::Error as DomainRegistryError;
 use crate::runtime_registry::into_complete_raw_genesis;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
-use crate::staking::OperatorStatus;
+use crate::staking::{do_reward_operators, OperatorStatus};
 use crate::staking_epoch::EpochTransitionResult;
 use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
@@ -223,7 +223,7 @@ mod pallet {
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnDomainInstantiated,
+        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated,
         OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
         RuntimeObject, RuntimeType,
     };
@@ -420,6 +420,9 @@ mod pallet {
 
         /// Fraud proof storage key provider
         type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider;
+
+        /// Hook to handle chain rewards.
+        type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -1173,8 +1176,7 @@ mod pallet {
             T::WeightInfo::submit_fraud_proof().saturating_add(
                 T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
             ),
-            DispatchClass::Operational,
-            Pays::No
+            DispatchClass::Operational
         ))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
@@ -2423,6 +2425,18 @@ impl<T: Config> Pallet<T> {
         )
     }
 
+    /// Reward the active operators of this domain epoch.
+    pub fn reward_domain_operators(domain_id: DomainId, rewards: BalanceOf<T>) {
+        // If domain is not instantiated, then we don't care at the moment.
+        if let Some(domain_stake_summary) = DomainStakingSummary::<T>::get(domain_id) {
+            let operators = domain_stake_summary
+                .current_epoch_rewards
+                .into_keys()
+                .collect::<Vec<OperatorId>>();
+            let _ = do_reward_operators::<T>(domain_id, operators.into_iter(), rewards);
+        }
+    }
+
     #[cfg(not(feature = "runtime-benchmarks"))]
     fn actual_slash_operator_weight(slashed_nominators: u32) -> Weight {
         T::WeightInfo::slash_operator(slashed_nominators)
@@ -2559,6 +2573,11 @@ impl<T: Config> Pallet<T> {
         DomainRegistry::<T>::iter()
             .filter(|(_, domain_obj)| domain_obj.domain_config.runtime_id == runtime_id)
             .count() as u32
+    }
+
+    /// Returns true if the Domain is registered.
+    pub fn is_domain_registered(domain_id: DomainId) -> bool {
+        DomainStakingSummary::<T>::contains_key(domain_id)
     }
 }
 

@@ -8,10 +8,11 @@ use crate::mock::{
 };
 use crate::{
     BalanceOf, ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
-    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, Nonce, Outbox, OutboxMessageResult,
-    OutboxResponses, Pallet, U256,
+    CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, InitiateChannelParams, Nonce, Outbox,
+    OutboxMessageResult, OutboxResponses, Pallet, U256,
 };
 use frame_support::traits::fungible::Inspect;
+use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
@@ -20,7 +21,7 @@ use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, Verification
 use sp_domains::DomainAllowlistUpdates;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    ChainId, CrossDomainMessage, InitiateChannelParams, MessageWeightTag, Payload, Proof,
+    ChainId, ChannelOpenParams, CrossDomainMessage, MessageWeightTag, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
@@ -29,10 +30,9 @@ use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 use std::collections::BTreeSet;
 
-fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
+fn create_channel(chain_id: ChainId, channel_id: ChannelId) {
     let params = InitiateChannelParams {
         max_outgoing_messages: 100,
-        fee_model,
     };
 
     let list = BTreeSet::from([chain_id]);
@@ -66,7 +66,10 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<
     assert_eq!(
         msg.payload,
         VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-            ProtocolMessageRequest::ChannelOpen(params)
+            ProtocolMessageRequest::ChannelOpen(ChannelOpenParams {
+                max_outgoing_messages: params.max_outgoing_messages,
+                fee_model: <chain_a::Runtime as crate::Config>::ChannelFeeModel::get()
+            })
         )))
     );
 
@@ -144,7 +147,7 @@ fn test_initiate_channel() {
     new_chain_a_ext().execute_with(|| {
         let chain_id = 2.into();
         let channel_id = U256::zero();
-        create_channel(chain_id, channel_id, Default::default())
+        create_channel(chain_id, channel_id)
     });
 }
 
@@ -161,24 +164,11 @@ fn test_close_missing_channel() {
 }
 
 #[test]
-fn test_close_not_open_channel() {
-    new_chain_a_ext().execute_with(|| {
-        let chain_id = 2.into();
-        let channel_id = U256::zero();
-        create_channel(chain_id, channel_id, Default::default());
-        assert_err!(
-            Messenger::close_channel(RuntimeOrigin::root(), chain_id, channel_id,),
-            Error::<Runtime>::InvalidChannelState
-        );
-    });
-}
-
-#[test]
 fn test_close_open_channel() {
     new_chain_a_ext().execute_with(|| {
         let chain_id = 2.into();
         let channel_id = U256::zero();
-        create_channel(chain_id, channel_id, Default::default());
+        create_channel(chain_id, channel_id);
 
         // open channel
         assert_ok!(Messenger::do_open_channel(chain_id, channel_id));
@@ -202,7 +192,7 @@ fn test_storage_proof_verification_invalid() {
     let chain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
-        create_channel(chain_id, channel_id, Default::default());
+        create_channel(chain_id, channel_id);
         assert_ok!(Messenger::do_open_channel(chain_id, channel_id));
     });
 
@@ -223,7 +213,7 @@ fn test_storage_proof_verification_missing_value() {
     let chain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
-        create_channel(chain_id, channel_id, Default::default());
+        create_channel(chain_id, channel_id);
         assert_ok!(Messenger::do_open_channel(chain_id, channel_id));
     });
 
@@ -245,7 +235,7 @@ fn test_storage_proof_verification() {
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {
-        create_channel(chain_id, channel_id, Default::default());
+        create_channel(chain_id, channel_id);
         assert_ok!(Messenger::do_open_channel(chain_id, channel_id));
         expected_channel = Channels::<Runtime>::get(chain_id, channel_id);
     });
@@ -266,7 +256,6 @@ fn test_storage_proof_verification() {
 fn open_channel_between_chains(
     chain_a_test_ext: &mut TestExternalities,
     chain_b_test_ext: &mut TestExternalities,
-    fee_model: FeeModel<Balance>,
 ) -> ChannelId {
     let chain_a_id = chain_a::SelfChainId::get();
     let chain_b_id = chain_b::SelfChainId::get();
@@ -274,7 +263,7 @@ fn open_channel_between_chains(
     // initiate channel open on chain_a
     let channel_id = chain_a_test_ext.execute_with(|| -> ChannelId {
         let channel_id = U256::zero();
-        create_channel(chain_b_id, channel_id, fee_model);
+        create_channel(chain_b_id, channel_id);
         channel_id
     });
 
@@ -286,6 +275,7 @@ fn open_channel_between_chains(
         true,
         MessageWeightTag::ProtocolChannelOpen,
         None,
+        true,
     );
 
     // check channel state be open on chain_b
@@ -372,6 +362,7 @@ fn send_message_between_chains(
         false,
         Default::default(),
         Some(Endpoint::Id(0)),
+        true,
     );
 
     // check state on chain_b
@@ -422,6 +413,7 @@ fn close_channel_between_chains(
         true,
         MessageWeightTag::ProtocolChannelClose,
         None,
+        true,
     );
 
     // check channel state be close on chain_b
@@ -483,19 +475,23 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     dst_chain_id: ChainId,
     channel_id: ChannelId,
     toggle: bool,
+    add_to_allow_list: bool,
 ) {
     let fee_model = FeeModel {
         relay_fee: Default::default(),
     };
-    let init_params = InitiateChannelParams {
+    let init_params = ChannelOpenParams {
         max_outgoing_messages: 100,
         fee_model,
     };
 
     let channel = Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap_or_else(|| {
         let list = BTreeSet::from([dst_chain_id]);
-        ChainAllowlist::<Runtime>::put(list);
-        Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params, None).unwrap();
+        if add_to_allow_list {
+            ChainAllowlist::<Runtime>::put(list);
+        }
+        Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params, None, add_to_allow_list)
+            .unwrap();
         Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap()
     });
 
@@ -513,6 +509,7 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn channel_relay_request_and_response(
     chain_a_test_ext: &mut TestExternalities,
     chain_b_test_ext: &mut TestExternalities,
@@ -521,6 +518,7 @@ fn channel_relay_request_and_response(
     toggle_channel_state: bool,
     weight_tag: MessageWeightTag,
     maybe_endpoint: Option<Endpoint>,
+    add_to_allowlist: bool,
 ) {
     let chain_a_id = chain_a::SelfChainId::get();
     let chain_b_id = chain_b::SelfChainId::get();
@@ -555,6 +553,7 @@ fn channel_relay_request_and_response(
             chain_a_id,
             channel_id,
             toggle_channel_state,
+            add_to_allowlist,
         );
         Inbox::<chain_b::Runtime>::set(Some(msg));
 
@@ -611,6 +610,7 @@ fn channel_relay_request_and_response(
             chain_b_id,
             channel_id,
             toggle_channel_state,
+            true,
         );
         OutboxResponses::<chain_a::Runtime>::set(Some(msg));
 
@@ -643,11 +643,7 @@ fn test_open_channel_between_chains() {
     let mut chain_b_test_ext = chain_b::new_test_ext();
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        Default::default(),
-    );
+    open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 }
 
 #[test]
@@ -656,14 +652,97 @@ fn test_close_channel_between_chains() {
     let mut chain_b_test_ext = chain_b::new_test_ext();
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        Default::default(),
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // close open channel
     close_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext, channel_id)
+}
+
+#[test]
+fn close_init_channels_between_chains() {
+    let mut chain_a_test_ext = chain_a::new_test_ext();
+    let mut chain_b_test_ext = chain_b::new_test_ext();
+
+    let chain_a_id = chain_a::SelfChainId::get();
+    let chain_b_id = chain_b::SelfChainId::get();
+
+    let pre_user_account_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+            &USER_ACCOUNT,
+            Preservation::Protect,
+            Fortitude::Polite,
+        )
+    });
+
+    // initiate channel open on chain_a
+    let channel_id = chain_a_test_ext.execute_with(|| -> ChannelId {
+        let channel_id = U256::zero();
+        create_channel(chain_b_id, channel_id);
+        channel_id
+    });
+
+    chain_a_test_ext.execute_with(|| {
+        let channel = Channels::<chain_a::Runtime>::get(chain_b_id, channel_id).unwrap();
+        assert_eq!(channel.state, ChannelState::Initiated)
+    });
+
+    let post_channel_init_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+            &USER_ACCOUNT,
+            Preservation::Protect,
+            Fortitude::Polite,
+        )
+    });
+
+    assert_eq!(
+        post_channel_init_balance,
+        pre_user_account_balance - chain_a::ChannelReserveFee::get()
+    );
+
+    channel_relay_request_and_response(
+        &mut chain_a_test_ext,
+        &mut chain_b_test_ext,
+        channel_id,
+        Nonce::zero(),
+        false,
+        MessageWeightTag::ProtocolChannelOpen,
+        None,
+        false,
+    );
+
+    chain_a_test_ext.execute_with(|| {
+        let channel = Channels::<chain_a::Runtime>::get(chain_b_id, channel_id).unwrap();
+        assert_eq!(channel.state, ChannelState::Initiated)
+    });
+
+    chain_b_test_ext.execute_with(|| {
+        let channel = Channels::<chain_b::Runtime>::get(chain_a_id, channel_id).unwrap();
+        assert_eq!(channel.state, ChannelState::Initiated)
+    });
+
+    // close channel
+    chain_a_test_ext.execute_with(|| close_channel(chain_b_id, channel_id, Some(Nonce::zero())));
+
+    chain_a_test_ext.execute_with(|| {
+        let channel = Channels::<chain_a::Runtime>::get(chain_b_id, channel_id).unwrap();
+        assert_eq!(channel.state, ChannelState::Closed)
+    });
+
+    let post_channel_close_balance = chain_a_test_ext.execute_with(|| {
+        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+            &USER_ACCOUNT,
+            Preservation::Protect,
+            Fortitude::Polite,
+        )
+    });
+
+    // user will only get 80% of reserve since 20% is taken by the protocol
+    let protocol_fee =
+        chain_a::ChannelInitReservePortion::get() * chain_a::ChannelReserveFee::get();
+    assert_eq!(
+        post_channel_close_balance,
+        pre_user_account_balance - protocol_fee
+    );
 }
 
 #[test]
@@ -711,11 +790,7 @@ fn test_update_domain_channel_allowlist() {
     let mut chain_b_test_ext = chain_b::new_test_ext();
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        Default::default(),
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     let chain_allowlist = DomainAllowlistUpdates {
         allow_chains: Default::default(),
@@ -740,15 +815,11 @@ fn test_send_message_between_chains() {
     let mut chain_b_test_ext = chain_b::new_test_ext();
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        Default::default(),
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // send message
     send_message_between_chains(
-        &0,
+        &1,
         &mut chain_a_test_ext,
         &mut chain_b_test_ext,
         vec![1, 2, 3, 4],
@@ -842,11 +913,7 @@ fn test_transport_funds_between_chains() {
 
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        FeeModel { relay_fee: 1 },
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // initiate transfer
     initiate_transfer_on_chain(&mut chain_a_test_ext);
@@ -860,6 +927,7 @@ fn test_transport_funds_between_chains() {
         false,
         Default::default(),
         Some(Endpoint::Id(100)),
+        true,
     );
 
     // post check
@@ -873,11 +941,7 @@ fn test_transport_funds_between_chains_if_src_chain_disallows_after_message_is_s
 
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        FeeModel { relay_fee: 1 },
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // initiate transfer
     initiate_transfer_on_chain(&mut chain_a_test_ext);
@@ -894,6 +958,7 @@ fn test_transport_funds_between_chains_if_src_chain_disallows_after_message_is_s
         false,
         Default::default(),
         Some(Endpoint::Id(100)),
+        true,
     );
 
     // post check should be successful since the chain_a already initiated the
@@ -908,11 +973,7 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
 
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    let channel_id = open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        FeeModel { relay_fee: 1 },
-    );
+    let channel_id = open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // initiate transfer
     let account_id = 1;
@@ -940,6 +1001,7 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
         false,
         Default::default(),
         Some(Endpoint::Id(100)),
+        true,
     );
 
     // post check should be not be successful since the chain_b rejected the transfer
@@ -982,11 +1044,7 @@ fn test_transport_funds_between_chains_failed_low_balance() {
     let mut chain_b_test_ext = chain_b::new_test_ext();
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
-    open_channel_between_chains(
-        &mut chain_a_test_ext,
-        &mut chain_b_test_ext,
-        Default::default(),
-    );
+    open_channel_between_chains(&mut chain_a_test_ext, &mut chain_b_test_ext);
 
     // initiate transfer
     let account_id = 100;
