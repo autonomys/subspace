@@ -814,6 +814,8 @@ impl SingleDiskFarm {
 
                 let plotting_options = PlottingOptions {
                     metadata_header,
+                    sectors_metadata: &sectors_metadata,
+                    sectors_being_modified: &sectors_being_modified,
                     sectors_to_plot_receiver,
                     sector_plotting_options: SectorPlottingOptions {
                         public_key,
@@ -822,9 +824,7 @@ impl SingleDiskFarm {
                         sector_size,
                         plot_file: &plot_file,
                         metadata_file,
-                        sectors_metadata: &sectors_metadata,
                         handlers: &handlers,
-                        sectors_being_modified: &sectors_being_modified,
                         global_mutex: &global_mutex,
                         plotter,
                     },
