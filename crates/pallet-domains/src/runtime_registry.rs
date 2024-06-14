@@ -3,7 +3,9 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
+use crate::pallet::{
+    DomainRuntimeUpgrades, NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades,
+};
 use crate::{BalanceOf, Config, Event};
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -50,6 +52,16 @@ impl Default for DomainRuntimeInfo {
     fn default() -> Self {
         Self::EVM { chain_id: 0 }
     }
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct DomainRuntimeUpgradeEntry<Hash> {
+    // The consensus block hash at which the upgrade happened
+    pub at_hash: Hash,
+    // The expected number of ER (from differnt domains) that derive from the consensus
+    // block `at_hash`, the `reference_count` will decrease by one as one such ER is
+    // confirmed and the whole entry will remove from the state after it become zero.
+    pub reference_count: u32,
 }
 
 fn derive_initial_balances_storages<T: Config, AccountId: Encode>(
@@ -286,6 +298,9 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
             runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
             runtime_obj.updated_at = at;
         });
+
+        // Record the runtime upgrade
+        DomainRuntimeUpgrades::<T>::mutate(|upgrades| upgrades.push(runtime_id));
 
         // deposit digest log for light clients
         frame_system::Pallet::<T>::deposit_log(DigestItem::domain_runtime_upgrade(runtime_id));

@@ -1,12 +1,14 @@
-use crate::block_tree::BlockTreeNode;
+use crate::block_tree::{verify_execution_receipt, BlockTreeNode};
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::pallet::OperatorIdOwner;
+use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockSlot, BlockTree, BlockTreeNodes, BundleError, Config,
-    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
-    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
-    Operators,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry,
+    DomainRuntimeUpgradeRecords, DomainRuntimeUpgrades, ExecutionInbox, ExecutionReceiptOf,
+    FraudProofError, FungibleHoldId, HeadDomainNumber, HeadReceiptNumber, NextDomainId, Operators,
+    RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
@@ -25,8 +27,8 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
-    OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeType,
-    SealedBundleHeader, StakingHoldIdentifier,
+    OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId,
+    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{
@@ -857,4 +859,160 @@ fn test_basic_fraud_proof_processing() {
             }
         });
     }
+}
+
+fn schedule_domain_runtime_upgrade<T: Config>(
+    runtime_id: RuntimeId,
+    scheduled_at: BlockNumberFor<T>,
+) {
+    let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).expect("Unknow runtime id");
+    let scheduled_upgrade = ScheduledRuntimeUpgrade {
+        raw_genesis: runtime_obj.raw_genesis,
+        version: runtime_obj.version,
+        hash: runtime_obj.hash,
+    };
+    ScheduledRuntimeUpgrades::<T>::insert(scheduled_at, runtime_id, scheduled_upgrade);
+}
+
+#[test]
+fn test_domain_runtime_upgrade_record() {
+    let runtime_id = 0u32;
+    let creator = 0u128;
+    let operator_id = 1u64;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
+
+        // Schedule domain runtime upgrade for the next 2 blocks
+        let current_block = frame_system::Pallet::<Test>::current_block_number();
+        let (upgrade_1, upgrade_2) = (current_block + 1, current_block + 2);
+        schedule_domain_runtime_upgrade::<Test>(runtime_id, upgrade_1);
+        schedule_domain_runtime_upgrade::<Test>(runtime_id, upgrade_2);
+
+        // Run to the block that the first upgrade happen, the upgrade should recorded in
+        // `DomainRuntimeUpgrades` but not `DomainRuntimeUpgradeRecords`
+        run_to_block::<Test>(upgrade_1, H256::random());
+        assert_eq!(DomainRuntimeUpgrades::<Test>::get(), vec![runtime_id]);
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).is_empty());
+
+        // In the next block after upgrade, the upgrade is accounted in `missed_domain_runtime_upgrade`
+        run_to_block::<Test>(upgrade_1 + 1, H256::random());
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(1));
+        run_to_block::<Test>(upgrade_2 + 1, H256::random());
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(2));
+
+        // The upgrade record is moved from `DomainRuntimeUpgrades` to `DomainRuntimeUpgradeRecords`
+        assert!(DomainRuntimeUpgrades::<Test>::get().is_empty());
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&upgrade_1));
+        assert!(DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&upgrade_2));
+    });
+}
+
+#[test]
+fn test_domain_runtime_upgrade_with_bundle() {
+    let runtime_id = 0u32;
+    let creator = 0u128;
+    let operator_id = 1u64;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        assert_eq!(HeadDomainNumber::<Test>::get(domain_id), 0);
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
+
+        // Schedule domain runtime upgrade for the next 2 blocks
+        let current_block = frame_system::Pallet::<Test>::current_block_number();
+        schedule_domain_runtime_upgrade::<Test>(runtime_id, current_block + 1);
+        schedule_domain_runtime_upgrade::<Test>(runtime_id, current_block + 2);
+        run_to_block::<Test>(current_block + 1, H256::random());
+        run_to_block::<Test>(current_block + 2, H256::random());
+
+        // Run to the next block after the 2 upgrades
+        run_to_block::<Test>(current_block + 3, H256::random());
+        assert_eq!(HeadDomainNumber::<Test>::get(domain_id), 0);
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(2));
+
+        // Submit a bundle after the upgrades, the domain chain should grow by 3 as 2 domain blocks
+        // created for the 2 upgrades and 1 domain block created for the bundle
+        let genesis_receipt = get_block_tree_node_at::<Test>(domain_id, 0)
+            .unwrap()
+            .execution_receipt;
+        let bundle_extrinsics_root = H256::random();
+        let bundle = create_dummy_bundle_with_receipts(
+            domain_id,
+            operator_id,
+            bundle_extrinsics_root,
+            genesis_receipt.clone(),
+        );
+        assert_ok!(crate::Pallet::<Test>::submit_bundle(
+            RawOrigin::None.into(),
+            bundle,
+        ));
+        assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 0);
+        assert_eq!(HeadDomainNumber::<Test>::get(domain_id), 3);
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
+
+        // Submit bundle that carry the receipt of the domain runtime upgrade block
+        let mut parent_receipt = genesis_receipt;
+        for i in 1..=2 {
+            run_to_block::<Test>(current_block + 3 + i, H256::random());
+            let next_receipt = create_dummy_receipt(
+                current_block + i,
+                frame_system::Pallet::<Test>::block_hash(current_block + i),
+                parent_receipt.hash::<DomainHashingFor<Test>>(),
+                // empty `bundle_extrinsics_root` since these blocks doesn't contain bundle
+                vec![],
+            );
+            // These receipt must able to pass `verify_execution_receipt`
+            assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id,
+                H256::random(),
+                next_receipt.clone(),
+            );
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
+                RawOrigin::None.into(),
+                bundle,
+            ));
+            parent_receipt = next_receipt;
+        }
+        assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 2);
+        // The gap between `HeadDomainNumber` and `HeadReceiptNumber` is increased from 1 to 3 as
+        // there are 2 domain blocks doesn't contain bundle
+        assert_eq!(
+            HeadDomainNumber::<Test>::get(domain_id) - HeadReceiptNumber::<Test>::get(domain_id),
+            3
+        );
+
+        // Schedule another domain runtime upgrade that will happen in a block that also contains bundle
+        schedule_domain_runtime_upgrade::<Test>(runtime_id, current_block + 6);
+        run_to_block::<Test>(current_block + 6, H256::random());
+        let next_receipt = create_dummy_receipt(
+            current_block + 3,
+            frame_system::Pallet::<Test>::block_hash(current_block + 3),
+            parent_receipt.hash::<DomainHashingFor<Test>>(),
+            vec![bundle_extrinsics_root],
+        );
+        assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
+        let bundle =
+            create_dummy_bundle_with_receipts(domain_id, operator_id, H256::random(), next_receipt);
+        assert_ok!(crate::Pallet::<Test>::submit_bundle(
+            RawOrigin::None.into(),
+            bundle,
+        ));
+
+        // Since the new domain block contains both runtime upgrade and bundle, the gap between `HeadDomainNumber`
+        // and `HeadReceiptNumber` remain the same and there is no `missed_domain_runtime_upgrade`
+        run_to_block::<Test>(current_block + 7, H256::random());
+        assert!(
+            DomainRuntimeUpgradeRecords::<Test>::get(runtime_id).contains_key(&(current_block + 6))
+        );
+        assert_eq!(Domains::missed_domain_runtime_upgrade(domain_id), Ok(0));
+        assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 3);
+        assert_eq!(
+            HeadDomainNumber::<Test>::get(domain_id) - HeadReceiptNumber::<Test>::get(domain_id),
+            3
+        );
+    });
 }
