@@ -1,9 +1,12 @@
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::Parser;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -11,6 +14,7 @@ use std::time::Duration;
 use subspace_farmer::cluster::cache::cache_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::utils::AsyncJoinOnDrop;
 
 /// Interval between cache self-identification broadcast messages
 pub(super) const CACHE_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_secs(5);
@@ -98,6 +102,12 @@ pub(super) struct CacheArgs {
     /// Cache group to use, the same cache group must be also specified on corresponding controller
     #[arg(long, default_value = "default")]
     cache_group: String,
+    /// Number of service instances.
+    ///
+    /// Increasing number of services allows to process more concurrent requests, but increasing
+    /// beyond number of CPU cores doesn't make sense and will likely hurt performance instead.
+    #[arg(long, default_value = "32")]
+    service_instances: NonZeroUsize,
     /// Additional cluster components
     #[clap(raw = true)]
     pub(super) additional_components: Vec<String>,
@@ -112,6 +122,7 @@ pub(super) async fn cache(
         mut disk_caches,
         tmp,
         cache_group,
+        service_instances,
         additional_components: _,
     } = cache_args;
 
@@ -165,15 +176,39 @@ pub(super) async fn cache(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let mut cache_services = (0..service_instances.get())
+        .map(|index| {
+            let nats_client = nats_client.clone();
+            let caches = caches.clone();
+            let cache_group = cache_group.clone();
+
+            AsyncJoinOnDrop::new(
+                tokio::spawn(async move {
+                    cache_service(
+                        nats_client,
+                        &caches,
+                        &cache_group,
+                        // Only one of the tasks needs to send periodic broadcast
+                        if index == 0 {
+                            CACHE_IDENTIFICATION_BROADCAST_INTERVAL
+                        } else {
+                            Duration::MAX
+                        },
+                    )
+                    .await
+                }),
+                true,
+            )
+        })
+        .collect::<FuturesUnordered<_>>();
+
     Ok(Box::pin(async move {
-        cache_service(
-            nats_client,
-            &caches,
-            &cache_group,
-            CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
-        )
-        .await
-        .map_err(|error| anyhow!("Cache service failed: {error}"))?;
+        cache_services
+            .next()
+            .await
+            .expect("Not empty; qed")
+            .map_err(|error| anyhow!("Cache service failed: {error}"))?
+            .map_err(|error| anyhow!("Cache service failed: {error}"))?;
 
         drop(tmp_directory);
 

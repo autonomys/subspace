@@ -44,7 +44,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.59"
-tokio = { version = "1.37.0", features = ["sync", "time"] }
+tokio = { version = "1.38.0", features = ["sync", "time"] }
 tracing = "0.1.40"
 
 [dev-dependencies]

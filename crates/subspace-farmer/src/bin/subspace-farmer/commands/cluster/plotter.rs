@@ -1,6 +1,8 @@
 use crate::commands::shared::PlottingThreadPriority;
 use anyhow::anyhow;
 use clap::Parser;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use prometheus_client::registry::Registry;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -15,6 +17,7 @@ use subspace_farmer::cluster::plotter::plotter_service;
 use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets, thread_pool_core_indices,
+    AsyncJoinOnDrop,
 };
 use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
@@ -77,6 +80,12 @@ pub(super) struct PlotterArgs {
     /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
     plotting_thread_priority: PlottingThreadPriority,
+    /// Number of service instances.
+    ///
+    /// Increasing number of services allows to process more concurrent requests, but increasing
+    /// beyond number of CPU cores doesn't make sense and will likely hurt performance instead.
+    #[arg(long, default_value = "32")]
+    service_instances: NonZeroUsize,
     /// Additional cluster components
     #[clap(raw = true)]
     pub(super) additional_components: Vec<String>,
@@ -98,6 +107,7 @@ where
         plotting_thread_pool_size,
         plotting_cpu_cores,
         plotting_thread_priority,
+        service_instances,
         additional_components: _,
     } = plotter_args;
 
@@ -161,7 +171,7 @@ where
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let global_mutex = Arc::default();
-    let cpu_plotter = CpuPlotter::<_, PosTable>::new(
+    let cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
         piece_getter,
         downloading_semaphore,
         plotting_thread_pool_manager,
@@ -169,13 +179,27 @@ where
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
-    );
+    ));
 
     // TODO: Metrics
+    let mut plotter_services = (0..service_instances.get())
+        .map(|_| {
+            let nats_client = nats_client.clone();
+            let cpu_plotter = Arc::clone(&cpu_plotter);
+
+            AsyncJoinOnDrop::new(
+                tokio::spawn(async move { plotter_service(&nats_client, &cpu_plotter).await }),
+                true,
+            )
+        })
+        .collect::<FuturesUnordered<_>>();
 
     Ok(Box::pin(async move {
-        plotter_service(&nats_client, &cpu_plotter)
+        plotter_services
+            .next()
             .await
-            .map_err(|error| anyhow!("Ploter service failed: {error}"))
+            .expect("Not empty; qed")
+            .map_err(|error| anyhow!("Plotter service failed: {error}"))?
+            .map_err(|error| anyhow!("Plotter service failed: {error}"))
     }))
 }

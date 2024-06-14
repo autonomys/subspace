@@ -83,7 +83,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }
 thiserror = "1.0.59"
-tokio = { version = "1.37.0", features = ["sync"] }
+tokio = { version = "1.38.0", features = ["sync"] }
 tracing = "0.1.40"
 
 sp-session = { git = "https://github.com/subspace/polkadot-sdk", rev = "6da3c45e1d5b3c1f09b5e54152b8848149f9d5e6" }

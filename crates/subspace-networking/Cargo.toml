@@ -42,7 +42,7 @@ serde_json = "1.0.116"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 thiserror = "1.0.59"
-tokio = { version = "1.37.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.38.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
