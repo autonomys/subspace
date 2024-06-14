@@ -27,16 +27,24 @@ jobs:
 
       - name: Generate testnet domain genesis storages
         run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --chain gemini-3h > domain-genesis-storage-gemini-3h
-          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --chain devnet > domain-genesis-storage-devnet
+          EVM_SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' domains/runtime/evm/src/lib.rs)
+          AUTO_ID_SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' domains/runtime/auto-id/src/lib.rs)
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain gemini-3h > evm-domain-genesis-storage-gemini-3h-v$EVM_SPEC_VERSION
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type evm --chain devnet > evm-domain-genesis-storage-devnet-v$EVM_SPEC_VERSION
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain gemini-3h > auto-id-domain-genesis-storage-gemini-3h-v$AUTO_ID_SPEC_VERSION
+          docker run --rm -u root ${{ steps.build.outputs.digest }} domain build-genesis-storage --runtime-type auto-id --chain devnet > auto-id-domain-genesis-storage-devnet-v$AUTO_ID_SPEC_VERSION
+          echo "EVM_SPEC_VERSION=$EVM_SPEC_VERSION" >> $GITHUB_ENV
+          echo "AUTO_ID_SPEC_VERSION=$AUTO_ID_SPEC_VERSION" >> $GITHUB_ENV
 
       - name: Upload domain genesis storages to artifacts
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
         with:
           name: domain-genesis-storage
           path: |
-            domain-genesis-storage-gemini-3h
-            domain-genesis-storage-devnet
+            evm-domain-genesis-storage-gemini-3h-v${{ env.EVM_SPEC_VERSION }}
+            evm-domain-genesis-storage-devnet-v${{ env.EVM_SPEC_VERSION }}
+            auto-id-domain-genesis-storage-gemini-3h-v${{ env.AUTO_ID_SPEC_VERSION }}
+            auto-id-domain-genesis-storage-devnet-v${{ env.AUTO_ID_SPEC_VERSION }}
           if-no-files-found: error
 
       - name: Upload domain genesis storages to assets
@@ -44,6 +52,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["domain-genesis-storage-gemini-3h", "domain-genesis-storage-devnet"]'
+          asset_paths: '["evm-domain-genesis-storage-gemini-3h-v${{ env.EVM_SPEC_VERSION }}", "evm-domain-genesis-storage-devnet-v${{ env.EVM_SPEC_VERSION }}", "auto-id-domain-genesis-storage-gemini-3h-v${{ env.AUTO_ID_SPEC_VERSION }}", "auto-id-domain-genesis-storage-devnet-v${{ env.AUTO_ID_SPEC_VERSION }}"]'
         # Only run for releases
         if: github.event_name == 'push' && github.ref_type == 'tag'
