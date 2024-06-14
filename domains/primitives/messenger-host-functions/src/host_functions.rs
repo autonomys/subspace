@@ -32,17 +32,17 @@ impl MessengerExtension {
 /// Implementation of Messenger host function.
 pub struct MessengerHostFunctionsImpl<Block, Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
-    executor: Arc<Executor>,
+    domain_executor: Arc<Executor>,
     _phantom: PhantomData<(Block, DomainBlock)>,
 }
 
 impl<Block, Client, DomainBlock, Executor>
     MessengerHostFunctionsImpl<Block, Client, DomainBlock, Executor>
 {
-    pub fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+    pub fn new(consensus_client: Arc<Client>, domain_executor: Arc<Executor>) -> Self {
         MessengerHostFunctionsImpl {
             consensus_client,
-            executor,
+            domain_executor,
             _phantom: Default::default(),
         }
     }
@@ -81,8 +81,10 @@ where
             .ok()
             .flatten()
             .map(|(data, _)| data.raw_genesis.into_storage())?;
-        let mut domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), domain_runtime.into());
+        let mut domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            domain_runtime.into(),
+        );
 
         domain_stateless_runtime.set_storage(domain_state);
         Some(domain_stateless_runtime)

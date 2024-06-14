@@ -132,7 +132,7 @@ impl FraudProofExtension {
 /// Trait Impl to query and verify Domains Fraud proof.
 pub struct FraudProofHostFunctionsImpl<Block, Client, DomainBlock, Executor, EFC> {
     consensus_client: Arc<Client>,
-    executor: Arc<Executor>,
+    domain_executor: Arc<Executor>,
     domain_extensions_factory_creator: EFC,
     _phantom: PhantomData<(Block, DomainBlock)>,
 }
@@ -142,12 +142,12 @@ impl<Block, Client, DomainBlock, Executor, EFC>
 {
     pub fn new(
         consensus_client: Arc<Client>,
-        executor: Arc<Executor>,
+        domain_executor: Arc<Executor>,
         domain_extensions_factory_creator: EFC,
     ) -> Self {
         FraudProofHostFunctionsImpl {
             consensus_client,
-            executor,
+            domain_executor,
             domain_extensions_factory_creator,
             _phantom: Default::default(),
         }
@@ -186,8 +186,10 @@ where
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let timestamp = runtime_api.timestamp(consensus_block_hash.into()).ok()?;
 
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            runtime_code.into(),
+        );
 
         domain_stateless_runtime
             .construct_timestamp_extrinsic(timestamp)
@@ -206,8 +208,10 @@ where
             .domain_chains_allowlist_update(consensus_block_hash.into(), domain_id)
             .ok()??;
 
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            runtime_code.into(),
+        );
 
         domain_stateless_runtime
             .construct_domain_update_chain_allowlist_extrinsic(updates)
@@ -226,8 +230,10 @@ where
             .ok()?;
 
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            runtime_code.into(),
+        );
 
         domain_stateless_runtime
             .construct_consensus_chain_byte_fee_extrinsic(consensus_chain_byte_fee)
@@ -274,8 +280,10 @@ where
 
         if let Some(upgraded_runtime) = maybe_upgraded_runtime {
             let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-            let domain_stateless_runtime =
-                StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+            let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+                self.domain_executor.clone(),
+                runtime_code.into(),
+            );
 
             domain_stateless_runtime
                 .construct_set_code_extrinsic(upgraded_runtime)
@@ -363,11 +371,13 @@ where
         opaque_extrinsic: OpaqueExtrinsic,
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let mut domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        let mut domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            runtime_code.into(),
+        );
         let extension_factory = (self.domain_extensions_factory_creator)(
             self.consensus_client.clone(),
-            self.executor.clone(),
+            self.domain_executor.clone(),
         );
         domain_stateless_runtime.set_extension_factory(extension_factory);
 
@@ -406,8 +416,10 @@ where
         req: StorageKeyRequest,
     ) -> Option<Vec<u8>> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime =
-            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            runtime_code.into(),
+        );
         Some(
             match req {
                 StorageKeyRequest::Transfers => domain_stateless_runtime.transfers_storage_key(),
@@ -633,7 +645,7 @@ where
         }
 
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-            self.executor.clone(),
+            self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
 
@@ -674,7 +686,7 @@ where
         let (domain_block_number, domain_block_hash) = domain_block_id;
         let mut domain_extensions = (self.domain_extensions_factory_creator)(
             self.consensus_client.clone(),
-            self.executor.clone(),
+            self.domain_executor.clone(),
         )
         .extensions_for(domain_block_hash.into(), domain_block_number.into());
 
@@ -682,7 +694,7 @@ where
             pre_state_root.into(),
             proof,
             &mut Default::default(),
-            self.executor.as_ref(),
+            self.domain_executor.as_ref(),
             execution_method,
             call_data,
             &runtime_code,
@@ -734,7 +746,7 @@ where
         } = domain_inherent_extrinsic_data;
 
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-            self.executor.clone(),
+            self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
 
@@ -783,7 +795,7 @@ where
         req: DomainStorageKeyRequest,
     ) -> Option<Vec<u8>> {
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-            self.executor.clone(),
+            self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
         let key = match req {
@@ -800,7 +812,7 @@ where
         call: StatelessDomainRuntimeCall,
     ) -> Option<bool> {
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-            self.executor.clone(),
+            self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
 
@@ -840,7 +852,7 @@ where
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<Weight> {
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
-            self.executor.clone(),
+            self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
         let mut estimated_bundle_weight = Weight::default();
