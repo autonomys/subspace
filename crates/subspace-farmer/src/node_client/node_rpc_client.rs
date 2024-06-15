@@ -234,10 +234,15 @@ impl NodeClient for NodeRpcClient {
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
-        Ok(self
-            .client
-            .request("subspace_piece", rpc_params![&piece_index])
-            .await?)
+        let client = Arc::clone(&self.client);
+        // Spawn a separate task to improve concurrency due to slow-ish JSON decoding that causes
+        // issues for jsonrpsee
+        let piece_fut = tokio::task::spawn(async move {
+            client
+                .request("subspace_piece", rpc_params![&piece_index])
+                .await
+        });
+        Ok(piece_fut.await??)
     }
 
     async fn acknowledge_archived_segment_header(

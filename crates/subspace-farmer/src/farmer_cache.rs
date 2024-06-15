@@ -531,7 +531,7 @@ where
             debug!(%segment_index, "Downloading potentially useful pieces");
 
             // We do not insert pieces into cache/heap yet, so we don't know if all of these pieces
-            // will be included, but there is a good chance they will be and we want to acknowledge
+            // will be included, but there is a good chance they will be, and we want to acknowledge
             // new segment header as soon as possible
             let pieces_to_maybe_include = segment_index
                 .segment_piece_indexes()
