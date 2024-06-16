@@ -188,12 +188,8 @@ pub(super) async fn cache(
                         nats_client,
                         &caches,
                         &cache_group,
-                        // Only one of the tasks needs to send periodic broadcast
-                        if index == 0 {
-                            CACHE_IDENTIFICATION_BROADCAST_INTERVAL
-                        } else {
-                            Duration::MAX
-                        },
+                        CACHE_IDENTIFICATION_BROADCAST_INTERVAL,
+                        index == 0,
                     )
                     .await
                 }),
