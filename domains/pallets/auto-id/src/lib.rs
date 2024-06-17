@@ -114,6 +114,12 @@ impl Certificate {
         }
     }
 
+    fn issued_serials(&self) -> BTreeSet<Serial> {
+        match self {
+            Certificate::X509(cert) => cert.issued_serials.clone(),
+        }
+    }
+
     /// Checks if the certificate is valid at this time.
     pub(crate) fn is_valid_at(&self, time: Moment) -> bool {
         match self {
@@ -182,6 +188,21 @@ pub enum RegisterAutoIdX509 {
         signature_algorithm: DerVec,
         signature: Vec<u8>,
     },
+}
+
+/// Request to renew AutoId.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum RenewAutoId {
+    X509(RenewX509Certificate),
+}
+
+/// Type holds X509 certificate details used to renew.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct RenewX509Certificate {
+    issuer_id: Option<Identifier>,
+    certificate: DerVec,
+    signature_algorithm: DerVec,
+    signature: Vec<u8>,
 }
 
 /// Signature holds algorithm used and the signature value.
@@ -267,6 +288,10 @@ mod pallet {
         NonceOverflow,
         /// Identifier already exists.
         AutoIdIdentifierAlreadyExists,
+        /// Identifier mismatch.
+        AutoIdIdentifierMismatch,
+        /// Public key mismatch.
+        PublicKeyMismatch,
     }
 
     #[pallet::event]
@@ -278,6 +303,8 @@ mod pallet {
         CertificateRevoked(Identifier),
         /// Emits when an AutoId is deactivated.
         AutoIdDeactivated(Identifier),
+        /// Emits when an AutoId is renewed.
+        AutoIdRenewed(Identifier),
     }
 
     #[pallet::call]
@@ -319,6 +346,20 @@ mod pallet {
         ) -> DispatchResult {
             ensure_signed(origin)?;
             Self::do_deactivate_auto_id(auto_id_identifier, signature)?;
+            Ok(())
+        }
+
+        /// Renews a given AutoId.
+        #[pallet::call_index(3)]
+        // TODO: benchmark
+        #[pallet::weight({10_000})]
+        pub fn renew_auto_id(
+            origin: OriginFor<T>,
+            auto_id_identifier: Identifier,
+            req: RenewAutoId,
+        ) -> DispatchResult {
+            ensure_signed(origin)?;
+            Self::do_renew_auto_id_certificate(auto_id_identifier, req)?;
             Ok(())
         }
     }
@@ -432,6 +473,104 @@ impl<T: Config> Pallet<T> {
         AutoIds::<T>::insert(auto_id_identifier, auto_id);
 
         Self::deposit_event(Event::<T>::NewAutoIdRegistered(auto_id_identifier));
+        Ok(())
+    }
+
+    fn do_renew_auto_id_certificate(
+        auto_id_identifier: Identifier,
+        req: RenewAutoId,
+    ) -> DispatchResult {
+        let current_time = T::Time::now();
+        let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownAutoId)?;
+        let RenewAutoId::X509(req) = req;
+        let tbs_certificate = decode_tbs_certificate(req.certificate.clone())
+            .ok_or(Error::<T>::InvalidCertificate)?;
+
+        let issuer_public_key_info = match req.issuer_id {
+            None => {
+                // revoke old certificate serial
+                CertificateRevocationList::<T>::mutate(auto_id_identifier, |serials| {
+                    serials
+                        .get_or_insert_with(BTreeSet::new)
+                        .insert(auto_id.certificate.serial());
+                });
+                auto_id.certificate.subject_public_key_info()
+            }
+            Some(issuer_id) => {
+                let mut issuer_auto_id =
+                    AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?;
+                let issuer_public_key_info = issuer_auto_id.certificate.subject_public_key_info();
+                ensure!(
+                    issuer_auto_id.certificate.is_valid_at(current_time),
+                    Error::<T>::ExpiredCertificate
+                );
+                ensure!(
+                    !CertificateRevocationList::<T>::get(issuer_id).map_or(false, |serials| {
+                        serials.iter().any(|s| {
+                            *s == issuer_auto_id.certificate.serial()
+                                || *s == tbs_certificate.serial
+                        })
+                    }),
+                    Error::<T>::CertificateRevoked
+                );
+
+                issuer_auto_id
+                    .certificate
+                    .issue_certificate_serial::<T>(tbs_certificate.serial)?;
+
+                // revoke old certificate serial
+                CertificateRevocationList::<T>::mutate(issuer_id, |serials| {
+                    serials
+                        .get_or_insert_with(BTreeSet::new)
+                        .insert(auto_id.certificate.serial());
+                });
+
+                AutoIds::<T>::insert(issuer_id, issuer_auto_id);
+                issuer_public_key_info
+            }
+        };
+
+        let signature_req = SignatureVerificationRequest {
+            public_key_info: issuer_public_key_info,
+            signature_algorithm: req.signature_algorithm,
+            data: req.certificate.0.clone(),
+            signature: req.signature,
+        };
+        verify_signature(signature_req).ok_or(Error::<T>::InvalidSignature)?;
+        ensure!(
+            tbs_certificate.validity.is_valid_at(current_time),
+            Error::<T>::ExpiredCertificate
+        );
+
+        ensure!(
+            auto_id.certificate.subject_public_key_info()
+                == tbs_certificate.subject_public_key_info,
+            Error::<T>::PublicKeyMismatch
+        );
+
+        let updated_certificate = Certificate::X509(X509Certificate {
+            issuer_id: req.issuer_id,
+            serial: tbs_certificate.serial,
+            subject_common_name: tbs_certificate.subject_common_name,
+            subject_public_key_info: tbs_certificate.subject_public_key_info,
+            validity: tbs_certificate.validity,
+            raw: req.certificate,
+            issued_serials: auto_id.certificate.issued_serials(),
+            nonce: auto_id.certificate.nonce(),
+        });
+
+        ensure!(
+            auto_id_identifier == updated_certificate.derive_identifier(),
+            Error::<T>::AutoIdIdentifierMismatch
+        );
+
+        let updated_auto_id = AutoId {
+            certificate: updated_certificate,
+        };
+
+        AutoIds::<T>::insert(auto_id_identifier, updated_auto_id);
+
+        Self::deposit_event(Event::<T>::AutoIdRenewed(auto_id_identifier));
         Ok(())
     }
 
