@@ -66,9 +66,7 @@ pub(super) struct PlotterArgs {
     plotting_thread_pool_size: Option<NonZeroUsize>,
     /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
     /// otherwise. It replaces both `--sector-encoding-concurrency` and
-    /// `--plotting-thread-pool-size` options if specified. Requires `--replotting-cpu-cores` to be
-    /// specified with the same number of CPU cores groups (or not specified at all, in which case
-    /// it'll use the same thread pool as plotting).
+    /// `--plotting-thread-pool-size` options if specified.
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
