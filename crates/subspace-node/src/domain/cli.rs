@@ -16,7 +16,7 @@
 
 use crate::commands::{CreateDomainKeyOptions, InsertDomainKeyOptions};
 use crate::domain::{auto_id_chain_spec, evm_chain_spec};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::MultiAccountId;
 use parity_scale_codec::Encode;
@@ -312,10 +312,19 @@ impl CliConfiguration<Self> for DomainCli {
     }
 }
 
-// TODO: make the command generic over different runtime type instead of just the evm domain runtime
+#[derive(Debug, Clone, ValueEnum)]
+pub enum DomainRuntimeType {
+    Evm,
+    AutoId,
+}
+
 /// The `build-genesis-storage` command used to build the genesis storage of the evm domain chain.
 #[derive(Debug, Clone, Parser)]
 pub struct BuildGenesisStorageCmd {
+    // The domain runtime type
+    #[arg(long)]
+    pub runtime_type: DomainRuntimeType,
+
     /// The base struct of the build-genesis-storage command.
     #[clap(flatten)]
     pub shared_params: SharedParams,
@@ -327,7 +336,10 @@ impl BuildGenesisStorageCmd {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
         let domain_chain_spec = match chain_id.as_str() {
-            "gemini-3h" | "devnet" | "dev" => evm_chain_spec::load_chain_spec(&chain_id)?,
+            "gemini-3h" | "devnet" | "dev" => match self.runtime_type {
+                DomainRuntimeType::Evm => evm_chain_spec::load_chain_spec(&chain_id)?,
+                DomainRuntimeType::AutoId => auto_id_chain_spec::load_chain_spec(&chain_id)?,
+            },
             unknown_id => {
                 eprintln!(
                     "unknown chain {unknown_id:?}, expected gemini-3h, devnet, dev, or local",

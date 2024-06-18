@@ -87,8 +87,7 @@ pub fn devnet_config(
     runtime_genesis_config: RuntimeGenesisConfig,
 ) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
     Ok(GenericChainSpec::builder(
-        evm_domain_runtime::WASM_BINARY
-            .ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
+        WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
     )
     .with_name("Subspace Devnet AutoId Domain")
