@@ -551,7 +551,7 @@ async fn plot_single_sector_internal(
                         ))));
                     }
                 };
-                sector_write_offset += sector_chunk.len() as u64;
+                let sector_chunk_size = sector_chunk.len() as u64;
 
                 let write_fut = task::spawn_blocking({
                     let plot_file = Arc::clone(plot_file);
@@ -561,6 +561,8 @@ async fn plot_single_sector_internal(
                 write_fut.await.map_err(|error| {
                     PlottingError::LowLevel(format!("Failed to spawn blocking tokio task: {error}"))
                 })??;
+
+                sector_write_offset += sector_chunk_size;
             }
             drop(sector);
 
