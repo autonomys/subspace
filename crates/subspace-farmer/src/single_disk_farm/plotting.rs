@@ -760,11 +760,10 @@ where
     let mut sectors_to_replot = Vec::with_capacity(usize::from(target_sector_count) / 10);
 
     loop {
-        let archived_segment_header = *archived_segments_receiver.borrow_and_update();
-        trace!(
-            segment_index = %archived_segment_header.segment_index(),
-            "New archived segment received",
-        );
+        let segment_index = archived_segments_receiver
+            .borrow_and_update()
+            .segment_index();
+        trace!(%segment_index, "New archived segment received");
 
         let sectors_metadata = sectors_metadata.read().await;
         let sectors_to_check = sectors_metadata
@@ -782,7 +781,7 @@ where
                 );
                 // +1 means we will start replotting a bit before it actually expires to avoid
                 // storing expired sectors
-                if expires_at <= (archived_segment_header.segment_index() + SegmentIndex::ONE) {
+                if expires_at <= (segment_index + SegmentIndex::ONE) {
                     debug!(
                         %sector_index,
                         %history_size,
@@ -792,13 +791,11 @@ where
 
                     handlers.sector_update.call_simple(&(
                         sector_index,
-                        SectorUpdate::Expiration(
-                            if expires_at <= archived_segment_header.segment_index() {
-                                SectorExpirationDetails::Expired
-                            } else {
-                                SectorExpirationDetails::AboutToExpire
-                            },
-                        ),
+                        SectorUpdate::Expiration(if expires_at <= segment_index {
+                            SectorExpirationDetails::Expired
+                        } else {
+                            SectorExpirationDetails::AboutToExpire
+                        }),
                     ));
 
                     // Time to replot
@@ -854,7 +851,7 @@ where
                     );
                     // +1 means we will start replotting a bit before it actually expires to avoid
                     // storing expired sectors
-                    if expires_at <= (archived_segment_header.segment_index() + SegmentIndex::ONE) {
+                    if expires_at <= (segment_index + SegmentIndex::ONE) {
                         debug!(
                             %sector_index,
                             %history_size,
@@ -864,13 +861,11 @@ where
 
                         handlers.sector_update.call_simple(&(
                             sector_index,
-                            SectorUpdate::Expiration(
-                                if expires_at <= archived_segment_header.segment_index() {
-                                    SectorExpirationDetails::Expired
-                                } else {
-                                    SectorExpirationDetails::AboutToExpire
-                                },
-                            ),
+                            SectorUpdate::Expiration(if expires_at <= segment_index {
+                                SectorExpirationDetails::Expired
+                            } else {
+                                SectorExpirationDetails::AboutToExpire
+                            }),
                         ));
 
                         // Time to replot
