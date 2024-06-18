@@ -2,7 +2,7 @@ use crate::pallet::AutoIds;
 use crate::{
     self as pallet_auto_id, Certificate, CertificateAction, CertificateActionType,
     CertificateRevocationList, Error, Identifier, Pallet, RegisterAutoId, RegisterAutoIdX509,
-    Signature, X509Certificate,
+    RenewAutoId, RenewX509Certificate, Signature, X509Certificate,
 };
 use alloc::collections::BTreeSet;
 use codec::Encode;
@@ -180,6 +180,73 @@ fn register_issuer_auto_id() -> Identifier {
     auto_id_identifier
 }
 
+fn renew_issuer_auto_id(auto_id_identifier: Identifier) {
+    let issuer_cert = include_bytes!("../res/updated.issuer.cert.der").to_vec();
+    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&issuer_cert).unwrap();
+    assert_eq!(auto_id_identifier, identifier_from_x509_cert(None, &cert));
+
+    Pallet::<Test>::renew_auto_id(
+        RawOrigin::Signed(1).into(),
+        auto_id_identifier,
+        RenewAutoId::X509(RenewX509Certificate {
+            issuer_id: None,
+            certificate: cert.tbs_certificate.as_ref().to_vec().into(),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
+            signature: cert.signature_value.as_ref().to_vec(),
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(
+        AutoIds::<Test>::get(auto_id_identifier)
+            .unwrap()
+            .certificate
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .as_bytes()
+            .to_vec()
+    );
+}
+
+fn renew_leaf_auto_id(auto_id_identifier: Identifier, issuer_id: Identifier) {
+    let issuer_cert = include_bytes!("../res/updated.leaf.cert.der").to_vec();
+    let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&issuer_cert).unwrap();
+    assert_eq!(
+        auto_id_identifier,
+        identifier_from_x509_cert(Some(issuer_id), &cert)
+    );
+
+    Pallet::<Test>::renew_auto_id(
+        RawOrigin::Signed(1).into(),
+        auto_id_identifier,
+        RenewAutoId::X509(RenewX509Certificate {
+            issuer_id: Some(issuer_id),
+            certificate: cert.tbs_certificate.as_ref().to_vec().into(),
+            signature_algorithm: algorithm_to_der(cert.signature_algorithm.clone()),
+            signature: cert.signature_value.as_ref().to_vec(),
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(
+        AutoIds::<Test>::get(auto_id_identifier)
+            .unwrap()
+            .certificate
+            .subject_common_name(),
+        cert.subject()
+            .iter_common_name()
+            .next()
+            .unwrap()
+            .attr_value()
+            .as_bytes()
+            .to_vec()
+    );
+}
+
 fn register_leaf_auto_id(issuer_auto_id: Identifier) -> Identifier {
     let cert = include_bytes!("../res/leaf.cert.der").to_vec();
     let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&cert).unwrap();
@@ -276,6 +343,23 @@ fn test_register_issuer_auto_id_duplicate() {
             ),
             Error::<Test>::AutoIdIdentifierAlreadyExists
         );
+    })
+}
+
+#[test]
+fn test_renew_issuer_auto_id() {
+    new_test_ext().execute_with(|| {
+        let auto_id_identifier = register_issuer_auto_id();
+        renew_issuer_auto_id(auto_id_identifier);
+    })
+}
+
+#[test]
+fn test_renew_leaf_auto_id() {
+    new_test_ext().execute_with(|| {
+        let issuer_id = register_issuer_auto_id();
+        let auto_id_identifier = register_leaf_auto_id(issuer_id);
+        renew_leaf_auto_id(auto_id_identifier, issuer_id)
     })
 }
 
