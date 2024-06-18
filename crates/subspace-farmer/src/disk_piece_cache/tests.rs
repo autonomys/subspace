@@ -1,4 +1,4 @@
-use crate::piece_cache::{PieceCache, PieceCacheError, PieceCacheOffset};
+use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError, PieceCacheOffset};
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -8,7 +8,7 @@ use tempfile::tempdir;
 fn basic() {
     let path = tempdir().unwrap();
     {
-        let disk_piece_cache = PieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
 
         // Initially empty
         assert_eq!(
@@ -88,7 +88,7 @@ fn basic() {
         // Writing beyond capacity fails
         assert_matches!(
             disk_piece_cache.write_piece(PieceCacheOffset(2), PieceIndex::ZERO, &Piece::default()),
-            Err(PieceCacheError::OffsetOutsideOfRange { .. })
+            Err(DiskPieceCacheError::OffsetOutsideOfRange { .. })
         );
 
         // Override works
@@ -115,7 +115,7 @@ fn basic() {
 
     // Reopening works
     {
-        let disk_piece_cache = PieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
         // Two pieces stored
         assert_eq!(
             disk_piece_cache
@@ -128,9 +128,9 @@ fn basic() {
 
     // Wiping works
     {
-        PieceCache::wipe(path.as_ref()).unwrap();
+        DiskPieceCache::wipe(path.as_ref()).unwrap();
 
-        let disk_piece_cache = PieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
         // Wiped successfully
         assert_eq!(
             disk_piece_cache

@@ -1,23 +1,32 @@
+//! Primary [`Farm`] implementation that deals with hardware directly
+//!
+//! Single disk farm is an abstraction that contains an identity, associated plot with metadata and
+//! a small piece cache. It fully manages farming and plotting process, including listening to node
+//! notifications, producing solutions and singing rewards.
+
 pub mod farming;
+pub mod identity;
 pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotted_sectors;
 mod plotting;
+mod reward_signing;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlottedSectors, SectorUpdate};
-pub use crate::farm::{FarmingError, FarmingNotification};
-use crate::identity::{Identity, IdentityError};
+use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
+use crate::farm::{
+    Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceReader, PlottedSectors,
+    SectorUpdate,
+};
 use crate::node_client::NodeClient;
-use crate::piece_cache::{PieceCache, PieceCacheError};
 use crate::plotter::Plotter;
-use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
-use crate::single_disk_farm::piece_cache::DiskPieceCache;
+use crate::single_disk_farm::identity::{Identity, IdentityError};
+use crate::single_disk_farm::piece_cache::SingleDiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotted_sectors::SingleDiskPlottedSectors;
@@ -25,6 +34,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
 };
+use crate::single_disk_farm::reward_signing::reward_signing;
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
@@ -323,7 +333,7 @@ pub enum SingleDiskFarmError {
     TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
-    PieceCacheError(#[from] PieceCacheError),
+    PieceCacheError(#[from] DiskPieceCacheError),
     /// Can't preallocate metadata file, probably not enough space on disk
     #[error("Can't preallocate metadata file, probably not enough space on disk: {0}")]
     CantPreallocateMetadataFile(io::Error),
@@ -634,7 +644,7 @@ struct SingleDiskFarmInit {
     metadata_header: PlotMetadataHeader,
     target_sector_count: u16,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
-    piece_cache: DiskPieceCache,
+    piece_cache: SingleDiskPieceCache,
     plot_cache: DiskPlotCache,
 }
 
@@ -653,7 +663,7 @@ pub struct SingleDiskFarm {
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
-    piece_cache: DiskPieceCache,
+    piece_cache: SingleDiskPieceCache,
     plot_cache: DiskPlotCache,
     piece_reader: DiskPieceReader,
     /// Sender that will be used to signal to background threads that they should start
@@ -1251,10 +1261,10 @@ impl SingleDiskFarm {
             // Cache must not be empty, ensure it contains at least one element even if
             // percentage-wise it will use more space
             if single_plot_with_cache_space - single_sector_overhead
-                < PieceCache::element_size() as u64
+                < DiskPieceCache::element_size() as u64
             {
                 single_plot_with_cache_space =
-                    single_sector_overhead + PieceCache::element_size() as u64;
+                    single_sector_overhead + DiskPieceCache::element_size() as u64;
             }
 
             return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
@@ -1273,7 +1283,7 @@ impl SingleDiskFarm {
                 - fixed_space_usage
                 - plot_file_size
                 - (sector_metadata_size as u64 * target_sector_count);
-            (cache_space / u64::from(PieceCache::element_size())) as u32
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         } else {
             0
         };
@@ -1424,12 +1434,12 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = DiskPieceCache::new(
+        let piece_cache = SingleDiskPieceCache::new(
             *single_disk_farm_info.id(),
             if cache_capacity == 0 {
                 None
             } else {
-                Some(PieceCache::open(directory, cache_capacity)?)
+                Some(DiskPieceCache::open(directory, cache_capacity)?)
             },
         );
         let plot_cache = DiskPlotCache::new(
@@ -1555,7 +1565,7 @@ impl SingleDiskFarm {
     }
 
     /// Get piece cache instance
-    pub fn piece_cache(&self) -> DiskPieceCache {
+    pub fn piece_cache(&self) -> SingleDiskPieceCache {
         self.piece_cache.clone()
     }
 
@@ -1643,7 +1653,7 @@ impl SingleDiskFarm {
             }
         }
 
-        PieceCache::wipe(directory)?;
+        DiskPieceCache::wipe(directory)?;
 
         info!(
             "Deleting info file at {}",
@@ -2135,7 +2145,7 @@ impl SingleDiskFarm {
         }
 
         if target.cache() {
-            let file = directory.join(PieceCache::FILE_NAME);
+            let file = directory.join(DiskPieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
             let cache_file = match OpenOptions::new().read(true).write(!dry_run).open(&file) {
@@ -2162,7 +2172,7 @@ impl SingleDiskFarm {
                 }
             };
 
-            let element_size = PieceCache::element_size();
+            let element_size = DiskPieceCache::element_size();
             let number_of_cached_elements = cache_size / u64::from(element_size);
             let dummy_element = vec![0; element_size as usize];
             (0..number_of_cached_elements)

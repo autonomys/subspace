@@ -1,3 +1,5 @@
+//! Wrapper for pieces plotted under multiple plots
+
 use crate::farm::{FarmError, PieceReader};
 use async_trait::async_trait;
 use rand::prelude::*;
@@ -34,7 +36,7 @@ struct PieceDetails<FarmIndex> {
     piece_offset: PieceOffset,
 }
 
-/// Wrapper data structure for pieces plotted under multiple plots.
+/// Wrapper data structure for pieces plotted under multiple plots
 #[derive(Debug, Default)]
 pub struct PlottedPieces<FarmIndex> {
     readers: Vec<Arc<dyn PieceReader>>,

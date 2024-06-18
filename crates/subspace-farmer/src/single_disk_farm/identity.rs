@@ -1,3 +1,5 @@
+//! Farm identity
+
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};

@@ -1,3 +1,10 @@
+//! Plotter abstraction
+//!
+//! Plotter is abstracted away to support different implementation. Originally it was just CPU, but
+//! eventually abstract network-attached, GPU or hybrid plotters become an option as well. Having a
+//! trait with async API representing plotting functionality allows composition of different
+//! implementations without the rest of the library being aware of implementation details.
+
 pub mod cpu;
 
 use async_trait::async_trait;

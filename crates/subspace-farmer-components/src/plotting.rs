@@ -1,3 +1,11 @@
+//! Plotting utilities
+//!
+//! This module contains functions and data structures that can be used for plotting purposes
+//! (primarily with CPU).
+//!
+//! Plotted sectors can be written to plot and later [`read`](crate::reading) and/or
+//! [`audited`](crate::auditing)/[`proven`](crate::proving) using other modules of this crate.
+
 use crate::sector::{
     sector_record_chunks_size, sector_size, EncodedChunksUsed, RawSector, RecordMetadata,
     SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
@@ -227,8 +235,8 @@ pub struct DownloadSectorOptions<'a, PG> {
 
 /// Download sector for plotting.
 ///
-/// This will identify necessary pieces and download them from DSN, after which they can be encoded
-/// and written to the plot.
+/// This will identify necessary pieces and download them using provided piece getter, after which
+/// they can be encoded using [`encode_sector`] and written to the plot.
 pub async fn download_sector<PG>(
     options: DownloadSectorOptions<'_, PG>,
 ) -> Result<DownloadedSector, PlottingError>
@@ -336,6 +344,10 @@ where
     pub global_mutex: &'a AsyncMutex<()>,
 }
 
+/// Encode downloaded sector.
+///
+/// This function encodes downloaded sector pieces into provided sector output and returns sector
+/// metadata.
 pub fn encode_sector<PosTable>(
     downloaded_sector: DownloadedSector,
     encoding_options: EncodeSectorOptions<'_, PosTable>,

@@ -1,6 +1,5 @@
-pub mod farmer_piece_getter;
-pub mod piece_validator;
-pub mod plotted_pieces;
+//! Various utilities used by farmer or with farmer
+
 pub mod ss58;
 #[cfg(test)]
 mod tests;

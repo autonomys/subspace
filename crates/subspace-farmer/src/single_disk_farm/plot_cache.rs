@@ -1,3 +1,5 @@
+//! Plot cache for single disk farm
+
 #[cfg(test)]
 mod tests;
 

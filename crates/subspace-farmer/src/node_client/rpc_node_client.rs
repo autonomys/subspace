@@ -1,3 +1,5 @@
+//! Node client implementation that connects to node via RPC (WebSockets)
+
 use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::{RwLock as AsyncRwLock, Semaphore};
@@ -59,16 +61,19 @@ async fn sync_segment_headers(
     Ok(())
 }
 
-/// `WsClient` wrapper.
+/// Node client implementation that connects to node via RPC (WebSockets).
+///
+/// This implementation is supposed to be used on local network and not via public Internet due to
+/// sensitive contents.
 #[derive(Debug, Clone)]
-pub struct NodeRpcClient {
+pub struct RpcNodeClient {
     client: Arc<WsClient>,
     piece_request_semaphore: Arc<Semaphore>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
 
-impl NodeRpcClient {
+impl RpcNodeClient {
     /// Create a new instance of [`NodeClient`].
     pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(
@@ -146,7 +151,7 @@ impl NodeRpcClient {
 }
 
 #[async_trait]
-impl NodeClient for NodeRpcClient {
+impl NodeClient for RpcNodeClient {
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
         Ok(self
             .client
@@ -295,7 +300,7 @@ impl NodeClient for NodeRpcClient {
 }
 
 #[async_trait]
-impl NodeClientExt for NodeRpcClient {
+impl NodeClientExt for RpcNodeClient {
     async fn last_segment_headers(
         &self,
         limit: u64,

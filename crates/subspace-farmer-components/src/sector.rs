@@ -1,3 +1,11 @@
+//! Sector-related data structures
+//!
+//! Sectors and corresponding metadata created by functions in [`plotting`](crate::plotting) module
+//! have a specific structure, represented by data structured in this module.
+//!
+//! It is typically not needed to construct these data structures explicitly outside of this crate,
+//! instead they will be returned as a result of certain operations (like plotting).
+
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;

@@ -1,3 +1,12 @@
+//! Abstract farm API
+//!
+//! This module provides a bunch of traits and simple data structures that serve as a layer of
+//! abstraction that improves composition without having assumptions about implementation details.
+//!
+//! Implementations can be local (backed by local disk) and remote (connected via network in some
+//! way). This crate provides a few of such implementations, but more can be created externally as
+//! well if needed without modifying the library itself.
+
 use crate::node_client;
 use async_trait::async_trait;
 use derive_more::{Display, From};
@@ -18,8 +27,11 @@ use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
 use ulid::Ulid;
 
+pub mod plotted_pieces;
+
 /// Erased error type
 pub type FarmError = Box<dyn std::error::Error + Send + Sync + 'static>;
+/// Type alias used for event handlers
 pub type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 
 /// Getter for plotted sectors
@@ -94,7 +106,11 @@ impl PieceCacheId {
 #[repr(transparent)]
 pub struct PieceCacheOffset(pub(crate) u32);
 
-/// Abstract piece cache implementation
+/// Abstract piece cache implementation.
+///
+/// Piece cache is a simple container that stores concatenated pieces in a flat file at specific
+/// offsets. Implementation doesn't have to be local though, cache can be remote somewhere on the
+/// network, APIs are intentionally async to account for that.
 #[async_trait]
 pub trait PieceCache: Send + Sync + fmt::Debug {
     /// ID of this cache
@@ -163,7 +179,12 @@ pub enum MaybePieceStoredResult {
     Yes,
 }
 
-/// Abstract plot cache implementation
+/// Abstract plot cache implementation.
+///
+/// Plot cache is a cache that exploits space towards the end of the plot that is not yet occupied
+/// by sectors in order to increase effective caching space, which helps with plotting speed for
+/// small farmers since they don't need to retrieve the same pieces from the network over and over
+/// again, which is slower and uses a lot of Internet bandwidth.
 #[async_trait]
 pub trait PlotCache: Send + Sync + fmt::Debug {
     /// Check if piece is potentially stored in this cache (not guaranteed to be because it might be

@@ -1,6 +1,8 @@
+//! Farmer-specific piece getter
+
+use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use crate::utils::plotted_pieces::PlottedPieces;
 use async_lock::{
     Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
 };
@@ -22,6 +24,8 @@ use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
+
+pub mod piece_validator;
 
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
@@ -108,6 +112,9 @@ struct Inner<FarmIndex, PV, NC> {
     request_semaphore: Arc<Semaphore>,
 }
 
+/// Farmer-specific piece getter.
+///
+/// Implements [`PieceGetter`] for plotting purposes, but useful outside of that as well.
 pub struct FarmerPieceGetter<FarmIndex, PV, NC> {
     inner: Arc<Inner<FarmIndex, PV, NC>>,
 }

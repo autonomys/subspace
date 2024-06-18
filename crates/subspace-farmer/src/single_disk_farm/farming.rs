@@ -1,3 +1,8 @@
+//! Farming-related utilities
+//!
+//! These utilities do not expose the whole farming workflow, but rather small bits of it that can
+//! be useful externally (for example for benchmarking purposes in CLI).
+
 pub mod rayon_files;
 
 use crate::farm::{

@@ -1,6 +1,6 @@
+use crate::disk_piece_cache::DiskPieceCache;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error, NodeClient};
-use crate::piece_cache::PieceCache;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
@@ -207,8 +207,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(PieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(PieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
                 ],
                 vec![],
             )
@@ -407,8 +407,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(PieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(PieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
                 ],
                 vec![],
             )

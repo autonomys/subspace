@@ -22,27 +22,27 @@ use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PublicKey, Record};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{
     FarmingNotification, PlottedSectors, SectorExpirationDetails, SectorPlottingDetails,
     SectorUpdate,
 };
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
+use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
+use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
+use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
+use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
-use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
-use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
-use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets,
     recommended_number_of_farming_threads, run_future_in_dedicated_thread,
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
-use subspace_farmer::Identity;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -311,7 +311,7 @@ where
     let plotted_pieces = Arc::new(AsyncRwLock::new(PlottedPieces::default()));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
-    let node_client = NodeRpcClient::new(&node_rpc_url)
+    let node_client = RpcNodeClient::new(&node_rpc_url)
         .await
         .map_err(|error| anyhow!("Failed to connect to node RPC: {error}"))?;
 
