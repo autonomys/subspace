@@ -11,7 +11,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 #[cfg(not(windows))]
 use std::fs::File;
 use std::future::{pending, Future};
@@ -755,8 +755,7 @@ where
         let _ = acknowledgement_receiver.await;
     }
 
-    let mut sectors_expire_at =
-        HashMap::<SectorIndex, SegmentIndex>::with_capacity(usize::from(target_sector_count));
+    let mut sectors_expire_at = vec![None::<SegmentIndex>; usize::from(target_sector_count)];
     // 10% capacity is generous and should prevent reallocation in most cases
     let mut sectors_to_replot = Vec::with_capacity(usize::from(target_sector_count) / 10);
 
@@ -772,7 +771,9 @@ where
             .iter()
             .map(|sector_metadata| (sector_metadata.sector_index, sector_metadata.history_size));
         for (sector_index, history_size) in sectors_to_check {
-            if let Some(expires_at) = sectors_expire_at.get(&sector_index).copied() {
+            if let Some(Some(expires_at)) =
+                sectors_expire_at.get(usize::from(sector_index)).copied()
+            {
                 trace!(
                     %sector_index,
                     %history_size,
@@ -893,7 +894,11 @@ where
                         ));
 
                         // Store expiration so we don't have to recalculate it later
-                        sectors_expire_at.insert(sector_index, expires_at);
+                        if let Some(expires_at_entry) =
+                            sectors_expire_at.get_mut(usize::from(sector_index))
+                        {
+                            expires_at_entry.replace(expires_at);
+                        }
                     }
                 }
             }
@@ -921,7 +926,9 @@ where
             // We do not care if message was sent back or sender was just dropped
             let _ = acknowledgement_receiver.await;
 
-            sectors_expire_at.remove(&sector_index);
+            if let Some(expires_at_entry) = sectors_expire_at.get_mut(usize::from(sector_index)) {
+                expires_at_entry.take();
+            }
         }
 
         if archived_segments_receiver.changed().await.is_err() {
