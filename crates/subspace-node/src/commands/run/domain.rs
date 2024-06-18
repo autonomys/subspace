@@ -379,7 +379,7 @@ pub(super) struct DomainStartOptions {
     pub(super) pot_slot_info_stream: Receiver<PotSlotInfo>,
     pub(super) consensus_network_sync_oracle: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub(super) domain_message_receiver:
-        TracingUnboundedReceiver<cross_domain_message_gossip::ChainTxPoolMsg>,
+        TracingUnboundedReceiver<cross_domain_message_gossip::ChainMsg>,
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
     pub(super) consensus_state_pruning: PruningMode,
 }

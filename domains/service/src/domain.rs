@@ -1,7 +1,7 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
 use crate::{FullBackend, FullClient};
-use cross_domain_message_gossip::ChainTxPoolMsg;
+use cross_domain_message_gossip::ChainMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
@@ -227,7 +227,7 @@ where
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
-    pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
+    pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
     pub consensus_state_pruning: PruningMode,

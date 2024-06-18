@@ -1,4 +1,5 @@
-use crate::ChainTxPoolMsg;
+use crate::gossip_worker::MessageData;
+use crate::ChainMsg;
 use futures::{Stream, StreamExt};
 use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
@@ -22,7 +23,7 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
 ) where
     TxPool: TransactionPool + 'static,
     Client: HeaderBackend<BlockOf<TxPool>>,
-    TxnListener: Stream<Item = ChainTxPoolMsg> + Unpin,
+    TxnListener: Stream<Item = ChainMsg> + Unpin,
 {
     tracing::info!(
         target: LOG_TARGET,
@@ -37,7 +38,9 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
             chain_id,
         );
 
-        let ext = match ExtrinsicOf::<TxPool>::decode(&mut msg.encoded_data.as_ref()) {
+        let MessageData::Xdm(encoded_data) = msg.data;
+
+        let ext = match ExtrinsicOf::<TxPool>::decode(&mut encoded_data.as_ref()) {
             Ok(ext) => ext,
             Err(_) => {
                 if let Some(peer_id) = msg.maybe_peer {
@@ -46,7 +49,7 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
                     tracing::error!(
                         target: LOG_TARGET,
                         "Failed to decode extrinsic from unknown sender: {:?}",
-                        msg.encoded_data
+                        encoded_data
                     );
                 }
                 continue;

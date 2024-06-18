@@ -272,9 +272,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         ),
                     );
 
-                xdm_gossip_worker_builder
-                    .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
-                xdm_gossip_worker_builder.push_chain_tx_pool_sink(
+                xdm_gossip_worker_builder.push_chain_sink(ChainId::Consensus, consensus_msg_sink);
+                xdm_gossip_worker_builder.push_chain_sink(
                     ChainId::Domain(domain_configuration.domain_id),
                     domain_message_sink,
                 );

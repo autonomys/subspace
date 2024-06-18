@@ -1438,8 +1438,8 @@ impl_runtime_apis! {
             Domains::storage_fund_account_balance(operator_id)
         }
 
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
-            Domains::is_domain_runtime_updraded_since(domain_id, at)
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+            Domains::is_domain_runtime_upgraded_since(domain_id, at)
         }
     }
 

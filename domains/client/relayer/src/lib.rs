@@ -5,7 +5,7 @@
 pub mod worker;
 
 use async_channel::TrySendError;
-use cross_domain_message_gossip::Message as GossipMessage;
+use cross_domain_message_gossip::{Message as GossipMessage, MessageData as GossipMessageData};
 use parity_scale_codec::{Codec, Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -192,7 +192,7 @@ where
 
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
-        encoded_data: ext.encode(),
+        data: GossipMessageData::Xdm(ext.encode()),
     })
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
@@ -221,7 +221,7 @@ where
 
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
-        encoded_data: ext.encode(),
+        data: GossipMessageData::Xdm(ext.encode()),
     })
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }

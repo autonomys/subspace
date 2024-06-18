@@ -316,15 +316,14 @@ fn main() -> Result<(), Error> {
                         Box::pin(consensus_listener),
                     );
 
-                xdm_gossip_worker_builder
-                    .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+                xdm_gossip_worker_builder.push_chain_sink(ChainId::Consensus, consensus_msg_sink);
             }
 
             let (domain_message_sink, domain_message_receiver) =
                 tracing_unbounded("domain_message_channel", 100);
 
             xdm_gossip_worker_builder
-                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink);
+                .push_chain_sink(ChainId::Domain(domain_id), domain_message_sink);
 
             let domain_starter = DomainInstanceStarter {
                 domain_cli,

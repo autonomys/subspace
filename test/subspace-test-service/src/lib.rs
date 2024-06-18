@@ -527,7 +527,7 @@ impl MockConsensusNode {
                 Box::pin(consensus_listener),
             );
 
-        gossip_builder.push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+        gossip_builder.push_chain_sink(ChainId::Consensus, consensus_msg_sink);
 
         task_manager.spawn_essential_handle().spawn_blocking(
             "mmr-gadget",

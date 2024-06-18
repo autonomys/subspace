@@ -20,27 +20,34 @@ const LOG_TARGET: &str = "cross_chain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-chain-messages";
 
 /// Encoded message with sender info if available.
-pub struct ChainTxPoolMsg {
-    pub encoded_data: Vec<u8>,
+pub struct ChainMsg {
     pub maybe_peer: Option<PeerId>,
+    pub data: MessageData,
 }
 
-/// Unbounded sender to send encoded ext to listeners.
-pub type ChainTxPoolSink = TracingUnboundedSender<ChainTxPoolMsg>;
+/// Unbounded sender to send encoded message to listeners.
+pub type ChainSink = TracingUnboundedSender<ChainMsg>;
 type MessageHash = [u8; 32];
+
+/// A type of cross chain message
+#[derive(Debug, Encode, Decode)]
+pub enum MessageData {
+    /// Encoded XDM message
+    Xdm(Vec<u8>),
+}
 
 /// A cross chain message with encoded data.
 #[derive(Debug, Encode, Decode)]
 pub struct Message {
     pub chain_id: ChainId,
-    pub encoded_data: Vec<u8>,
+    pub data: MessageData,
 }
 
 /// Gossip worker builder
 pub struct GossipWorkerBuilder {
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
     gossip_msg_sink: TracingUnboundedSender<Message>,
-    chain_tx_pool_sinks: BTreeMap<ChainId, ChainTxPoolSink>,
+    chain_sinks: BTreeMap<ChainId, ChainSink>,
 }
 
 impl GossipWorkerBuilder {
@@ -52,13 +59,13 @@ impl GossipWorkerBuilder {
         Self {
             gossip_msg_stream,
             gossip_msg_sink,
-            chain_tx_pool_sinks: BTreeMap::new(),
+            chain_sinks: BTreeMap::new(),
         }
     }
 
-    /// Collect the chain tx pool sink that will be used by the gossip message worker later.
-    pub fn push_chain_tx_pool_sink(&mut self, chain_id: ChainId, tx_pool_sink: ChainTxPoolSink) {
-        self.chain_tx_pool_sinks.insert(chain_id, tx_pool_sink);
+    /// Collect the chain sink that will be used by the gossip message worker later.
+    pub fn push_chain_sink(&mut self, chain_id: ChainId, sink: ChainSink) {
+        self.chain_sinks.insert(chain_id, sink);
     }
 
     /// Get the gossip message sink
@@ -80,7 +87,7 @@ impl GossipWorkerBuilder {
     {
         let Self {
             gossip_msg_stream,
-            chain_tx_pool_sinks,
+            chain_sinks,
             ..
         } = self;
 
@@ -98,7 +105,7 @@ impl GossipWorkerBuilder {
             gossip_engine,
             gossip_validator,
             gossip_msg_stream,
-            chain_tx_pool_sinks,
+            chain_sinks,
         }
     }
 }
@@ -109,7 +116,7 @@ pub struct GossipWorker<Block: BlockT, Network> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     gossip_validator: Arc<GossipValidator<Network>>,
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
-    chain_tx_pool_sinks: BTreeMap<ChainId, ChainTxPoolSink>,
+    chain_sinks: BTreeMap<ChainId, ChainSink>,
 }
 
 /// Returns the network configuration for cross chain message gossip.
@@ -177,24 +184,14 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
             .lock()
             .gossip_message(topic::<Block>(), encoded_msg, false);
 
-        let Message {
-            chain_id,
-            encoded_data,
-        } = msg;
-        let sink = match self.chain_tx_pool_sinks.get(&chain_id) {
+        let Message { chain_id, data } = msg;
+        let sink = match self.chain_sinks.get(&chain_id) {
             Some(sink) => sink,
             None => return,
         };
 
         // send the message to the open and ready channel
-        if !sink.is_closed()
-            && sink
-                .unbounded_send(ChainTxPoolMsg {
-                    encoded_data,
-                    maybe_peer,
-                })
-                .is_ok()
-        {
+        if !sink.is_closed() && sink.unbounded_send(ChainMsg { data, maybe_peer }).is_ok() {
             return;
         }
 
@@ -205,7 +202,7 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
             "Failed to send incoming chain message: {:?}",
             chain_id
         );
-        self.chain_tx_pool_sinks.remove(&chain_id);
+        self.chain_sinks.remove(&chain_id);
     }
 }
 
