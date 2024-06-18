@@ -757,9 +757,8 @@ where
 
     let mut sectors_expire_at =
         HashMap::<SectorIndex, SegmentIndex>::with_capacity(usize::from(target_sector_count));
-
-    let mut sectors_to_replot = Vec::new();
-    let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
+    // 10% capacity is generous and should prevent reallocation in most cases
+    let mut sectors_to_replot = Vec::with_capacity(usize::from(target_sector_count) / 10);
 
     loop {
         let archived_segment_header = *archived_segments_receiver.borrow_and_update();
@@ -768,16 +767,11 @@ where
             "New archived segment received",
         );
 
-        // It is fine to take a synchronous read lock here because the only time
-        // write lock is taken is during plotting, which we know doesn't happen
-        // right now. We copy data here because `.read()`'s guard is not `Send`.
-        sectors_metadata
-            .read()
-            .await
+        let sectors_metadata = sectors_metadata.read().await;
+        let sectors_to_check = sectors_metadata
             .iter()
-            .map(|sector_metadata| (sector_metadata.sector_index, sector_metadata.history_size))
-            .collect_into(&mut sectors_to_check);
-        for (sector_index, history_size) in sectors_to_check.drain(..) {
+            .map(|sector_metadata| (sector_metadata.sector_index, sector_metadata.history_size));
+        for (sector_index, history_size) in sectors_to_check {
             if let Some(expires_at) = sectors_expire_at.get(&sector_index).copied() {
                 trace!(
                     %sector_index,
@@ -904,6 +898,7 @@ where
                 }
             }
         }
+        drop(sectors_metadata);
 
         let sectors_queued = sectors_to_replot.len();
         sectors_to_replot.sort_by_key(|sector_to_replot| sector_to_replot.expires_at);
