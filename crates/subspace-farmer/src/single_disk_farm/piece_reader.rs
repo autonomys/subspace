@@ -1,3 +1,5 @@
+//! Piece reader for single disk farm
+
 use crate::farm::{FarmError, PieceReader};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;

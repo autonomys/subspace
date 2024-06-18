@@ -1,9 +1,11 @@
+//! Farm identity
+
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::ops::Deref;
 use std::path::Path;
-use std::{fs, io};
+use std::{fmt, fs, io};
 use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
 use substrate_bip39::mini_secret_from_entropy;
 use thiserror::Error;
@@ -44,6 +46,15 @@ pub struct Identity {
     keypair: Zeroizing<Keypair>,
     entropy: Zeroizing<Vec<u8>>,
     substrate_ctx: SigningContext,
+}
+
+impl fmt::Debug for Identity {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Identity")
+            .field("keypair", &self.keypair)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Deref for Identity {

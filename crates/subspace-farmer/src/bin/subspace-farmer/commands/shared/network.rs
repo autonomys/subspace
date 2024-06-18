@@ -7,10 +7,10 @@ use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::sync::{Arc, Weak};
+use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
+use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::{NodeClient, NodeClientExt};
-use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
@@ -87,7 +87,7 @@ pub(in super::super) fn configure_network<FarmIndex>(
         external_addresses,
     }: NetworkArgs,
     weak_plotted_pieces: Weak<AsyncRwLock<PlottedPieces<FarmIndex>>>,
-    node_client: NodeRpcClient,
+    node_client: RpcNodeClient,
     farmer_cache: FarmerCache,
     prometheus_metrics_registry: Option<&mut Registry>,
 ) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error>

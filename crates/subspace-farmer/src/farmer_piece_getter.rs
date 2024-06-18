@@ -1,6 +1,8 @@
+//! Farmer-specific piece getter
+
+use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use crate::utils::plotted_pieces::PlottedPieces;
 use async_lock::{
     Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
 };
@@ -22,6 +24,8 @@ use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
+
+pub mod piece_validator;
 
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
@@ -91,6 +95,7 @@ impl<'a> InProgressPiece<'a> {
 }
 
 /// Retry policy for getting pieces from DSN cache
+#[derive(Debug)]
 pub struct DsnCacheRetryPolicy {
     /// Max number of retries when trying to get piece from DSN cache
     pub max_retries: u16,
@@ -108,13 +113,16 @@ struct Inner<FarmIndex, PV, NC> {
     request_semaphore: Arc<Semaphore>,
 }
 
+/// Farmer-specific piece getter.
+///
+/// Implements [`PieceGetter`] for plotting purposes, but useful outside of that as well.
 pub struct FarmerPieceGetter<FarmIndex, PV, NC> {
     inner: Arc<Inner<FarmIndex, PV, NC>>,
 }
 
 impl<FarmIndex, PV, NC> fmt::Debug for FarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FarmerPieceGetter").finish_non_exhaustive()
     }
 }
@@ -135,6 +143,7 @@ where
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
+    /// Create new instance
     pub fn new(
         piece_provider: PieceProvider<PV>,
         farmer_cache: FarmerCache,
@@ -406,7 +415,7 @@ pub struct WeakFarmerPieceGetter<FarmIndex, PV, NC> {
 
 impl<FarmIndex, PV, NC> fmt::Debug for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WeakFarmerPieceGetter")
             .finish_non_exhaustive()
     }

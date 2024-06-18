@@ -21,14 +21,14 @@ use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_farmer::cluster::controller::controller_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
+use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCache;
-use subspace_farmer::node_client::node_rpc_client::NodeRpcClient;
+use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
+use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
+use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
-use subspace_farmer::utils::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
-use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
-use subspace_farmer::utils::plotted_pieces::PlottedPieces;
+use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
-use subspace_farmer::Identity;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use tracing::info;
 
@@ -120,7 +120,7 @@ pub(super) async fn controller(
     let plotted_pieces = Arc::new(AsyncRwLock::new(PlottedPieces::<FarmIndex>::default()));
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
-    let node_client = NodeRpcClient::new(&node_rpc_url)
+    let node_client = RpcNodeClient::new(&node_rpc_url)
         .await
         .map_err(|error| anyhow!("Failed to connect to node RPC: {error}"))?;
 

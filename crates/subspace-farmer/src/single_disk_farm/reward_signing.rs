@@ -1,11 +1,11 @@
-use crate::identity::Identity;
 use crate::node_client::NodeClient;
+use crate::single_disk_farm::identity::Identity;
 use futures::StreamExt;
 use std::future::Future;
 use subspace_rpc_primitives::{RewardSignatureResponse, RewardSigningInfo};
 use tracing::{info, warn};
 
-pub async fn reward_signing<NC>(
+pub(super) async fn reward_signing<NC>(
     node_client: NC,
     identity: Identity,
 ) -> Result<impl Future<Output = ()>, Box<dyn std::error::Error + Send + Sync>>

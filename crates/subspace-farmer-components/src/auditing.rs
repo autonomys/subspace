@@ -1,3 +1,9 @@
+//! Auditing utilities
+//!
+//! There is a way to both audit a single sector (primarily helpful for testing purposes) and the
+//! whole plot (which is heavily parallelized and much more efficient) created by functions in
+//! [`plotting`](crate::plotting) module earlier.
+
 use crate::proving::SolutionCandidates;
 use crate::sector::{sector_size, SectorContentsMap, SectorMetadataChecksummed};
 use crate::{ReadAtOffset, ReadAtSync};
@@ -28,10 +34,7 @@ pub enum AuditingError {
 
 /// Result of sector audit
 #[derive(Debug, Clone)]
-pub struct AuditResult<'a, Sector>
-where
-    Sector: 'a,
-{
+pub struct AuditResult<'a, Sector> {
     /// Sector index
     pub sector_index: SectorIndex,
     /// Solution candidates
@@ -103,7 +106,13 @@ where
     }))
 }
 
-/// Audit the whole plot and generate streams of solutions
+/// Audit the whole plot and generate streams of results.
+///
+/// Each audit result contains a solution candidate that might be converted into solution (but will
+/// not necessarily succeed, auditing only does quick checks and can't know for sure).
+///
+/// Plot is assumed to contain concatenated series of sectors as created by functions in
+/// [`plotting`](crate::plotting) module earlier.
 pub fn audit_plot_sync<'a, 'b, Plot>(
     public_key: &'a PublicKey,
     global_challenge: &Blake3Hash,

@@ -1,3 +1,5 @@
+//! Thread pool managing utilities for plotting purposes
+
 use event_listener::Event;
 use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuildError};
@@ -8,7 +10,9 @@ use std::sync::Arc;
 /// A wrapper around thread pool pair for plotting purposes
 #[derive(Debug)]
 pub struct PlottingThreadPoolPair {
+    /// Plotting thread pool
     pub plotting: ThreadPool,
+    /// Replotting thread pool
     pub replotting: ThreadPool,
 }
 
@@ -17,8 +21,8 @@ struct Inner {
     thread_pool_pairs: Vec<PlottingThreadPoolPair>,
 }
 
-/// Wrapper around [`PlottingThreadPoolPair`] that on `Drop` will return thread pool back into corresponding
-/// [`PlottingThreadPoolManager`].
+/// Wrapper around [`PlottingThreadPoolPair`] that on `Drop` will return thread pool back into
+/// corresponding [`PlottingThreadPoolManager`].
 #[derive(Debug)]
 #[must_use]
 pub struct PlottingThreadPoolsGuard {
@@ -55,7 +59,7 @@ impl Drop for PlottingThreadPoolsGuard {
 /// This abstraction wraps a set of thread pool pairs and allows to use them one at a time.
 ///
 /// Each pair contains one thread pool for plotting purposes and one for replotting, this is because
-/// they'll share the same set of CPU cores in most cases and wit would be inefficient to use them
+/// they'll share the same set of CPU cores in most cases, and it would be inefficient to use them
 /// concurrently.
 ///
 /// For example on machine with 64 logical cores and 4 NUMA nodes it would be recommended to create

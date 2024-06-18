@@ -1,3 +1,5 @@
+//! Wrapper data structure for unbuffered I/O on Windows
+
 use parking_lot::Mutex;
 use static_assertions::const_assert_eq;
 use std::fs::{File, OpenOptions};
@@ -15,7 +17,7 @@ const MAX_READ_SIZE: usize = 1024 * 1024;
 
 const_assert_eq!(MAX_READ_SIZE % DISK_SECTOR_SIZE, 0);
 
-/// Wrapper data structure for unbuffered I/O on Windows.
+/// Wrapper data structure for unbuffered I/O on Windows
 #[derive(Debug)]
 pub struct UnbufferedIoFileWindows {
     file: File,

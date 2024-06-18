@@ -1,6 +1,8 @@
+//! Cache implementation specific to single disk farm
+
+use crate::disk_piece_cache::DiskPieceCache;
 use crate::farm;
 use crate::farm::{FarmError, FarmId, PieceCacheId, PieceCacheOffset};
-use crate::piece_cache::PieceCache;
 use async_trait::async_trait;
 use futures::{stream, Stream};
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -8,13 +10,13 @@ use subspace_core_primitives::{Piece, PieceIndex};
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
 /// faster
 #[derive(Debug, Clone)]
-pub struct DiskPieceCache {
+pub struct SingleDiskPieceCache {
     id: PieceCacheId,
-    maybe_piece_cache: Option<PieceCache>,
+    maybe_piece_cache: Option<DiskPieceCache>,
 }
 
 #[async_trait]
-impl farm::PieceCache for DiskPieceCache {
+impl farm::PieceCache for SingleDiskPieceCache {
     fn id(&self) -> &PieceCacheId {
         &self.id
     }
@@ -81,8 +83,8 @@ impl farm::PieceCache for DiskPieceCache {
     }
 }
 
-impl DiskPieceCache {
-    pub(crate) fn new(farm_id: FarmId, maybe_piece_cache: Option<PieceCache>) -> Self {
+impl SingleDiskPieceCache {
+    pub(crate) fn new(farm_id: FarmId, maybe_piece_cache: Option<DiskPieceCache>) -> Self {
         // Convert farm ID into cache ID for single disk farm
         let FarmId::Ulid(id) = farm_id;
         let id = PieceCacheId::Ulid(id);

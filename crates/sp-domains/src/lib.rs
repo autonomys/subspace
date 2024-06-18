@@ -724,7 +724,7 @@ pub struct ProofOfElection<CHash> {
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
     /// TODO: this field is only used in the bundle equivocation FP which is removed,
-    /// also this field is problematic see https://github.com/subspace/subspace/issues/2737
+    /// also this field is problematic see <https://github.com/subspace/subspace/issues/2737>
     /// so remove this field before next network
     ///
     /// Consensus block hash at which proof of election was derived.

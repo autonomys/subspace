@@ -20,41 +20,51 @@
     type_alias_impl_trait,
     type_changing_struct_update
 )]
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
-//! # `subspace-farmer` library implementation overview
+//! `subspace-farmer` is both a library and an app for everything related to farming on Subspace.
 //!
-//! This library provides droppable/interruptable instances of two processes that can be run in
-//! parallel: `plotting` and `farming`.
+//! # Library
 //!
-//! During plotting we create:
-//! * a binary plot file, which contains subspace-encoded pieces one after another
-//! * a RocksDB commitments database, where key is a tag (first 8 bytes of `hmac(encoding, salt)`)
-//!   and value is an offset of corresponding encoded piece in the plot (we can do this because all
-//!   pieces have the same size).
+//! Library exposes all the necessary utilities for plotting, maintaining and farming plots.
+//! Conceptually [`farm::Farm`] is an abstraction that contains a plot, a small piece cache and
+//! corresponding metadata. [`single_disk_farm::SingleDiskFarm`] is the primary abstraction that
+//! implements [`farm::Farm`] and encapsulates those components stored on local disk with high-level
+//! API with events that allow to orchestrate farms from the outside (for example in CLI).
 //!
-//! In short, for every piece we also store a record with 8-bytes tag and 8-bytes index (+some
-//! overhead of RocksDB itself).
+//! While local farming is one option, there is also a way to have cluster setup, implemented in
+//! [`cluster`] module. Cluster contains a special implementation of [`farm::Farm`] and other
+//! components that are not stored on local disk, but rather are somewhere on the network (typically
+//! LAN). This allows to better manage resources, which is primarily useful for large farmers.
+//! Cluster setup usually consists from heterogeneous machines where different machines are
+//! specialized with different tasks (some machines do farming, some plotting, some both, etc.).
+//! Cluster setup also allows for even greater composition and allows for combining various pieces
+//! of the software from different vendors (like unofficial plotters for example).
 //!
-//! During farming we receive a global challenge and need to find a solution based on *target* and
-//! *solution range*. In order to find solution, we derive *local challenge* and use first 8 bytes
-//! (the same as tag size) as our *target* and do range query in RocksDB. For that we interpret
-//! *target* as 64-bit big-endian unsigned integer and find all of the keys in tags database that
-//! are `target ± ½ * solution range` (while also handing overflow/underflow) when interpreted as
-//! 64-bit unsigned integers.
+//! Since various key components are implementations of traits, it is possible to use some part of
+//! the library as is (like farming), while swapping others (like plotting). The library is meant to
+//! be somewhat generic and allowing different composition scenarios.
+//!
+//! # CLI
+//!
+//! CLI provides reference implementation of the farmer software, it wraps library components and
+//! orchestrates them as a final user-facing application.
+//!
+//! CLI exposes many key options to fine tune various aspects, but primarily for experimentation and
+//! improving defaults, the goal is for default behavior to be already as optimal as efficient as
+//! possible.
 
 pub mod cluster;
+pub mod disk_piece_cache;
 pub mod farm;
 pub mod farmer_cache;
-pub(crate) mod identity;
+pub mod farmer_piece_getter;
 pub mod node_client;
-pub mod piece_cache;
 pub mod plotter;
-pub mod reward_signing;
 pub mod single_disk_farm;
 pub mod thread_pool_manager;
 pub mod utils;
 
-pub use identity::Identity;
 pub use jsonrpsee;
 
 /// Size of the LRU cache for peers.

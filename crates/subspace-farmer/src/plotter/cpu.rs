@@ -1,3 +1,5 @@
+//! CPU plotter
+
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -27,6 +29,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::warn;
 
+/// Type alias used for event handlers
 pub type HandlerFn3<A, B, C> = Arc<dyn Fn(&A, &B, &C) + Send + Sync + 'static>;
 type Handler3<A, B, C> = Bag<HandlerFn3<A, B, C>, A, B, C>;
 
@@ -36,6 +39,7 @@ struct Handlers {
 }
 
 /// CPU plotter
+#[derive(Debug)]
 pub struct CpuPlotter<PG, PosTable> {
     piece_getter: PG,
     downloading_semaphore: Arc<Semaphore>,

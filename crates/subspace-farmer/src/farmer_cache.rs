@@ -1,3 +1,8 @@
+//! A container that caches pieces
+//!
+//! Farmer cache is a container that orchestrates a bunch of piece and plot caches that together
+//! persist pieces in a way that is easy to retrieve comparing to decoding pieces from plots.
+
 #[cfg(test)]
 mod tests;
 
@@ -880,7 +885,16 @@ impl PlotCaches {
     }
 }
 
-/// Farmer cache that aggregates different kinds of caches of multiple disks
+/// Farmer cache that aggregates different kinds of caches of multiple disks.
+///
+/// Pieces in [`PieceCache`] are stored based on capacity and proximity of piece index to farmer's
+/// network identity. If capacity is not enough to store all pieces in cache then pieces that are
+/// further from network identity will be evicted, this is helpful for quick retrieval of pieces
+/// from DSN as well as plotting purposes.
+///
+/// [`PlotCache`] is used as a supplementary cache and is primarily helpful for smaller farmers
+/// where piece cache is not enough to store all the pieces on the network, while there is a lot of
+/// space in the plot that is not used by sectors yet and can be leverage as extra caching space.
 #[derive(Debug, Clone)]
 pub struct FarmerCache {
     peer_id: PeerId,

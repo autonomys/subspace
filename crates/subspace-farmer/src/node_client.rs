@@ -1,4 +1,14 @@
-pub mod node_rpc_client;
+//! Node client abstraction
+//!
+//! During farmer operation it needs to communicate with node, for example to receive slot
+//! notifications and send solutions to claim rewards.
+//!
+//! Implementation is abstracted away behind a trait to allow various implementation depending on
+//! use case. Implementation may connect to node via RPC directly, through some kind of networked
+//! middleware or even wired without network directly if node and farmer are both running in the
+//! same process.
+
+pub mod rpc_node_client;
 
 use async_trait::async_trait;
 use futures::Stream;

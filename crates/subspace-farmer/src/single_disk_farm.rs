@@ -1,23 +1,32 @@
+//! Primary [`Farm`] implementation that deals with hardware directly
+//!
+//! Single disk farm is an abstraction that contains an identity, associated plot with metadata and
+//! a small piece cache. It fully manages farming and plotting process, including listening to node
+//! notifications, producing solutions and singing rewards.
+
 pub mod farming;
+pub mod identity;
 pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
 mod plotted_sectors;
 mod plotting;
+mod reward_signing;
 pub mod unbuffered_io_file_windows;
 
-use crate::farm::{Farm, FarmId, HandlerFn, PieceReader, PlottedSectors, SectorUpdate};
-pub use crate::farm::{FarmingError, FarmingNotification};
-use crate::identity::{Identity, IdentityError};
+use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
+use crate::farm::{
+    Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceReader, PlottedSectors,
+    SectorUpdate,
+};
 use crate::node_client::NodeClient;
-use crate::piece_cache::{PieceCache, PieceCacheError};
 use crate::plotter::Plotter;
-use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
-use crate::single_disk_farm::piece_cache::DiskPieceCache;
+use crate::single_disk_farm::identity::{Identity, IdentityError};
+use crate::single_disk_farm::piece_cache::SingleDiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 use crate::single_disk_farm::plotted_sectors::SingleDiskPlottedSectors;
@@ -25,6 +34,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
 };
+use crate::single_disk_farm::reward_signing::reward_signing;
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
@@ -90,6 +100,7 @@ const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_millis(3500);
 
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
+#[derive(Debug)]
 #[must_use = "Lock file must be kept around or as long as farm is used"]
 pub struct SingleDiskFarmInfoLock {
     _file: File,
@@ -119,6 +130,7 @@ pub enum SingleDiskFarmInfo {
 impl SingleDiskFarmInfo {
     const FILE_NAME: &'static str = "single_disk_farm.json";
 
+    /// Create new instance
     pub fn new(
         id: FarmId,
         genesis_hash: [u8; 32],
@@ -180,19 +192,19 @@ impl SingleDiskFarmInfo {
         Ok(SingleDiskFarmInfoLock { _file: file })
     }
 
-    // ID of the farm
+    /// ID of the farm
     pub fn id(&self) -> &FarmId {
         let Self::V0 { id, .. } = self;
         id
     }
 
-    // Genesis hash of the chain used for farm creation
+    /// Genesis hash of the chain used for farm creation
     pub fn genesis_hash(&self) -> &[u8; 32] {
         let Self::V0 { genesis_hash, .. } = self;
         genesis_hash
     }
 
-    // Public key of identity used for farm creation
+    /// Public key of identity used for farm creation
     pub fn public_key(&self) -> &PublicKey {
         let Self::V0 { public_key, .. } = self;
         public_key
@@ -258,6 +270,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
+#[derive(Debug)]
 pub struct SingleDiskFarmOptions<NC, P>
 where
     NC: Clone,
@@ -323,7 +336,7 @@ pub enum SingleDiskFarmError {
     TokioJoinError(#[from] tokio::task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
-    PieceCacheError(#[from] PieceCacheError),
+    PieceCacheError(#[from] DiskPieceCacheError),
     /// Can't preallocate metadata file, probably not enough space on disk
     #[error("Can't preallocate metadata file, probably not enough space on disk: {0}")]
     CantPreallocateMetadataFile(io::Error),
@@ -395,9 +408,13 @@ pub enum SingleDiskFarmError {
         instead."
     )]
     FarmTooLarge {
+        /// Allocated space
         allocated_space: u64,
+        /// Allocated space in sectors
         allocated_sectors: u64,
+        /// Max supported allocated space
         max_space: u64,
+        /// Max supported allocated space in sectors
         max_sectors: u16,
     },
     /// Failed to create thread pool
@@ -544,7 +561,10 @@ pub enum BackgroundTaskError {
     RewardSigning(#[from] Box<dyn Error + Send + Sync + 'static>),
     /// Background task panicked
     #[error("Background task {task} panicked")]
-    BackgroundTaskPanicked { task: String },
+    BackgroundTaskPanicked {
+        /// Name of the task
+        task: String,
+    },
 }
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
@@ -634,7 +654,7 @@ struct SingleDiskFarmInit {
     metadata_header: PlotMetadataHeader,
     target_sector_count: u16,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
-    piece_cache: DiskPieceCache,
+    piece_cache: SingleDiskPieceCache,
     plot_cache: DiskPlotCache,
 }
 
@@ -642,6 +662,7 @@ struct SingleDiskFarmInit {
 /// disk.
 ///
 /// Farm starts operating during creation and doesn't stop until dropped (or error happens).
+#[derive(Debug)]
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
@@ -653,7 +674,7 @@ pub struct SingleDiskFarm {
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
-    piece_cache: DiskPieceCache,
+    piece_cache: SingleDiskPieceCache,
     plot_cache: DiskPlotCache,
     piece_reader: DiskPieceReader,
     /// Sender that will be used to signal to background threads that they should start
@@ -716,7 +737,9 @@ impl Farm for SingleDiskFarm {
 }
 
 impl SingleDiskFarm {
+    /// Name of the plot file
     pub const PLOT_FILE: &'static str = "plot.bin";
+    /// Name of the metadata file
     pub const METADATA_FILE: &'static str = "metadata.bin";
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
@@ -1251,10 +1274,10 @@ impl SingleDiskFarm {
             // Cache must not be empty, ensure it contains at least one element even if
             // percentage-wise it will use more space
             if single_plot_with_cache_space - single_sector_overhead
-                < PieceCache::element_size() as u64
+                < DiskPieceCache::element_size() as u64
             {
                 single_plot_with_cache_space =
-                    single_sector_overhead + PieceCache::element_size() as u64;
+                    single_sector_overhead + DiskPieceCache::element_size() as u64;
             }
 
             return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
@@ -1273,7 +1296,7 @@ impl SingleDiskFarm {
                 - fixed_space_usage
                 - plot_file_size
                 - (sector_metadata_size as u64 * target_sector_count);
-            (cache_space / u64::from(PieceCache::element_size())) as u32
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
         } else {
             0
         };
@@ -1424,12 +1447,12 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = DiskPieceCache::new(
+        let piece_cache = SingleDiskPieceCache::new(
             *single_disk_farm_info.id(),
             if cache_capacity == 0 {
                 None
             } else {
-                Some(PieceCache::open(directory, cache_capacity)?)
+                Some(DiskPieceCache::open(directory, cache_capacity)?)
             },
         );
         let plot_cache = DiskPlotCache::new(
@@ -1555,7 +1578,7 @@ impl SingleDiskFarm {
     }
 
     /// Get piece cache instance
-    pub fn piece_cache(&self) -> DiskPieceCache {
+    pub fn piece_cache(&self) -> SingleDiskPieceCache {
         self.piece_cache.clone()
     }
 
@@ -1643,7 +1666,7 @@ impl SingleDiskFarm {
             }
         }
 
-        PieceCache::wipe(directory)?;
+        DiskPieceCache::wipe(directory)?;
 
         info!(
             "Deleting info file at {}",
@@ -2135,7 +2158,7 @@ impl SingleDiskFarm {
         }
 
         if target.cache() {
-            let file = directory.join(PieceCache::FILE_NAME);
+            let file = directory.join(DiskPieceCache::FILE_NAME);
             info!(path = %file.display(), "Checking cache file");
 
             let cache_file = match OpenOptions::new().read(true).write(!dry_run).open(&file) {
@@ -2162,7 +2185,7 @@ impl SingleDiskFarm {
                 }
             };
 
-            let element_size = PieceCache::element_size();
+            let element_size = DiskPieceCache::element_size();
             let number_of_cached_elements = cache_size / u64::from(element_size);
             let dummy_element = vec![0; element_size as usize];
             (0..number_of_cached_elements)

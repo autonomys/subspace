@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use subspace_farmer::cluster::cache::cache_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::piece_cache::PieceCache;
+use subspace_farmer::disk_piece_cache::DiskPieceCache;
 use subspace_farmer::utils::AsyncJoinOnDrop;
 
 /// Interval between cache self-identification broadcast messages
@@ -162,9 +162,9 @@ pub(super) async fn cache(
     let caches = disk_caches
         .iter()
         .map(|disk_cache| {
-            PieceCache::open(
+            DiskPieceCache::open(
                 &disk_cache.directory,
-                u32::try_from(disk_cache.allocated_space / PieceCache::element_size() as u64)
+                u32::try_from(disk_cache.allocated_space / DiskPieceCache::element_size() as u64)
                     .unwrap_or(u32::MAX),
             )
             .map_err(|error| {

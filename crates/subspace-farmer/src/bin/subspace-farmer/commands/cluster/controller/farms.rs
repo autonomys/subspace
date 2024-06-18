@@ -22,8 +22,8 @@ use subspace_core_primitives::{Blake3Hash, SectorIndex};
 use subspace_farmer::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use subspace_farmer::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBroadcast};
 use subspace_farmer::cluster::nats_client::NatsClient;
+use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
-use subspace_farmer::utils::plotted_pieces::PlottedPieces;
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, warn};
 

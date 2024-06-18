@@ -1,3 +1,9 @@
+//! Reading utilities
+//!
+//! This module contains utilities for extracting data from plots/sectors created by functions in
+//! [`plotting`](crate::plotting) module earlier. This is a relatively expensive operation and is
+//! only used for cold storage purposes or when there is a need to prove a solution to consensus.
+
 use crate::sector::{
     sector_record_chunks_size, RecordMetadata, SectorContentsMap, SectorContentsMapFromBytesError,
     SectorMetadataChecksummed,

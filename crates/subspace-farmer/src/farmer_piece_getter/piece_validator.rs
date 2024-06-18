@@ -1,3 +1,5 @@
+//! Farmer-specific validator for pieces retrieved from the network
+
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
 use subspace_archiving::archiver::is_piece_valid;
@@ -8,7 +10,10 @@ use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
 use tracing::{error, warn};
 
-#[derive(Clone)]
+/// Farmer-specific validator for pieces retrieved from the network.
+///
+/// Implements [`PieceValidator`].
+#[derive(Debug, Clone)]
 pub struct SegmentCommitmentPieceValidator<NC> {
     dsn_node: Node,
     node_client: NC,
@@ -16,6 +21,7 @@ pub struct SegmentCommitmentPieceValidator<NC> {
 }
 
 impl<NC> SegmentCommitmentPieceValidator<NC> {
+    /// Create new instance
     pub fn new(dsn_node: Node, node_client: NC, kzg: Kzg) -> Self {
         Self {
             dsn_node,

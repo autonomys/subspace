@@ -1,3 +1,8 @@
+//! Farming-related utilities
+//!
+//! These utilities do not expose the whole farming workflow, but rather small bits of it that can
+//! be useful externally (for example for benchmarking purposes in CLI).
+
 pub mod rayon_files;
 
 use crate::farm::{
@@ -97,6 +102,7 @@ where
 impl<'a, 'b, PosTable> Copy for PlotAuditOptions<'a, 'b, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
+#[derive(Debug)]
 pub struct PlotAudit<Plot>(Plot)
 where
     Plot: ReadAtSync;
@@ -110,6 +116,7 @@ where
         Self(plot)
     }
 
+    /// Audit this plot
     pub fn audit<'b, PosTable>(
         &'a self,
         options: PlotAuditOptions<'a, 'b, PosTable>,
