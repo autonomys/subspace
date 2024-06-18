@@ -115,6 +115,7 @@ pub enum PlottingError {
 /// Sector output and sector metadata output should be either empty (in which case they'll be
 /// resized to correct size automatically) or correctly sized from the beginning or else error will
 /// be returned.
+#[derive(Debug)]
 pub struct PlotSectorOptions<'a, PosTable, PG>
 where
     PosTable: Table,
@@ -210,6 +211,7 @@ where
 }
 
 /// Opaque sector downloaded and ready for encoding
+#[derive(Debug)]
 pub struct DownloadedSector {
     sector_id: SectorId,
     piece_indices: Vec<PieceIndex>,
@@ -218,6 +220,7 @@ pub struct DownloadedSector {
 }
 
 /// Options for sector downloading
+#[derive(Debug)]
 pub struct DownloadSectorOptions<'a, PG> {
     /// Public key corresponding to sector
     pub public_key: &'a PublicKey,
@@ -321,6 +324,7 @@ where
 /// Sector output and sector metadata output should be either empty (in which case they'll be
 /// resized to correct size automatically) or correctly sized from the beginning or else error will
 /// be returned.
+#[derive(Debug)]
 pub struct EncodeSectorOptions<'a, PosTable>
 where
     PosTable: Table,

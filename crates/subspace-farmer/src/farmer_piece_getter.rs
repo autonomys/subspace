@@ -95,6 +95,7 @@ impl<'a> InProgressPiece<'a> {
 }
 
 /// Retry policy for getting pieces from DSN cache
+#[derive(Debug)]
 pub struct DsnCacheRetryPolicy {
     /// Max number of retries when trying to get piece from DSN cache
     pub max_retries: u16,
@@ -121,7 +122,7 @@ pub struct FarmerPieceGetter<FarmIndex, PV, NC> {
 
 impl<FarmIndex, PV, NC> fmt::Debug for FarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FarmerPieceGetter").finish_non_exhaustive()
     }
 }
@@ -142,6 +143,7 @@ where
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
+    /// Create new instance
     pub fn new(
         piece_provider: PieceProvider<PV>,
         farmer_cache: FarmerCache,
@@ -413,7 +415,7 @@ pub struct WeakFarmerPieceGetter<FarmIndex, PV, NC> {
 
 impl<FarmIndex, PV, NC> fmt::Debug for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WeakFarmerPieceGetter")
             .finish_non_exhaustive()
     }

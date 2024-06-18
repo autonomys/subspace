@@ -223,6 +223,7 @@ impl DiskPieceCache {
         })
     }
 
+    /// Size of a single piece cache element
     pub const fn element_size() -> u32 {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }

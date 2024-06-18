@@ -20,6 +20,7 @@
     type_alias_impl_trait,
     type_changing_struct_update
 )]
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
 //! `subspace-farmer` is both a library and an app for everything related to farming on Subspace.
 //!

@@ -102,6 +102,7 @@ where
 impl<'a, 'b, PosTable> Copy for PlotAuditOptions<'a, 'b, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
+#[derive(Debug)]
 pub struct PlotAudit<Plot>(Plot)
 where
     Plot: ReadAtSync;
@@ -115,6 +116,7 @@ where
         Self(plot)
     }
 
+    /// Audit this plot
     pub fn audit<'b, PosTable>(
         &'a self,
         options: PlotAuditOptions<'a, 'b, PosTable>,

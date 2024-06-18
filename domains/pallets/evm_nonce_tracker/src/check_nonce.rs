@@ -31,12 +31,12 @@ impl<T: Config> CheckNonce<T> {
 
 impl<T: Config> fmt::Debug for CheckNonce<T> {
     #[cfg(feature = "std")]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "CheckNonce({})", self.0)
     }
 
     #[cfg(not(feature = "std"))]
-    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }
 }

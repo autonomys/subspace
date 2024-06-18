@@ -37,6 +37,7 @@ pub type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 /// Getter for plotted sectors
 #[async_trait]
 pub trait PlottedSectors: Send + Sync + fmt::Debug {
+    /// Get already plotted sectors
     async fn get(
         &self,
     ) -> Result<
@@ -169,6 +170,7 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
     ) -> Result<Option<(PieceIndex, Piece)>, FarmError>;
 }
 
+/// Result of piece storing check
 #[derive(Debug, Copy, Clone, Encode, Decode)]
 pub enum MaybePieceStoredResult {
     /// Definitely not stored

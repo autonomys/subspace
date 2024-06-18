@@ -178,10 +178,11 @@ const SINGLE_RECORD_BIT_ARRAY_SIZE: usize = mem::size_of::<SingleRecordBitArray>
 
 // TODO: I really tried to avoid `count_ones()`, but wasn't able to with safe Rust due to lifetimes
 /// Wrapper data structure that allows to iterate mutably over encoded chunks bitfields, while
-/// maintaining up to date number of encoded chunks
+/// maintaining up-to-date number of encoded chunks
 ///
 /// ## Panics
 /// Panics on drop if too many chunks are encoded
+#[derive(Debug)]
 pub struct EncodedChunksUsed<'a> {
     encoded_record_chunks_used: &'a mut SingleRecordBitArray,
     num_encoded_record_chunks: &'a mut SBucket,

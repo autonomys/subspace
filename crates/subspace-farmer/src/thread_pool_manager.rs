@@ -10,7 +10,9 @@ use std::sync::Arc;
 /// A wrapper around thread pool pair for plotting purposes
 #[derive(Debug)]
 pub struct PlottingThreadPoolPair {
+    /// Plotting thread pool
     pub plotting: ThreadPool,
+    /// Replotting thread pool
     pub replotting: ThreadPool,
 }
 

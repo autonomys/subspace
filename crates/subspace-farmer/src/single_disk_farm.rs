@@ -100,6 +100,7 @@ const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 const INTERNAL_BENCHMARK_READ_TIMEOUT: Duration = Duration::from_millis(3500);
 
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
+#[derive(Debug)]
 #[must_use = "Lock file must be kept around or as long as farm is used"]
 pub struct SingleDiskFarmInfoLock {
     _file: File,
@@ -129,6 +130,7 @@ pub enum SingleDiskFarmInfo {
 impl SingleDiskFarmInfo {
     const FILE_NAME: &'static str = "single_disk_farm.json";
 
+    /// Create new instance
     pub fn new(
         id: FarmId,
         genesis_hash: [u8; 32],
@@ -190,19 +192,19 @@ impl SingleDiskFarmInfo {
         Ok(SingleDiskFarmInfoLock { _file: file })
     }
 
-    // ID of the farm
+    /// ID of the farm
     pub fn id(&self) -> &FarmId {
         let Self::V0 { id, .. } = self;
         id
     }
 
-    // Genesis hash of the chain used for farm creation
+    /// Genesis hash of the chain used for farm creation
     pub fn genesis_hash(&self) -> &[u8; 32] {
         let Self::V0 { genesis_hash, .. } = self;
         genesis_hash
     }
 
-    // Public key of identity used for farm creation
+    /// Public key of identity used for farm creation
     pub fn public_key(&self) -> &PublicKey {
         let Self::V0 { public_key, .. } = self;
         public_key
@@ -268,6 +270,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single disk farm
+#[derive(Debug)]
 pub struct SingleDiskFarmOptions<NC, P>
 where
     NC: Clone,
@@ -405,9 +408,13 @@ pub enum SingleDiskFarmError {
         instead."
     )]
     FarmTooLarge {
+        /// Allocated space
         allocated_space: u64,
+        /// Allocated space in sectors
         allocated_sectors: u64,
+        /// Max supported allocated space
         max_space: u64,
+        /// Max supported allocated space in sectors
         max_sectors: u16,
     },
     /// Failed to create thread pool
@@ -554,7 +561,10 @@ pub enum BackgroundTaskError {
     RewardSigning(#[from] Box<dyn Error + Send + Sync + 'static>),
     /// Background task panicked
     #[error("Background task {task} panicked")]
-    BackgroundTaskPanicked { task: String },
+    BackgroundTaskPanicked {
+        /// Name of the task
+        task: String,
+    },
 }
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
@@ -652,6 +662,7 @@ struct SingleDiskFarmInit {
 /// disk.
 ///
 /// Farm starts operating during creation and doesn't stop until dropped (or error happens).
+#[derive(Debug)]
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
@@ -726,7 +737,9 @@ impl Farm for SingleDiskFarm {
 }
 
 impl SingleDiskFarm {
+    /// Name of the plot file
     pub const PLOT_FILE: &'static str = "plot.bin";
+    /// Name of the metadata file
     pub const METADATA_FILE: &'static str = "metadata.bin";
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 

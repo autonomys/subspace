@@ -158,7 +158,7 @@ pub struct CpuCoreSet {
 
 impl fmt::Debug for CpuCoreSet {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("CpuCoreSet");
         #[cfg(not(feature = "numa"))]
         if self.cores.array_windows::<2>().all(|&[a, b]| a + 1 == b) {

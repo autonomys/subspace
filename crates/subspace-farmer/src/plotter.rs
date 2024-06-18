@@ -46,7 +46,7 @@ pub enum SectorPlottingProgress {
 
 impl fmt::Debug for SectorPlottingProgress {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SectorPlottingProgress::Downloading => fmt::Formatter::write_str(f, "Downloading"),
             SectorPlottingProgress::Downloaded(time) => {

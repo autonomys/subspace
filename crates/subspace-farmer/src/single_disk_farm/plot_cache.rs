@@ -140,6 +140,7 @@ impl DiskPlotCache {
         }
     }
 
+    /// Size of a single plot cache element
     pub(crate) const fn element_size() -> u32 {
         (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
     }

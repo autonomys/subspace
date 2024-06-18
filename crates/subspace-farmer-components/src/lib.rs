@@ -1,3 +1,7 @@
+//! Components of the reference implementation of Subspace Farmer for Subspace Network Blockchain.
+//!
+//! These components are used to implement farmer itself, but can also be used independently if necessary.
+
 #![feature(
     array_chunks,
     const_option,
@@ -10,10 +14,7 @@
     slice_flatten,
     try_blocks
 )]
-
-//! Components of the reference implementation of Subspace Farmer for Subspace Network Blockchain.
-//!
-//! These components are used to implement farmer itself, but can also be used independently if necessary.
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 
 pub mod auditing;
 pub mod file_ext;
@@ -38,6 +39,7 @@ use subspace_core_primitives::{ArchivedHistorySegment, HistorySize, Piece, Piece
 /// Trait representing a way to get pieces
 #[async_trait]
 pub trait PieceGetter {
+    /// Get piece by index
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
@@ -70,7 +72,7 @@ impl PieceGetter for ArchivedHistorySegment {
 }
 
 /// Enum to encapsulate the selection between [`ReadAtSync`] and [`ReadAtAsync]` variants
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ReadAt<S, A>
 where
     S: ReadAtSync,
@@ -128,6 +130,7 @@ impl ReadAtSync for ! {
 
 /// Container or asynchronously reading bytes using in [`ReadAtAsync`]
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct AsyncReadBytes<B>(B)
 where
     B: AsMut<[u8]> + Unpin + 'static;

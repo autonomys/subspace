@@ -39,6 +39,7 @@ struct Handlers {
 }
 
 /// CPU plotter
+#[derive(Debug)]
 pub struct CpuPlotter<PG, PosTable> {
     piece_getter: PG,
     downloading_semaphore: Arc<Semaphore>,

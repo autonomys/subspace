@@ -13,7 +13,7 @@ use tracing::{error, warn};
 /// Farmer-specific validator for pieces retrieved from the network.
 ///
 /// Implements [`PieceValidator`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SegmentCommitmentPieceValidator<NC> {
     dsn_node: Node,
     node_client: NC,
@@ -21,6 +21,7 @@ pub struct SegmentCommitmentPieceValidator<NC> {
 }
 
 impl<NC> SegmentCommitmentPieceValidator<NC> {
+    /// Create new instance
     pub fn new(dsn_node: Node, node_client: NC, kzg: Kzg) -> Self {
         Self {
             dsn_node,

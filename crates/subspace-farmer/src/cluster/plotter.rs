@@ -41,12 +41,14 @@ const PING_INTERVAL: Duration = Duration::from_secs(10);
 /// Timeout after which plotter that doesn't send pings is assumed to be down
 const PING_TIMEOUT: Duration = Duration::from_mins(1);
 
+/// Type alias used for event handlers
 pub type HandlerFn3<A, B, C> = Arc<dyn Fn(&A, &B, &C) + Send + Sync + 'static>;
 type Handler3<A, B, C> = Bag<HandlerFn3<A, B, C>, A, B, C>;
 
 /// An ephemeral identifier for a plotter
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display)]
 pub enum ClusterPlotterId {
+    /// Plotter ID
     Ulid(Ulid),
 }
 
@@ -118,6 +120,7 @@ struct Handlers {
 }
 
 /// Cluster plotter
+#[derive(Debug)]
 pub struct ClusterPlotter {
     sector_encoding_semaphore: Arc<Semaphore>,
     retry_backoff_policy: ExponentialBackoff,

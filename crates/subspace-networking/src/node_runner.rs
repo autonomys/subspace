@@ -36,7 +36,6 @@ use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::fmt::Debug;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
@@ -139,7 +138,7 @@ where
     LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NodeRunner").finish_non_exhaustive()
     }
 }

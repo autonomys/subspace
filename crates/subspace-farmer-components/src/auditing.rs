@@ -34,10 +34,7 @@ pub enum AuditingError {
 
 /// Result of sector audit
 #[derive(Debug, Clone)]
-pub struct AuditResult<'a, Sector>
-where
-    Sector: 'a,
-{
+pub struct AuditResult<'a, Sector> {
     /// Sector index
     pub sector_index: SectorIndex,
     /// Solution candidates
