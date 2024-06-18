@@ -20,10 +20,12 @@ use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::future::{pending, Future};
 use std::pin::{pin, Pin};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, info, trace, warn};
+
+const MIN_CACHE_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Broadcast with identification details by caches
 #[derive(Debug, Clone, Encode, Decode)]
@@ -199,6 +201,7 @@ pub async fn cache_service<C>(
     caches: &[C],
     cache_group: &str,
     identification_broadcast_interval: Duration,
+    primary_instance: bool,
 ) -> anyhow::Result<()>
 where
     C: PieceCache,
@@ -208,7 +211,9 @@ where
         .map(|cache| {
             let cache_id = *cache.id();
 
-            info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
+            if primary_instance {
+                info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
+            }
 
             CacheDetails {
                 cache_id,
@@ -218,22 +223,39 @@ where
         })
         .collect::<Vec<_>>();
 
-    select! {
-        result = identify_responder(&nats_client, &caches_details, cache_group, identification_broadcast_interval).fuse() => {
-            result
-        },
-        result = write_piece_responder(&nats_client, &caches_details).fuse() => {
-            result
-        },
-        result = read_piece_index_responder(&nats_client, &caches_details).fuse() => {
-            result
-        },
-        result = read_piece_responder(&nats_client, &caches_details).fuse() => {
-            result
-        },
-        result = contents_responder(&nats_client, &caches_details).fuse() => {
-            result
-        },
+    if primary_instance {
+        select! {
+            result = identify_responder(&nats_client, &caches_details, cache_group, identification_broadcast_interval).fuse() => {
+                result
+            },
+            result = write_piece_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = read_piece_index_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = read_piece_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = contents_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+        }
+    } else {
+        select! {
+            result = write_piece_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = read_piece_index_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = read_piece_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = contents_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+        }
     }
 }
 
@@ -261,9 +283,12 @@ where
             anyhow!("Failed to subscribe to cache identify broadcast requests: {error}")
         })?
         .fuse();
+
     // Also send periodic updates in addition to the subscription response
     let mut interval = tokio::time::interval(identification_broadcast_interval);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    let mut last_identification = Instant::now();
 
     loop {
         select! {
@@ -275,10 +300,17 @@ where
 
                 trace!(?message, "Cache received identify broadcast message");
 
+                if last_identification.elapsed() < MIN_CACHE_IDENTIFICATION_INTERVAL {
+                    // Skip too frequent identification requests
+                    continue;
+                }
+
+                last_identification = Instant::now();
                 send_identify_broadcast(nats_client, caches_details).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
+                last_identification = Instant::now();
                 trace!("Cache self-identification");
 
                 send_identify_broadcast(nats_client, caches_details).await;

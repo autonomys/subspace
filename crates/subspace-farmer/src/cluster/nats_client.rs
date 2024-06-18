@@ -674,6 +674,7 @@ impl NatsClient {
                             );
                             if received_index != expected_index {
                                 warn!(
+                                    %response_subject,
                                     %received_index,
                                     %expected_index,
                                     request_type = %type_name::<Request>(),
@@ -685,6 +686,7 @@ impl NatsClient {
                             }
                         } else {
                             warn!(
+                                %response_subject,
                                 request_type = %type_name::<Request>(),
                                 response_type = %type_name::<Request::Response>(),
                                 message = %hex::encode(message.payload),
@@ -695,6 +697,7 @@ impl NatsClient {
                     }
                     Ok(None) => {
                         warn!(
+                            %response_subject,
                             request_type = %type_name::<Request>(),
                             response_type = %type_name::<Request::Response>(),
                             "Acknowledgement stream ended unexpectedly"
@@ -703,6 +706,8 @@ impl NatsClient {
                     }
                     Err(_error) => {
                         warn!(
+                            %response_subject,
+                            %expected_index,
                             request_type = %type_name::<Request>(),
                             response_type = %type_name::<Request::Response>(),
                             "Acknowledgement wait timed out"

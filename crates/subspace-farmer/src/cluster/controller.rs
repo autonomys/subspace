@@ -518,39 +518,57 @@ pub async fn controller_service<NC, PG>(
     piece_getter: &PG,
     farmer_cache: &FarmerCache,
     instance: &str,
+    primary_instance: bool,
 ) -> anyhow::Result<()>
 where
     NC: NodeClient,
     PG: PieceGetter + Sync,
 {
-    select! {
-        result = slot_info_broadcaster(nats_client, node_client, instance).fuse() => {
-            result
-        },
-        result = reward_signing_broadcaster(nats_client, node_client, instance).fuse() => {
-            result
-        },
-        result = archived_segment_headers_broadcaster(nats_client, node_client, instance).fuse() => {
-            result
-        },
-        result = solution_response_forwarder(nats_client, node_client, instance).fuse() => {
-            result
-        },
-        result = reward_signature_forwarder(nats_client, node_client, instance).fuse() => {
-            result
-        },
-        result = farmer_app_info_responder(nats_client, node_client).fuse() => {
-            result
-        },
-        result = segment_headers_responder(nats_client, node_client).fuse() => {
-            result
-        },
-        result = find_piece_responder(nats_client, farmer_cache).fuse() => {
-            result
-        },
-        result = piece_responder(nats_client, piece_getter).fuse() => {
-            result
-        },
+    if primary_instance {
+        select! {
+            result = slot_info_broadcaster(nats_client, node_client, instance).fuse() => {
+                result
+            },
+            result = reward_signing_broadcaster(nats_client, node_client, instance).fuse() => {
+                result
+            },
+            result = archived_segment_headers_broadcaster(nats_client, node_client, instance).fuse() => {
+                result
+            },
+            result = solution_response_forwarder(nats_client, node_client, instance).fuse() => {
+                result
+            },
+            result = reward_signature_forwarder(nats_client, node_client, instance).fuse() => {
+                result
+            },
+            result = farmer_app_info_responder(nats_client, node_client).fuse() => {
+                result
+            },
+            result = segment_headers_responder(nats_client, node_client).fuse() => {
+                result
+            },
+            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+                result
+            },
+            result = piece_responder(nats_client, piece_getter).fuse() => {
+                result
+            },
+        }
+    } else {
+        select! {
+            result = farmer_app_info_responder(nats_client, node_client).fuse() => {
+                result
+            },
+            result = segment_headers_responder(nats_client, node_client).fuse() => {
+                result
+            },
+            result = find_piece_responder(nats_client, farmer_cache).fuse() => {
+                result
+            },
+            result = piece_responder(nats_client, piece_getter).fuse() => {
+                result
+            },
+        }
     }
 }
 

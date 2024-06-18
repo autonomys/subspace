@@ -341,7 +341,7 @@ struct FarmDetails {
     total_sectors_count: SectorIndex,
     piece_reader: Arc<dyn PieceReader + 'static>,
     plotted_sectors: Arc<dyn PlottedSectors + 'static>,
-    _background_tasks: AsyncJoinOnDrop<()>,
+    _background_tasks: Option<AsyncJoinOnDrop<()>>,
 }
 
 /// Create farmer service for specified farms that will be processing incoming requests and send
@@ -353,6 +353,7 @@ pub fn farmer_service<F>(
     nats_client: NatsClient,
     farms: &[F],
     identification_broadcast_interval: Duration,
+    primary_instance: bool,
 ) -> impl Future<Output = anyhow::Result<()>> + Send + 'static
 where
     F: Farm,
@@ -365,97 +366,104 @@ where
             let farm_id = *farm.id();
             let nats_client = nats_client.clone();
 
-            let (sector_updates_sender, mut sector_updates_receiver) =
-                mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
-            let (farming_notifications_sender, mut farming_notifications_receiver) =
-                mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
-            let (solutions_sender, mut solutions_receiver) =
-                mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
+            let background_tasks = if primary_instance {
+                let (sector_updates_sender, mut sector_updates_receiver) =
+                    mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
+                let (farming_notifications_sender, mut farming_notifications_receiver) =
+                    mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
+                let (solutions_sender, mut solutions_receiver) =
+                    mpsc::channel(BROADCAST_NOTIFICATIONS_BUFFER);
 
-            let sector_updates_handler_id =
-                farm.on_sector_update(Arc::new(move |(sector_index, sector_update)| {
-                    if let Err(error) =
-                        sector_updates_sender
-                            .clone()
-                            .try_send(ClusterFarmerSectorUpdateBroadcast {
+                let sector_updates_handler_id =
+                    farm.on_sector_update(Arc::new(move |(sector_index, sector_update)| {
+                        if let Err(error) = sector_updates_sender.clone().try_send(
+                            ClusterFarmerSectorUpdateBroadcast {
                                 farm_id,
                                 sector_index: *sector_index,
                                 sector_update: sector_update.clone(),
+                            },
+                        ) {
+                            warn!(%farm_id, %error, "Failed to send sector update notification");
+                        }
+                    }));
+
+                let farming_notifications_handler_id =
+                    farm.on_farming_notification(Arc::new(move |farming_notification| {
+                        if let Err(error) = farming_notifications_sender.clone().try_send(
+                            ClusterFarmerFarmingNotificationBroadcast {
+                                farm_id,
+                                farming_notification: farming_notification.clone(),
+                            },
+                        ) {
+                            warn!(%farm_id, %error, "Failed to send farming notification");
+                        }
+                    }));
+
+                let solutions_handler_id = farm.on_solution(Arc::new(move |solution_response| {
+                    if let Err(error) =
+                        solutions_sender
+                            .clone()
+                            .try_send(ClusterFarmerSolutionBroadcast {
+                                farm_id,
+                                solution_response: solution_response.clone(),
                             })
                     {
-                        warn!(%farm_id, %error, "Failed to send sector update notification");
+                        warn!(%farm_id, %error, "Failed to send solution notification");
                     }
                 }));
 
-            let farming_notifications_handler_id =
-                farm.on_farming_notification(Arc::new(move |farming_notification| {
-                    if let Err(error) = farming_notifications_sender.clone().try_send(
-                        ClusterFarmerFarmingNotificationBroadcast {
-                            farm_id,
-                            farming_notification: farming_notification.clone(),
-                        },
-                    ) {
-                        warn!(%farm_id, %error, "Failed to send farming notification");
-                    }
-                }));
+                Some(AsyncJoinOnDrop::new(
+                    tokio::spawn(async move {
+                        let farm_id_string = farm_id.to_string();
 
-            let solutions_handler_id = farm.on_solution(Arc::new(move |solution_response| {
-                if let Err(error) =
-                    solutions_sender
-                        .clone()
-                        .try_send(ClusterFarmerSolutionBroadcast {
-                            farm_id,
-                            solution_response: solution_response.clone(),
-                        })
-                {
-                    warn!(%farm_id, %error, "Failed to send solution notification");
-                }
-            }));
-
-            let background_tasks = AsyncJoinOnDrop::new(
-                tokio::spawn(async move {
-                    let farm_id_string = farm_id.to_string();
-
-                    let sector_updates_fut = async {
-                        while let Some(broadcast) = sector_updates_receiver.next().await {
-                            if let Err(error) =
-                                nats_client.broadcast(&broadcast, &farm_id_string).await
-                            {
-                                warn!(%farm_id, %error, "Failed to broadcast sector update");
+                        let sector_updates_fut = async {
+                            while let Some(broadcast) = sector_updates_receiver.next().await {
+                                if let Err(error) =
+                                    nats_client.broadcast(&broadcast, &farm_id_string).await
+                                {
+                                    warn!(%farm_id, %error, "Failed to broadcast sector update");
+                                }
                             }
-                        }
-                    };
-                    let farming_notifications_fut = async {
-                        while let Some(broadcast) = farming_notifications_receiver.next().await {
-                            if let Err(error) =
-                                nats_client.broadcast(&broadcast, &farm_id_string).await
+                        };
+                        let farming_notifications_fut = async {
+                            while let Some(broadcast) = farming_notifications_receiver.next().await
                             {
-                                warn!(%farm_id, %error, "Failed to broadcast farming notification");
+                                if let Err(error) =
+                                    nats_client.broadcast(&broadcast, &farm_id_string).await
+                                {
+                                    warn!(
+                                        %farm_id,
+                                        %error,
+                                        "Failed to broadcast farming notification"
+                                    );
+                                }
                             }
-                        }
-                    };
-                    let solutions_fut = async {
-                        while let Some(broadcast) = solutions_receiver.next().await {
-                            if let Err(error) =
-                                nats_client.broadcast(&broadcast, &farm_id_string).await
-                            {
-                                warn!(%farm_id, %error, "Failed to broadcast solution");
+                        };
+                        let solutions_fut = async {
+                            while let Some(broadcast) = solutions_receiver.next().await {
+                                if let Err(error) =
+                                    nats_client.broadcast(&broadcast, &farm_id_string).await
+                                {
+                                    warn!(%farm_id, %error, "Failed to broadcast solution");
+                                }
                             }
+                        };
+
+                        select! {
+                            _ = sector_updates_fut.fuse() => {}
+                            _ = farming_notifications_fut.fuse() => {}
+                            _ = solutions_fut.fuse() => {}
                         }
-                    };
 
-                    select! {
-                        _ = sector_updates_fut.fuse() => {}
-                        _ = farming_notifications_fut.fuse() => {}
-                        _ = solutions_fut.fuse() => {}
-                    }
-
-                    drop(sector_updates_handler_id);
-                    drop(farming_notifications_handler_id);
-                    drop(solutions_handler_id);
-                }),
-                true,
-            );
+                        drop(sector_updates_handler_id);
+                        drop(farming_notifications_handler_id);
+                        drop(solutions_handler_id);
+                    }),
+                    true,
+                ))
+            } else {
+                None
+            };
 
             FarmDetails {
                 farm_id,
@@ -469,16 +477,27 @@ where
         .collect::<Vec<_>>();
 
     async move {
-        select! {
-            result = identify_responder(&nats_client, &farms_details, identification_broadcast_interval).fuse() => {
-                result
-            },
-            result = plotted_sectors_responder(&nats_client, &farms_details).fuse() => {
-                result
-            },
-            result = read_piece_responder(&nats_client, &farms_details).fuse() => {
-                result
-            },
+        if primary_instance {
+            select! {
+                result = identify_responder(&nats_client, &farms_details, identification_broadcast_interval).fuse() => {
+                    result
+                },
+                result = plotted_sectors_responder(&nats_client, &farms_details).fuse() => {
+                    result
+                },
+                result = read_piece_responder(&nats_client, &farms_details).fuse() => {
+                    result
+                },
+            }
+        } else {
+            select! {
+                result = plotted_sectors_responder(&nats_client, &farms_details).fuse() => {
+                    result
+                },
+                result = read_piece_responder(&nats_client, &farms_details).fuse() => {
+                    result
+                },
+            }
         }
     }
 }
@@ -504,6 +523,7 @@ async fn identify_responder(
             anyhow!("Failed to subscribe to farmer identify broadcast requests: {error}")
         })?
         .fuse();
+
     // Also send periodic updates in addition to the subscription response
     let mut interval = tokio::time::interval(identification_broadcast_interval);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);

@@ -1,5 +1,6 @@
 #![feature(
     const_option,
+    duration_constructors,
     extract_if,
     hash_extract_if,
     let_chains,

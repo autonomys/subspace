@@ -367,12 +367,8 @@ where
                 tokio::spawn(farmer_service(
                     nats_client.clone(),
                     farms.as_slice(),
-                    // Only one of the tasks needs to send periodic broadcast
-                    if index == 0 {
-                        FARMER_IDENTIFICATION_BROADCAST_INTERVAL
-                    } else {
-                        Duration::MAX
-                    },
+                    FARMER_IDENTIFICATION_BROADCAST_INTERVAL,
+                    index == 0,
                 )),
                 true,
             )

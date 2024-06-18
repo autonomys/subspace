@@ -196,7 +196,7 @@ pub(super) async fn controller(
     )?;
 
     let mut controller_services = (0..service_instances.get())
-        .map(|_| {
+        .map(|index| {
             let nats_client = nats_client.clone();
             let node_client = node_client.clone();
             let piece_getter = piece_getter.clone();
@@ -211,6 +211,7 @@ pub(super) async fn controller(
                         &piece_getter,
                         &farmer_cache,
                         &instance,
+                        index == 0,
                     )
                     .await
                 }),
