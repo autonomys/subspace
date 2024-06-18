@@ -19,6 +19,46 @@ use tracing::{info, trace, warn};
 ///  in subscriptions become broken on the node: https://github.com/paritytech/jsonrpsee/issues/1409
 const MAX_CONCURRENT_PIECE_REQUESTS: usize = 10;
 
+async fn sync_segment_headers(
+    segment_headers: &mut Vec<SegmentHeader>,
+    client: &WsClient,
+) -> Result<(), JsonError> {
+    let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
+    let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
+
+    'outer: loop {
+        let from = segment_index_offset;
+        let to = segment_index_offset + segment_index_step;
+        trace!(%from, %to, "Requesting segment headers");
+
+        for maybe_segment_header in client
+            .request::<Vec<Option<SegmentHeader>>, _>(
+                "subspace_segmentHeaders",
+                rpc_params![&(from..to).collect::<Vec<_>>()],
+            )
+            .await
+            .map_err(|error| {
+                JsonError::Custom(format!(
+                    "Failed to download segment headers {from}..{to} from node: {error}"
+                ))
+            })?
+        {
+            let Some(segment_header) = maybe_segment_header else {
+                // Reached non-existent segment header
+                break 'outer;
+            };
+
+            if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
+                segment_headers.push(segment_header);
+            }
+        }
+
+        segment_index_offset += segment_index_step;
+    }
+
+    Ok(())
+}
+
 /// `WsClient` wrapper.
 #[derive(Debug, Clone)]
 pub struct NodeRpcClient {
@@ -54,40 +94,7 @@ impl NodeRpcClient {
         );
 
         info!("Downloading all segment headers from node...");
-        {
-            let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
-            let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
-
-            'outer: loop {
-                let from = segment_index_offset;
-                let to = segment_index_offset + segment_index_step;
-                trace!(%from, %to, "Requesting segment headers");
-
-                for maybe_segment_header in client
-                    .request::<Vec<Option<SegmentHeader>>, _>(
-                        "subspace_segmentHeaders",
-                        rpc_params![&(from..to).collect::<Vec<_>>()],
-                    )
-                    .await
-                    .map_err(|error| {
-                        JsonError::Custom(format!(
-                            "Failed to download segment headers {from}..{to} from node: {error}"
-                        ))
-                    })?
-                {
-                    let Some(segment_header) = maybe_segment_header else {
-                        // Reached non-existent segment header
-                        break 'outer;
-                    };
-
-                    if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
-                        segment_headers.push(segment_header);
-                    }
-                }
-
-                segment_index_offset += segment_index_step;
-            }
-        }
+        sync_segment_headers(&mut segment_headers, &client).await?;
         info!("Downloaded all segment headers from node successfully");
 
         let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
@@ -229,15 +236,35 @@ impl NodeClient for NodeRpcClient {
         &self,
         segment_indices: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
-        let segment_headers = self.segment_headers.read().await;
-        Ok(segment_indices
-            .into_iter()
-            .map(|segment_index| {
-                segment_headers
-                    .get(u64::from(segment_index) as usize)
-                    .copied()
-            })
-            .collect())
+        let retrieved_segment_headers = {
+            let segment_headers = self.segment_headers.read().await;
+
+            segment_indices
+                .iter()
+                .map(|segment_index| {
+                    segment_headers
+                        .get(u64::from(*segment_index) as usize)
+                        .copied()
+                })
+                .collect::<Vec<_>>()
+        };
+
+        if retrieved_segment_headers.iter().all(Option::is_some) {
+            Ok(retrieved_segment_headers)
+        } else {
+            // Re-sync segment headers
+            let mut segment_headers = self.segment_headers.write().await;
+            sync_segment_headers(&mut segment_headers, &self.client).await?;
+
+            Ok(segment_indices
+                .iter()
+                .map(|segment_index| {
+                    segment_headers
+                        .get(u64::from(*segment_index) as usize)
+                        .copied()
+                })
+                .collect::<Vec<_>>())
+        }
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {

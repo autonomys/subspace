@@ -170,6 +170,54 @@ impl GenericRequest for ClusterControllerPieceRequest {
     type Response = Option<Piece>;
 }
 
+async fn sync_segment_headers(
+    segment_headers: &mut Vec<SegmentHeader>,
+    nats_client: &NatsClient,
+) -> anyhow::Result<()> {
+    let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
+    let dummy_header = SegmentHeader::V0 {
+        segment_index: Default::default(),
+        segment_commitment: Default::default(),
+        prev_segment_header_hash: Blake3Hash::default(),
+        last_archived_block: LastArchivedBlock {
+            number: 0,
+            archived_progress: ArchivedBlockProgress::Partial(0),
+        },
+    };
+    let segment_index_step = SegmentIndex::from(
+        nats_client.approximate_max_message_size() as u64 / dummy_header.encoded_size() as u64,
+    );
+
+    'outer: loop {
+        let from = segment_index_offset;
+        let to = segment_index_offset + segment_index_step;
+        trace!(%from, %to, "Requesting segment headers");
+
+        for maybe_segment_header in nats_client
+            .request(
+                &ClusterControllerSegmentHeadersRequest {
+                    segment_indices: (from..to).collect::<Vec<_>>(),
+                },
+                None,
+            )
+            .await?
+        {
+            let Some(segment_header) = maybe_segment_header else {
+                // Reached non-existent segment header
+                break 'outer;
+            };
+
+            if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
+                segment_headers.push(segment_header);
+            }
+        }
+
+        segment_index_offset += segment_index_step;
+    }
+
+    Ok(())
+}
+
 /// Cluster piece getter
 #[derive(Debug, Clone)]
 pub struct ClusterPieceGetter {
@@ -294,49 +342,7 @@ impl ClusterNodeClient {
             .map(|broadcast| broadcast.archived_segment_header);
 
         info!("Downloading all segment headers from controller...");
-        {
-            let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
-            let dummy_header = SegmentHeader::V0 {
-                segment_index: Default::default(),
-                segment_commitment: Default::default(),
-                prev_segment_header_hash: Blake3Hash::default(),
-                last_archived_block: LastArchivedBlock {
-                    number: 0,
-                    archived_progress: ArchivedBlockProgress::Partial(0),
-                },
-            };
-            let segment_index_step = SegmentIndex::from(
-                nats_client.approximate_max_message_size() as u64
-                    / dummy_header.encoded_size() as u64,
-            );
-
-            'outer: loop {
-                let from = segment_index_offset;
-                let to = segment_index_offset + segment_index_step;
-                trace!(%from, %to, "Requesting segment headers");
-
-                for maybe_segment_header in nats_client
-                    .request(
-                        &ClusterControllerSegmentHeadersRequest {
-                            segment_indices: (from..to).collect::<Vec<_>>(),
-                        },
-                        None,
-                    )
-                    .await?
-                {
-                    let Some(segment_header) = maybe_segment_header else {
-                        // Reached non-existent segment header
-                        break 'outer;
-                    };
-
-                    if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
-                        segment_headers.push(segment_header);
-                    }
-                }
-
-                segment_index_offset += segment_index_step;
-            }
-        }
+        sync_segment_headers(&mut segment_headers, &nats_client).await?;
         info!("Downloaded all segment headers from node successfully");
 
         let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
@@ -454,15 +460,35 @@ impl NodeClient for ClusterNodeClient {
         &self,
         segment_indices: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, NodeClientError> {
-        let segment_headers = self.segment_headers.read().await;
-        Ok(segment_indices
-            .into_iter()
-            .map(|segment_index| {
-                segment_headers
-                    .get(u64::from(segment_index) as usize)
-                    .copied()
-            })
-            .collect())
+        let retrieved_segment_headers = {
+            let segment_headers = self.segment_headers.read().await;
+
+            segment_indices
+                .iter()
+                .map(|segment_index| {
+                    segment_headers
+                        .get(u64::from(*segment_index) as usize)
+                        .copied()
+                })
+                .collect::<Vec<_>>()
+        };
+
+        if retrieved_segment_headers.iter().all(Option::is_some) {
+            Ok(retrieved_segment_headers)
+        } else {
+            // Re-sync segment headers
+            let mut segment_headers = self.segment_headers.write().await;
+            sync_segment_headers(&mut segment_headers, &self.nats_client).await?;
+
+            Ok(segment_indices
+                .iter()
+                .map(|segment_index| {
+                    segment_headers
+                        .get(u64::from(*segment_index) as usize)
+                        .copied()
+                })
+                .collect::<Vec<_>>())
+        }
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, NodeClientError> {
