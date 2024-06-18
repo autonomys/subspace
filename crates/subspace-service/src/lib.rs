@@ -233,7 +233,6 @@ struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     client: Arc<Client>,
     backend: Arc<FullBackend>,
     pot_verifier: PotVerifier,
-    executor: Arc<RuntimeExecutor>,
     domains_executor: Arc<sc_domains::RuntimeExecutor>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
@@ -403,7 +402,7 @@ where
         exts.register(MessengerExtension::new(Arc::new(
             MessengerHostFunctionsImpl::<Block, _, DomainBlock, _>::new(
                 self.client.clone(),
-                self.executor.clone(),
+                self.domains_executor.clone(),
             ),
         )));
 
@@ -500,15 +499,12 @@ where
         POT_VERIFIER_CACHE_SIZE,
     );
 
-    let executor = Arc::new(executor);
-
     client
         .execution_extensions()
         .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock> {
             kzg: kzg.clone(),
             client: Arc::clone(&client),
             pot_verifier: pot_verifier.clone(),
-            executor: executor.clone(),
             domains_executor: Arc::new(domains_executor),
             backend: backend.clone(),
             _pos_table: PhantomData,
