@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::pallet::ChainAllowlist;
+use crate::pallet::{ChainAllowlist, UpdatedChannels};
 use crate::{
     BalanceOf, ChannelId, ChannelState, Channels, CloseChannelBy, Config, Error, Event,
     InboxResponses, MessageWeightTags as MessageWeightTagStore, Nonce, Outbox, OutboxMessageResult,
@@ -191,6 +191,10 @@ impl<T: Config> Pallet<T> {
                 Ok(())
             },
         )?;
+
+        UpdatedChannels::<T>::mutate(|updated_channels| {
+            updated_channels.insert((dst_chain_id, channel_id))
+        });
 
         // reward relayers for relaying message responses to src_chain.
         // clean any delivered inbox responses
@@ -388,6 +392,10 @@ impl<T: Config> Pallet<T> {
                 Ok(())
             },
         )?;
+
+        UpdatedChannels::<T>::mutate(|updated_channels| {
+            updated_channels.insert((dst_chain_id, channel_id))
+        });
 
         // deposit event notifying the message status.
         match resp {

@@ -32,13 +32,14 @@ use sp_domains::{
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, MessageId, MessageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, MessageId, MessageKey,
 };
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
 use sp_version::RuntimeVersion;
 use std::collections::btree_map::BTreeMap;
+use std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
@@ -397,6 +398,10 @@ sp_api::impl_runtime_apis! {
         }
 
         fn should_relay_inbox_message_response(_dst_chain_id: ChainId, _msg_id: MessageId) -> bool {
+            unreachable!()
+        }
+
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>{
             unreachable!()
         }
     }

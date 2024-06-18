@@ -86,6 +86,7 @@ use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
 };
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::subspace_mmr_runtime_interface::consensus_block_hash;
@@ -1347,6 +1348,10 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>{
+            Messenger::updated_channels()
         }
     }
 
