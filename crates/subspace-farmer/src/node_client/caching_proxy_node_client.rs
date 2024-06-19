@@ -5,7 +5,7 @@ use crate::node_client::{Error as RpcError, Error, NodeClient};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::{select, FutureExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
@@ -13,6 +13,8 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
+use tokio::sync::watch;
+use tokio_stream::wrappers::WatchStream;
 use tracing::{info, trace, warn};
 
 async fn sync_segment_headers<NC>(
@@ -58,9 +60,12 @@ where
 ///
 /// NOTE: Archived segment acknowledgement is ignored in this client, all subscriptions are
 /// acknowledged implicitly and immediately.
+/// NOTE: Subscription messages that are not processed in time will be skipped for performance
+/// reasons!
 #[derive(Debug, Clone)]
 pub struct CachingProxyNodeClient<NC> {
     inner: NC,
+    slot_info_receiver: watch::Receiver<Option<SlotInfo>>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
@@ -80,7 +85,21 @@ where
         info!("Downloaded all segment headers from node successfully");
 
         let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
-        let background_task = tokio::spawn({
+
+        let (slot_info_sender, slot_info_receiver) = watch::channel(None::<SlotInfo>);
+        let slot_info_proxy_fut = {
+            let mut slot_info_subscription = client.subscribe_slot_info().await?;
+
+            async move {
+                while let Some(slot_info) = slot_info_subscription.next().await {
+                    if let Err(error) = slot_info_sender.send(Some(slot_info)) {
+                        warn!(%error, "Failed to proxy slot info notification");
+                        return;
+                    }
+                }
+            }
+        };
+        let segment_headers_maintenance_fut = {
             let client = client.clone();
             let segment_headers = Arc::clone(&segment_headers);
 
@@ -113,10 +132,18 @@ where
                     }
                 }
             }
+        };
+
+        let background_task = tokio::spawn(async move {
+            select! {
+                _ = slot_info_proxy_fut.fuse() => {},
+                _ = segment_headers_maintenance_fut.fuse() => {},
+            }
         });
 
         let node_client = Self {
             inner: client,
+            slot_info_receiver,
             segment_headers,
             _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         };
@@ -137,7 +164,10 @@ where
     async fn subscribe_slot_info(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, RpcError> {
-        self.inner.subscribe_slot_info().await
+        Ok(Box::pin(
+            WatchStream::new(self.slot_info_receiver.clone())
+                .filter_map(|maybe_slot_info| async move { maybe_slot_info }),
+        ))
     }
 
     async fn submit_solution_response(

@@ -12628,6 +12628,7 @@ dependencies = [
  "thiserror",
  "thread-priority",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber 0.3.18",
  "ulid",
