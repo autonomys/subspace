@@ -30,6 +30,7 @@ use subspace_farmer::farm::{
 use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
+use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
@@ -367,6 +368,10 @@ where
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
+
+    let node_client = CachingProxyNodeClient::new(node_client)
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(

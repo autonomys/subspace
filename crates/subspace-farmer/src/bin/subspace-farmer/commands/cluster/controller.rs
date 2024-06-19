@@ -25,6 +25,7 @@ use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCache;
 use subspace_farmer::farmer_piece_getter::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::farmer_piece_getter::{DsnCacheRetryPolicy, FarmerPieceGetter};
+use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::single_disk_farm::identity::Identity;
@@ -158,6 +159,10 @@ pub(super) async fn controller(
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
+
+    let node_client = CachingProxyNodeClient::new(node_client)
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let validator = Some(SegmentCommitmentPieceValidator::new(

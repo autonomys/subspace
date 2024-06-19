@@ -24,6 +24,7 @@ use subspace_farmer::cluster::plotter::ClusterPlotter;
 use subspace_farmer::farm::{
     Farm, FarmingNotification, SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
 };
+use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
@@ -171,9 +172,13 @@ where
         None
     };
 
-    let node_client = ClusterNodeClient::new(nats_client.clone())
-        .await
-        .map_err(|error| anyhow!("Failed to create cluster node client: {error}"))?;
+    let node_client = CachingProxyNodeClient::new(
+        ClusterNodeClient::new(nats_client.clone())
+            .await
+            .map_err(|error| anyhow!("Failed to create cluster node client: {error}"))?,
+    )
+    .await
+    .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
