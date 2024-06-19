@@ -3,11 +3,12 @@
 
 use crate::node_client::{Error as RpcError, Error, NodeClient};
 use crate::utils::AsyncJoinOnDrop;
-use async_lock::RwLock as AsyncRwLock;
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::{select, FutureExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -16,6 +17,8 @@ use subspace_rpc_primitives::{
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 use tracing::{info, trace, warn};
+
+const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
 
 async fn sync_segment_headers<NC>(
     segment_headers: &mut Vec<SegmentHeader>,
@@ -69,6 +72,7 @@ pub struct CachingProxyNodeClient<NC> {
     archived_segment_headers_receiver: watch::Receiver<Option<SegmentHeader>>,
     reward_signing_receiver: watch::Receiver<Option<RewardSigningInfo>>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
+    last_farmer_app_info: Arc<AsyncMutex<(FarmerAppInfo, Instant)>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
 
@@ -101,6 +105,7 @@ where
                 }
             }
         };
+
         let (archived_segment_headers_sender, archived_segment_headers_receiver) =
             watch::channel(None::<SegmentHeader>);
         let segment_headers_maintenance_fut = {
@@ -144,6 +149,7 @@ where
                 }
             }
         };
+
         let (reward_signing_sender, reward_signing_receiver) =
             watch::channel(None::<RewardSigningInfo>);
         let reward_signing_proxy_fut = {
@@ -159,6 +165,12 @@ where
             }
         };
 
+        let farmer_app_info = client
+            .farmer_app_info()
+            .await
+            .map_err(|error| format!("Failed to get farmer app info: {error}"))?;
+        let last_farmer_app_info = Arc::new(AsyncMutex::new((farmer_app_info, Instant::now())));
+
         let background_task = tokio::spawn(async move {
             select! {
                 _ = slot_info_proxy_fut.fuse() => {},
@@ -173,6 +185,7 @@ where
             archived_segment_headers_receiver,
             reward_signing_receiver,
             segment_headers,
+            last_farmer_app_info,
             _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         };
 
@@ -186,7 +199,17 @@ where
     NC: NodeClient,
 {
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
-        self.inner.farmer_app_info().await
+        let (last_farmer_app_info, last_farmer_app_info_request) =
+            &mut *self.last_farmer_app_info.lock().await;
+
+        if last_farmer_app_info_request.elapsed() > FARMER_APP_INFO_DEDUPLICATION_WINDOW {
+            let new_last_farmer_app_info = self.inner.farmer_app_info().await?;
+
+            *last_farmer_app_info = new_last_farmer_app_info;
+            *last_farmer_app_info_request = Instant::now();
+        }
+
+        Ok(last_farmer_app_info.clone())
     }
 
     async fn subscribe_slot_info(

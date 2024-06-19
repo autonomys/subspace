@@ -14,7 +14,7 @@ use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, Semaphore};
+use async_lock::Semaphore;
 use async_nats::{HeaderValue, Message};
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
@@ -26,15 +26,12 @@ use std::future::{pending, Future};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tracing::{debug, trace, warn};
-
-const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
 
 /// Broadcast sent by controllers requesting farmers to identify themselves
 #[derive(Debug, Copy, Clone, Encode, Decode)]
@@ -130,7 +127,7 @@ struct ClusterControllerFarmerAppInfoRequest;
 
 impl GenericRequest for ClusterControllerFarmerAppInfoRequest {
     const SUBJECT: &'static str = "subspace.controller.farmer-app-info";
-    type Response = FarmerAppInfo;
+    type Response = Result<FarmerAppInfo, String>;
 }
 
 /// Request segment headers with specified segment indices
@@ -294,7 +291,7 @@ impl NodeClient for ClusterNodeClient {
         Ok(self
             .nats_client
             .request(&ClusterControllerFarmerAppInfoRequest, None)
-            .await?)
+            .await??)
     }
 
     async fn subscribe_slot_info(
@@ -649,13 +646,6 @@ async fn farmer_app_info_responder<NC>(
 where
     NC: NodeClient,
 {
-    let farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response =
-        node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
-    let last_farmer_app_info = AsyncMutex::new((farmer_app_info, Instant::now()));
-
     // Initialize with pending future so it never ends
     let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
         Box::pin(pending()) as Pin<Box<_>>,
@@ -683,7 +673,6 @@ where
                     nats_client,
                     node_client,
                     message,
-                    &last_farmer_app_info,
                 )));
             }
             _ = processing.next() => {
@@ -699,7 +688,6 @@ async fn process_farmer_app_info_request<NC>(
     nats_client: &NatsClient,
     node_client: &NC,
     message: Message,
-    last_farmer_app_info: &AsyncMutex<(FarmerAppInfo, Instant)>,
 ) where
     NC: NodeClient,
 {
@@ -709,28 +697,11 @@ async fn process_farmer_app_info_request<NC>(
 
     trace!("Farmer app info request");
 
-    let farmer_app_info = {
-        let (last_farmer_app_info, last_farmer_app_info_request) =
-            &mut *last_farmer_app_info.lock().await;
-
-        if last_farmer_app_info_request.elapsed() > FARMER_APP_INFO_DEDUPLICATION_WINDOW {
-            let farmer_app_info: Result<
-                <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response,
-                _,
-            > = node_client.farmer_app_info().await;
-            match farmer_app_info {
-                Ok(new_last_farmer_app_info) => {
-                    *last_farmer_app_info = new_last_farmer_app_info;
-                    *last_farmer_app_info_request = Instant::now();
-                }
-                Err(error) => {
-                    warn!(%error, "Failed to get farmer app info");
-                }
-            }
-        }
-
-        last_farmer_app_info.clone()
-    };
+    let farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response =
+        node_client
+            .farmer_app_info()
+            .await
+            .map_err(|error| error.to_string());
 
     if let Err(error) = nats_client
         .publish(reply_subject, farmer_app_info.encode().into())
