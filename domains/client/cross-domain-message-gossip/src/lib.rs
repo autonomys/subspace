@@ -1,5 +1,6 @@
 #![warn(rust_2018_idioms)]
 
+mod aux_schema;
 mod gossip_worker;
 mod message_listener;
 

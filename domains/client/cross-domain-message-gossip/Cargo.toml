@@ -15,6 +15,7 @@ include = [
 futures = "0.3.29"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 parking_lot = "0.12.2"
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sc-network-gossip = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
@@ -23,4 +24,5 @@ sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"

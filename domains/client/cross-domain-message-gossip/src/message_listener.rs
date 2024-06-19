@@ -1,7 +1,7 @@
 use crate::gossip_worker::MessageData;
 use crate::ChainMsg;
 use futures::{Stream, StreamExt};
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, PeerId};
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_blockchain::HeaderBackend;
 use sp_messenger::messages::ChainId;
@@ -34,46 +34,67 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
     while let Some(msg) = listener.next().await {
         tracing::debug!(
             target: LOG_TARGET,
-            "Extrinsic received for Chain: {:?}",
+            "Message received for Chain: {:?}",
             chain_id,
         );
 
         let MessageData::Xdm(encoded_data) = msg.data;
+        handle_xdm_message(
+            encoded_data,
+            network.clone(),
+            client.clone(),
+            tx_pool.clone(),
+            msg.maybe_peer,
+            chain_id,
+        )
+        .await;
+    }
+}
 
-        let ext = match ExtrinsicOf::<TxPool>::decode(&mut encoded_data.as_ref()) {
-            Ok(ext) => ext,
-            Err(_) => {
-                if let Some(peer_id) = msg.maybe_peer {
-                    network.report_peer(peer_id, crate::gossip_worker::rep::GOSSIP_NOT_DECODABLE);
-                } else {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        "Failed to decode extrinsic from unknown sender: {:?}",
-                        encoded_data
-                    );
-                }
-                continue;
+async fn handle_xdm_message<TxPool, Client>(
+    encoded_data: Vec<u8>,
+    network: Arc<dyn NetworkPeers + Send + Sync>,
+    client: Arc<Client>,
+    tx_pool: Arc<TxPool>,
+    maybe_peer: Option<PeerId>,
+    chain_id: ChainId,
+) where
+    TxPool: TransactionPool + 'static,
+    Client: HeaderBackend<BlockOf<TxPool>>,
+{
+    let ext = match ExtrinsicOf::<TxPool>::decode(&mut encoded_data.as_ref()) {
+        Ok(ext) => ext,
+        Err(_) => {
+            if let Some(peer_id) = maybe_peer {
+                network.report_peer(peer_id, crate::gossip_worker::rep::GOSSIP_NOT_DECODABLE);
+            } else {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    "Failed to decode extrinsic from unknown sender: {:?}",
+                    encoded_data
+                );
             }
-        };
-
-        let at = client.info().best_hash;
-        tracing::debug!(
-            target: LOG_TARGET,
-            "Submitting extrinsic to tx pool at block: {:?}",
-            at
-        );
-
-        let tx_pool_res = tx_pool
-            .submit_one(at, TransactionSource::External, ext)
-            .await;
-
-        if let Err(err) = tx_pool_res {
-            tracing::error!(
-                target: LOG_TARGET,
-                "Failed to submit extrinsic to tx pool for Chain {:?} with error: {:?}",
-                chain_id,
-                err
-            );
+            return;
         }
+    };
+
+    let at = client.info().best_hash;
+    tracing::debug!(
+        target: LOG_TARGET,
+        "Submitting extrinsic to tx pool at block: {:?}",
+        at
+    );
+
+    let tx_pool_res = tx_pool
+        .submit_one(at, TransactionSource::External, ext)
+        .await;
+
+    if let Err(err) = tx_pool_res {
+        tracing::error!(
+            target: LOG_TARGET,
+            "Failed to submit extrinsic to tx pool for Chain {:?} with error: {:?}",
+            chain_id,
+            err
+        );
     }
 }

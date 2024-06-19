@@ -2177,6 +2177,7 @@ dependencies = [
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.3",
+ "sc-client-api",
  "sc-network",
  "sc-network-gossip",
  "sc-transaction-pool-api",
@@ -2185,6 +2186,7 @@ dependencies = [
  "sp-core",
  "sp-messenger",
  "sp-runtime",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
