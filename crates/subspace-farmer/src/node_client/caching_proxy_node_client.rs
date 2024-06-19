@@ -66,6 +66,7 @@ where
 pub struct CachingProxyNodeClient<NC> {
     inner: NC,
     slot_info_receiver: watch::Receiver<Option<SlotInfo>>,
+    archived_segment_headers_receiver: watch::Receiver<Option<SegmentHeader>>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
@@ -99,6 +100,8 @@ where
                 }
             }
         };
+        let (archived_segment_headers_sender, archived_segment_headers_receiver) =
+            watch::channel(None::<SegmentHeader>);
         let segment_headers_maintenance_fut = {
             let client = client.clone();
             let segment_headers = Arc::clone(&segment_headers);
@@ -130,6 +133,13 @@ where
                             "Failed to acknowledge archived segment header, trying again"
                         );
                     }
+
+                    if let Err(error) =
+                        archived_segment_headers_sender.send(Some(archived_segment_header))
+                    {
+                        warn!(%error, "Failed to proxy archived segment header notification");
+                        return;
+                    }
                 }
             }
         };
@@ -144,6 +154,7 @@ where
         let node_client = Self {
             inner: client,
             slot_info_receiver,
+            archived_segment_headers_receiver,
             segment_headers,
             _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         };
@@ -194,7 +205,10 @@ where
     async fn subscribe_archived_segment_headers(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, RpcError> {
-        self.inner.subscribe_archived_segment_headers().await
+        Ok(Box::pin(
+            WatchStream::new(self.archived_segment_headers_receiver.clone())
+                .filter_map(|maybe_segment_header| async move { maybe_segment_header }),
+        ))
     }
 
     async fn segment_headers(
