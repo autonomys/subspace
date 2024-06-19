@@ -32,7 +32,9 @@ Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subs
 This is a monorepo with multiple binaries and the workflow is typical for Rust projects:
 
 - `cargo run --release --bin subspace-node -- run --dev` to run [a node](/crates/subspace-node)
-- `cargo run --release --bin subspace-farmer farm --reward-address REWARD-ADDRESS --plot-size PLOT-SIZE` to [start farming](/crates/subspace-farmer)
+- To [start farming](/crates/subspace-farmer):
+  - Single farm: `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE`
+  - Multiple farms: `cargo run --release --bin subspace-farmer -- farm --reward-address REWARD-ADDRESS path=FARM0-DIR,size=FARM0-SIZE path=FARM1-DIR,size=FARM1-SIZE ...`
 
 NOTE 1: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.
 NOTE 2: Following the commands above, you will be farming in an offline setting (by yourself).
