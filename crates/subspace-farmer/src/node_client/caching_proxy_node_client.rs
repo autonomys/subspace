@@ -67,6 +67,7 @@ pub struct CachingProxyNodeClient<NC> {
     inner: NC,
     slot_info_receiver: watch::Receiver<Option<SlotInfo>>,
     archived_segment_headers_receiver: watch::Receiver<Option<SegmentHeader>>,
+    reward_signing_receiver: watch::Receiver<Option<RewardSigningInfo>>,
     segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
@@ -143,11 +144,26 @@ where
                 }
             }
         };
+        let (reward_signing_sender, reward_signing_receiver) =
+            watch::channel(None::<RewardSigningInfo>);
+        let reward_signing_proxy_fut = {
+            let mut reward_signing_subscription = client.subscribe_reward_signing().await?;
+
+            async move {
+                while let Some(reward_signing_info) = reward_signing_subscription.next().await {
+                    if let Err(error) = reward_signing_sender.send(Some(reward_signing_info)) {
+                        warn!(%error, "Failed to proxy reward signing notification");
+                        return;
+                    }
+                }
+            }
+        };
 
         let background_task = tokio::spawn(async move {
             select! {
                 _ = slot_info_proxy_fut.fuse() => {},
                 _ = segment_headers_maintenance_fut.fuse() => {},
+                _ = reward_signing_proxy_fut.fuse() => {},
             }
         });
 
@@ -155,6 +171,7 @@ where
             inner: client,
             slot_info_receiver,
             archived_segment_headers_receiver,
+            reward_signing_receiver,
             segment_headers,
             _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         };
@@ -191,7 +208,10 @@ where
     async fn subscribe_reward_signing(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, RpcError> {
-        self.inner.subscribe_reward_signing().await
+        Ok(Box::pin(
+            WatchStream::new(self.reward_signing_receiver.clone())
+                .filter_map(|maybe_reward_signing_info| async move { maybe_reward_signing_info }),
+        ))
     }
 
     /// Submit a block signature
