@@ -1538,8 +1538,12 @@ impl_runtime_apis! {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
         }
 
-        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>{
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
             Messenger::updated_channels()
+        }
+
+        fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8> {
+            Messenger::channel_storage_key(chain_id, channel_id)
         }
     }
 

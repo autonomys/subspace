@@ -1,9 +1,9 @@
 //! Schema for channel update storage.
-#![allow(dead_code)]
 
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
+use sp_core::H256;
 use sp_messenger::messages::{ChainId, ChannelId, ChannelState, Nonce};
 use subspace_runtime_primitives::BlockNumber;
 
@@ -36,6 +36,8 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 pub struct ChannelDetail {
     // Block number of chain at which the channel state is verified.
     pub block_number: BlockNumber,
+    /// Block hash of the chain at which the channel state is verified.
+    pub block_hash: H256,
     /// Channel identifier.
     pub channel_id: ChannelId,
     /// State of the channel.

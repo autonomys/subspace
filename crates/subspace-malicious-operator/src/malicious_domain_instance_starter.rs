@@ -55,7 +55,7 @@ impl DomainInstanceStarter {
         self,
         bootstrap_result: BootstrapResult<CBlock>,
         sudo_account: AccountId,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<Arc<sc_domains::RuntimeExecutor>, Box<dyn std::error::Error>> {
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
@@ -203,7 +203,7 @@ impl DomainInstanceStarter {
 
                 domain_node.task_manager.future().await?;
 
-                Ok(())
+                Ok(domain_node.code_executor.clone())
             }
             RuntimeType::AutoId => {
                 let domain_params = domain_service::DomainParams {
@@ -262,7 +262,7 @@ impl DomainInstanceStarter {
 
                 domain_node.task_manager.future().await?;
 
-                Ok(())
+                Ok(domain_node.code_executor.clone())
             }
         }
     }

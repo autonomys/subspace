@@ -8,13 +8,15 @@ use sc_network_gossip::{
     ValidatorContext,
 };
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sp_api::StorageProof;
 use sp_core::twox_256;
-use sp_messenger::messages::ChainId;
+use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::{BTreeMap, HashSet};
 use std::future::poll_fn;
 use std::pin::pin;
 use std::sync::Arc;
+use subspace_runtime_primitives::BlockNumber;
 
 const LOG_TARGET: &str = "cross_chain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-chain-messages";
@@ -29,11 +31,26 @@ pub struct ChainMsg {
 pub type ChainSink = TracingUnboundedSender<ChainMsg>;
 type MessageHash = [u8; 32];
 
+/// Channel update message.
+#[derive(Debug, Encode, Decode)]
+pub struct ChannelUpdate {
+    /// Message is coming from src_chain.
+    pub src_chain_id: ChainId,
+    /// Channel id.
+    pub channel_id: ChannelId,
+    /// Block number at which storage proof was generated.
+    pub block_number: BlockNumber,
+    /// Storage proof of the channel on src_chain.
+    pub storage_proof: StorageProof,
+}
+
 /// A type of cross chain message
 #[derive(Debug, Encode, Decode)]
 pub enum MessageData {
     /// Encoded XDM message
     Xdm(Vec<u8>),
+    /// Encoded channel update message.
+    ChannelUpdate(ChannelUpdate),
 }
 
 /// A cross chain message with encoded data.

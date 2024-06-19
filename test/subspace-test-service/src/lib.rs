@@ -404,7 +404,7 @@ impl MockConsensusNode {
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
-        let domain_executor = sc_service::new_wasm_executor(&config);
+        let domain_executor = Arc::new(sc_service::new_wasm_executor(&config));
         let client = Arc::new(client);
         let mock_pot_verifier = Arc::new(MockPotVerfier::default());
         client
@@ -416,7 +416,7 @@ impl MockConsensusNode {
                 _,
             >::new(
                 client.clone(),
-                Arc::new(domain_executor),
+                domain_executor.clone(),
                 Arc::clone(&mock_pot_verifier),
                 backend.clone(),
             ));
@@ -511,12 +511,22 @@ impl MockConsensusNode {
             tracing_unbounded("consensus_message_channel", 100);
 
         // Start cross domain message listener for Consensus chain to receive messages from domains in the network
-        let consensus_listener = cross_domain_message_gossip::start_cross_chain_message_listener(
+        let consensus_listener = cross_domain_message_gossip::start_cross_chain_message_listener::<
+            _,
+            _,
+            _,
+            _,
+            _,
+            DomainBlock,
+            _,
+        >(
             ChainId::Consensus,
+            client.clone(),
             client.clone(),
             transaction_pool.clone(),
             network_service.clone(),
             consensus_msg_receiver,
+            domain_executor,
         );
 
         task_manager

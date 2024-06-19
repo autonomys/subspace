@@ -1275,6 +1275,10 @@ mod pallet {
             InboxResponses::<T>::hashed_key_for(message_key)
         }
 
+        pub fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8> {
+            Channels::<T>::hashed_key_for(chain_id, channel_id)
+        }
+
         pub fn domain_chains_allowlist_update(
             domain_id: DomainId,
         ) -> Option<DomainAllowlistUpdates> {

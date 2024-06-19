@@ -469,13 +469,16 @@ where
     }
 
     // Start cross domain message listener for domain
-    let domain_listener = cross_domain_message_gossip::start_cross_chain_message_listener(
-        ChainId::Domain(domain_id),
-        client.clone(),
-        params.transaction_pool.clone(),
-        consensus_network,
-        domain_message_receiver,
-    );
+    let domain_listener =
+        cross_domain_message_gossip::start_cross_chain_message_listener::<_, _, _, _, _, Block, _>(
+            ChainId::Domain(domain_id),
+            consensus_client.clone(),
+            client.clone(),
+            params.transaction_pool.clone(),
+            consensus_network,
+            domain_message_receiver,
+            code_executor.clone(),
+        );
 
     spawn_essential.spawn_essential_blocking(
         "domain-message-listener",

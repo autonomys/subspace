@@ -401,7 +401,11 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>{
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            unreachable!()
+        }
+
+        fn channel_storage_key(_chain_id: ChainId, _channel_id: ChannelId) -> Vec<u8> {
             unreachable!()
         }
     }

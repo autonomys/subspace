@@ -262,7 +262,7 @@ fn main() -> Result<(), Error> {
 
             // start relayer for consensus chain
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
-            {
+            let consensus_msg_receiver = {
                 let span = sc_tracing::tracing::info_span!(
                     sc_tracing::logging::PREFIX_LOG_SPAN,
                     name = "Consensus"
@@ -297,27 +297,9 @@ fn main() -> Result<(), Error> {
                 let (consensus_msg_sink, consensus_msg_receiver) =
                     tracing_unbounded("consensus_message_channel", 100);
 
-                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
-                let consensus_listener =
-                    cross_domain_message_gossip::start_cross_chain_message_listener(
-                        ChainId::Consensus,
-                        consensus_chain_node.client.clone(),
-                        consensus_chain_node.transaction_pool.clone(),
-                        consensus_chain_node.network_service.clone(),
-                        consensus_msg_receiver,
-                    );
-
-                consensus_chain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "consensus-message-listener",
-                        None,
-                        Box::pin(consensus_listener),
-                    );
-
                 xdm_gossip_worker_builder.push_chain_sink(ChainId::Consensus, consensus_msg_sink);
-            }
+                consensus_msg_receiver
+            };
 
             let (domain_message_sink, domain_message_receiver) =
                 tracing_unbounded("domain_message_channel", 100);
@@ -347,6 +329,8 @@ fn main() -> Result<(), Error> {
                 consensus_state_pruning,
             };
 
+            let consensus_network_service = consensus_chain_node.network_service.clone();
+            let consensus_task_spawn_essential_handler = consensus_chain_node.task_manager.spawn_essential_handle();
             consensus_chain_node
                 .task_manager
                 .spawn_essential_handle()
@@ -365,10 +349,44 @@ fn main() -> Result<(), Error> {
                                 return;
                             }
                         };
-                        if let Err(error) =
-                            domain_starter.start(bootstrap_result, sudo_account).await
-                        {
-                            log::error!("Domain starter exited with an error {error:?}");
+
+                        match domain_starter.start(bootstrap_result, sudo_account).await {
+                            Ok(domain_code_executor) => {
+                                let span = sc_tracing::tracing::info_span!(
+                                    sc_tracing::logging::PREFIX_LOG_SPAN,
+                                    name = "Consensus"
+                                );
+                                let _enter = span.enter();
+                                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
+                                let consensus_listener =
+                                    cross_domain_message_gossip::start_cross_chain_message_listener::<
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        DomainBlock,
+                                        _,
+                                    >(
+                                        ChainId::Consensus,
+                                        consensus_chain_node.client.clone(),
+                                        consensus_chain_node.client.clone(),
+                                        consensus_chain_node.transaction_pool.clone(),
+                                        consensus_network_service,
+                                        consensus_msg_receiver,
+                                        domain_code_executor
+                                    );
+
+                                consensus_task_spawn_essential_handler
+                                    .spawn_essential_blocking(
+                                        "consensus-message-listener",
+                                        None,
+                                        Box::pin(consensus_listener),
+                                    );
+                            }
+                            Err(err) => {
+                                log::error!("Domain starter exited with an error {err:?}");
+                            }
                         }
                     }),
                 );

@@ -4,6 +4,8 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
+use alloc::fmt;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use frame_support::PalletError;
 use hash_db::Hasher;
@@ -22,6 +24,8 @@ use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 #[cfg(feature = "std")]
+use std::fmt;
+#[cfg(feature = "std")]
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
@@ -35,6 +39,22 @@ pub enum VerificationError {
     FailedToDecode,
     /// Storage proof contains unused nodes after reading the necessary keys.
     UnusedNodesInTheProof,
+}
+
+impl fmt::Display for VerificationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            VerificationError::InvalidProof => write!(f, "Given storage proof is invalid"),
+            VerificationError::MissingValue => {
+                write!(f, "Value doesn't exist in the Db for this key")
+            }
+            VerificationError::FailedToDecode => write!(f, "Failed to decode value"),
+            VerificationError::UnusedNodesInTheProof => write!(
+                f,
+                "Storage proof contains unused nodes after reading the necessary keys"
+            ),
+        }
+    }
 }
 
 /// Type that provides utilities to verify the storage proof.

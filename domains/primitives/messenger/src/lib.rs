@@ -160,6 +160,7 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
+    #[api_version(2)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -188,6 +189,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the list of channels updated in the given block.
         fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>;
+
+        /// Returns storage key for channels for given chain and channel id.
+        fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
