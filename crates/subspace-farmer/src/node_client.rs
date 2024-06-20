@@ -8,6 +8,7 @@
 //! middleware or even wired without network directly if node and farmer are both running in the
 //! same process.
 
+pub mod caching_proxy_node_client;
 pub mod rpc_node_client;
 
 use async_trait::async_trait;

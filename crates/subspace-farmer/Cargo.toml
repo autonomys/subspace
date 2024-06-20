@@ -61,6 +61,7 @@ tempfile = "3.10.1"
 thiserror = "1.0.59"
 thread-priority = "1.1.0"
 tokio = { version = "1.38.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
+tokio-stream = { version = "0.1.15", features = ["sync"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 ulid = { version = "1.1.2", features = ["serde"] }

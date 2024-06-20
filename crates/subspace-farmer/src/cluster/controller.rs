@@ -13,9 +13,8 @@ use crate::cluster::nats_client::{
 use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error as NodeClientError, NodeClient};
-use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
+use async_lock::Semaphore;
 use async_nats::{HeaderValue, Message};
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
@@ -27,18 +26,12 @@ use std::future::{pending, Future};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, Piece, PieceIndex, SegmentHeader,
-    SegmentIndex,
-};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
-use tracing::{debug, info, trace, warn};
-
-const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
+use tracing::{debug, trace, warn};
 
 /// Broadcast sent by controllers requesting farmers to identify themselves
 #[derive(Debug, Copy, Clone, Encode, Decode)]
@@ -134,7 +127,7 @@ struct ClusterControllerFarmerAppInfoRequest;
 
 impl GenericRequest for ClusterControllerFarmerAppInfoRequest {
     const SUBJECT: &'static str = "subspace.controller.farmer-app-info";
-    type Response = FarmerAppInfo;
+    type Response = Result<FarmerAppInfo, String>;
 }
 
 /// Request segment headers with specified segment indices
@@ -168,54 +161,6 @@ struct ClusterControllerPieceRequest {
 impl GenericRequest for ClusterControllerPieceRequest {
     const SUBJECT: &'static str = "subspace.controller.piece";
     type Response = Option<Piece>;
-}
-
-async fn sync_segment_headers(
-    segment_headers: &mut Vec<SegmentHeader>,
-    nats_client: &NatsClient,
-) -> anyhow::Result<()> {
-    let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
-    let dummy_header = SegmentHeader::V0 {
-        segment_index: Default::default(),
-        segment_commitment: Default::default(),
-        prev_segment_header_hash: Blake3Hash::default(),
-        last_archived_block: LastArchivedBlock {
-            number: 0,
-            archived_progress: ArchivedBlockProgress::Partial(0),
-        },
-    };
-    let segment_index_step = SegmentIndex::from(
-        nats_client.approximate_max_message_size() as u64 / dummy_header.encoded_size() as u64,
-    );
-
-    'outer: loop {
-        let from = segment_index_offset;
-        let to = segment_index_offset + segment_index_step;
-        trace!(%from, %to, "Requesting segment headers");
-
-        for maybe_segment_header in nats_client
-            .request(
-                &ClusterControllerSegmentHeadersRequest {
-                    segment_indices: (from..to).collect::<Vec<_>>(),
-                },
-                None,
-            )
-            .await?
-        {
-            let Some(segment_header) = maybe_segment_header else {
-                // Reached non-existent segment header
-                break 'outer;
-            };
-
-            if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
-                segment_headers.push(segment_header);
-            }
-        }
-
-        segment_index_offset += segment_index_step;
-    }
-
-    Ok(())
 }
 
 /// Cluster piece getter
@@ -328,51 +273,14 @@ pub struct ClusterNodeClient {
     // Store last slot info instance that can be used to send solution response to (some instances
     // may be not synced and not able to receive solution responses)
     last_slot_info_instance: Arc<Mutex<String>>,
-    segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
-    _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
 
 impl ClusterNodeClient {
     /// Create a new instance
     pub async fn new(nats_client: NatsClient) -> anyhow::Result<Self> {
-        let mut segment_headers = Vec::<SegmentHeader>::new();
-        let mut archived_segments_notifications = nats_client
-            .subscribe_to_broadcasts::<ClusterControllerArchivedSegmentHeaderBroadcast>(None, None)
-            .await?
-            .map(|broadcast| broadcast.archived_segment_header);
-
-        info!("Downloading all segment headers from controller...");
-        sync_segment_headers(&mut segment_headers, &nats_client).await?;
-        info!("Downloaded all segment headers from node successfully");
-
-        let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
-        let background_task = tokio::spawn({
-            let segment_headers = Arc::clone(&segment_headers);
-
-            async move {
-                while let Some(archived_segment_header) =
-                    archived_segments_notifications.next().await
-                {
-                    trace!(
-                        ?archived_segment_header,
-                        "New archived archived segment header notification"
-                    );
-
-                    let mut segment_headers = segment_headers.write().await;
-                    if segment_headers.len()
-                        == u64::from(archived_segment_header.segment_index()) as usize
-                    {
-                        segment_headers.push(archived_segment_header);
-                    }
-                }
-            }
-        });
-
         Ok(Self {
             nats_client,
             last_slot_info_instance: Arc::default(),
-            segment_headers,
-            _background_task: Arc::new(AsyncJoinOnDrop::new(background_task, true)),
         })
     }
 }
@@ -383,7 +291,7 @@ impl NodeClient for ClusterNodeClient {
         Ok(self
             .nats_client
             .request(&ClusterControllerFarmerAppInfoRequest, None)
-            .await?)
+            .await??)
     }
 
     async fn subscribe_slot_info(
@@ -460,35 +368,13 @@ impl NodeClient for ClusterNodeClient {
         &self,
         segment_indices: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, NodeClientError> {
-        let retrieved_segment_headers = {
-            let segment_headers = self.segment_headers.read().await;
-
-            segment_indices
-                .iter()
-                .map(|segment_index| {
-                    segment_headers
-                        .get(u64::from(*segment_index) as usize)
-                        .copied()
-                })
-                .collect::<Vec<_>>()
-        };
-
-        if retrieved_segment_headers.iter().all(Option::is_some) {
-            Ok(retrieved_segment_headers)
-        } else {
-            // Re-sync segment headers
-            let mut segment_headers = self.segment_headers.write().await;
-            sync_segment_headers(&mut segment_headers, &self.nats_client).await?;
-
-            Ok(segment_indices
-                .iter()
-                .map(|segment_index| {
-                    segment_headers
-                        .get(u64::from(*segment_index) as usize)
-                        .copied()
-                })
-                .collect::<Vec<_>>())
-        }
+        Ok(self
+            .nats_client
+            .request(
+                &ClusterControllerSegmentHeadersRequest { segment_indices },
+                None,
+            )
+            .await?)
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, NodeClientError> {
@@ -760,13 +646,6 @@ async fn farmer_app_info_responder<NC>(
 where
     NC: NodeClient,
 {
-    let farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response =
-        node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
-    let last_farmer_app_info = AsyncMutex::new((farmer_app_info, Instant::now()));
-
     // Initialize with pending future so it never ends
     let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
         Box::pin(pending()) as Pin<Box<_>>,
@@ -794,7 +673,6 @@ where
                     nats_client,
                     node_client,
                     message,
-                    &last_farmer_app_info,
                 )));
             }
             _ = processing.next() => {
@@ -810,7 +688,6 @@ async fn process_farmer_app_info_request<NC>(
     nats_client: &NatsClient,
     node_client: &NC,
     message: Message,
-    last_farmer_app_info: &AsyncMutex<(FarmerAppInfo, Instant)>,
 ) where
     NC: NodeClient,
 {
@@ -820,28 +697,11 @@ async fn process_farmer_app_info_request<NC>(
 
     trace!("Farmer app info request");
 
-    let farmer_app_info = {
-        let (last_farmer_app_info, last_farmer_app_info_request) =
-            &mut *last_farmer_app_info.lock().await;
-
-        if last_farmer_app_info_request.elapsed() > FARMER_APP_INFO_DEDUPLICATION_WINDOW {
-            let farmer_app_info: Result<
-                <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response,
-                _,
-            > = node_client.farmer_app_info().await;
-            match farmer_app_info {
-                Ok(new_last_farmer_app_info) => {
-                    *last_farmer_app_info = new_last_farmer_app_info;
-                    *last_farmer_app_info_request = Instant::now();
-                }
-                Err(error) => {
-                    warn!(%error, "Failed to get farmer app info");
-                }
-            }
-        }
-
-        last_farmer_app_info.clone()
-    };
+    let farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response =
+        node_client
+            .farmer_app_info()
+            .await
+            .map_err(|error| error.to_string());
 
     if let Err(error) = nats_client
         .publish(reply_subject, farmer_app_info.encode().into())
