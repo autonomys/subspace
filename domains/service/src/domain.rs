@@ -459,13 +459,29 @@ where
             consensus_state_pruning,
             client.clone(),
             domain_state_pruning,
-            // domain relayer will use consensus chain sync oracle instead of domain sync orcle
+            // domain relayer will use consensus chain sync oracle instead of domain sync oracle
             // since domain sync oracle will always return `synced` due to force sync being set.
-            consensus_network_sync_oracle,
-            gossip_message_sink,
+            consensus_network_sync_oracle.clone(),
+            gossip_message_sink.clone(),
         );
 
         spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));
+
+        let channel_update_worker =
+            domain_client_message_relayer::worker::gossip_channel_updates::<_, _, CBlock, _>(
+                ChainId::Domain(domain_id),
+                client.clone(),
+                // domain will use consensus chain sync oracle instead of domain sync oracle
+                // since domain sync oracle will always return `synced` due to force sync being set.
+                consensus_network_sync_oracle,
+                gossip_message_sink,
+            );
+
+        spawn_essential.spawn_essential_blocking(
+            "domain-channel-update-worker",
+            None,
+            Box::pin(channel_update_worker),
+        );
     }
 
     // Start cross domain message listener for domain

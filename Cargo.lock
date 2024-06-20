@@ -2735,6 +2735,7 @@ dependencies = [
 name = "domain-client-operator"
 version = "0.1.0"
 dependencies = [
+ "cross-domain-message-gossip",
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",

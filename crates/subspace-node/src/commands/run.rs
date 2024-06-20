@@ -251,6 +251,27 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         ),
                     );
 
+                consensus_chain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "consensus-chain-channel-update-worker",
+                        None,
+                        Box::pin(
+                            domain_client_message_relayer::worker::gossip_channel_updates::<
+                                _,
+                                _,
+                                Block,
+                                _,
+                            >(
+                                ChainId::Consensus,
+                                consensus_chain_node.client.clone(),
+                                consensus_chain_node.sync_service.clone(),
+                                xdm_gossip_worker_builder.gossip_msg_sink(),
+                            ),
+                        ),
+                    );
+
                 let (consensus_msg_sink, consensus_msg_receiver) =
                     tracing_unbounded("consensus_message_channel", 100);
 

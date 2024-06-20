@@ -507,6 +507,21 @@ impl MockConsensusNode {
                 ),
             );
 
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "consensus-chain-channel-update-worker",
+                None,
+                Box::pin(
+                    domain_client_message_relayer::worker::gossip_channel_updates::<_, _, Block, _>(
+                        ChainId::Consensus,
+                        client.clone(),
+                        sync_service.clone(),
+                        gossip_builder.gossip_msg_sink(),
+                    ),
+                ),
+            );
+
         let (consensus_msg_sink, consensus_msg_receiver) =
             tracing_unbounded("consensus_message_channel", 100);
 

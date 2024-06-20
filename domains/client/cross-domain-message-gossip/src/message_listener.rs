@@ -201,6 +201,14 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                     chain_id,
                     err
                 );
+            } else {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "Updated channel state from {:?} to {:?}: {:?}",
+                    ChainId::Consensus,
+                    chain_id,
+                    channel_id
+                );
             }
         }
         ChainId::Domain(domain_id) => {
@@ -219,6 +227,14 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                     ChainId::Domain(domain_id),
                     chain_id,
                     err
+                );
+            } else {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "Updated channel state from {:?} to {:?}: {:?}",
+                    ChainId::Domain(domain_id),
+                    chain_id,
+                    channel_id
                 );
             }
         }
@@ -321,6 +337,7 @@ where
 
     let is_valid_domain_block_number =
         |block_number: BlockNumber| -> Result<(Block::Hash, Block::Hash), Error> {
+            let runtime_api = consensus_client.runtime_api();
             let receipt_hash = runtime_api
                 .receipt_hash(consensus_best_hash, src_domain_id, block_number.into())?
                 .ok_or(Error::MissingDomainReceiptHash)?;

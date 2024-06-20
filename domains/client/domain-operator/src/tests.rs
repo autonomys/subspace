@@ -29,7 +29,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    Bundle, BundleValidity, ChainId, DomainsApi, HeaderHashingFor, InboxedBundle,
+    Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
     InvalidBundleType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
@@ -3470,6 +3470,25 @@ async fn test_cross_domains_messages_should_work() {
     // produce another block so allowlist on  domain are updated
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
+    // there should be zero channel updates on both consensus and domain chain
+    assert!(cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        ChainId::Consensus,
+        GENESIS_DOMAIN_ID.into(),
+        ChannelId::zero()
+    )
+    .unwrap()
+    .is_none());
+
+    assert!(cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        GENESIS_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .is_none());
+
     // Open channel between the Consensus chain and EVM domains
     alice
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
@@ -3490,6 +3509,41 @@ async fn test_cross_domains_messages_should_work() {
     })
     .await
     .unwrap();
+
+    produce_blocks!(ferdie, alice, 2).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // consensus channel update
+    let channel_update = cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        ChainId::Consensus,
+        GENESIS_DOMAIN_ID.into(),
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
+
+    // next channel inbox nonce on consensus from domain should be 1
+    assert_eq!(channel_update.next_inbox_nonce, 1.into());
+
+    // domain channel update
+    let channel_update = cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        GENESIS_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
+
+    // next channel outbox nonce on domain to consensus should be 1
+    assert_eq!(channel_update.next_outbox_nonce, 1.into());
+    // received outbox response nonce on domain from consensus chain should be 0
+    assert_eq!(
+        channel_update.latest_response_received_message_nonce,
+        Some(0.into())
+    );
 
     // Transfer balance from
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
@@ -3516,6 +3570,23 @@ async fn test_cross_domains_messages_should_work() {
     .await
     .unwrap();
 
+    produce_blocks!(ferdie, alice, 2).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // consensus channel update
+    let channel_update = cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        ChainId::Consensus,
+        GENESIS_DOMAIN_ID.into(),
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
+
+    // next channel inbox nonce on consensus from domain should be 2
+    assert_eq!(channel_update.next_inbox_nonce, 2.into());
+
     // close channel on consensus chain using sudo since
     // channel is opened on domain
     let channel_id = alice
@@ -3540,6 +3611,30 @@ async fn test_cross_domains_messages_should_work() {
     })
     .await
     .unwrap();
+
+    produce_blocks!(ferdie, alice, 2).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // domain channel update
+    let channel_update = cross_domain_message_gossip::get_channel_details(
+        &*ferdie.client,
+        GENESIS_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
+
+    // next channel outbox nonce on domain to consensus should be 2
+    assert_eq!(channel_update.next_outbox_nonce, 2.into());
+    // next channel inbox nonce on domain should be 1
+    assert_eq!(channel_update.next_inbox_nonce, 1.into());
+    // received outbox response nonce on domain from consensus chain should be 1
+    assert_eq!(
+        channel_update.latest_response_received_message_nonce,
+        Some(1.into())
+    );
 }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.

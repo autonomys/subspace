@@ -4,8 +4,9 @@ mod aux_schema;
 mod gossip_worker;
 mod message_listener;
 
+pub use aux_schema::{get_channel_details, ChannelDetail};
 pub use gossip_worker::{
-    xdm_gossip_peers_set_config, ChainMsg, ChainSink, GossipWorker, GossipWorkerBuilder, Message,
-    MessageData,
+    xdm_gossip_peers_set_config, ChainMsg, ChainSink, ChannelUpdate, GossipWorker,
+    GossipWorkerBuilder, Message, MessageData,
 };
 pub use message_listener::start_cross_chain_message_listener;
