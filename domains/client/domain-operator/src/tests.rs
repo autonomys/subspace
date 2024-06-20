@@ -3510,7 +3510,7 @@ async fn test_cross_domains_messages_should_work() {
     .await
     .unwrap();
 
-    produce_blocks!(ferdie, alice, 2).await.unwrap();
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
 
     // there should be channel updates on both consensus and domain chain
 
@@ -3570,7 +3570,7 @@ async fn test_cross_domains_messages_should_work() {
     .await
     .unwrap();
 
-    produce_blocks!(ferdie, alice, 2).await.unwrap();
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
 
     // there should be channel updates on both consensus and domain chain
 
@@ -3612,7 +3612,7 @@ async fn test_cross_domains_messages_should_work() {
     .await
     .unwrap();
 
-    produce_blocks!(ferdie, alice, 2).await.unwrap();
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
 
     // there should be channel updates on both consensus and domain chain
 
