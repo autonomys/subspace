@@ -89,6 +89,11 @@ panic = "unwind"
 inherits = "release"
 lto = "fat"
 
+# TODO: Remove fork when https://github.com/paritytech/polkadot-sdk/issues/4856 and/or https://github.com/paritytech/litep2p/issues/161
+#  are resolved (our fork removes WebRTC support by default in order to avoid OpenSSL dependency)
+[patch.crates-io]
+litep2p = { git = "https://github.com/subspace/litep2p", rev = "331240c0184e9e8939ef9b113963dc58b43e2f92" }
+
 # Reason: We need to patch substrate dependency of frontier to our fork
 # TODO: Remove if/when we are using upstream substrate instead of fork
 [patch."https://github.com/paritytech/polkadot-sdk.git"]
