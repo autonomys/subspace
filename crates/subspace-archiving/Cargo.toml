@@ -17,7 +17,7 @@ include = [
 bench = false
 
 [dependencies]
-parity-scale-codec = { version = "3.6.9", default-features = false, features = ["derive"] }
+parity-scale-codec = { version = "3.6.12", default-features = false, features = ["derive"] }
 rayon = { version = "1.10.0", optional = true }
 serde = { version = "1.0.199", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }

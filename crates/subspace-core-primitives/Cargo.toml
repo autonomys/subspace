@@ -22,7 +22,7 @@ derive_more = "0.99.17"
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 kzg = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
 num-traits = { version = "0.2.18", default-features = false }
-parity-scale-codec = { version = "3.6.9", default-features = false, features = ["bytes", "derive", "max-encoded-len"] }
+parity-scale-codec = { version = "3.6.12", default-features = false, features = ["bytes", "derive", "max-encoded-len"] }
 parking_lot = { version = "0.12.2", optional = true }
 rayon = { version = "1.10.0", optional = true }
 rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }

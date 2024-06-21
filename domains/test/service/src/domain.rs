@@ -242,11 +242,9 @@ where
         };
 
         let domain_node =
-            domain_service::new_full::<_, _, _, _, _, _, RuntimeApi, AccountId, _, _>(
-                domain_params,
-            )
-            .await
-            .expect("failed to build domain node");
+            domain_service::new_full::<_, _, _, _, _, _, RuntimeApi, AccountId, _>(domain_params)
+                .await
+                .expect("failed to build domain node");
 
         let domain_service::NewFull {
             task_manager,

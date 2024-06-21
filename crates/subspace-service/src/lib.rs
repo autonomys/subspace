@@ -21,6 +21,7 @@
     impl_trait_in_assoc_type,
     int_roundings,
     let_chains,
+    trait_upcasting,
     type_alias_impl_trait,
     type_changing_struct_update
 )]
@@ -70,7 +71,8 @@ use sc_consensus_subspace::slot_worker::{
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
-use sc_network::{NetworkService, NotificationService};
+use sc_network::service::traits::NetworkService;
+use sc_network::{NotificationMetrics, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
@@ -643,7 +645,7 @@ where
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
     /// Network service.
-    pub network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network_service: Arc<dyn NetworkService + Send + Sync>,
     /// Cross-domain gossip notification service.
     pub xdm_gossip_notification_service: Box<dyn NotificationService>,
     /// Sync service.
@@ -844,6 +846,13 @@ where
             block_announce_validator_builder: None,
             warp_sync_params: None,
             block_relay,
+            metrics: NotificationMetrics::new(
+                config
+                    .base
+                    .prometheus_config
+                    .as_ref()
+                    .map(|cfg| &cfg.registry),
+            ),
         })?;
 
     task_manager.spawn_handle().spawn(
@@ -992,7 +1001,7 @@ where
                 keystore: Some(keystore_container.keystore()),
                 offchain_db: backend.offchain_storage(),
                 transaction_pool: Some(offchain_tx_pool_factory.clone()),
-                network_provider: network_service.clone(),
+                network_provider: Arc::new(network_service.clone()),
                 enable_http_requests: true,
                 custom_extensions: |_| vec![],
             })
@@ -1026,7 +1035,7 @@ where
         config.timekeeper_cpu_cores,
         client.clone(),
         pot_verifier.clone(),
-        network_service.clone(),
+        Arc::clone(&network_service),
         pot_gossip_notification_service,
         sync_service.clone(),
         sync_oracle.clone(),

@@ -12,7 +12,7 @@ use futures::{select, FutureExt, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
-use sc_network::{NetworkPeers, NetworkService};
+use sc_network::service::traits::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
@@ -87,7 +87,7 @@ enum NotificationReason {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn create_observer_and_worker<Block, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
-    network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    network_service: Arc<dyn NetworkService>,
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
@@ -135,7 +135,7 @@ where
 }
 
 async fn create_observer<Block, Client>(
-    network_service: &NetworkService<Block, <Block as BlockT>::Hash>,
+    network_service: &dyn NetworkService,
     _node: &Node,
     client: &Client,
     notifications_sender: mpsc::Sender<NotificationReason>,
@@ -215,12 +215,10 @@ async fn create_imported_blocks_observer<Block, Client>(
     }
 }
 
-async fn create_substrate_network_observer<Block>(
-    network_service: &NetworkService<Block, <Block as BlockT>::Hash>,
+async fn create_substrate_network_observer(
+    network_service: &dyn NetworkService,
     mut notifications_sender: mpsc::Sender<NotificationReason>,
-) where
-    Block: BlockT,
-{
+) {
     // Assuming node is offline by default
     let mut last_online = None::<Instant>;
 

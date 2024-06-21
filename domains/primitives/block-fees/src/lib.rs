@@ -3,13 +3,12 @@
 
 use codec::{Decode, Encode};
 use domain_runtime_primitives::Balance;
-use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
+use sp_inherents::{InherentIdentifier, IsFatalError};
 
 /// Block-fees inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"blockfee";
 
-#[derive(Debug, Encode)]
-#[cfg_attr(feature = "std", derive(Decode))]
+#[derive(Debug, Encode, Decode)]
 pub enum InherentError {
     IncorrectConsensusChainByteFee,
 }
@@ -47,7 +46,7 @@ impl InherentDataProvider {
 impl sp_inherents::InherentDataProvider for InherentDataProvider {
     async fn provide_inherent_data(
         &self,
-        inherent_data: &mut InherentData,
+        inherent_data: &mut sp_inherents::InherentData,
     ) -> Result<(), sp_inherents::Error> {
         inherent_data.put_data(INHERENT_IDENTIFIER, &self.data)
     }
@@ -63,6 +62,8 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
         let error = InherentError::decode(&mut &*error).ok()?;
 
-        Some(Err(Error::Application(Box::from(format!("{error:?}")))))
+        Some(Err(sp_inherents::Error::Application(Box::from(format!(
+            "{error:?}"
+        )))))
     }
 }

@@ -9,7 +9,7 @@ use domain_service::rpc::FullDeps;
 use domain_service::FullClient;
 use fc_consensus::FrontierBlockImport;
 use fc_rpc::EthConfig;
-use fc_storage::overrides_handle;
+use fc_storage::StorageOverrideHandler;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};
@@ -110,7 +110,7 @@ where
         full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         let client = full_deps.client.clone();
-        let overrides = overrides_handle(client.clone());
+        let storage_override = Arc::new(StorageOverrideHandler::new(client.clone()));
         let base_path = match &self.base_path {
             None => BasePath::new_temp_dir()?,
             Some(base_path) => BasePath::new(base_path.path()),
@@ -134,10 +134,10 @@ where
             enable_dev_signer: self.eth_config.enable_dev_signer,
             sync: full_deps.sync.clone(),
             frontier_backend,
-            overrides: overrides.clone(),
+            storage_override: storage_override.clone(),
             block_data_cache: Arc::new(fc_rpc::EthBlockDataCacheTask::new(
                 full_deps.task_spawner.clone(),
-                overrides,
+                storage_override,
                 self.eth_config.eth_log_block_cache,
                 self.eth_config.eth_statuses_cache,
                 full_deps.prometheus_registry,
@@ -194,7 +194,7 @@ where
             deps.full_deps.client,
             deps.full_deps.backend,
             deps.frontier_backend,
-            deps.overrides,
+            deps.storage_override,
             FrontierPartialComponents {
                 filter_pool: deps.filter_pool,
                 fee_history_cache: deps.fee_history_cache,

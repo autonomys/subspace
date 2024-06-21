@@ -3,7 +3,7 @@ use codec::Decode;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
-pub use sp_mmr_primitives::{EncodableOpaqueLeaf, MmrApi, Proof};
+pub use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof, MmrApi};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -80,7 +80,7 @@ where
             .expect("Header must be available. There is no recovery if not available; qed.")
             .parent_hash();
         let api = self.consensus_client.runtime_api();
-        let proof = match Proof::<H256>::decode(&mut encoded_proof.as_ref()) {
+        let proof = match LeafProof::<H256>::decode(&mut encoded_proof.as_ref()) {
             Ok(proof) => proof,
             Err(_) => return false,
         };

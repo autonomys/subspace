@@ -8,7 +8,7 @@ use sc_cli::{
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
-use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
+use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
 use sc_telemetry::TelemetryEndpoints;
@@ -86,9 +86,9 @@ struct SubstrateNetworkOptions {
 
     /// Listen on this multiaddress
     #[arg(long, default_values_t = [
-        sc_network::Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        sc_network::Multiaddr::from(sc_network::multiaddr::Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(sc_network::multiaddr::Protocol::Tcp(30333)),
-        sc_network::Multiaddr::from(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+        sc_network::Multiaddr::from(sc_network::multiaddr::Protocol::Ip6(Ipv6Addr::UNSPECIFIED))
             .with(sc_network::multiaddr::Protocol::Tcp(30333))
     ])]
     listen_on: Vec<sc_network::Multiaddr>,
@@ -550,9 +550,10 @@ pub(super) fn create_consensus_chain_configuration(
                     node_key: network_options.node_key,
                     node_key_type: NodeKeyType::Ed25519,
                     node_key_file: None,
+                    unsafe_force_node_key_generation: false,
                 };
 
-                node_key_params.node_key(&net_config_path)?
+                node_key_params.node_key(&net_config_path, Role::Full, dev)?
             },
             default_peers_set: SetConfig {
                 in_peers: network_options.in_peers,
@@ -587,6 +588,8 @@ pub(super) fn create_consensus_chain_configuration(
                 RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
             },
             rate_limit: rpc_options.rpc_rate_limit,
+            rate_limit_whitelisted_ips: rpc_options.rpc_rate_limit_whitelisted_ips,
+            rate_limit_trust_proxy_headers: rpc_options.rpc_rate_limit_trust_proxy_headers,
             max_subscriptions_per_connection: rpc_options.rpc_max_subscriptions_per_connection,
             message_buffer_capacity_per_connection: rpc_options
                 .rpc_message_buffer_capacity_per_connection,
@@ -640,13 +643,9 @@ pub(super) fn create_consensus_chain_configuration(
             dsn_options.dsn_bootstrap_nodes
         };
 
-        // TODO: Libp2p versions for Substrate and Subspace diverged.
-        // We get type compatibility by encoding and decoding the original keypair.
-        let encoded_keypair = network_keypair
-            .to_protobuf_encoding()
-            .expect("Keypair-to-protobuf encoding should succeed.");
-        let keypair = subspace_networking::libp2p::identity::Keypair::from_protobuf_encoding(
-            &encoded_keypair,
+        // Convert keypair from Substrate to libp2p type
+        let keypair = subspace_networking::libp2p::identity::Keypair::ed25519_from_bytes(
+            network_keypair.secret().to_bytes(),
         )
         .expect("Keypair-from-protobuf decoding should succeed.");
 

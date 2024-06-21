@@ -105,7 +105,7 @@ struct GenesisDomainParams {
     genesis_domains: Vec<GenesisDomain>,
 }
 
-pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Gemini".to_string())?,
         None,
@@ -213,15 +213,15 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, St
     .build())
 }
 
-pub fn gemini_3h_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn gemini_3h_config() -> Result<GenericChainSpec, String> {
     GenericChainSpec::from_json_bytes(GEMINI_3H_CHAIN_SPEC.as_bytes())
 }
 
-pub fn devnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn devnet_config() -> Result<GenericChainSpec, String> {
     GenericChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC.as_bytes())
 }
 
-pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Devnet".to_string())?,
         None,
@@ -322,7 +322,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec<RuntimeGenesisConfig>
     .build())
 }
 
-pub fn dev_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn dev_config() -> Result<GenericChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
     let sudo_account = get_account_id_from_seed("Alice");
 

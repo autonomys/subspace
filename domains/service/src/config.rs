@@ -1,10 +1,10 @@
 use sc_chain_spec::ChainSpec;
 use sc_network::config::{
-    MultiaddrWithPeerId, NetworkConfiguration, NodeKeyConfig, SetConfig, SyncMode, TransportConfig,
-    DEFAULT_KADEMLIA_REPLICATION_FACTOR,
+    MultiaddrWithPeerId, NetworkBackendType, NetworkConfiguration, NodeKeyConfig, SetConfig,
+    SyncMode, TransportConfig, DEFAULT_KADEMLIA_REPLICATION_FACTOR,
 };
 use sc_service::config::{
-    KeystoreConfig, OffchainWorkerConfig, PrometheusConfig, RpcBatchRequestConfig,
+    IpNetwork, KeystoreConfig, OffchainWorkerConfig, PrometheusConfig, RpcBatchRequestConfig,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, DatabaseSource, PruningMode, RpcMethods,
@@ -36,6 +36,10 @@ pub struct SubstrateRpcConfiguration {
     pub methods: RpcMethods,
     /// RPC rate limiting (calls/minute) for each connection
     pub rate_limit: Option<NonZeroU32>,
+    /// Disable RPC rate limiting for certain ip addresses
+    pub rate_limit_whitelisted_ips: Vec<IpNetwork>,
+    /// Trust proxy headers for rate limiting
+    pub rate_limit_trust_proxy_headers: bool,
     /// Maximum allowed subscriptions per rpc connection
     pub max_subscriptions_per_connection: u32,
     /// The number of messages the RPC server is allowed to keep in memory
@@ -154,6 +158,7 @@ impl From<SubstrateConfiguration> for Configuration {
                     .expect("value is a constant; constant is non-zero; qed"),
                 ipfs_server: false,
                 yamux_window_size: None,
+                network_backend: NetworkBackendType::Libp2p,
                 force_synced: configuration.network.force_synced,
             },
             // Not used on consensus chain
@@ -189,6 +194,10 @@ impl From<SubstrateConfiguration> for Configuration {
                 RpcBatchRequestConfig::Unlimited
             },
             rpc_rate_limit: configuration.rpc_options.rate_limit,
+            rpc_rate_limit_whitelisted_ips: configuration.rpc_options.rate_limit_whitelisted_ips,
+            rpc_rate_limit_trust_proxy_headers: configuration
+                .rpc_options
+                .rate_limit_trust_proxy_headers,
             prometheus_config: configuration
                 .prometheus_listen_on
                 .map(|prometheus_listen_on| {

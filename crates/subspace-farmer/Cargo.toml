@@ -35,7 +35,7 @@ hwlocality = { version = "1.0.0-alpha.3", features = ["vendored"], optional = tr
 jsonrpsee = { version = "0.23.1", features = ["client"] }
 mimalloc = "0.1.41"
 num_cpus = "1.16.0"
-parity-scale-codec = "3.6.9"
+parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
 pin-project = "1.1.5"
 prometheus-client = "0.22.2"

@@ -18,7 +18,7 @@ use sp_messenger::messages::{
     ChannelOpenParams, CrossDomainMessage, Message, MessageWeightTag, Payload, Proof,
     RequestResponse, VersionedPayload,
 };
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 #[cfg(feature = "std")]

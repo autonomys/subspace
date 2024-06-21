@@ -16,6 +16,8 @@
 
 //! Subspace node implementation.
 
+#![feature(trait_upcasting)]
+
 mod commands;
 
 mod chain_spec;
@@ -253,7 +255,9 @@ fn main() -> Result<(), Error> {
                             );
                         }
 
-                        cmd.run::<HashingFor<Block>, HostFunctions>(config)
+                        cmd.run_with_spec::<HashingFor<Block>, HostFunctions>(Some(
+                            config.chain_spec,
+                        ))
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
@@ -351,7 +355,9 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<HashingFor<DomainBlock>, DomainsHostFunctions>(domain_config)
+                            cmd.run_with_spec::<HashingFor<DomainBlock>, DomainsHostFunctions>(
+                                Some(domain_config.chain_spec),
+                            )
                         }
                         _ => todo!("Not implemented"),
                     }

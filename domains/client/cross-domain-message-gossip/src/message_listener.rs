@@ -13,17 +13,16 @@ const LOG_TARGET: &str = "domain_message_listener";
 type BlockOf<T> = <T as TransactionPool>::Block;
 type ExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
 
-pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener, CNetwork>(
+pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
     chain_id: ChainId,
     client: Arc<Client>,
     tx_pool: Arc<TxPool>,
-    network: Arc<CNetwork>,
+    network: Arc<dyn NetworkPeers + Send + Sync>,
     mut listener: TxnListener,
 ) where
     TxPool: TransactionPool + 'static,
     Client: HeaderBackend<BlockOf<TxPool>>,
     TxnListener: Stream<Item = ChainTxPoolMsg> + Unpin,
-    CNetwork: NetworkPeers,
 {
     tracing::info!(
         target: LOG_TARGET,

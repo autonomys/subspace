@@ -1,7 +1,8 @@
 use fc_mapping_sync::kv::MappingSyncWorker;
 use fc_mapping_sync::SyncStrategy;
-use fc_rpc::{EthTask, OverrideHandle};
+use fc_rpc::EthTask;
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
+use fc_storage::StorageOverride;
 use futures::{future, StreamExt};
 use sc_client_api::{BlockchainEvents, StorageProvider};
 use sc_network_sync::SyncingService;
@@ -67,8 +68,8 @@ pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
     essential_task_spawner: SE,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    frontier_backend: Arc<fc_db::kv::Backend<Block>>,
-    overrides: Arc<OverrideHandle<Block>>,
+    frontier_backend: Arc<fc_db::kv::Backend<Block, Client>>,
+    storage_override: Arc<dyn StorageOverride<Block>>,
     frontier_partial_components: FrontierPartialComponents,
     sync: Arc<SyncingService<Block>>,
     pubsub_notification_sinks: Arc<
@@ -100,7 +101,7 @@ pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
                 Duration::new(6, 0),
                 client.clone(),
                 backend,
-                overrides.clone(),
+                storage_override.clone(),
                 frontier_backend,
                 3,
                 NumberFor::<Block>::zero(),
@@ -139,7 +140,7 @@ pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
         Some("frontier"),
         Box::pin(EthTask::fee_history_task(
             client,
-            overrides,
+            storage_override,
             fee_history_cache,
             fee_history_cache_limit,
         )),

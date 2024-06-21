@@ -40,7 +40,7 @@ use frame_support::dispatch::{
 };
 use frame_support::storage::with_storage_layer;
 use frame_support::traits::fungible::{Inspect, Mutate};
-use frame_support::traits::tokens::{Fortitude, Precision};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::traits::{
     BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
     OnFinalize, OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade,
@@ -496,6 +496,7 @@ where
                     let maybe_charged_fees = ExecutiveConfig::Currency::burn_from(
                         &signer,
                         storage_fees,
+                        Preservation::Expendable,
                         Precision::BestEffort,
                         Fortitude::Force,
                     );

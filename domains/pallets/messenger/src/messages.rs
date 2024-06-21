@@ -11,8 +11,6 @@ use crate::{
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use scale_info::TypeInfo;
