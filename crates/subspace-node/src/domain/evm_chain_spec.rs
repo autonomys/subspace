@@ -51,7 +51,7 @@ fn get_dev_accounts() -> Vec<AccountId> {
 
 pub fn development_config(
     runtime_genesis_config: RuntimeGenesisConfig,
-) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+) -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
@@ -69,7 +69,7 @@ pub fn development_config(
 
 pub fn gemini_3h_config(
     runtime_genesis_config: RuntimeGenesisConfig,
-) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+) -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
@@ -88,7 +88,7 @@ pub fn gemini_3h_config(
 
 pub fn devnet_config(
     runtime_genesis_config: RuntimeGenesisConfig,
-) -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+) -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,

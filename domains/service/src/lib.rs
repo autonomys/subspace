@@ -13,8 +13,7 @@ use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider
 use sc_consensus::ImportQueue;
 use sc_domains::RuntimeExecutor;
 use sc_network::config::Roles;
-use sc_network::peer_store::PeerStore;
-use sc_network::NetworkService;
+use sc_network::{NetworkService, NetworkWorker};
 use sc_network_sync::block_request_handler::BlockRequestHandler;
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::NetworkServiceProvider;
@@ -44,7 +43,13 @@ pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 // TODO: Struct for returned value
 #[allow(clippy::type_complexity)]
 pub fn build_network<TBl, TExPool, TImpQu, TCl>(
-    params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl>,
+    params: BuildNetworkParams<
+        TBl,
+        NetworkWorker<TBl, <TBl as BlockT>::Hash>,
+        TExPool,
+        TImpQu,
+        TCl,
+    >,
 ) -> Result<
     (
         Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
@@ -79,6 +84,7 @@ where
         block_announce_validator_builder: _,
         warp_sync_params: _,
         block_relay,
+        metrics,
     } = params;
 
     if client.requires_full_sync() {
@@ -92,13 +98,18 @@ where
     }
 
     let protocol_id = config.protocol_id();
+    let genesis_hash = client
+        .hash(Zero::zero())
+        .ok()
+        .flatten()
+        .expect("Genesis block exists; qed");
 
     let (chain_sync_network_provider, chain_sync_network_handle) = NetworkServiceProvider::new();
     let (mut block_server, block_downloader) = match block_relay {
         Some(params) => (params.server, params.downloader),
         None => {
             // Custom protocol was not specified, use the default block handler.
-            let params = BlockRequestHandler::new(
+            let params = BlockRequestHandler::new::<NetworkWorker<TBl, <TBl as BlockT>::Hash>>(
                 chain_sync_network_handle.clone(),
                 &protocol_id,
                 config.chain_spec.fork_id(),
@@ -113,26 +124,35 @@ where
         block_server.run().await;
     });
 
-    // Create `PeerStore` and initialize it with bootnode peer ids.
-    let peer_store = PeerStore::new(
-        net_config
-            .network_config
-            .boot_nodes
-            .iter()
-            .map(|bootnode| bootnode.peer_id)
-            .collect(),
-    );
-    let peer_store_handle = peer_store.handle();
+    // crate transactions protocol and add it to the list of supported protocols of `network_params`
+    let peer_store_handle = net_config.peer_store_handle();
+    let (transactions_handler_proto, transactions_config) =
+        sc_network_transactions::TransactionsHandlerPrototype::new::<
+            _,
+            _,
+            NetworkWorker<TBl, <TBl as BlockT>::Hash>,
+        >(
+            protocol_id.clone(),
+            genesis_hash,
+            config.chain_spec.fork_id(),
+            metrics.clone(),
+            Arc::clone(&peer_store_handle),
+        );
+    net_config.add_notification_protocol(transactions_config);
+
+    // Start task for `PeerStore`
+    let peer_store = net_config.take_peer_store();
     spawn_handle.spawn("peer-store", Some("networking"), peer_store.run());
 
     let state_request_protocol_config = {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) = StateRequestHandler::new(
-            &protocol_id,
-            config.chain_spec.fork_id(),
-            client.clone(),
-            config.network.default_peers_set_num_full as usize,
-        );
+        let (handler, protocol_config) =
+            StateRequestHandler::new::<NetworkWorker<TBl, <TBl as BlockT>::Hash>>(
+                &protocol_id,
+                config.chain_spec.fork_id(),
+                client.clone(),
+                config.network.default_peers_set_num_full as usize,
+            );
         spawn_handle.spawn("state-request-handler", Some("networking"), handler.run());
         protocol_config
     };
@@ -145,6 +165,7 @@ where
             .as_ref()
             .map(|config| config.registry.clone())
             .as_ref(),
+        metrics.clone(),
         &net_config,
         protocol_id.clone(),
         &config.chain_spec.fork_id().map(ToOwned::to_owned),
@@ -155,7 +176,7 @@ where
         block_downloader,
         state_request_protocol_config.name.clone(),
         None,
-        peer_store_handle.clone(),
+        peer_store_handle,
         // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
         // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
         // It would have been ideal to use `Consensus` chain sync service to respond to `is_major_sync` requests but this
@@ -167,26 +188,7 @@ where
     let sync_service_import_queue = sync_service.clone();
     let sync_service = Arc::new(sync_service);
 
-    let genesis_hash = client
-        .hash(Zero::zero())
-        .ok()
-        .flatten()
-        .expect("Genesis block exists; qed");
-
-    // crate transactions protocol and add it to the list of supported protocols of `network_params`
-    let (transactions_handler_proto, transactions_config) =
-        sc_network_transactions::TransactionsHandlerPrototype::new(
-            protocol_id.clone(),
-            client
-                .block_hash(0u32.into())
-                .ok()
-                .flatten()
-                .expect("Genesis block exists; qed"),
-            config.chain_spec.fork_id(),
-        );
-    net_config.add_notification_protocol(transactions_config);
-
-    let network_params = sc_network::config::Params::<TBl> {
+    let network_params = sc_network::config::Params::<TBl, _, _> {
         role: config.role.clone(),
         executor: {
             let spawn_handle = Clone::clone(&spawn_handle);
@@ -195,7 +197,6 @@ where
             })
         },
         network_config: net_config,
-        peer_store: peer_store_handle,
         genesis_hash,
         protocol_id,
         fork_id: config.chain_spec.fork_id().map(ToOwned::to_owned),
@@ -204,6 +205,8 @@ where
             .as_ref()
             .map(|config| config.registry.clone()),
         block_announce_config,
+        bitswap_config: None,
+        notification_metrics: metrics,
     };
 
     let has_bootnodes = !network_params
@@ -248,7 +251,7 @@ where
     spawn_handle.spawn(
         "system-rpc-handler",
         Some("networking"),
-        build_system_rpc_future(
+        build_system_rpc_future::<_, _, <TBl as BlockT>::Hash>(
             config.role.clone(),
             network_mut.service().clone(),
             sync_service.clone(),
@@ -318,7 +321,7 @@ async fn build_network_future<
         + 'static,
     H: sc_network_common::ExHashT,
 >(
-    network: sc_network::NetworkWorker<B, H>,
+    network: NetworkWorker<B, H>,
     client: Arc<C>,
     sync_service: Arc<SyncingService<B>>,
 ) {

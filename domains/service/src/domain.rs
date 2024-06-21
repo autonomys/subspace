@@ -16,7 +16,7 @@ use sc_client_api::{
 };
 use sc_consensus::SharedBlockImport;
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, NotificationMetrics};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
@@ -213,7 +213,7 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNetwork>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
 where
     CBlock: BlockT,
 {
@@ -222,7 +222,7 @@ where
     pub domain_created_at: NumberFor<CBlock>,
     pub maybe_operator_id: Option<OperatorId>,
     pub consensus_client: Arc<CClient>,
-    pub consensus_network: Arc<CNetwork>,
+    pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
@@ -236,19 +236,8 @@ where
 }
 
 /// Builds service for a domain full node.
-pub async fn new_full<
-    CBlock,
-    CClient,
-    IBNS,
-    CIBNS,
-    NSNS,
-    ASS,
-    RuntimeApi,
-    AccountId,
-    Provider,
-    CNetwork,
->(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNetwork>,
+pub async fn new_full<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, RuntimeApi, AccountId, Provider>(
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi>>,
@@ -315,7 +304,6 @@ where
             CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
-    CNetwork: NetworkPeers + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,
@@ -362,6 +350,12 @@ where
             block_announce_validator_builder: None,
             warp_sync_params: None,
             block_relay: None,
+            metrics: NotificationMetrics::new(
+                domain_config
+                    .prometheus_config
+                    .as_ref()
+                    .map(|cfg| &cfg.registry),
+            ),
         })?;
 
     let is_authority = domain_config.role.is_authority();

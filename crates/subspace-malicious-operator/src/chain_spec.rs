@@ -34,8 +34,7 @@ fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
     .collect()
 }
 
-pub fn domain_dev_config(
-) -> Result<GenericChainSpec<evm_domain_runtime::RuntimeGenesisConfig>, String> {
+pub fn domain_dev_config() -> Result<GenericChainSpec, String> {
     // Alith is sudo account
     let sudo_account = AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"));
 
@@ -98,9 +97,7 @@ pub fn create_domain_spec(
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let mut chain_spec = match chain_id {
         "dev" => domain_dev_config()?,
-        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
-            std::path::PathBuf::from(path),
-        )?,
+        path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     chain_spec.set_storage(raw_genesis.into_storage());
     Ok(Box::new(chain_spec))
@@ -109,9 +106,7 @@ pub fn create_domain_spec(
 pub fn load_domain_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
         "dev" => domain_dev_config()?,
-        path => GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::from_json_file(
-            std::path::PathBuf::from(path),
-        )?,
+        path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }
@@ -152,7 +147,7 @@ struct GenesisDomainParams {
     permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
 }
 
-pub fn dev_config() -> Result<GenericChainSpec<subspace_runtime::RuntimeGenesisConfig>, String> {
+pub fn dev_config() -> Result<GenericChainSpec, String> {
     let wasm_binary = subspace_runtime::WASM_BINARY
         .ok_or_else(|| "Development wasm not available".to_string())?;
 

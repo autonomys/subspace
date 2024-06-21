@@ -79,6 +79,7 @@ pub fn charge_bundle_storage_fee<T: Config>(
     T::Currency::burn_from(
         &storage_fund_acc,
         storage_fee,
+        Preservation::Expendable,
         Precision::Exact,
         Fortitude::Polite,
     )

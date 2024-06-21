@@ -13,7 +13,7 @@ use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
-use sc_chain_spec::{ChainType, GenericChainSpec, Properties};
+use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
     Cors, KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
@@ -201,73 +201,70 @@ pub(super) fn create_domain_configuration(
     }
 
     // Code doesn't matter, it will be replaced before running just like genesis storage
-    let chain_spec =
-        GenericChainSpec::<evm_domain_runtime::RuntimeGenesisConfig>::builder(&[], None)
-            .with_name(&format!(
-                "{} Domain {}",
-                consensus_chain_configuration.chain_spec.name(),
-                domain_id
-            ))
-            .with_id(&format!(
-                "{}_domain_{}",
-                consensus_chain_configuration.chain_spec.id(),
-                domain_id
-            ))
-            .with_chain_type(ChainType::Custom("SubspaceDomain".to_string()))
-            .with_boot_nodes(
-                consensus_chain_configuration
-                    .chain_spec
-                    .properties()
-                    .get("domainsBootstrapNodes")
-                    .map(|d| {
-                        serde_json::from_value::<HashMap<DomainId, Vec<MultiaddrWithPeerId>>>(
-                            d.clone(),
-                        )
-                    })
-                    .transpose()
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to decode Domains bootstrap nodes: {error:?}"
-                        ))
-                    })?
-                    .unwrap_or_default()
-                    .get(&domain_id)
-                    .cloned()
-                    .unwrap_or_default(),
-            )
-            .with_protocol_id(&format!(
-                "{}-domain-{}",
-                consensus_chain_configuration.chain_spec.id(),
-                domain_id
-            ))
-            .with_properties({
-                let mut properties = Properties::new();
+    let chain_spec = GenericChainSpec::<NoExtension, ()>::builder(&[], None)
+        .with_name(&format!(
+            "{} Domain {}",
+            consensus_chain_configuration.chain_spec.name(),
+            domain_id
+        ))
+        .with_id(&format!(
+            "{}_domain_{}",
+            consensus_chain_configuration.chain_spec.id(),
+            domain_id
+        ))
+        .with_chain_type(ChainType::Custom("SubspaceDomain".to_string()))
+        .with_boot_nodes(
+            consensus_chain_configuration
+                .chain_spec
+                .properties()
+                .get("domainsBootstrapNodes")
+                .map(|d| {
+                    serde_json::from_value::<HashMap<DomainId, Vec<MultiaddrWithPeerId>>>(d.clone())
+                })
+                .transpose()
+                .map_err(|error| {
+                    sc_service::Error::Other(format!(
+                        "Failed to decode Domains bootstrap nodes: {error:?}"
+                    ))
+                })?
+                .unwrap_or_default()
+                .get(&domain_id)
+                .cloned()
+                .unwrap_or_default(),
+        )
+        .with_protocol_id(&format!(
+            "{}-domain-{}",
+            consensus_chain_configuration.chain_spec.id(),
+            domain_id
+        ))
+        .with_properties({
+            let mut properties = Properties::new();
 
-                if let Some(ss58_format) = consensus_chain_configuration
-                    .chain_spec
-                    .properties()
-                    .get("ss58Format")
-                {
-                    properties.insert("ss58Format".to_string(), ss58_format.clone());
-                }
-                if let Some(decimal_places) = consensus_chain_configuration
-                    .chain_spec
-                    .properties()
-                    .get("tokenDecimals")
-                {
-                    properties.insert("tokenDecimals".to_string(), decimal_places.clone());
-                }
-                if let Some(token_symbol) = consensus_chain_configuration
-                    .chain_spec
-                    .properties()
-                    .get("tokenSymbol")
-                {
-                    properties.insert("tokenSymbol".to_string(), token_symbol.clone());
-                }
+            if let Some(ss58_format) = consensus_chain_configuration
+                .chain_spec
+                .properties()
+                .get("ss58Format")
+            {
+                properties.insert("ss58Format".to_string(), ss58_format.clone());
+            }
+            if let Some(decimal_places) = consensus_chain_configuration
+                .chain_spec
+                .properties()
+                .get("tokenDecimals")
+            {
+                properties.insert("tokenDecimals".to_string(), decimal_places.clone());
+            }
+            if let Some(token_symbol) = consensus_chain_configuration
+                .chain_spec
+                .properties()
+                .get("tokenSymbol")
+            {
+                properties.insert("tokenSymbol".to_string(), token_symbol.clone());
+            }
 
-                properties
-            })
-            .build();
+            properties
+        })
+        .build();
 
     let base_path = consensus_chain_configuration
         .base_path
@@ -350,6 +347,8 @@ pub(super) fn create_domain_configuration(
                 RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
             },
             rate_limit: rpc_options.rpc_rate_limit,
+            rate_limit_whitelisted_ips: rpc_options.rpc_rate_limit_whitelisted_ips,
+            rate_limit_trust_proxy_headers: rpc_options.rpc_rate_limit_trust_proxy_headers,
             max_subscriptions_per_connection: rpc_options.rpc_max_subscriptions_per_connection,
             message_buffer_capacity_per_connection: rpc_options
                 .rpc_message_buffer_capacity_per_connection,
@@ -371,10 +370,10 @@ pub(super) fn create_domain_configuration(
     })
 }
 
-pub(super) struct DomainStartOptions<CNetwork> {
+pub(super) struct DomainStartOptions {
     pub(super) consensus_client: Arc<CFullClient<CRuntimeApi>>,
     pub(super) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    pub(super) consensus_network: Arc<CNetwork>,
+    pub(super) consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
     pub(super) block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub(super) pot_slot_info_stream: Receiver<PotSlotInfo>,
@@ -385,14 +384,11 @@ pub(super) struct DomainStartOptions<CNetwork> {
     pub(super) consensus_state_pruning: PruningMode,
 }
 
-pub(super) async fn run_domain<CNetwork>(
+pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
-    domain_start_options: DomainStartOptions<CNetwork>,
-) -> Result<(), Error>
-where
-    CNetwork: NetworkPeers + Send + Sync + 'static,
-{
+    domain_start_options: DomainStartOptions,
+) -> Result<(), Error> {
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -511,7 +507,6 @@ where
                 evm_domain_runtime::RuntimeApi,
                 AccountId20,
                 _,
-                _,
             >(domain_params)
             .await?;
 
@@ -550,7 +545,6 @@ where
                 _,
                 auto_id_domain_runtime::RuntimeApi,
                 AccountId32,
-                _,
                 _,
             >(domain_params)
             .await?;

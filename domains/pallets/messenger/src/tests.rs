@@ -24,7 +24,7 @@ use sp_messenger::messages::{
     ChainId, ChannelOpenParams, CrossDomainMessage, MessageWeightTag, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::traits::Convert;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;

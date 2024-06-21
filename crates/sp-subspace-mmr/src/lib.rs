@@ -28,7 +28,7 @@ pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_i
 
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::DigestItem;
 

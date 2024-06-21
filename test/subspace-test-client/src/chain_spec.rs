@@ -3,7 +3,7 @@
 use crate::domain_chain_spec::testnet_evm_genesis;
 use codec::Encode;
 use domain_runtime_primitives::AccountId20Converter;
-use sc_chain_spec::{ChainType, GenericChainSpec};
+use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
 use sp_domains::{GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType};
@@ -33,7 +33,7 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 }
 
 /// Local testnet config (multivalidator Alice + Bob).
-pub fn subspace_local_testnet_config() -> Result<GenericChainSpec<RuntimeGenesisConfig>, String> {
+pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?,
         None,
@@ -83,18 +83,17 @@ fn create_genesis_config(
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> Result<RuntimeGenesisConfig, String> {
     let raw_genesis_storage = {
-        let domain_chain_spec =
-            GenericChainSpec::<evm_domain_test_runtime::RuntimeGenesisConfig>::builder(
-                evm_domain_test_runtime::WASM_BINARY
-                    .ok_or_else(|| "Development wasm not available".to_string())?,
-                None,
-            )
-            .with_chain_type(ChainType::Development)
-            .with_genesis_config(
-                serde_json::to_value(testnet_evm_genesis())
-                    .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-            )
-            .build();
+        let domain_chain_spec = GenericChainSpec::<NoExtension, ()>::builder(
+            evm_domain_test_runtime::WASM_BINARY
+                .ok_or_else(|| "Development wasm not available".to_string())?,
+            None,
+        )
+        .with_chain_type(ChainType::Development)
+        .with_genesis_config(
+            serde_json::to_value(testnet_evm_genesis())
+                .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
+        )
+        .build();
         let storage = domain_chain_spec
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");

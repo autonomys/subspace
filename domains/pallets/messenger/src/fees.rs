@@ -1,7 +1,7 @@
 use crate::pallet::{InboxFee, InboxResponses, MessageWeightTags, OutboxFee};
 use crate::{BalanceOf, Config, Error, Pallet};
 use frame_support::traits::fungible::Mutate;
-use frame_support::traits::tokens::{Fortitude, Precision};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::weights::WeightToFee;
 use sp_messenger::endpoint::Endpoint;
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
@@ -41,7 +41,13 @@ impl<T: Config> Pallet<T> {
         let total_fees = dst_chain_fee
             .checked_add(&src_chain_fee)
             .ok_or(Error::<T>::BalanceOverflow)?;
-        T::Currency::burn_from(sender, total_fees, Precision::Exact, Fortitude::Polite)?;
+        T::Currency::burn_from(
+            sender,
+            total_fees,
+            Preservation::Expendable,
+            Precision::Exact,
+            Fortitude::Polite,
+        )?;
 
         Ok(())
     }

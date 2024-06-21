@@ -16,6 +16,7 @@
 
 //! Subspace test service only.
 
+#![feature(trait_upcasting)]
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use codec::{Decode, Encode};
@@ -37,7 +38,8 @@ use sc_consensus::{
 };
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
-use sc_network::{multiaddr, NotificationService};
+use sc_network::service::traits::NetworkService;
+use sc_network::{multiaddr, NetworkWorker, NotificationMetrics, NotificationService};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, OffchainWorkerConfig,
     RpcBatchRequestConfig, WasmExecutionMethod, WasmtimeInstantiationStrategy,
@@ -175,6 +177,8 @@ pub fn node_config(
         rpc_cors: None,
         rpc_methods: Default::default(),
         rpc_rate_limit: None,
+        rpc_rate_limit_whitelisted_ips: vec![],
+        rpc_rate_limit_trust_proxy_headers: false,
         prometheus_config: None,
         telemetry_endpoints: None,
         default_heap_pages: None,
@@ -334,7 +338,7 @@ pub struct MockConsensusNode {
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
-    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network_service: Arc<dyn NetworkService + Send + Sync>,
     /// Cross-domain gossip notification service.
     pub xdm_gossip_notification_service: Option<Box<dyn NotificationService>>,
     /// Sync service.
@@ -433,7 +437,10 @@ impl MockConsensusNode {
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
-        let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+        let mut net_config =
+            sc_network::config::FullNetworkConfiguration::<_, _, NetworkWorker<_, _>>::new(
+                &config.network,
+            );
         let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
             xdm_gossip_peers_set_config();
         net_config.add_notification_protocol(xdm_gossip_notification_config);
@@ -452,6 +459,7 @@ impl MockConsensusNode {
                 block_announce_validator_builder: None,
                 warp_sync_params: None,
                 block_relay: None,
+                metrics: NotificationMetrics::new(None),
             })
             .expect("Should be able to build network");
 

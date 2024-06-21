@@ -193,14 +193,14 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
 ) -> sc_cli::Result<Configuration> {
     let domain_cli_args = &domain_cli.run;
     let is_dev = domain_cli_args.shared_params().is_dev();
+    let role = Role::Authority;
     let config_dir = base_path.config_dir(chain_spec.id());
     let net_config_dir = config_dir.join(DEFAULT_NETWORK_CONFIG_PATH);
     let client_id = Cli::client_id();
     let node_key = domain_cli_args
         .node_key_params()
-        .map(|x| x.node_key(&net_config_dir))
+        .map(|x| x.node_key(&net_config_dir, role.clone(), is_dev))
         .unwrap_or_else(|| Ok(Default::default()))?;
-    let role = Role::Authority;
     let max_runtime_instances = 8;
     let is_validator = role.is_authority();
     // The malicous operator has its own internal keystore
@@ -273,6 +273,8 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         rpc_message_buffer_capacity: domain_cli_args.rpc_buffer_capacity_per_connection()?,
         rpc_batch_config: domain_cli_args.rpc_batch_config()?,
         rpc_rate_limit: domain_cli_args.rpc_rate_limit()?,
+        rpc_rate_limit_whitelisted_ips: vec![],
+        rpc_rate_limit_trust_proxy_headers: false,
         prometheus_config: domain_cli_args.prometheus_config(9616, &chain_spec)?,
         telemetry_endpoints,
         default_heap_pages: domain_cli_args.default_heap_pages()?,

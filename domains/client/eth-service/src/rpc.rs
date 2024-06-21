@@ -6,7 +6,7 @@ use fc_rpc::{
 };
 pub use fc_rpc::{EthBlockDataCacheTask, EthConfig};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
-use fc_storage::OverrideHandle;
+use fc_storage::StorageOverride;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;
 use sc_client_api::backend::{Backend, StorageProvider};
@@ -48,9 +48,9 @@ pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE, CIDP> {
     /// Chain syncing service
     pub sync: Arc<SyncingService<Block>>,
     /// Frontier Backend.
-    pub frontier_backend: Arc<fc_db::kv::Backend<Block>>,
+    pub frontier_backend: Arc<fc_db::kv::Backend<Block, Client>>,
     /// Ethereum data access overrides.
-    pub overrides: Arc<OverrideHandle<Block>>,
+    pub storage_override: Arc<dyn StorageOverride<Block>>,
     /// Cache for Ethereum block data.
     pub block_data_cache: Arc<EthBlockDataCacheTask<Block>>,
     /// EthFilterApi pool.
@@ -80,7 +80,7 @@ impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE, CIDP: Clone> Cl
             enable_dev_signer: self.enable_dev_signer,
             sync: self.sync.clone(),
             frontier_backend: self.frontier_backend.clone(),
-            overrides: self.overrides.clone(),
+            storage_override: self.storage_override.clone(),
             block_data_cache: self.block_data_cache.clone(),
             filter_pool: self.filter_pool.clone(),
             max_past_logs: self.max_past_logs,
@@ -124,7 +124,7 @@ where
         enable_dev_signer,
         sync: _,
         frontier_backend,
-        overrides,
+        storage_override,
         block_data_cache,
         filter_pool,
         max_past_logs,
@@ -158,7 +158,7 @@ where
             converter,
             sync.clone(),
             vec![],
-            overrides.clone(),
+            storage_override.clone(),
             frontier_backend.clone(),
             is_authority,
             block_data_cache.clone(),
@@ -194,7 +194,7 @@ where
             client.clone(),
             sync,
             subscription_task_executor,
-            overrides,
+            storage_override,
             pubsub_notification_sinks,
         )
         .into_rpc(),

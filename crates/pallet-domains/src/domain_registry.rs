@@ -227,6 +227,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     T::Currency::burn_from(
         &owner_account_id,
         total_issuance,
+        Preservation::Expendable,
         Precision::Exact,
         Fortitude::Polite,
     )

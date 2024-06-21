@@ -423,11 +423,11 @@ sp_api::impl_runtime_apis! {
         fn generate_proof(
             _block_numbers: Vec<BlockNumber>,
             _best_known_block_number: Option<BlockNumber>,
-        ) -> Result<(Vec<mmr::EncodableOpaqueLeaf>, mmr::Proof<mmr::Hash>), mmr::Error> {
+        ) -> Result<(Vec<mmr::EncodableOpaqueLeaf>, mmr::LeafProof<mmr::Hash>), mmr::Error> {
             unreachable!()
         }
 
-        fn verify_proof(_leaves: Vec<mmr::EncodableOpaqueLeaf>, _proof: mmr::Proof<mmr::Hash>)
+        fn verify_proof(_leaves: Vec<mmr::EncodableOpaqueLeaf>, _proof: mmr::LeafProof<mmr::Hash>)
             -> Result<(), mmr::Error>
         {
             unreachable!()
@@ -436,18 +436,22 @@ sp_api::impl_runtime_apis! {
         fn verify_proof_stateless(
             _root: mmr::Hash,
             _leaves: Vec<mmr::EncodableOpaqueLeaf>,
-            _proof: mmr::Proof<mmr::Hash>
+            _proof: mmr::LeafProof<mmr::Hash>
         ) -> Result<(), mmr::Error> {
             unreachable!()
         }
     }
 
     impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
-        fn create_default_config() -> Vec<u8> {
+        fn build_state(_config: Vec<u8>) -> sp_genesis_builder::Result {
             unreachable!()
         }
 
-        fn build_config(_config: Vec<u8>) -> sp_genesis_builder::Result {
+        fn get_preset(_id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
+            unreachable!()
+        }
+
+        fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
             unreachable!()
         }
     }

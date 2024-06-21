@@ -16,6 +16,8 @@
 
 //! Subspace malicious operator node.
 
+#![feature(trait_upcasting)]
+
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -177,16 +179,11 @@ fn main() -> Result<(), Error> {
                     })?
                     .unwrap_or_default();
 
-                // TODO: Libp2p versions for Substrate and Subspace diverged.
-                // We get type compatibility by encoding and decoding the original keypair.
-                let encoded_keypair = network_keypair
-                    .to_protobuf_encoding()
-                    .expect("Keypair-to-protobuf encoding should succeed.");
-                let keypair =
-                    subspace_networking::libp2p::identity::Keypair::from_protobuf_encoding(
-                        &encoded_keypair,
-                    )
-                    .expect("Keypair-from-protobuf decoding should succeed.");
+                // Convert keypair from Substrate to libp2p type
+                let keypair = subspace_networking::libp2p::identity::Keypair::ed25519_from_bytes(
+                    network_keypair.secret().to_bytes(),
+                )
+                .expect("Keypair-from-protobuf decoding should succeed.");
 
                 DsnConfig {
                     keypair,

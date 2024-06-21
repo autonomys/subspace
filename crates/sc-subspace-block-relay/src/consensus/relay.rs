@@ -19,7 +19,7 @@ use futures::stream::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use sc_network::types::ProtocolName;
-use sc_network::{OutboundFailure, PeerId, RequestFailure};
+use sc_network::{NetworkWorker, OutboundFailure, PeerId, RequestFailure};
 use sc_network_common::sync::message::{
     BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
@@ -682,7 +682,10 @@ pub fn build_consensus_relay<Block, Client, Pool>(
     client: Arc<Client>,
     pool: Arc<Pool>,
     registry: Option<&Registry>,
-) -> Result<BlockRelayParams<Block>, BlockRelayConfigurationError>
+) -> Result<
+    BlockRelayParams<Block, NetworkWorker<Block, <Block as BlockT>::Hash>>,
+    BlockRelayConfigurationError,
+>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,

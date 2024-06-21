@@ -16,6 +16,7 @@
 
 //! Crate used for testing with Domain.
 
+#![feature(trait_upcasting)]
 #![warn(missing_docs)]
 
 pub mod chain_spec;
@@ -133,6 +134,8 @@ pub fn node_config(
         rpc_cors: None,
         rpc_methods: Default::default(),
         rpc_rate_limit: None,
+        rpc_rate_limit_whitelisted_ips: vec![],
+        rpc_rate_limit_trust_proxy_headers: false,
         prometheus_config: None,
         telemetry_endpoints: None,
         default_heap_pages: None,

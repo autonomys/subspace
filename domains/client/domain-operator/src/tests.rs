@@ -39,7 +39,7 @@ use sp_domains_fraud_proof::fraud_proof::{
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_messenger::messages::{CrossDomainMessage, Proof};
-use sp_mmr_primitives::{EncodableOpaqueLeaf, Proof as MmrProof};
+use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,

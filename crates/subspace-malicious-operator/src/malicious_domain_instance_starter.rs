@@ -33,7 +33,7 @@ use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
 /// bootstrap result
-pub struct DomainInstanceStarter<CNetwork> {
+pub struct DomainInstanceStarter {
     pub domain_cli: DomainCli,
     pub base_path: PathBuf,
     pub tokio_handle: tokio::runtime::Handle,
@@ -46,19 +46,16 @@ pub struct DomainInstanceStarter<CNetwork> {
     pub consensus_sync_service: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
-    pub consensus_network: Arc<CNetwork>,
+    pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
     pub consensus_state_pruning: PruningMode,
 }
 
-impl<CNetwork> DomainInstanceStarter<CNetwork>
-where
-    CNetwork: NetworkPeers + Send + Sync + 'static,
-{
+impl DomainInstanceStarter {
     pub async fn start(
         self,
         bootstrap_result: BootstrapResult<CBlock>,
         sudo_account: AccountId,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
@@ -180,7 +177,6 @@ where
                     evm_domain_runtime::RuntimeApi,
                     AccountId20,
                     _,
-                    _,
                 >(domain_params)
                 .await?;
 
@@ -239,7 +235,6 @@ where
                     _,
                     auto_id_domain_runtime::RuntimeApi,
                     AccountId32,
-                    _,
                     _,
                 >(domain_params)
                 .await?;
