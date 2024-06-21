@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.82"
+anyhow = "1.0.86"
 async-lock = "3.3.0"
 async-nats = "0.35.1"
 async-trait = "0.1.80"
@@ -22,18 +22,18 @@ blake2 = "0.10.6"
 blake3 = { version = "1.5.1", default-features = false }
 bytes = "1.6.0"
 bytesize = "1.3.0"
-clap = { version = "4.5.4", features = ["color", "derive"] }
+clap = { version = "4.5.7", features = ["color", "derive"] }
 criterion = { version = "0.5.1", default-features = false, features = ["rayon", "async"] }
-derive_more = "0.99.17"
-event-listener = "5.3.0"
+derive_more = "0.99.18"
+event-listener = "5.3.1"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.3.0"
-fs4 = "0.8.2"
+fs4 = "0.8.4"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
-hwlocality = { version = "1.0.0-alpha.3", features = ["vendored"], optional = true }
+hwlocality = { version = "1.0.0-alpha.5", features = ["vendored"], optional = true }
 jsonrpsee = { version = "0.23.1", features = ["client"] }
-mimalloc = "0.1.41"
+mimalloc = "0.1.42"
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
@@ -43,8 +43,8 @@ rand = "0.8.5"
 rayon = "1.10.0"
 schnellru = "0.2.3"
 schnorrkel = "0.11.4"
-serde = { version = "1.0.199", features = ["derive"] }
-serde_json = "1.0.116"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
 static_assertions = "1.1.0"
 ss58-registry = "1.47.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
@@ -58,14 +58,14 @@ subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitive
 substrate-bip39 = "0.6.0"
 supports-color = "3.0.0"
 tempfile = "3.10.1"
-thiserror = "1.0.59"
+thiserror = "1.0.61"
 thread-priority = "1.1.0"
 tokio = { version = "1.38.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 ulid = { version = "1.1.2", features = ["serde"] }
-zeroize = "1.7.0"
+zeroize = "1.8.1"
 
 [features]
 default = ["numa"]

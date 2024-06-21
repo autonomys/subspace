@@ -20,7 +20,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 auto-id-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/auto-id" }
-clap = { version = "4.5.4", features = ["derive"] }
+clap = { version = "4.5.7", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
 domain-client-operator = { version = "0.1.0", path = "../../domains/client/domain-operator" }
@@ -34,7 +34,7 @@ frame-system-rpc-runtime-api = { default-features = false, git = "https://github
 futures = "0.3.29"
 hex-literal = "0.4.1"
 log = "0.4.21"
-mimalloc = "0.1.41"
+mimalloc = "0.1.42"
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 parity-scale-codec = "3.6.12"
@@ -52,7 +52,7 @@ sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-serde_json = "1.0.116"
+serde_json = "1.0.117"
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f", default-features = false }
@@ -73,7 +73,7 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-thiserror = "1.0.59"
+thiserror = "1.0.61"
 tokio = "1.38.0"
 rand = "0.8.5"
 tracing = "0.1.40"

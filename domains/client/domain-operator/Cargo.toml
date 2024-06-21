@@ -40,7 +40,7 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
-thiserror = "1.0.59"
+thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = ["macros"] }
 
 [dev-dependencies]
