@@ -49,7 +49,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures-core",
- "h2 0.3.26",
+ "h2",
  "http 0.2.12",
  "httparse",
  "httpdate",
@@ -4418,10 +4418,6 @@ name = "futures-timer"
 version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
-dependencies = [
- "gloo-timers",
- "send_wrapper",
-]
 
 [[package]]
 name = "futures-util"
@@ -4552,27 +4548,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
-name = "gloo-net"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43aaa242d1239a8822c15c645f02166398da4f8b5c4bae795c1f5b44e9eee173"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-sink",
- "gloo-utils",
- "http 0.2.12",
- "js-sys",
- "pin-project",
- "serde",
- "serde_json",
- "thiserror",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "gloo-timers"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4582,19 +4557,6 @@ dependencies = [
  "futures-core",
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "gloo-utils"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b5555354113b18c547c1d3a98fbf7fb32a9ff4f6fa112ce823a21641a0ba3aa"
-dependencies = [
- "js-sys",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
@@ -4640,25 +4602,6 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap 2.2.6",
- "slab",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "h2"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa82e28a107a8cc405f0839610bdc9b15f1e25ec7d696aa5cf173edbcb1486ab"
-dependencies = [
- "atomic-waker",
- "bytes",
- "fnv",
- "futures-core",
- "futures-sink",
- "http 1.1.0",
  "indexmap 2.2.6",
  "slab",
  "tokio",
@@ -4929,29 +4872,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-body"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cac85db508abc24a2e48553ba12a996e87244a0395ce011e62b37158745d643"
-dependencies = [
- "bytes",
- "http 1.1.0",
-]
-
-[[package]]
-name = "http-body-util"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0475f8b2ac86659c21b64320d5d653f9efe42acd2a4e560073ec61a155a34f1d"
-dependencies = [
- "bytes",
- "futures-core",
- "http 1.1.0",
- "http-body 1.0.0",
- "pin-project-lite 0.2.14",
-]
-
-[[package]]
 name = "http-range-header"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5021,9 +4941,9 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.3.26",
+ "h2",
  "http 0.2.12",
- "http-body 0.4.6",
+ "http-body",
  "httparse",
  "httpdate",
  "itoa",
@@ -5036,26 +4956,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe575dd17d0862a9a33781c8c4696a55c320909004a67a00fb286ba8b1bc496d"
-dependencies = [
- "bytes",
- "futures-channel",
- "futures-util",
- "h2 0.4.5",
- "http 1.1.0",
- "http-body 1.0.0",
- "httparse",
- "itoa",
- "pin-project-lite 0.2.14",
- "smallvec",
- "tokio",
- "want",
-]
-
-[[package]]
 name = "hyper-rustls"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5063,50 +4963,12 @@ checksum = "ec3efd23720e2049821a693cbc7e65ea87c72f1c58ff2f9522ff332b1491e590"
 dependencies = [
  "futures-util",
  "http 0.2.12",
- "hyper 0.14.28",
+ "hyper",
  "log",
  "rustls 0.21.12",
  "rustls-native-certs 0.6.3",
  "tokio",
  "tokio-rustls 0.24.1",
-]
-
-[[package]]
-name = "hyper-rustls"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
-dependencies = [
- "futures-util",
- "http 1.1.0",
- "hyper 1.3.1",
- "hyper-util",
- "log",
- "rustls 0.23.9",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls 0.26.0",
- "tower-service",
-]
-
-[[package]]
-name = "hyper-util"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b875924a60b96e5d7b9ae7b066540b1dd1cbd90d1828f54c92e02a283351c56"
-dependencies = [
- "bytes",
- "futures-channel",
- "futures-util",
- "http 1.1.0",
- "http-body 1.0.0",
- "hyper 1.3.1",
- "pin-project-lite 0.2.14",
- "socket2 0.5.7",
- "tokio",
- "tower",
- "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -5204,7 +5066,7 @@ dependencies = [
  "bytes",
  "futures",
  "http 0.2.12",
- "hyper 0.14.28",
+ "hyper",
  "log",
  "rand 0.8.5",
  "tokio",
@@ -5461,11 +5323,8 @@ version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95a130d27083a4001b7b2d72a19f08786299550f76c9bd5307498dce2c2b20fa"
 dependencies = [
- "jsonrpsee-client-transport",
  "jsonrpsee-core 0.23.1",
- "jsonrpsee-http-client",
  "jsonrpsee-types 0.23.1",
- "jsonrpsee-wasm-client",
  "jsonrpsee-ws-client",
 ]
 
@@ -5476,9 +5335,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "039db9fe25cd63b7221c3f8788c1ef4ea07987d40ec25a1e7d7a3c3e3e3fd130"
 dependencies = [
  "base64 0.22.0",
- "futures-channel",
  "futures-util",
- "gloo-net",
  "http 1.1.0",
  "jsonrpsee-core 0.23.1",
  "pin-project",
@@ -5504,7 +5361,7 @@ dependencies = [
  "async-trait",
  "beef",
  "futures-util",
- "hyper 0.14.28",
+ "hyper",
  "jsonrpsee-types 0.22.5",
  "parking_lot 0.12.3",
  "rand 0.8.5",
@@ -5525,12 +5382,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "beef",
- "bytes",
  "futures-timer",
  "futures-util",
- "http 1.1.0",
- "http-body 1.0.0",
- "http-body-util",
  "jsonrpsee-types 0.23.1",
  "pin-project",
  "rustc-hash",
@@ -5540,32 +5393,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "jsonrpsee-http-client"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb25cab482c8512c4f3323a5c90b95a3b8f7c90681a87bf7a68b942d52f08933"
-dependencies = [
- "async-trait",
- "base64 0.22.0",
- "http-body 1.0.0",
- "hyper 1.3.1",
- "hyper-rustls 0.27.2",
- "hyper-util",
- "jsonrpsee-core 0.23.1",
- "jsonrpsee-types 0.23.1",
- "rustls 0.23.9",
- "rustls-platform-verifier",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tower",
- "tracing",
- "url",
 ]
 
 [[package]]
@@ -5589,7 +5416,7 @@ checksum = "12d8b6a9674422a8572e0b0abb12feeb3f2aeda86528c80d0350c2bd0923ab41"
 dependencies = [
  "futures-util",
  "http 0.2.12",
- "hyper 0.14.28",
+ "hyper",
  "jsonrpsee-core 0.22.5",
  "jsonrpsee-types 0.22.5",
  "pin-project",
@@ -5629,17 +5456,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
-]
-
-[[package]]
-name = "jsonrpsee-wasm-client"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c8a6dfa0c35c8549fa8e003ce0bbcf37b051ab7ef85fce587e8f0ed7881c84d"
-dependencies = [
- "jsonrpsee-client-transport",
- "jsonrpsee-core 0.23.1",
- "jsonrpsee-types 0.23.1",
 ]
 
 [[package]]
@@ -10758,8 +10574,8 @@ dependencies = [
  "fnv",
  "futures",
  "futures-timer",
- "hyper 0.14.28",
- "hyper-rustls 0.24.2",
+ "hyper",
+ "hyper-rustls",
  "libp2p 0.51.4",
  "log",
  "num_cpus",
@@ -10883,7 +10699,7 @@ dependencies = [
  "futures",
  "governor",
  "http 0.2.12",
- "hyper 0.14.28",
+ "hyper",
  "ip_network",
  "jsonrpsee 0.22.5",
  "log",
@@ -11373,12 +11189,6 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
-
-[[package]]
-name = "send_wrapper"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f638d531eccd6e23b980caf34876660d38e265409d8e99b397ab71eb3612fad0"
 
 [[package]]
 name = "seq-macro"
@@ -13640,7 +13450,7 @@ name = "substrate-prometheus-endpoint"
 version = "0.17.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=98914adb256fed32c13ce251c5b4c9972af8ea0f#98914adb256fed32c13ce251c5b4c9972af8ea0f"
 dependencies = [
- "hyper 0.14.28",
+ "hyper",
  "log",
  "prometheus",
  "thiserror",
@@ -14120,7 +13930,6 @@ dependencies = [
  "futures-util",
  "pin-project",
  "pin-project-lite 0.2.14",
- "tokio",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -14137,7 +13946,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "http 0.2.12",
- "http-body 0.4.6",
+ "http-body",
  "http-range-header",
  "pin-project-lite 0.2.14",
  "tower-layer",
