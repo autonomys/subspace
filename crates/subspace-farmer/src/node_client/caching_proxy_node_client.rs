@@ -18,11 +18,13 @@ use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 use tracing::{info, trace, warn};
 
+const SEGMENT_HEADERS_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Default)]
 struct SegmentHeaders {
     segment_headers: Vec<SegmentHeader>,
+    last_synced: Option<Instant>,
 }
 
 impl SegmentHeaders {
@@ -59,6 +61,13 @@ impl SegmentHeaders {
     where
         NC: NodeClient,
     {
+        if let Some(last_synced) = &self.last_synced {
+            if last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL {
+                return Ok(());
+            }
+        }
+        self.last_synced.replace(Instant::now());
+
         let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);
         let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
 
