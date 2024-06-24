@@ -1,7 +1,7 @@
 //! Node client wrapper around another node client that caches some data for better performance and
 //! proxies other requests through
 
-use crate::node_client::{Error as RpcError, Error, NodeClient};
+use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
@@ -299,5 +299,25 @@ where
     ) -> Result<(), Error> {
         // Not supported
         Ok(())
+    }
+}
+
+#[async_trait]
+impl<NC> NodeClientExt for CachingProxyNodeClient<NC>
+where
+    NC: NodeClientExt,
+{
+    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
+        Ok(self
+            .segment_headers
+            .read()
+            .await
+            .iter()
+            .copied()
+            .rev()
+            .take(limit as usize)
+            .rev()
+            .map(Some)
+            .collect())
     }
 }

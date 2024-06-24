@@ -140,6 +140,10 @@ pub(super) async fn controller(
 
     // TODO: Metrics
 
+    let node_client = CachingProxyNodeClient::new(node_client)
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
+
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -159,10 +163,6 @@ pub(super) async fn controller(
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
-
-    let node_client = CachingProxyNodeClient::new(node_client)
-        .await
-        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let validator = Some(SegmentCommitmentPieceValidator::new(
