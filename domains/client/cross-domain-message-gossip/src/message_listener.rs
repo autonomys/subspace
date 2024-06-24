@@ -1,6 +1,6 @@
 use crate::aux_schema::ChannelDetail;
 use crate::gossip_worker::{ChannelUpdate, MessageData};
-use crate::ChainMsg;
+use crate::{ChainMsg, ChannelStorage};
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use fp_account::AccountId20;
 use futures::{Stream, StreamExt};
@@ -242,7 +242,7 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
 }
 
 fn handle_consensus_channel_update<CClient, CBlock>(
-    dst_chain_id: ChainId,
+    self_chain_id: ChainId,
     channel_id: ChannelId,
     consensus_client: &Arc<CClient>,
     consensus_block_number: BlockNumber,
@@ -258,12 +258,9 @@ where
         .hash(consensus_block_number.into())?
         .ok_or(Error::MissingBlockHash)?;
 
-    let maybe_existing_channel_detail = crate::aux_schema::get_channel_details(
-        &**consensus_client,
-        ChainId::Consensus,
-        dst_chain_id,
-        channel_id,
-    )?;
+    let channel_storage = ChannelStorage::new(ChainId::Consensus);
+    let maybe_existing_channel_detail =
+        channel_storage.get_channel_state_for(&**consensus_client, self_chain_id, channel_id)?;
 
     // if there is an existing channel detail,
     // return if the channel update is from canonical chain and block number is latest
@@ -282,7 +279,7 @@ where
 
     let api = consensus_client.runtime_api();
     let best_hash = consensus_client.info().best_hash;
-    let storage_key = StorageKey(api.channel_storage_key(best_hash, dst_chain_id, channel_id)?);
+    let storage_key = StorageKey(api.channel_storage_key(best_hash, self_chain_id, channel_id)?);
     let header = consensus_client.expect_header(consensus_block_hash)?;
     let channel = StorageProofVerifier::<HashingFor<CBlock>>::get_decoded_value::<
         Channel<Balance, AccountId32>,
@@ -298,18 +295,13 @@ where
         latest_response_received_message_nonce: channel.latest_response_received_message_nonce,
     };
 
-    crate::aux_schema::set_channel_detail(
-        &**consensus_client,
-        ChainId::Consensus,
-        dst_chain_id,
-        channel_detail,
-    )?;
+    channel_storage.set_channel_state(&**consensus_client, self_chain_id, channel_detail)?;
     Ok(())
 }
 
 fn handle_domain_channel_update<CClient, CBlock, Executor, Block>(
     src_domain_id: DomainId,
-    dst_chain_id: ChainId,
+    self_chain_id: ChainId,
     channel_id: ChannelId,
     consensus_client: &Arc<CClient>,
     domain_block_number: BlockNumber,
@@ -364,12 +356,10 @@ where
     // if there is an existing channel detail,
     // return if the channel update is from canonical domain and block number is latest
     // else store the update.
-    let maybe_existing_channel_detail = crate::aux_schema::get_channel_details(
-        &**consensus_client,
-        ChainId::Domain(src_domain_id),
-        dst_chain_id,
-        channel_id,
-    )?;
+    let channel_storage = ChannelStorage::new(ChainId::Domain(src_domain_id));
+    let maybe_existing_channel_detail =
+        channel_storage.get_channel_state_for(&**consensus_client, self_chain_id, channel_id)?;
+
     if let Some(existing_channel_update) = maybe_existing_channel_detail {
         // if the existing update domain block number
         // is valid, and
@@ -391,7 +381,7 @@ where
     let domain_stateless_runtime =
         StatelessRuntime::<Block, _>::new(executor.clone(), domain_runtime.into());
     let storage_key =
-        StorageKey(domain_stateless_runtime.channel_storage_key(dst_chain_id, channel_id)?);
+        StorageKey(domain_stateless_runtime.channel_storage_key(self_chain_id, channel_id)?);
     let channel_detail = match domain_runtime_type {
         RuntimeType::Evm => {
             let channel = StorageProofVerifier::<HashingFor<Block>>::get_decoded_value::<
@@ -425,13 +415,7 @@ where
         }
     };
 
-    crate::aux_schema::set_channel_detail(
-        &**consensus_client,
-        ChainId::Domain(src_domain_id),
-        dst_chain_id,
-        channel_detail,
-    )?;
-
+    channel_storage.set_channel_state(&**consensus_client, self_chain_id, channel_detail)?;
     Ok(())
 }
 

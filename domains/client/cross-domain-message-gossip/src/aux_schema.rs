@@ -50,9 +50,44 @@ pub struct ChannelDetail {
     pub latest_response_received_message_nonce: Option<Nonce>,
 }
 
-/// Load the channel detail between src and dst chains.
-/// Channel detail is the state of channel on src_chain.
-pub fn get_channel_details<Backend>(
+pub struct ChannelStorage {
+    self_chain_id: ChainId,
+}
+
+impl ChannelStorage {
+    /// Returns channel storage with self chain id passed.
+    pub fn new(self_chain_id: ChainId) -> Self {
+        Self { self_chain_id }
+    }
+
+    /// Load the channel state of self_chain_id on chain_id.
+    pub fn get_channel_state_for<Backend>(
+        &self,
+        backend: &Backend,
+        chain_id: ChainId,
+        channel_id: ChannelId,
+    ) -> ClientResult<Option<ChannelDetail>>
+    where
+        Backend: AuxStore,
+    {
+        get_channel_details(backend, chain_id, self.self_chain_id, channel_id)
+    }
+
+    /// Set the channel state of self_chain_id on chain_id.
+    pub(crate) fn set_channel_state<Backend>(
+        &self,
+        backend: &Backend,
+        chain_id: ChainId,
+        channel_detail: ChannelDetail,
+    ) -> ClientResult<()>
+    where
+        Backend: AuxStore,
+    {
+        set_channel_detail(backend, chain_id, self.self_chain_id, channel_detail)
+    }
+}
+
+fn get_channel_details<Backend>(
     backend: &Backend,
     src_chain_id: ChainId,
     dst_chain_id: ChainId,
@@ -67,7 +102,7 @@ where
     )
 }
 
-pub(crate) fn set_channel_detail<Backend>(
+fn set_channel_detail<Backend>(
     backend: &Backend,
     src_chain_id: ChainId,
     dst_chain_id: ChainId,

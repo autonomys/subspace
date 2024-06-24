@@ -6,7 +6,9 @@
 pub mod worker;
 
 use async_channel::TrySendError;
-use cross_domain_message_gossip::{Message as GossipMessage, MessageData as GossipMessageData};
+use cross_domain_message_gossip::{
+    ChannelStorage, Message as GossipMessage, MessageData as GossipMessageData,
+};
 use parity_scale_codec::{Codec, Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -23,6 +25,7 @@ use sp_runtime::ArithmeticError;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use tracing::log;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -285,20 +288,25 @@ where
                     }
                 };
 
+            let channel_storage = ChannelStorage::new(msg.dst_chain_id);
             if should_relay
-                && let Some(dst_channel_state) = cross_domain_message_gossip::get_channel_details(
-                    &**consensus_client,
-                    msg.dst_chain_id,
-                    msg.src_chain_id,
-                    msg.channel_id,
-                )
-                .ok()
-                .flatten()
+                && let Some(dst_channel_state) = channel_storage
+                    .get_channel_state_for(&**consensus_client, msg.src_chain_id, msg.channel_id)
+                    .ok()
+                    .flatten()
             {
                 // if this message should relay,
                 // check if the dst_chain inbox nonce is more than message nonce,
                 // if so, skip relaying since message is already executed on dst_chain
-                msg.nonce >= dst_channel_state.next_inbox_nonce
+                let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce;
+                if !relay_message {
+                    log::debug!(
+                        "Skipping message relay from {:?} to {:?}",
+                        msg.src_chain_id,
+                        msg.dst_chain_id,
+                    );
+                }
+                relay_message
             } else {
                 should_relay
             }
@@ -319,16 +327,24 @@ where
                 }
             };
 
-            if should_relay && let Some(dst_channel_state) = cross_domain_message_gossip::get_channel_details(
+            let channel_storage = ChannelStorage::new(msg.dst_chain_id);
+            if should_relay && let Some(dst_channel_state) = channel_storage.get_channel_state_for(
                 &**consensus_client,
-                msg.dst_chain_id,
                 msg.src_chain_id,
                 msg.channel_id,
             )
                 .ok()
                 .flatten() && let Some(dst_chain_outbox_response_nonce) = dst_channel_state.latest_response_received_message_nonce{
                 // relay inbox response if the dst_chain did not execute is already
-                msg.nonce > dst_chain_outbox_response_nonce
+                let relay_message = msg.nonce > dst_chain_outbox_response_nonce;
+                if !relay_message{
+                    log::debug!(
+                        "Skipping message relay from {:?} to {:?}",
+                        msg.src_chain_id,
+                        msg.dst_chain_id,
+                    );
+                }
+                relay_message
             } else { should_relay }
         });
 
