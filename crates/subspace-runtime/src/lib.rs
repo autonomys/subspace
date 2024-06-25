@@ -40,9 +40,9 @@ use domain_runtime_primitives::{
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
+use frame_support::migrations::VersionedMigration;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, OnRuntimeUpgrade,
-    VariantCount,
+    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -64,9 +64,8 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OnDomainInstantiated, OpaqueBundle, OperatorId,
-    OperatorPublicKey, StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER,
-    INITIAL_DOMAIN_TX_RANGE,
+    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
+    StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -834,24 +833,16 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
-pub struct InitializeDomainChainAllowlistUpdate;
+pub type VersionCheckedMigrateDomainsV0ToV1<T> = VersionedMigration<
+    0,
+    1,
+    pallet_domains::migrations::VersionUncheckedMigrateV0ToV1<T>,
+    pallet_domains::Pallet<T>,
+    <T as frame_system::Config>::DbWeight,
+>;
 
-impl OnRuntimeUpgrade for InitializeDomainChainAllowlistUpdate {
-    fn on_runtime_upgrade() -> Weight {
-        let mut read = 0;
-        let mut write = 0;
-        let next_domain_id = Domains::next_domain_id().into();
-        for i in 0u32..next_domain_id {
-            let domain_id = i.into();
-            read += 1;
-            if Messenger::domain_chain_allowlist_updates(domain_id).is_none() {
-                <Messenger as OnDomainInstantiated>::on_domain_instantiated(domain_id);
-                write += 1;
-            }
-        }
-        <Runtime as frame_system::Config>::DbWeight::get().reads_writes(read, write)
-    }
-}
+// TODO: remove once the migrations are done.
+pub type Migrations = (VersionCheckedMigrateDomainsV0ToV1<Runtime>,);
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
@@ -860,7 +851,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    InitializeDomainChainAllowlistUpdate,
+    Migrations,
 >;
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {

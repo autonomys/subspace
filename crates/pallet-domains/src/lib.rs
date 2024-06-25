@@ -27,6 +27,7 @@ mod tests;
 pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
+pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -152,7 +153,7 @@ pub type BlockTreeNodeFor<T> = crate::block_tree::BlockTreeNode<
 >;
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
 /// The number of bundle of a particular domain to be included in the block is probabilistic
 /// and based on the consensus chain slot probability and domain bundle slot probability, usually
@@ -1586,7 +1587,9 @@ mod pallet {
             // Record any previous domain runtime upgrade in `DomainRuntimeUpgradeRecords` and then do the
             // domain runtime upgrade scheduled in the current block
             for runtime_id in DomainRuntimeUpgrades::<T>::take() {
-                let reference_count = Self::domain_instance_count(runtime_id);
+                let reference_count = RuntimeRegistry::<T>::get(runtime_id)
+                    .expect("Runtime object must be present since domain is insantiated; qed")
+                    .instance_count;
                 if !reference_count.is_zero() {
                     DomainRuntimeUpgradeRecords::<T>::mutate(runtime_id, |upgrade_record| {
                         upgrade_record.insert(
@@ -2564,15 +2567,6 @@ impl<T: Config> Pallet<T> {
             .rev()
             .take_while(|upgraded_at| *upgraded_at > last_block_at)
             .count() as u32)
-    }
-
-    // Return the number of domain instance that instantiated with the given runtime
-    fn domain_instance_count(runtime_id: RuntimeId) -> u32 {
-        // TODO: perhaps add another storage to keep track of this number so we don't need
-        // to iterate all the domain instances
-        DomainRegistry::<T>::iter()
-            .filter(|(_, domain_obj)| domain_obj.domain_config.runtime_id == runtime_id)
-            .count() as u32
     }
 
     /// Returns true if the Domain is registered.
