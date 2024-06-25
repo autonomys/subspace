@@ -1,6 +1,7 @@
 use crate::commands::shared::PlottingThreadPriority;
 use anyhow::anyhow;
 use clap::Parser;
+use futures::{select, FutureExt};
 use prometheus_client::registry::Registry;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -80,12 +81,13 @@ pub(super) struct PlotterArgs {
     pub(super) additional_components: Vec<String>,
 }
 
-pub(super) async fn plotter<PosTable>(
+pub(super) async fn plotter<PosTableLegacy, PosTable>(
     nats_client: NatsClient,
     _registry: &mut Registry,
     plotter_args: PlotterArgs,
 ) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
 where
+    PosTableLegacy: Table,
     PosTable: Table,
 {
     let PlotterArgs {
@@ -159,8 +161,17 @@ where
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let global_mutex = Arc::default();
-    let cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
-        piece_getter,
+    let legacy_cpu_plotter = Arc::new(CpuPlotter::<_, PosTableLegacy>::new(
+        piece_getter.clone(),
+        Arc::clone(&downloading_semaphore),
+        plotting_thread_pool_manager.clone(),
+        record_encoding_concurrency,
+        Arc::clone(&global_mutex),
+        kzg.clone(),
+        erasure_coding.clone(),
+    ));
+    let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
+        piece_getter.clone(),
         downloading_semaphore,
         plotting_thread_pool_manager,
         record_encoding_concurrency,
@@ -172,8 +183,13 @@ where
     // TODO: Metrics
 
     Ok(Box::pin(async move {
-        plotter_service(&nats_client, &cpu_plotter)
-            .await
-            .map_err(|error| anyhow!("Plotter service failed: {error}"))
+        select! {
+            result = plotter_service(&nats_client, &legacy_cpu_plotter, false).fuse() => {
+                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
+            }
+            result = plotter_service(&nats_client, &modern_cpu_plotter, true).fuse() => {
+                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
+            }
+        }
     }))
 }

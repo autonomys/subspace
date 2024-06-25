@@ -76,7 +76,7 @@ impl fmt::Debug for SectorPlottingProgress {
 
 /// Abstract plotter implementation
 #[async_trait]
-pub trait Plotter {
+pub trait Plotter: fmt::Debug {
     /// Whether plotter has free capacity to encode more sectors
     async fn has_free_capacity(&self) -> Result<bool, String>;
 

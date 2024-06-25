@@ -84,7 +84,7 @@ pub enum PlottingError {
     BackgroundDownloadingPanicked,
 }
 
-pub(super) struct SectorPlottingOptions<'a, NC, P> {
+pub(super) struct SectorPlottingOptions<'a, NC> {
     pub(super) public_key: PublicKey,
     pub(super) node_client: &'a NC,
     pub(super) pieces_in_sector: u16,
@@ -99,27 +99,26 @@ pub(super) struct SectorPlottingOptions<'a, NC, P> {
     pub(super) metadata_file: Arc<UnbufferedIoFileWindows>,
     pub(super) handlers: &'a Handlers,
     pub(super) global_mutex: &'a AsyncMutex<()>,
-    pub(super) plotter: P,
+    pub(super) plotter: Arc<dyn Plotter>,
 }
 
-pub(super) struct PlottingOptions<'a, NC, P> {
+pub(super) struct PlottingOptions<'a, NC> {
     pub(super) metadata_header: PlotMetadataHeader,
     pub(super) sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     pub(super) sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
-    pub(super) sector_plotting_options: SectorPlottingOptions<'a, NC, P>,
+    pub(super) sector_plotting_options: SectorPlottingOptions<'a, NC>,
 }
 
 /// Starts plotting process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-pub(super) async fn plotting<NC, P>(
-    plotting_options: PlottingOptions<'_, NC, P>,
+pub(super) async fn plotting<NC>(
+    plotting_options: PlottingOptions<'_, NC>,
 ) -> Result<(), PlottingError>
 where
     NC: NodeClient,
-    P: Plotter,
 {
     let PlottingOptions {
         mut metadata_header,
@@ -259,15 +258,14 @@ struct SectorPlottingResult {
     last_queued: bool,
 }
 
-async fn plot_single_sector<'a, NC, P>(
+async fn plot_single_sector<'a, NC>(
     sector_to_plot: SectorToPlot,
-    sector_plotting_options: &'a SectorPlottingOptions<'a, NC, P>,
+    sector_plotting_options: &'a SectorPlottingOptions<'a, NC>,
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
 ) -> Result<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a, PlottingError>
 where
     NC: NodeClient,
-    P: Plotter,
 {
     let SectorPlottingOptions {
         public_key,

@@ -1,4 +1,4 @@
-use crate::PosTable;
+use crate::{PosTable, PosTableLegacy};
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use criterion::{black_box, BatchSize, Criterion, Throughput};
@@ -14,7 +14,9 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer::single_disk_farm::{
+    SingleDiskFarm, SingleDiskFarmInfo, SingleDiskFarmSummary,
+};
 use subspace_farmer::utils::{recommended_number_of_farming_threads, tokio_rayon_spawn_handler};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::sector_size;
@@ -108,6 +110,42 @@ pub(crate) fn benchmark(benchmark_args: BenchmarkArgs) -> anyhow::Result<()> {
 }
 
 fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
+    let single_disk_farm_info =
+        match SingleDiskFarm::collect_summary(audit_options.disk_farm.clone()) {
+            SingleDiskFarmSummary::Found { info, directory: _ } => info,
+            SingleDiskFarmSummary::NotFound { directory } => {
+                return Err(anyhow!(
+                    "No single disk farm info found, make sure {} is a valid path to the farm and \
+                    process have permissions to access it",
+                    directory.display()
+                ));
+            }
+            SingleDiskFarmSummary::Error { directory, error } => {
+                return Err(anyhow!(
+                "Failed to open single disk farm info, make sure {} is a valid path to the farm \
+                and process have permissions to access it: {error}",
+                directory.display()
+            ));
+            }
+        };
+
+    match single_disk_farm_info {
+        SingleDiskFarmInfo::V0 { .. } => {
+            audit_inner::<PosTableLegacy>(audit_options, single_disk_farm_info)
+        }
+        SingleDiskFarmInfo::V1 { .. } => {
+            audit_inner::<PosTable>(audit_options, single_disk_farm_info)
+        }
+    }
+}
+
+fn audit_inner<PosTable>(
+    audit_options: AuditOptions,
+    single_disk_farm_info: SingleDiskFarmInfo,
+) -> anyhow::Result<()>
+where
+    PosTable: Table,
+{
     let AuditOptions {
         sample_size,
         with_single,
@@ -115,23 +153,6 @@ fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
         disk_farm,
         filter,
     } = audit_options;
-    let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
-        SingleDiskFarmSummary::Found { info, directory } => (info, directory),
-        SingleDiskFarmSummary::NotFound { directory } => {
-            return Err(anyhow!(
-                "No single disk farm info found, make sure {} is a valid path to the farm and \
-                process have permissions to access it",
-                directory.display()
-            ));
-        }
-        SingleDiskFarmSummary::Error { directory, error } => {
-            return Err(anyhow!(
-                "Failed to open single disk farm info, make sure {} is a valid path to the farm \
-                and process have permissions to access it: {error}",
-                directory.display()
-            ));
-        }
-    };
 
     let sector_size = sector_size(single_disk_farm_info.pieces_in_sector());
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -272,6 +293,42 @@ fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
 }
 
 fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
+    let single_disk_farm_info =
+        match SingleDiskFarm::collect_summary(prove_options.disk_farm.clone()) {
+            SingleDiskFarmSummary::Found { info, directory: _ } => info,
+            SingleDiskFarmSummary::NotFound { directory } => {
+                return Err(anyhow!(
+                    "No single disk farm info found, make sure {} is a valid path to the farm and \
+                    process have permissions to access it",
+                    directory.display()
+                ));
+            }
+            SingleDiskFarmSummary::Error { directory, error } => {
+                return Err(anyhow!(
+                "Failed to open single disk farm info, make sure {} is a valid path to the farm \
+                and process have permissions to access it: {error}",
+                directory.display()
+            ));
+            }
+        };
+
+    match single_disk_farm_info {
+        SingleDiskFarmInfo::V0 { .. } => {
+            prove_inner::<PosTableLegacy>(prove_options, single_disk_farm_info)
+        }
+        SingleDiskFarmInfo::V1 { .. } => {
+            prove_inner::<PosTable>(prove_options, single_disk_farm_info)
+        }
+    }
+}
+
+fn prove_inner<PosTable>(
+    prove_options: ProveOptions,
+    single_disk_farm_info: SingleDiskFarmInfo,
+) -> anyhow::Result<()>
+where
+    PosTable: Table,
+{
     let ProveOptions {
         sample_size,
         with_single,
@@ -280,24 +337,6 @@ fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
         filter,
         limit_sector_count,
     } = prove_options;
-
-    let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
-        SingleDiskFarmSummary::Found { info, directory } => (info, directory),
-        SingleDiskFarmSummary::NotFound { directory } => {
-            return Err(anyhow!(
-                "No single disk farm info found, make sure {} is a valid path to the farm and \
-                process have permissions to access it",
-                directory.display()
-            ));
-        }
-        SingleDiskFarmSummary::Error { directory, error } => {
-            return Err(anyhow!(
-                "Failed to open single disk farm info, make sure {} is a valid path to the farm \
-                and process have permissions to access it: {error}",
-                directory.display()
-            ));
-        }
-    };
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
@@ -341,7 +380,7 @@ fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
                 erasure_coding: &erasure_coding,
                 sectors_being_modified: &HashSet::default(),
                 read_sector_record_chunks_mode: ReadSectorRecordChunksMode::ConcurrentChunks,
-                table_generator: &Mutex::new(PosTable::generator()),
+                table_generator: &table_generator,
             };
 
             let mut audit_results = plot_audit.audit(options).unwrap();

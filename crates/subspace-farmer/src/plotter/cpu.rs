@@ -10,6 +10,7 @@ use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
 use std::error::Error;
+use std::fmt;
 use std::future::pending;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -39,7 +40,6 @@ struct Handlers {
 }
 
 /// CPU plotter
-#[derive(Debug)]
 pub struct CpuPlotter<PG, PosTable> {
     piece_getter: PG,
     downloading_semaphore: Arc<Semaphore>,
@@ -53,6 +53,13 @@ pub struct CpuPlotter<PG, PosTable> {
     _background_tasks: AsyncJoinOnDrop<()>,
     abort_early: Arc<AtomicBool>,
     _phantom: PhantomData<PosTable>,
+}
+
+impl<PG, PosTable> fmt::Debug for CpuPlotter<PG, PosTable> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CpuPlotter").finish_non_exhaustive()
+    }
 }
 
 impl<PG, PosTable> Drop for CpuPlotter<PG, PosTable> {

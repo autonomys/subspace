@@ -232,8 +232,9 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
-pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> anyhow::Result<()>
+pub(crate) async fn farm<PosTableLegacy, PosTable>(farming_args: FarmingArgs) -> anyhow::Result<()>
 where
+    PosTableLegacy: Table,
     PosTable: Table,
 {
     let signal = shutdown_signal();
@@ -515,8 +516,17 @@ where
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
     let global_mutex = Arc::default();
-    let plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
-        piece_getter,
+    let legacy_cpu_plotter = Arc::new(CpuPlotter::<_, PosTableLegacy>::new(
+        piece_getter.clone(),
+        Arc::clone(&downloading_semaphore),
+        plotting_thread_pool_manager.clone(),
+        record_encoding_concurrency,
+        Arc::clone(&global_mutex),
+        kzg.clone(),
+        erasure_coding.clone(),
+    ));
+    let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
+        piece_getter.clone(),
         downloading_semaphore,
         plotting_thread_pool_manager,
         record_encoding_concurrency,
@@ -544,7 +554,8 @@ where
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
-                let plotter = Arc::clone(&plotter);
+                let plotter_legacy = Arc::clone(&legacy_cpu_plotter);
+                let plotter = Arc::clone(&modern_cpu_plotter);
                 let global_mutex = Arc::clone(&global_mutex);
                 let faster_read_sector_record_chunks_mode_barrier =
                     Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
@@ -552,7 +563,7 @@ where
                     Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
-                    let farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
+                    let farm_fut = SingleDiskFarm::new::<_, PosTableLegacy, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
                             farmer_app_info,
@@ -560,6 +571,8 @@ where
                             max_pieces_in_sector,
                             node_client,
                             reward_address,
+                            plotter_legacy,
+                            plotter,
                             kzg,
                             erasure_coding,
                             cache_percentage: cache_percentage.get(),
@@ -571,7 +584,6 @@ where
                                 .read_sector_record_chunks_mode,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
-                            plotter,
                             create,
                         },
                         farm_index,
