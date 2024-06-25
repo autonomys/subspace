@@ -677,17 +677,17 @@ impl ProgressUpdater {
 ///
 /// Implementation is using concurrency with multiple tokio tasks, but can be started multiple times
 /// per controller instance in order to parallelize more work across threads if needed.
-pub async fn plotter_service<P>(nats_client: &NatsClient, cpu_plotter: &P) -> anyhow::Result<()>
+pub async fn plotter_service<P>(nats_client: &NatsClient, plotter: &P) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
 {
     let plotter_id = ClusterPlotterId::new();
 
     select! {
-        result = free_instance_responder(&plotter_id, nats_client, cpu_plotter).fuse() => {
+        result = free_instance_responder(&plotter_id, nats_client, plotter).fuse() => {
             result
         }
-        result = plot_sector_responder(&plotter_id, nats_client, cpu_plotter).fuse() => {
+        result = plot_sector_responder(&plotter_id, nats_client, plotter).fuse() => {
             result
         }
     }
@@ -696,13 +696,13 @@ where
 async fn free_instance_responder<P>(
     plotter_id: &ClusterPlotterId,
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
 ) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
 {
     loop {
-        while !cpu_plotter.has_free_capacity().await.unwrap_or_default() {
+        while !plotter.has_free_capacity().await.unwrap_or_default() {
             tokio::time::sleep(FREE_CAPACITY_CHECK_INTERVAL).await;
         }
 
@@ -722,7 +722,7 @@ where
 
             debug!(%reply_subject, "Free instance request");
 
-            let has_free_capacity = cpu_plotter.has_free_capacity().await.unwrap_or_default();
+            let has_free_capacity = plotter.has_free_capacity().await.unwrap_or_default();
             let response: <ClusterPlotterFreeInstanceRequest as GenericRequest>::Response =
                 has_free_capacity.then(|| plotter_id.to_string());
 
@@ -745,7 +745,7 @@ where
 async fn plot_sector_responder<P>(
     plotter_id: &ClusterPlotterId,
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
 ) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
@@ -773,7 +773,7 @@ where
                 // Create background task for concurrent processing
                 processing.push(Box::pin(process_plot_sector_request(
                     nats_client,
-                    cpu_plotter,
+                    plotter,
                     message,
                 )));
             }
@@ -788,7 +788,7 @@ where
 
 async fn process_plot_sector_request<P>(
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
     request: StreamRequest<ClusterPlotterPlotSectorRequest>,
 ) where
     P: Plotter,
@@ -810,7 +810,7 @@ async fn process_plot_sector_request<P>(
 
         let (progress_sender, mut progress_receiver) = mpsc::channel(1);
 
-        if !cpu_plotter
+        if !plotter
             .try_plot_sector(
                 public_key,
                 sector_index,
