@@ -8,8 +8,8 @@
 pub mod cpu;
 
 use async_trait::async_trait;
-use futures::{Sink, Stream};
-use std::error::Error;
+use futures::channel::mpsc;
+use futures::Stream;
 use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -83,34 +83,29 @@ pub trait Plotter {
     /// Plot one sector, sending sector plotting events via provided stream.
     ///
     /// Future returns once plotting is successfully scheduled (for backpressure purposes).
-    async fn plot_sector<PS>(
+    async fn plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        progress_sender: PS,
-    ) where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error;
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    );
 
     /// Try to plot one sector, sending sector plotting events via provided stream.
     ///
     /// Returns `true` if plotting started successfully and `false` if there is no capacity to start
     /// plotting immediately.
-    async fn try_plot_sector<PS>(
+    async fn try_plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        progress_sender: PS,
-    ) -> bool
-    where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error;
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) -> bool;
 }
 
 #[async_trait]
@@ -124,18 +119,15 @@ where
     }
 
     #[inline]
-    async fn plot_sector<PS>(
+    async fn plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        progress_sender: PS,
-    ) where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) {
         self.as_ref()
             .plot_sector(
                 public_key,
@@ -149,19 +141,15 @@ where
     }
 
     #[inline]
-    async fn try_plot_sector<PS>(
+    async fn try_plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        progress_sender: PS,
-    ) -> bool
-    where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) -> bool {
         self.as_ref()
             .try_plot_sector(
                 public_key,

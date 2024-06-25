@@ -149,18 +149,15 @@ impl Plotter for ClusterPlotter {
                 .is_some())
     }
 
-    async fn plot_sector<PS>(
+    async fn plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         _replotting: bool,
-        mut progress_sender: PS,
-    ) where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        mut progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) {
         let start = Instant::now();
 
         // Done outside the future below as a backpressure, ensuring that it is not possible to
@@ -204,19 +201,15 @@ impl Plotter for ClusterPlotter {
         .await
     }
 
-    async fn try_plot_sector<PS>(
+    async fn try_plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         _replotting: bool,
-        progress_sender: PS,
-    ) -> bool
-    where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) -> bool {
         let start = Instant::now();
 
         let Ok(sector_encoding_permit) =
