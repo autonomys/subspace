@@ -15,6 +15,7 @@ use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::future::{pending, ready, Future};
+use std::mem;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Instant;
@@ -24,6 +25,7 @@ use subspace_farmer::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBro
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
+use tokio::task;
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, warn};
 
@@ -126,7 +128,7 @@ impl KnownFarms {
 pub(super) async fn maintain_farms(
     instance: &str,
     nats_client: &NatsClient,
-    plotted_pieces: &AsyncRwLock<PlottedPieces<FarmIndex>>,
+    plotted_pieces: &Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
 ) -> anyhow::Result<()> {
     let mut known_farms = KnownFarms::default();
 
@@ -173,7 +175,18 @@ pub(super) async fn maintain_farms(
             (farm_index, result) = farms.select_next_some() => {
                 known_farms.remove(farm_index);
                 farms_to_add_remove.push_back(Box::pin(async move {
-                    plotted_pieces.write().await.delete_farm(farm_index);
+                    let plotted_pieces = Arc::clone(plotted_pieces);
+
+                    let delete_farm_fut = task::spawn_blocking(move || {
+                        plotted_pieces.write_blocking().delete_farm(farm_index);
+                    });
+                    if let Err(error) = delete_farm_fut.await {
+                        error!(
+                            %farm_index,
+                            %error,
+                            "Failed to delete farm that exited"
+                        );
+                    }
 
                     None
                 }));
@@ -202,20 +215,39 @@ pub(super) async fn maintain_farms(
             }
             _ = farm_pruning_interval.tick().fuse() => {
                 for (farm_index, removed_farm) in known_farms.remove_expired() {
+                    let farm_id = removed_farm.farm_id;
+
                     if removed_farm.expired_sender.send(()).is_ok() {
                         warn!(
                             %farm_index,
-                            farm_id = %removed_farm.farm_id,
+                            %farm_id,
                             "Farm expired and removed"
                         );
                     } else {
                         warn!(
                             %farm_index,
-                            farm_id = %removed_farm.farm_id,
+                            %farm_id,
                             "Farm exited before expiration notification"
                         );
                     }
-                    plotted_pieces.write().await.delete_farm(farm_index);
+
+                    farms_to_add_remove.push_back(Box::pin(async move {
+                        let plotted_pieces = Arc::clone(plotted_pieces);
+
+                        let delete_farm_fut = task::spawn_blocking(move || {
+                            plotted_pieces.write_blocking().delete_farm(farm_index);
+                        });
+                        if let Err(error) = delete_farm_fut.await {
+                            error!(
+                                %farm_index,
+                                %farm_id,
+                                %error,
+                                "Failed to delete farm that expired"
+                            );
+                        }
+
+                        None
+                    }));
                 }
             }
             result = farm_add_remove_in_progress => {
@@ -242,7 +274,7 @@ fn process_farm_identify_message<'a>(
     nats_client: &'a NatsClient,
     known_farms: &mut KnownFarms,
     farms_to_add_remove: &mut VecDeque<AddRemoveFuture<'a>>,
-    plotted_pieces: &'a AsyncRwLock<PlottedPieces<FarmIndex>>,
+    plotted_pieces: &'a Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
 ) {
     let ClusterFarmerIdentifyFarmBroadcast {
         farm_id,
@@ -287,7 +319,19 @@ fn process_farm_identify_message<'a>(
 
     if remove {
         farms_to_add_remove.push_back(Box::pin(async move {
-            plotted_pieces.write().await.delete_farm(farm_index);
+            let plotted_pieces = Arc::clone(plotted_pieces);
+
+            let delete_farm_fut = task::spawn_blocking(move || {
+                plotted_pieces.write_blocking().delete_farm(farm_index);
+            });
+            if let Err(error) = delete_farm_fut.await {
+                error!(
+                    %farm_index,
+                    %farm_id,
+                    %error,
+                    "Failed to delete farm that was replaced"
+                );
+            }
 
             None
         }));
@@ -299,7 +343,7 @@ fn process_farm_identify_message<'a>(
                 farm_index,
                 farm_id,
                 total_sectors_count,
-                plotted_pieces,
+                Arc::clone(plotted_pieces),
                 nats_client,
             )
             .await
@@ -337,15 +381,12 @@ async fn initialize_farm(
     farm_index: FarmIndex,
     farm_id: FarmId,
     total_sectors_count: SectorIndex,
-    plotted_pieces: &AsyncRwLock<PlottedPieces<FarmIndex>>,
+    plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     nats_client: &NatsClient,
 ) -> anyhow::Result<ClusterFarm> {
     let farm = ClusterFarm::new(farm_id, total_sectors_count, nats_client.clone())
         .await
         .map_err(|error| anyhow!("Failed instantiate cluster farm {farm_id}: {error}"))?;
-
-    let mut plotted_pieces = plotted_pieces.write().await;
-    plotted_pieces.add_farm(farm_index, farm.piece_reader());
 
     // Buffer sectors that are plotted while already plotted sectors are being iterated over
     let plotted_sectors_buffer = Arc::new(Mutex::new(Vec::new()));
@@ -372,22 +413,42 @@ async fn initialize_farm(
         .get()
         .await
         .map_err(|error| anyhow!("Failed to get plotted sectors for farm {farm_id}: {error}"))?;
-    while let Some(plotted_sector_result) = plotted_sectors.next().await {
-        let plotted_sector = plotted_sector_result
-            .map_err(|error| anyhow!("Failed to get plotted sector for farm {farm_id}: {error}"))?;
 
-        plotted_pieces.add_sector(farm_index, &plotted_sector);
+    {
+        let mut plotted_pieces = plotted_pieces.write().await;
+        plotted_pieces.add_farm(farm_index, farm.piece_reader());
+
+        while let Some(plotted_sector_result) = plotted_sectors.next().await {
+            let plotted_sector = plotted_sector_result.map_err(|error| {
+                anyhow!("Failed to get plotted sector for farm {farm_id}: {error}")
+            })?;
+
+            plotted_pieces.add_sector(farm_index, &plotted_sector);
+
+            task::yield_now().await;
+        }
     }
 
     // Add sectors that were plotted while above iteration was happening to plotted sectors
     // too
     drop(sector_update_handler);
-    for (plotted_sector, old_plotted_sector) in plotted_sectors_buffer.lock().drain(..) {
-        if let Some(old_plotted_sector) = old_plotted_sector {
-            plotted_pieces.delete_sector(farm_index, &old_plotted_sector);
+    let plotted_sectors_buffer = mem::take(&mut *plotted_sectors_buffer.lock());
+    let add_buffered_sectors_fut = task::spawn_blocking(move || {
+        let mut plotted_pieces = plotted_pieces.write_blocking();
+
+        for (plotted_sector, old_plotted_sector) in plotted_sectors_buffer {
+            if let Some(old_plotted_sector) = old_plotted_sector {
+                plotted_pieces.delete_sector(farm_index, &old_plotted_sector);
+            }
+            // Call delete first to avoid adding duplicates
+            plotted_pieces.delete_sector(farm_index, &plotted_sector);
+            plotted_pieces.add_sector(farm_index, &plotted_sector);
         }
-        plotted_pieces.add_sector(farm_index, &plotted_sector);
-    }
+    });
+
+    add_buffered_sectors_fut
+        .await
+        .map_err(|error| anyhow!("Failed to add buffered sectors for farm {farm_id}: {error}"))?;
 
     Ok(farm)
 }

@@ -349,6 +349,10 @@ where
     let farmer_metrics = FarmerMetrics::new(&mut prometheus_metrics_registry);
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
+    let node_client = CachingProxyNodeClient::new(node_client)
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
+
     let (node, mut node_runner) = {
         if network_args.bootstrap_nodes.is_empty() {
             network_args
@@ -368,10 +372,6 @@ where
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
-
-    let node_client = CachingProxyNodeClient::new(node_client)
-        .await
-        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(

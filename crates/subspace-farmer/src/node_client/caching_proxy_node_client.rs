@@ -1,7 +1,7 @@
 //! Node client wrapper around another node client that caches some data for better performance and
 //! proxies other requests through
 
-use crate::node_client::{Error as RpcError, Error, NodeClient};
+use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
@@ -18,44 +18,87 @@ use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 use tracing::{info, trace, warn};
 
+const SEGMENT_HEADERS_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 const FARMER_APP_INFO_DEDUPLICATION_WINDOW: Duration = Duration::from_secs(1);
 
-async fn sync_segment_headers<NC>(
-    segment_headers: &mut Vec<SegmentHeader>,
-    client: &NC,
-) -> Result<(), Error>
-where
-    NC: NodeClient,
-{
-    let mut segment_index_offset = SegmentIndex::from(segment_headers.len() as u64);
-    let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
+#[derive(Debug, Default)]
+struct SegmentHeaders {
+    segment_headers: Vec<SegmentHeader>,
+    last_synced: Option<Instant>,
+}
 
-    'outer: loop {
-        let from = segment_index_offset;
-        let to = segment_index_offset + segment_index_step;
-        trace!(%from, %to, "Requesting segment headers");
-
-        for maybe_segment_header in client
-            .segment_headers((from..to).collect::<Vec<_>>())
-            .await
-            .map_err(|error| {
-                format!("Failed to download segment headers {from}..{to} from node: {error}")
-            })?
+impl SegmentHeaders {
+    fn push(&mut self, archived_segment_header: SegmentHeader) {
+        if self.segment_headers.len() == u64::from(archived_segment_header.segment_index()) as usize
         {
-            let Some(segment_header) = maybe_segment_header else {
-                // Reached non-existent segment header
-                break 'outer;
-            };
-
-            if segment_headers.len() == u64::from(segment_header.segment_index()) as usize {
-                segment_headers.push(segment_header);
-            }
+            self.segment_headers.push(archived_segment_header);
         }
-
-        segment_index_offset += segment_index_step;
     }
 
-    Ok(())
+    fn get_segment_headers(&self, segment_indices: &[SegmentIndex]) -> Vec<Option<SegmentHeader>> {
+        segment_indices
+            .iter()
+            .map(|segment_index| {
+                self.segment_headers
+                    .get(u64::from(*segment_index) as usize)
+                    .copied()
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn last_segment_headers(&self, limit: u64) -> Vec<Option<SegmentHeader>> {
+        self.segment_headers
+            .iter()
+            .copied()
+            .rev()
+            .take(limit as usize)
+            .rev()
+            .map(Some)
+            .collect()
+    }
+
+    async fn sync<NC>(&mut self, client: &NC) -> Result<(), Error>
+    where
+        NC: NodeClient,
+    {
+        if let Some(last_synced) = &self.last_synced {
+            if last_synced.elapsed() < SEGMENT_HEADERS_SYNC_INTERVAL {
+                return Ok(());
+            }
+        }
+        self.last_synced.replace(Instant::now());
+
+        let mut segment_index_offset = SegmentIndex::from(self.segment_headers.len() as u64);
+        let segment_index_step = SegmentIndex::from(MAX_SEGMENT_HEADERS_PER_REQUEST as u64);
+
+        'outer: loop {
+            let from = segment_index_offset;
+            let to = segment_index_offset + segment_index_step;
+            trace!(%from, %to, "Requesting segment headers");
+
+            for maybe_segment_header in client
+                .segment_headers((from..to).collect::<Vec<_>>())
+                .await
+                .map_err(|error| {
+                    format!("Failed to download segment headers {from}..{to} from node: {error}")
+                })?
+            {
+                let Some(segment_header) = maybe_segment_header else {
+                    // Reached non-existent segment header
+                    break 'outer;
+                };
+
+                if self.segment_headers.len() == u64::from(segment_header.segment_index()) as usize
+                {
+                    self.segment_headers.push(segment_header);
+                }
+            }
+
+            segment_index_offset += segment_index_step;
+        }
+
+        Ok(())
+    }
 }
 
 /// Node client wrapper around another node client that caches some data for better performance and
@@ -71,7 +114,7 @@ pub struct CachingProxyNodeClient<NC> {
     slot_info_receiver: watch::Receiver<Option<SlotInfo>>,
     archived_segment_headers_receiver: watch::Receiver<Option<SegmentHeader>>,
     reward_signing_receiver: watch::Receiver<Option<RewardSigningInfo>>,
-    segment_headers: Arc<AsyncRwLock<Vec<SegmentHeader>>>,
+    segment_headers: Arc<AsyncRwLock<SegmentHeaders>>,
     last_farmer_app_info: Arc<AsyncMutex<(FarmerAppInfo, Instant)>>,
     _background_task: Arc<AsyncJoinOnDrop<()>>,
 }
@@ -82,12 +125,12 @@ where
 {
     /// Create a new instance
     pub async fn new(client: NC) -> Result<Self, Error> {
-        let mut segment_headers = Vec::<SegmentHeader>::new();
+        let mut segment_headers = SegmentHeaders::default();
         let mut archived_segments_notifications =
             client.subscribe_archived_segment_headers().await?;
 
         info!("Downloading all segment headers from node...");
-        sync_segment_headers(&mut segment_headers, &client).await?;
+        segment_headers.sync(&client).await?;
         info!("Downloaded all segment headers from node successfully");
 
         let segment_headers = Arc::new(AsyncRwLock::new(segment_headers));
@@ -121,12 +164,7 @@ where
                         "New archived archived segment header notification"
                     );
 
-                    let mut segment_headers = segment_headers.write().await;
-                    if segment_headers.len()
-                        == u64::from(archived_segment_header.segment_index()) as usize
-                    {
-                        segment_headers.push(archived_segment_header);
-                    }
+                    segment_headers.write().await.push(archived_segment_header);
 
                     while let Err(error) = client
                         .acknowledge_archived_segment_header(
@@ -258,34 +296,20 @@ where
         &self,
         segment_indices: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
-        let retrieved_segment_headers = {
-            let segment_headers = self.segment_headers.read().await;
-
-            segment_indices
-                .iter()
-                .map(|segment_index| {
-                    segment_headers
-                        .get(u64::from(*segment_index) as usize)
-                        .copied()
-                })
-                .collect::<Vec<_>>()
-        };
+        let retrieved_segment_headers = self
+            .segment_headers
+            .read()
+            .await
+            .get_segment_headers(&segment_indices);
 
         if retrieved_segment_headers.iter().all(Option::is_some) {
             Ok(retrieved_segment_headers)
         } else {
             // Re-sync segment headers
             let mut segment_headers = self.segment_headers.write().await;
-            sync_segment_headers(&mut segment_headers, &self.inner).await?;
+            segment_headers.sync(&self.inner).await?;
 
-            Ok(segment_indices
-                .iter()
-                .map(|segment_index| {
-                    segment_headers
-                        .get(u64::from(*segment_index) as usize)
-                        .copied()
-                })
-                .collect::<Vec<_>>())
+            Ok(segment_headers.get_segment_headers(&segment_indices))
         }
     }
 
@@ -299,5 +323,19 @@ where
     ) -> Result<(), Error> {
         // Not supported
         Ok(())
+    }
+}
+
+#[async_trait]
+impl<NC> NodeClientExt for CachingProxyNodeClient<NC>
+where
+    NC: NodeClientExt,
+{
+    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
+        Ok(self
+            .segment_headers
+            .read()
+            .await
+            .last_segment_headers(limit))
     }
 }

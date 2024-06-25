@@ -18,6 +18,7 @@ pub enum SegmentHeaderRequest {
     /// Defines how many segment headers to return.
     LastSegmentHeaders {
         /// Number of segment headers to return.
+        // TODO: Replace u64 with a smaller type when able to make breaking changes
         segment_header_number: u64,
     },
 }
