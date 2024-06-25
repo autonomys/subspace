@@ -110,7 +110,8 @@ where
     }
 
     /// Find proof of space quality for given challenge.
-    pub(super) fn find_quality<'a>(
+    // TODO: Remove once breaking network
+    pub(super) fn find_quality_legacy<'a>(
         &'a self,
         challenge: &'a Challenge,
     ) -> impl Iterator<Item = Quality> + 'a {
@@ -196,7 +197,8 @@ where
     }
 
     /// Find proof of space for given challenge.
-    pub(super) fn find_proof<'a>(
+    // TODO: Remove once breaking network
+    pub(super) fn find_proof_legacy<'a>(
         &'a self,
         challenge: &'a Challenge,
     ) -> impl Iterator<Item = [u8; 64 * K as usize / 8]> + 'a {

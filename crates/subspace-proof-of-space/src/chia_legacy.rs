@@ -10,20 +10,20 @@ const K: u8 = 20;
 ///
 /// Chia implementation.
 #[derive(Debug, Default, Clone)]
-pub struct ChiaTableGenerator {
+pub struct ChiaTableLegacyGenerator {
     tables_cache: TablesCache<K>,
 }
 
-impl TableGenerator<ChiaTable> for ChiaTableGenerator {
-    fn generate(&mut self, seed: &PosSeed) -> ChiaTable {
-        ChiaTable {
+impl TableGenerator<ChiaTableLegacy> for ChiaTableLegacyGenerator {
+    fn generate(&mut self, seed: &PosSeed) -> ChiaTableLegacy {
+        ChiaTableLegacy {
             tables: Tables::<K>::create((*seed).into(), &mut self.tables_cache),
         }
     }
 
     #[cfg(any(feature = "parallel", test))]
-    fn generate_parallel(&mut self, seed: &PosSeed) -> ChiaTable {
-        ChiaTable {
+    fn generate_parallel(&mut self, seed: &PosSeed) -> ChiaTableLegacy {
+        ChiaTableLegacy {
             tables: Tables::<K>::create_parallel((*seed).into(), &mut self.tables_cache),
         }
     }
@@ -33,22 +33,22 @@ impl TableGenerator<ChiaTable> for ChiaTableGenerator {
 ///
 /// Chia implementation.
 #[derive(Debug)]
-pub struct ChiaTable {
+pub struct ChiaTableLegacy {
     tables: Tables<K>,
 }
 
-impl Table for ChiaTable {
+impl Table for ChiaTableLegacy {
     const TABLE_TYPE: PosTableType = PosTableType::Chia;
-    type Generator = ChiaTableGenerator;
+    type Generator = ChiaTableLegacyGenerator;
 
-    fn generate(seed: &PosSeed) -> ChiaTable {
+    fn generate(seed: &PosSeed) -> ChiaTableLegacy {
         Self {
             tables: Tables::<K>::create_simple((*seed).into()),
         }
     }
 
     #[cfg(any(feature = "parallel", test))]
-    fn generate_parallel(seed: &PosSeed) -> ChiaTable {
+    fn generate_parallel(seed: &PosSeed) -> ChiaTableLegacy {
         Self {
             tables: Tables::<K>::create_parallel((*seed).into(), &mut TablesCache::default()),
         }
@@ -60,7 +60,7 @@ impl Table for ChiaTable {
 
         let proof = self
             .tables
-            .find_proof(&challenge)
+            .find_proof_legacy(&challenge)
             .next()
             .map(PosProof::from);
         proof
@@ -84,8 +84,8 @@ mod tests {
             198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
         ]);
 
-        let table = ChiaTable::generate(&seed);
-        let table_parallel = ChiaTable::generate_parallel(&seed);
+        let table = ChiaTableLegacy::generate(&seed);
+        let table_parallel = ChiaTableLegacy::generate_parallel(&seed);
 
         assert!(table.find_proof(1232460437).is_none());
         assert!(table_parallel.find_proof(1232460437).is_none());
@@ -94,7 +94,11 @@ mod tests {
             let challenge_index = 600426542;
             let proof = table.find_proof(challenge_index).unwrap();
             assert_eq!(proof, table_parallel.find_proof(challenge_index).unwrap());
-            assert!(ChiaTable::is_proof_valid(&seed, challenge_index, &proof));
+            assert!(ChiaTableLegacy::is_proof_valid(
+                &seed,
+                challenge_index,
+                &proof
+            ));
         }
     }
 }

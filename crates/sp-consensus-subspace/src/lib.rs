@@ -53,7 +53,7 @@ use subspace_core_primitives::{
     SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
 };
 #[cfg(feature = "std")]
-use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::chia_legacy::ChiaTableLegacy;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::shim::ShimTable;
 #[cfg(feature = "std")]
@@ -624,7 +624,7 @@ pub trait Consensus {
             .0;
 
         match pos_table_type {
-            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
+            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTableLegacy, _, _>(
                 &solution.0,
                 slot,
                 &params.0,

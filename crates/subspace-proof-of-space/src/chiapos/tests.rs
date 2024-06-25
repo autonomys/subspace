@@ -25,11 +25,11 @@ fn test_against_chiapos() {
             .find_quality(challenge_index)
             .map(|quality| quality.create_proof());
 
-        let found_proofs = tables.find_proof(&challenge).collect::<Vec<_>>();
+        let found_proofs = tables.find_proof_legacy(&challenge).collect::<Vec<_>>();
 
         // Due to bugs (https://github.com/Chia-Network/chiapos/issues/352) in C++ chiapos doesn't
-        // find as many proofs and they are in different order due to compression, so we just verify
-        // reference proofs with our verification function
+        // find as many proofs, and they are in different order due to compression, so we just
+        // verify reference proofs with our verification function
         if let Some(original_proof) = maybe_original_proof {
             assert!(Tables::<K>::verify(chia_seed, &challenge, &original_proof).is_some());
 

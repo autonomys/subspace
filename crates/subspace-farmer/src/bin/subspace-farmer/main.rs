@@ -14,7 +14,7 @@ use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
-use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::chia_legacy::ChiaTableLegacy;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
@@ -23,7 +23,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTable = ChiaTable;
+type PosTable = ChiaTableLegacy;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
