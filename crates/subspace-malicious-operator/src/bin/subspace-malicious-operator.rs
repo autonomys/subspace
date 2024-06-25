@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
 use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_proof_of_space::chia_legacy::ChiaTableLegacy;
+use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
 use subspace_service::dsn::DsnConfig;
@@ -46,7 +46,7 @@ use subspace_service::dsn::DsnConfig;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTable = ChiaTableLegacy;
+type PosTable = ChiaTable;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]

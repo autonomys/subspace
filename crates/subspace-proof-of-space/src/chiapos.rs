@@ -67,12 +67,28 @@ impl Tables<$k> {
         self.0.find_quality_legacy(challenge)
     }
 
+    /// Find proof of space quality for given challenge.
+    pub fn find_quality<'a>(
+        &'a self,
+        challenge: &'a Challenge,
+    ) -> impl Iterator<Item = Quality> + 'a {
+        self.0.find_quality(challenge)
+    }
+
     /// Find proof of space for given challenge.
     pub fn find_proof_legacy<'a>(
         &'a self,
         challenge: &'a Challenge,
     ) -> impl Iterator<Item = [u8; 64 * $k / 8]> + 'a {
         self.0.find_proof_legacy(challenge)
+    }
+
+    /// Find proof of space for given challenge.
+    pub fn find_proof<'a>(
+        &'a self,
+        challenge: &'a Challenge,
+    ) -> impl Iterator<Item = [u8; 64 * $k / 8]> + 'a {
+        self.0.find_proof(challenge)
     }
 
     /// Verify proof of space for given seed and challenge.

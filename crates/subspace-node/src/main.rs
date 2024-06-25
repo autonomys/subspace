@@ -38,7 +38,7 @@ use sc_service::{Configuration, PartialComponents};
 use serde_json::Value;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_runtime::traits::HashingFor;
-use subspace_proof_of_space::chia_legacy::ChiaTableLegacy;
+use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::HostFunctions;
 use tracing::warn;
@@ -46,7 +46,7 @@ use tracing::warn;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTable = ChiaTableLegacy;
+type PosTable = ChiaTable;
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]

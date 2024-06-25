@@ -13,6 +13,7 @@
     step_trait
 )]
 
+pub mod chia;
 pub mod chia_legacy;
 pub mod chiapos;
 pub mod shim;
