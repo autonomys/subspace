@@ -96,7 +96,7 @@ pub(super) async fn maintain_caches(
         (Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()>>>).fuse();
 
     let cache_identify_subscription = pin!(nats_client
-        .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(None, None)
+        .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(Some(cache_group), None)
         .await
         .map_err(|error| anyhow!("Failed to subscribe to cache identify broadcast: {error}"))?);
 
