@@ -166,7 +166,9 @@ pub(crate) fn can_instantiate_domain<T: Config>(
         Error::ExceedMaxDomainBlockSize
     );
     ensure!(
-        domain_config.max_block_weight.ref_time() <= T::MaxDomainBlockWeight::get().ref_time(),
+        domain_config
+            .max_block_weight
+            .all_lte(T::MaxDomainBlockWeight::get()),
         Error::ExceedMaxDomainBlockWeight
     );
     ensure!(
