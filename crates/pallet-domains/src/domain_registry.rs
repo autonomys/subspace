@@ -204,8 +204,14 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
     let domain_id = NextDomainId::<T>::get();
-    let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
-        .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+    let runtime_obj = RuntimeRegistry::<T>::mutate(domain_config.runtime_id, |maybe_runtime_obj| {
+        let mut runtime_object = maybe_runtime_obj
+            .take()
+            .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+        runtime_object.instance_count = runtime_object.instance_count.saturating_add(1);
+        *maybe_runtime_obj = Some(runtime_object.clone());
+        runtime_object
+    });
 
     let domain_runtime_info = match runtime_obj.runtime_type {
         RuntimeType::Evm => {
@@ -387,6 +393,7 @@ mod tests {
                     },
                     created_at: Default::default(),
                     updated_at: Default::default(),
+                    instance_count: 0,
                 },
             );
 
@@ -466,6 +473,10 @@ mod tests {
             // Fund locked up thus can't withdraw, and usable balance is zero since ED is 1
             assert_eq!(Balances::usable_balance(creator), Zero::zero());
 
+            // instance count must be incremented
+            let runtime_obj = RuntimeRegistry::<Test>::get(domain_config.runtime_id).unwrap();
+            assert_eq!(runtime_obj.instance_count, 1);
+
             // cannot use the locked funds to create a new domain instance
             assert_eq!(
                 do_instantiate_domain::<Test>(domain_config, creator, created_at),
@@ -525,6 +536,7 @@ mod tests {
                     },
                     created_at: Default::default(),
                     updated_at: Default::default(),
+                    instance_count: 0,
                 },
             );
 
