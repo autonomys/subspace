@@ -118,7 +118,7 @@ pub(super) async fn maintain_caches(
     loop {
         if cache_reinitialization.is_terminated()
             && let Some(time) = scheduled_reinitialization_for
-            && time >= Instant::now()
+            && time <= Instant::now()
         {
             scheduled_reinitialization_for.take();
 
