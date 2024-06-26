@@ -27,7 +27,7 @@ use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_proof_of_space::Table;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
-use tracing::warn;
+use tracing::{warn, Instrument};
 
 /// Type alias used for event handlers
 pub type HandlerFn3<A, B, C> = Arc<dyn Fn(&A, &B, &C) + Send + Sync + 'static>;
@@ -420,7 +420,8 @@ where
         };
 
         // Spawn a separate task such that `block_in_place` inside will not affect anything else
-        let plotting_task = AsyncJoinOnDrop::new(tokio::spawn(plotting_fut), true);
+        let plotting_task =
+            AsyncJoinOnDrop::new(tokio::spawn(plotting_fut.in_current_span()), true);
         if let Err(error) = self.tasks_sender.clone().send(plotting_task).await {
             warn!(%error, "Failed to send plotting task");
 
@@ -459,7 +460,7 @@ impl ProgressUpdater {
         );
 
         if let Err(error) = progress_sender.send(progress).await {
-            warn!(%error, "Failed to send error progress update");
+            warn!(%error, "Failed to send progress update");
 
             false
         } else {

@@ -32,7 +32,7 @@ use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::FarmerProtocolInfo;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, info, info_span, trace, warn, Instrument};
 use ulid::Ulid;
 
 const FREE_CAPACITY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
@@ -440,7 +440,7 @@ impl ClusterPlotter {
         };
 
         let plotting_task =
-            AsyncJoinOnDrop::new(tokio::spawn(plotting_fut.instrument(Span::current())), true);
+            AsyncJoinOnDrop::new(tokio::spawn(plotting_fut.in_current_span()), true);
         if let Err(error) = self.tasks_sender.clone().send(plotting_task).await {
             warn!(%error, "Failed to send plotting task");
 
