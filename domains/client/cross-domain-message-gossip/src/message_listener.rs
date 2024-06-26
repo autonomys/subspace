@@ -13,13 +13,14 @@ use sp_blockchain::HeaderBackend;
 use sp_core::crypto::AccountId32;
 use sp_core::storage::StorageKey;
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
+use sp_core::{Hasher, H256};
 use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_domains::{DomainId, DomainsApi, RuntimeType};
 use sp_messenger::messages::{ChainId, Channel, ChannelId};
 use sp_messenger::RelayerApi;
 use sp_runtime::codec::Decode;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header, NumberFor};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::{Balance, BlockNumber};
 use thiserror::Error;
@@ -112,6 +113,8 @@ pub async fn start_cross_chain_message_listener<
         chain_id
     );
 
+    let mut domain_storage_key_cache = BTreeMap::<(H256, ChainId, ChannelId), StorageKey>::new();
+
     while let Some(msg) = listener.next().await {
         tracing::debug!(
             target: LOG_TARGET,
@@ -159,6 +162,7 @@ pub async fn start_cross_chain_message_listener<
                     channel_update,
                     &consensus_client,
                     domain_executor.clone(),
+                    &mut domain_storage_key_cache,
                 )
             }
         }
@@ -170,6 +174,7 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
     channel_update: ChannelUpdate,
     consensus_client: &Arc<CClient>,
     executor: Arc<Executor>,
+    domain_storage_key_cache: &mut BTreeMap<(H256, ChainId, ChannelId), StorageKey>,
 ) where
     CBlock: BlockT,
     Block: BlockT,
@@ -220,6 +225,7 @@ fn handle_channel_update<CClient, CBlock, Executor, Block>(
                 block_number,
                 storage_proof,
                 executor,
+                domain_storage_key_cache,
             ) {
                 tracing::error!(
                     target: LOG_TARGET,
@@ -299,6 +305,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_domain_channel_update<CClient, CBlock, Executor, Block>(
     src_domain_id: DomainId,
     self_chain_id: ChainId,
@@ -307,6 +314,7 @@ fn handle_domain_channel_update<CClient, CBlock, Executor, Block>(
     domain_block_number: BlockNumber,
     proof: StorageProof,
     executor: Arc<Executor>,
+    storage_key_cache: &mut BTreeMap<(H256, ChainId, ChannelId), StorageKey>,
 ) -> Result<(), Error>
 where
     CBlock: BlockT,
@@ -378,10 +386,24 @@ where
     let domain_runtime = runtime_api
         .domain_runtime_code(*consensus_block_header.parent_hash(), src_domain_id)?
         .ok_or(Error::MissingDomainRuntimeCode)?;
-    let domain_stateless_runtime =
-        StatelessRuntime::<Block, _>::new(executor.clone(), domain_runtime.into());
-    let storage_key =
-        StorageKey(domain_stateless_runtime.channel_storage_key(self_chain_id, channel_id)?);
+
+    let runtime_hash = BlakeTwo256::hash(&domain_runtime);
+    let storage_key = match storage_key_cache.get(&(runtime_hash, self_chain_id, channel_id)) {
+        None => {
+            let domain_stateless_runtime =
+                StatelessRuntime::<Block, _>::new(executor.clone(), domain_runtime.into());
+            let storage_key = StorageKey(
+                domain_stateless_runtime.channel_storage_key(self_chain_id, channel_id)?,
+            );
+            storage_key_cache.insert(
+                (runtime_hash, self_chain_id, channel_id),
+                storage_key.clone(),
+            );
+            storage_key
+        }
+        Some(key) => key.clone(),
+    };
+
     let channel_detail = match domain_runtime_type {
         RuntimeType::Evm => {
             let channel = StorageProofVerifier::<HashingFor<Block>>::get_decoded_value::<
