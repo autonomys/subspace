@@ -268,6 +268,10 @@ where
     let maybe_existing_channel_detail =
         channel_storage.get_channel_state_for(&**consensus_client, self_chain_id, channel_id)?;
 
+    let api = consensus_client.runtime_api();
+    let best_hash = consensus_client.info().best_hash;
+    let header = consensus_client.expect_header(consensus_block_hash)?;
+
     // if there is an existing channel detail,
     // return if the channel update is from canonical chain and block number is latest
     // else store the update.
@@ -276,6 +280,7 @@ where
             consensus_client.hash(existing_channel_update.block_number.into())?;
         if let Some(block_hash) = maybe_block_hash {
             if block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
+                && header.state_root().as_ref() == existing_channel_update.state_root.as_ref()
                 && existing_channel_update.block_number >= consensus_block_number
             {
                 return Ok(());
@@ -283,10 +288,7 @@ where
         }
     }
 
-    let api = consensus_client.runtime_api();
-    let best_hash = consensus_client.info().best_hash;
     let storage_key = StorageKey(api.channel_storage_key(best_hash, self_chain_id, channel_id)?);
-    let header = consensus_client.expect_header(consensus_block_hash)?;
     let channel = StorageProofVerifier::<HashingFor<CBlock>>::get_decoded_value::<
         Channel<Balance, AccountId32>,
     >(header.state_root(), proof, storage_key)?;
@@ -294,6 +296,7 @@ where
     let channel_detail = ChannelDetail {
         block_number: consensus_block_number,
         block_hash: H256::from_slice(consensus_block_hash.as_ref()),
+        state_root: H256::from_slice(header.state_root().as_ref()),
         channel_id,
         state: channel.state,
         next_inbox_nonce: channel.next_inbox_nonce,
@@ -376,6 +379,7 @@ where
             is_valid_domain_block_number(existing_channel_update.block_number)
         {
             if existing_block_hash.as_ref() == existing_channel_update.block_hash.as_ref()
+                && domain_state_root.as_ref() == existing_channel_update.state_root.as_ref()
                 && existing_channel_update.block_number >= domain_block_number
             {
                 return Ok(());
@@ -412,6 +416,7 @@ where
             ChannelDetail {
                 block_number: domain_block_number,
                 block_hash: H256::from_slice(domain_block_hash.as_ref()),
+                state_root: H256::from_slice(domain_state_root.as_ref()),
                 channel_id,
                 state: channel.state,
                 next_inbox_nonce: channel.next_inbox_nonce,
@@ -427,6 +432,7 @@ where
             ChannelDetail {
                 block_number: domain_block_number,
                 block_hash: H256::from_slice(domain_block_hash.as_ref()),
+                state_root: H256::from_slice(domain_state_root.as_ref()),
                 channel_id,
                 state: channel.state,
                 next_inbox_nonce: channel.next_inbox_nonce,

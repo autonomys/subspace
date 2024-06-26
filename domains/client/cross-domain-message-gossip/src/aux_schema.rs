@@ -38,6 +38,8 @@ pub struct ChannelDetail {
     pub block_number: BlockNumber,
     /// Block hash of the chain at which the channel state is verified.
     pub block_hash: H256,
+    /// State root of the chain at the above block height.
+    pub state_root: H256,
     /// Channel identifier.
     pub channel_id: ChannelId,
     /// State of the channel.
