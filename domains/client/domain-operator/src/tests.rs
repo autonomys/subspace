@@ -5,6 +5,7 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
+use cross_domain_message_gossip::ChannelStorage;
 use domain_runtime_primitives::{AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
@@ -29,7 +30,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    Bundle, BundleValidity, ChainId, DomainsApi, HeaderHashingFor, InboxedBundle,
+    Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
     InvalidBundleType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
@@ -3410,8 +3411,6 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     assert_eq!(alice.client.info().best_number, pre_alice_best_number + 2);
 }
 
-// TODO: this test is flaky and may hang forever in CI, able it after the root cause is
-// located and fixed.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_cross_domains_messages_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -3472,6 +3471,19 @@ async fn test_cross_domains_messages_should_work() {
     // produce another block so allowlist on  domain are updated
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
+    // there should be zero channel updates on both consensus and domain chain
+    let consensus_channel_storage = ChannelStorage::new(ChainId::Consensus);
+    assert!(consensus_channel_storage
+        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .unwrap()
+        .is_none());
+
+    let domain_channel_storage = ChannelStorage::new(GENESIS_DOMAIN_ID.into());
+    assert!(domain_channel_storage
+        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero(),)
+        .unwrap()
+        .is_none());
+
     // Open channel between the Consensus chain and EVM domains
     alice
         .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
@@ -3492,6 +3504,33 @@ async fn test_cross_domains_messages_should_work() {
     })
     .await
     .unwrap();
+
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // consensus channel update
+    let channel_update = consensus_channel_storage
+        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .unwrap()
+        .unwrap();
+
+    // next channel inbox nonce on consensus from domain should be 1
+    assert_eq!(channel_update.next_inbox_nonce, 1.into());
+
+    // domain channel update
+    let channel_update = domain_channel_storage
+        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero())
+        .unwrap()
+        .unwrap();
+
+    // next channel outbox nonce on domain to consensus should be 1
+    assert_eq!(channel_update.next_outbox_nonce, 1.into());
+    // received outbox response nonce on domain from consensus chain should be 0
+    assert_eq!(
+        channel_update.latest_response_received_message_nonce,
+        Some(0.into())
+    );
 
     // Transfer balance from
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
@@ -3518,6 +3557,19 @@ async fn test_cross_domains_messages_should_work() {
     .await
     .unwrap();
 
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // consensus channel update
+    let channel_update = consensus_channel_storage
+        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .unwrap()
+        .unwrap();
+
+    // next channel inbox nonce on consensus from domain should be 2
+    assert_eq!(channel_update.next_inbox_nonce, 2.into());
+
     // close channel on consensus chain using sudo since
     // channel is opened on domain
     let channel_id = alice
@@ -3542,6 +3594,26 @@ async fn test_cross_domains_messages_should_work() {
     })
     .await
     .unwrap();
+
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
+
+    // there should be channel updates on both consensus and domain chain
+
+    // domain channel update
+    let channel_update = domain_channel_storage
+        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero())
+        .unwrap()
+        .unwrap();
+
+    // next channel outbox nonce on domain to consensus should be 2
+    assert_eq!(channel_update.next_outbox_nonce, 2.into());
+    // next channel inbox nonce on domain should be 1
+    assert_eq!(channel_update.next_inbox_nonce, 1.into());
+    // received outbox response nonce on domain from consensus chain should be 1
+    assert_eq!(
+        channel_update.latest_response_received_message_nonce,
+        Some(1.into())
+    );
 }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.

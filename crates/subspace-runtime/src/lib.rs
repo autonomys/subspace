@@ -85,6 +85,7 @@ use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
 };
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::subspace_mmr_runtime_interface::consensus_block_hash;
@@ -1241,8 +1242,8 @@ impl_runtime_apis! {
             Domains::storage_fund_account_balance(operator_id)
         }
 
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
-            Domains::is_domain_runtime_updraded_since(domain_id, at)
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+            Domains::is_domain_runtime_upgraded_since(domain_id, at)
         }
     }
 
@@ -1338,6 +1339,14 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            Messenger::updated_channels()
+        }
+
+        fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8> {
+            Messenger::channel_storage_key(chain_id, channel_id)
         }
     }
 

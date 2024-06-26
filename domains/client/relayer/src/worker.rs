@@ -1,4 +1,5 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use cross_domain_message_gossip::{ChannelUpdate, Message as GossipMessage, MessageData};
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_state_db::PruningMode;
@@ -9,7 +10,136 @@ use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{CheckedSub, NumberFor, One};
+use sp_runtime::SaturatedConversion;
 use std::sync::Arc;
+
+pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
+    chain_id: ChainId,
+    client: Arc<Client>,
+    sync_oracle: SO,
+    gossip_message_sink: GossipMessageSink,
+) where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: BlockchainEvents<Block>
+        + HeaderBackend<Block>
+        + AuxStore
+        + ProofProvider<Block>
+        + ProvideRuntimeApi<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+    SO: SyncOracle,
+{
+    tracing::info!(
+        target: LOG_TARGET,
+        "Starting Channel updates for chain: {:?}",
+        chain_id,
+    );
+    let mut chain_block_imported = client.every_import_notification_stream();
+    while let Some(imported_block) = chain_block_imported.next().await {
+        // if the client is in major sync, wait until sync is complete
+        if sync_oracle.is_major_syncing() {
+            tracing::debug!(target: LOG_TARGET, "Client is in major sync. Skipping...");
+            continue;
+        }
+
+        if !imported_block.is_new_best {
+            tracing::debug!(target: LOG_TARGET, "Imported non-best block. Skipping...");
+            continue;
+        }
+
+        let (block_hash, block_number) = match chain_id {
+            ChainId::Consensus => (
+                imported_block.header.hash(),
+                *imported_block.header.number(),
+            ),
+            ChainId::Domain(_) => {
+                // for domains, we gossip channel updates of imported block - 1
+                // since the execution receipt of the imported block is not registered on consensus
+                // without the execution receipt, we would not be able to verify the storage proof
+                let number = match imported_block.header.number().checked_sub(&One::one()) {
+                    None => continue,
+                    Some(number) => number,
+                };
+
+                let hash = match client.hash(number).ok().flatten() {
+                    Some(hash) => hash,
+                    None => {
+                        tracing::debug!(target: LOG_TARGET, "Missing block hash for number: {:?}", number);
+                        continue;
+                    }
+                };
+
+                (hash, number)
+            }
+        };
+
+        if let Err(err) = do_gossip_channel_updates::<_, _, CBlock>(
+            chain_id,
+            &client,
+            &gossip_message_sink,
+            block_number,
+            block_hash,
+        ) {
+            tracing::error!(target: LOG_TARGET, ?err, "failed to gossip channel update");
+        }
+    }
+}
+
+fn do_gossip_channel_updates<Client, Block, CBlock>(
+    src_chain_id: ChainId,
+    client: &Arc<Client>,
+    gossip_message_sink: &GossipMessageSink,
+    block_number: NumberFor<Block>,
+    block_hash: Block::Hash,
+) -> Result<(), Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: BlockchainEvents<Block>
+        + HeaderBackend<Block>
+        + AuxStore
+        + ProofProvider<Block>
+        + ProvideRuntimeApi<Block>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
+{
+    let api = client.runtime_api();
+    let api_version = api
+        .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(
+            block_hash,
+        )?
+        .ok_or(sp_api::ApiError::Application(
+            "Failed to get relayer api version".into(),
+        ))?;
+
+    if api_version < 2 {
+        return Ok(());
+    }
+
+    let updated_channels = api.updated_channels(block_hash)?;
+
+    for (dst_chain_id, channel_id) in updated_channels {
+        let storage_key = api.channel_storage_key(block_hash, dst_chain_id, channel_id)?;
+        let proof = client
+            .read_proof(block_hash, &mut [storage_key.as_ref()].into_iter())
+            .map_err(|_| Error::ConstructStorageProof)?;
+
+        let gossip_message = GossipMessage {
+            chain_id: dst_chain_id,
+            data: MessageData::ChannelUpdate(ChannelUpdate {
+                src_chain_id,
+                channel_id,
+                block_number: block_number.saturated_into(),
+                storage_proof: proof,
+            }),
+        };
+
+        gossip_message_sink
+            .unbounded_send(gossip_message)
+            .map_err(Error::UnableToSubmitCrossDomainMessage)?;
+    }
+
+    Ok(())
+}
 
 /// Starts relaying consensus chain messages to other domains.
 /// If the node is in major sync, worker waits until the sync is finished.

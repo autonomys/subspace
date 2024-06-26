@@ -25,13 +25,17 @@ extern crate alloc;
 
 use crate::messages::MessageKey;
 #[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
-use messages::{BlockMessagesWithStorageKey, CrossDomainMessage, MessageId};
+use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
+#[cfg(feature = "std")]
+use std::collections::BTreeSet;
 
 /// Messenger inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"messengr";
@@ -156,6 +160,7 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
+    #[api_version(2)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -181,6 +186,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns true if the inbox message response is ready to be relayed to dst_chain.
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool;
+
+        /// Returns the list of channels updated in the given block.
+        fn updated_channels() -> BTreeSet<(ChainId, ChannelId)>;
+
+        /// Returns storage key for channels for given chain and channel id.
+        fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8>;
     }
 
     /// Api to provide XDM extraction from Runtime Calls.

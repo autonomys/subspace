@@ -2523,7 +2523,7 @@ impl<T: Config> Pallet<T> {
         Ok(code)
     }
 
-    pub fn is_domain_runtime_updraded_since(
+    pub fn is_domain_runtime_upgraded_since(
         domain_id: DomainId,
         at: BlockNumberFor<T>,
     ) -> Option<bool> {

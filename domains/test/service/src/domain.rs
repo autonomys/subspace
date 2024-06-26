@@ -5,7 +5,7 @@ use crate::chain_spec::create_domain_spec;
 use crate::{
     construct_extrinsic_generic, node_config, BalanceOf, EcdsaKeyring, UncheckedExtrinsicFor,
 };
-use cross_domain_message_gossip::ChainTxPoolMsg;
+use cross_domain_message_gossip::ChainMsg;
 use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::Balance;
@@ -116,7 +116,7 @@ where
     /// Domain oeprator.
     pub operator: DomainOperator<RuntimeApi>,
     /// Sink to the node's tx pool
-    pub tx_pool_sink: TracingUnboundedSender<ChainTxPoolMsg>,
+    pub tx_pool_sink: TracingUnboundedSender<ChainMsg>,
     _phantom_data: PhantomData<(Runtime, AccountId)>,
 }
 
@@ -262,7 +262,7 @@ where
         if role.is_authority() {
             mock_consensus_node
                 .xdm_gossip_worker_builder()
-                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink.clone());
+                .push_chain_sink(ChainId::Domain(domain_id), domain_message_sink.clone());
         }
 
         let addr = MultiaddrWithPeerId {

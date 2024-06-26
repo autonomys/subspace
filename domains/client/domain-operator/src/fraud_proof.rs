@@ -176,15 +176,15 @@ where
                     "Failed to get domain runtime id".to_string().into(),
                 )
             })?;
-        let is_domain_runtime_updraded_since = runtime_api
-            .is_domain_runtime_updraded_since(best_hash, domain_id, parent_consensus_number)?
+        let is_domain_runtime_upgraded_since = runtime_api
+            .is_domain_runtime_upgraded_since(best_hash, domain_id, parent_consensus_number)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Application(
                     "Failed to get domain runtime object".to_string().into(),
                 )
             })?;
 
-        if is_domain_runtime_updraded_since {
+        if is_domain_runtime_upgraded_since {
             let mmr_proof =
                 sc_domains::generate_mmr_proof(&self.consensus_client, parent_consensus_number)?;
             let domain_runtime_code_proof = DomainRuntimeCodeProof::generate(

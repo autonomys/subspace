@@ -1496,7 +1496,7 @@ sp_api::decl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
 
         /// Return if the domain runtime code is upgraded since `at`
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

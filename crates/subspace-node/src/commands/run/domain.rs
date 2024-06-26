@@ -379,7 +379,7 @@ pub(super) struct DomainStartOptions {
     pub(super) pot_slot_info_stream: Receiver<PotSlotInfo>,
     pub(super) consensus_network_sync_oracle: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub(super) domain_message_receiver:
-        TracingUnboundedReceiver<cross_domain_message_gossip::ChainTxPoolMsg>,
+        TracingUnboundedReceiver<cross_domain_message_gossip::ChainMsg>,
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
     pub(super) consensus_state_pruning: PruningMode,
 }
@@ -388,7 +388,7 @@ pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-) -> Result<(), Error> {
+) -> Result<Arc<sc_domains::RuntimeExecutor>, Error> {
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -514,7 +514,7 @@ pub(super) async fn run_domain(
 
             domain_node.task_manager.future().await?;
 
-            Ok(())
+            Ok(domain_node.code_executor.clone())
         }
         RuntimeType::AutoId => {
             let domain_params = domain_service::DomainParams {
@@ -553,7 +553,7 @@ pub(super) async fn run_domain(
 
             domain_node.task_manager.future().await?;
 
-            Ok(())
+            Ok(domain_node.code_executor.clone())
         }
     }
 }

@@ -7,9 +7,9 @@ use sp_api::{ApiError, Core, RuntimeApiInfo};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::DomainAllowlistUpdates;
+use sp_domains::{ChainId, ChannelId, DomainAllowlistUpdates};
 use sp_messenger::messages::MessageKey;
-use sp_messenger::MessengerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
@@ -18,7 +18,7 @@ use sp_weights::Weight;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::U256;
+use subspace_core_primitives::{BlockHash, BlockNumber, U256};
 use subspace_runtime_primitives::Moment;
 
 /// Stateless runtime api based on the runtime code and partial state if provided.
@@ -68,6 +68,23 @@ where
 }
 
 impl<Block, Executor> MessengerApi<Block> for StatelessRuntime<Block, Executor>
+where
+    Block: BlockT,
+    NumberFor<Block>: Codec,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<Block, Executor> RelayerApi<Block, NumberFor<Block>, BlockNumber, BlockHash>
+    for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     NumberFor<Block>: Codec,
@@ -179,6 +196,20 @@ where
             self,
             Default::default(),
             message_key,
+        )?;
+        Ok(storage_key)
+    }
+
+    pub fn channel_storage_key(
+        &self,
+        chain_id: ChainId,
+        channel_id: ChannelId,
+    ) -> Result<Vec<u8>, ApiError> {
+        let storage_key = <Self as RelayerApi<Block, NumberFor<Block>, BlockNumber, BlockHash>>::channel_storage_key(
+            self,
+            Default::default(),
+            chain_id,
+            channel_id
         )?;
         Ok(storage_key)
     }

@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 #![warn(rust_2018_idioms)]
 // TODO: Restore once https://github.com/rust-lang/rust/issues/122105 is resolved
 // #![deny(unused_crate_dependencies)]
@@ -5,7 +6,9 @@
 pub mod worker;
 
 use async_channel::TrySendError;
-use cross_domain_message_gossip::Message as GossipMessage;
+use cross_domain_message_gossip::{
+    ChannelStorage, Message as GossipMessage, MessageData as GossipMessageData,
+};
 use parity_scale_codec::{Codec, Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -22,6 +25,7 @@ use sp_runtime::ArithmeticError;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use tracing::log;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -192,7 +196,7 @@ where
 
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
-        encoded_data: ext.encode(),
+        data: GossipMessageData::Xdm(ext.encode()),
     })
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
@@ -221,7 +225,7 @@ where
 
     sink.unbounded_send(GossipMessage {
         chain_id: dst_chain_id,
-        encoded_data: ext.encode(),
+        data: GossipMessageData::Xdm(ext.encode()),
     })
     .map_err(Error::UnableToSubmitCrossDomainMessage)
 }
@@ -255,36 +259,62 @@ where
         })
     }
 
-    fn filter_messages<CNumber, CHash>(
+    fn filter_messages<CClient, CNumber, CHash>(
         client: &Arc<Client>,
+        consensus_client: &Arc<CClient>,
         mut msgs: BlockMessagesWithStorageKey,
     ) -> Result<BlockMessagesWithStorageKey, Error>
     where
         CHash: Codec,
         CNumber: Codec,
+        CClient: AuxStore,
         Client::Api: RelayerApi<Block, NumberFor<Block>, CNumber, CHash>,
     {
         let api = client.runtime_api();
         let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
-                Ok(valid) => valid,
-                Err(err) => {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        ?err,
-                        "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
-                        msg.dst_chain_id
+            let should_relay =
+                match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
+                    Ok(valid) => valid,
+                    Err(err) => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            ?err,
+                            "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
+                            msg.dst_chain_id
+                        );
+                        false
+                    }
+                };
+
+            let channel_storage = ChannelStorage::new(msg.dst_chain_id);
+            if should_relay
+                && let Some(dst_channel_state) = channel_storage
+                    .get_channel_state_for(&**consensus_client, msg.src_chain_id, msg.channel_id)
+                    .ok()
+                    .flatten()
+            {
+                // if this message should relay,
+                // check if the dst_chain inbox nonce is more than message nonce,
+                // if so, skip relaying since message is already executed on dst_chain
+                let relay_message = msg.nonce >= dst_channel_state.next_inbox_nonce;
+                if !relay_message {
+                    log::debug!(
+                        "Skipping message relay from {:?} to {:?}",
+                        msg.src_chain_id,
+                        msg.dst_chain_id,
                     );
-                    false
                 }
+                relay_message
+            } else {
+                should_relay
             }
         });
 
         msgs.inbox_responses.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
+            let should_relay = match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
@@ -295,7 +325,27 @@ where
                     );
                     false
                 }
-            }
+            };
+
+            let channel_storage = ChannelStorage::new(msg.dst_chain_id);
+            if should_relay && let Some(dst_channel_state) = channel_storage.get_channel_state_for(
+                &**consensus_client,
+                msg.src_chain_id,
+                msg.channel_id,
+            )
+                .ok()
+                .flatten() && let Some(dst_chain_outbox_response_nonce) = dst_channel_state.latest_response_received_message_nonce{
+                // relay inbox response if the dst_chain did not execute is already
+                let relay_message = msg.nonce > dst_chain_outbox_response_nonce;
+                if !relay_message{
+                    log::debug!(
+                        "Skipping message relay from {:?} to {:?}",
+                        msg.src_chain_id,
+                        msg.dst_chain_id,
+                    );
+                }
+                relay_message
+            } else { should_relay }
         });
 
         Ok(msgs)
@@ -325,7 +375,12 @@ where
         let block_messages: BlockMessagesWithStorageKey = api
             .block_messages(block_hash_to_process)
             .map_err(|_| Error::FetchAssignedMessages)?;
-        let filtered_messages = Self::filter_messages(consensus_chain_client, block_messages)?;
+
+        let filtered_messages = Self::filter_messages(
+            consensus_chain_client,
+            consensus_chain_client,
+            block_messages,
+        )?;
 
         // short circuit if the there are no messages to relay
         if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
@@ -373,7 +428,8 @@ where
     ) -> Result<(), Error>
     where
         CBlock: BlockT,
-        CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + ProofProvider<CBlock>,
+        CClient:
+            HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + ProofProvider<CBlock> + AuxStore,
         CClient::Api: DomainsApi<CBlock, Block::Header>
             + MessengerApi<CBlock>
             + MmrApi<CBlock, H256, NumberFor<CBlock>>,
@@ -386,7 +442,8 @@ where
             .map_err(|_| Error::FetchAssignedMessages)?;
 
         // filter out already relayed messages
-        let filtered_messages = Self::filter_messages(domain_client, block_messages)?;
+        let filtered_messages =
+            Self::filter_messages(domain_client, consensus_chain_client, block_messages)?;
 
         // short circuit if the there are no messages to relay
         if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {

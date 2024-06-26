@@ -224,7 +224,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 tracing_unbounded("domain_message_channel", 100);
 
             // Start relayer for consensus chain
-            {
+            let consensus_msg_receiver = {
                 let span = info_span!("Consensus");
                 let _enter = span.enter();
                 let consensus_best_hash = consensus_chain_node.client.info().best_hash;
@@ -251,30 +251,32 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         ),
                     );
 
-                let (consensus_msg_sink, consensus_msg_receiver) =
-                    tracing_unbounded("consensus_message_channel", 100);
-
-                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
                 consensus_chain_node
                     .task_manager
                     .spawn_essential_handle()
                     .spawn_essential_blocking(
-                        "consensus-message-listener",
+                        "consensus-chain-channel-update-worker",
                         None,
                         Box::pin(
-                            cross_domain_message_gossip::start_cross_chain_message_listener(
+                            domain_client_message_relayer::worker::gossip_channel_updates::<
+                                _,
+                                _,
+                                Block,
+                                _,
+                            >(
                                 ChainId::Consensus,
                                 consensus_chain_node.client.clone(),
-                                consensus_chain_node.transaction_pool.clone(),
-                                consensus_chain_node.network_service.clone(),
-                                consensus_msg_receiver,
+                                consensus_chain_node.sync_service.clone(),
+                                xdm_gossip_worker_builder.gossip_msg_sink(),
                             ),
                         ),
                     );
 
-                xdm_gossip_worker_builder
-                    .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
-                xdm_gossip_worker_builder.push_chain_tx_pool_sink(
+                let (consensus_msg_sink, consensus_msg_receiver) =
+                    tracing_unbounded("consensus_message_channel", 100);
+
+                xdm_gossip_worker_builder.push_chain_sink(ChainId::Consensus, consensus_msg_sink);
+                xdm_gossip_worker_builder.push_chain_sink(
                     ChainId::Domain(domain_configuration.domain_id),
                     domain_message_sink,
                 );
@@ -294,7 +296,15 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         None,
                         Box::pin(cross_domain_message_gossip_worker.run()),
                     );
-            }
+
+                consensus_msg_receiver
+            };
+
+            let consensus_client = consensus_chain_node.client.clone();
+            let consensus_network_service = consensus_chain_node.network_service.clone();
+            let consensus_tx_pool = consensus_chain_node.transaction_pool.clone();
+            let consensus_task_essential_handler =
+                consensus_chain_node.task_manager.spawn_essential_handle();
 
             let domain_start_options = DomainStartOptions {
                 consensus_client: consensus_chain_node.client,
@@ -339,8 +349,39 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                             domain_start_options,
                         );
 
-                        if let Err(error) = start_domain.await {
-                            error!(%error, "Domain starter exited with an error");
+                        match start_domain.await {
+                            Ok(domain_code_executor) => {
+                                let span = info_span!("Consensus");
+                                let _enter = span.enter();
+                                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
+                                consensus_task_essential_handler
+                                    .spawn_essential_blocking(
+                                        "consensus-message-listener",
+                                        None,
+                                        Box::pin(
+                                            cross_domain_message_gossip::start_cross_chain_message_listener::<
+                                            _,
+                                            _,
+                                            _,
+                                            _,
+                                            _,
+                                            DomainBlock,
+                                            _,
+                                            >(
+                                                ChainId::Consensus,
+                                                consensus_client.clone(),
+                                                consensus_client.clone(),
+                                                consensus_tx_pool,
+                                                consensus_network_service,
+                                                consensus_msg_receiver,
+                                                domain_code_executor
+                                            ),
+                                        ),
+                                    );
+                            }
+                            Err(err) => {
+                                error!(%err, "Domain starter exited with an error");
+                            }
                         }
                     }),
                 );

@@ -1,7 +1,7 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
 use crate::{FullBackend, FullClient};
-use cross_domain_message_gossip::ChainTxPoolMsg;
+use cross_domain_message_gossip::ChainMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
@@ -227,7 +227,7 @@ where
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
-    pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
+    pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
     pub consensus_state_pruning: PruningMode,
@@ -459,23 +459,42 @@ where
             consensus_state_pruning,
             client.clone(),
             domain_state_pruning,
-            // domain relayer will use consensus chain sync oracle instead of domain sync orcle
+            // domain relayer will use consensus chain sync oracle instead of domain sync oracle
             // since domain sync oracle will always return `synced` due to force sync being set.
-            consensus_network_sync_oracle,
-            gossip_message_sink,
+            consensus_network_sync_oracle.clone(),
+            gossip_message_sink.clone(),
         );
 
         spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));
+
+        let channel_update_worker =
+            domain_client_message_relayer::worker::gossip_channel_updates::<_, _, CBlock, _>(
+                ChainId::Domain(domain_id),
+                client.clone(),
+                // domain will use consensus chain sync oracle instead of domain sync oracle
+                // since domain sync oracle will always return `synced` due to force sync being set.
+                consensus_network_sync_oracle,
+                gossip_message_sink,
+            );
+
+        spawn_essential.spawn_essential_blocking(
+            "domain-channel-update-worker",
+            None,
+            Box::pin(channel_update_worker),
+        );
     }
 
     // Start cross domain message listener for domain
-    let domain_listener = cross_domain_message_gossip::start_cross_chain_message_listener(
-        ChainId::Domain(domain_id),
-        client.clone(),
-        params.transaction_pool.clone(),
-        consensus_network,
-        domain_message_receiver,
-    );
+    let domain_listener =
+        cross_domain_message_gossip::start_cross_chain_message_listener::<_, _, _, _, _, Block, _>(
+            ChainId::Domain(domain_id),
+            consensus_client.clone(),
+            client.clone(),
+            params.transaction_pool.clone(),
+            consensus_network,
+            domain_message_receiver,
+            code_executor.clone(),
+        );
 
     spawn_essential.spawn_essential_blocking(
         "domain-message-listener",

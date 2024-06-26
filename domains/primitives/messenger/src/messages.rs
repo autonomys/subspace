@@ -29,6 +29,40 @@ pub struct FeeModel<Balance> {
     pub relay_fee: Balance,
 }
 
+/// State of a channel.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub enum ChannelState {
+    /// Channel between chains is initiated but do not yet send or receive messages in this state.
+    #[default]
+    Initiated,
+    /// Channel is open and can send and receive messages.
+    Open,
+    /// Channel is closed and do not send or receive messages.
+    Closed,
+}
+
+/// Channel describes a bridge to exchange messages between two chains.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct Channel<Balance, AccountId> {
+    /// Channel identifier.
+    pub channel_id: ChannelId,
+    /// State of the channel.
+    pub state: ChannelState,
+    /// Next inbox nonce.
+    pub next_inbox_nonce: Nonce,
+    /// Next outbox nonce.
+    pub next_outbox_nonce: Nonce,
+    /// Latest outbox message nonce for which response was received from dst_chain.
+    pub latest_response_received_message_nonce: Option<Nonce>,
+    /// Maximum outgoing non-delivered messages.
+    pub max_outgoing_messages: u32,
+    /// Fee model for this channel between the chains.
+    pub fee: FeeModel<Balance>,
+    /// Owner of the channel
+    /// Owner maybe None if the channel was initiated on the other chain.
+    pub maybe_owner: Option<AccountId>,
+}
+
 /// Channel open parameters
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
 pub struct ChannelOpenParams<Balance> {

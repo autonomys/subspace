@@ -41,7 +41,8 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, Message, MessageId,
+    Nonce,
 };
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
@@ -50,40 +51,6 @@ pub(crate) mod verification_errors {
     pub(crate) const INVALID_CHANNEL: u8 = 100;
     pub(crate) const INVALID_NONCE: u8 = 101;
     pub(crate) const NONCE_OVERFLOW: u8 = 102;
-}
-
-/// State of a channel.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum ChannelState {
-    /// Channel between chains is initiated but do not yet send or receive messages in this state.
-    #[default]
-    Initiated,
-    /// Channel is open and can send and receive messages.
-    Open,
-    /// Channel is closed and do not send or receive messages.
-    Closed,
-}
-
-/// Channel describes a bridge to exchange messages between two chains.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Channel<Balance, AccountId> {
-    /// Channel identifier.
-    pub(crate) channel_id: ChannelId,
-    /// State of the channel.
-    pub(crate) state: ChannelState,
-    /// Next inbox nonce.
-    pub(crate) next_inbox_nonce: Nonce,
-    /// Next outbox nonce.
-    pub(crate) next_outbox_nonce: Nonce,
-    /// Latest outbox message nonce for which response was received from dst_chain.
-    pub(crate) latest_response_received_message_nonce: Option<Nonce>,
-    /// Maximum outgoing non-delivered messages.
-    pub(crate) max_outgoing_messages: u32,
-    /// Fee model for this channel between the chains.
-    pub(crate) fee: FeeModel<Balance>,
-    /// Owner of the channel
-    /// Owner maybe None if the channel was initiated on the other chain.
-    pub(crate) maybe_owner: Option<AccountId>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -320,6 +287,12 @@ mod pallet {
     pub(super) type DomainChainAllowlistUpdate<T: Config> =
         StorageMap<_, Identity, DomainId, DomainAllowlistUpdates, OptionQuery>;
 
+    /// Temporary storage to store the updated channels between this chain and other chain.
+    /// Storage is cleared on block initialization.
+    #[pallet::storage]
+    pub(super) type UpdatedChannels<T: Config> =
+        StorageValue<_, BTreeSet<(ChainId, ChannelId)>, ValueQuery>;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
@@ -387,6 +360,14 @@ mod pallet {
             channel_id: ChannelId,
             nonce: Nonce,
         },
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            UpdatedChannels::<T>::take();
+            T::DbWeight::get().writes(1)
+        }
     }
 
     #[pallet::validate_unsigned]
@@ -1294,6 +1275,10 @@ mod pallet {
             InboxResponses::<T>::hashed_key_for(message_key)
         }
 
+        pub fn channel_storage_key(chain_id: ChainId, channel_id: ChannelId) -> Vec<u8> {
+            Channels::<T>::hashed_key_for(chain_id, channel_id)
+        }
+
         pub fn domain_chains_allowlist_update(
             domain_id: DomainId,
         ) -> Option<DomainAllowlistUpdates> {
@@ -1302,6 +1287,10 @@ mod pallet {
 
         pub fn domain_allow_list_update_storage_key(domain_id: DomainId) -> Vec<u8> {
             DomainChainAllowlistUpdate::<T>::hashed_key_for(domain_id)
+        }
+
+        pub fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
+            UpdatedChannels::<T>::get()
         }
     }
 }
