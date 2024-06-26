@@ -1368,8 +1368,9 @@ pub struct RuntimeObject<Number, Hash> {
     pub runtime_name: String,
     pub runtime_type: RuntimeType,
     pub runtime_upgrades: u32,
+    pub instance_count: u32,
     pub hash: Hash,
-    // The raw gensis storage that contains the runtime code.
+    // The raw genesis storage that contains the runtime code.
     // NOTE: don't use this field directly but `into_complete_raw_genesis` instead
     pub raw_genesis: RawGenesis,
     pub version: RuntimeVersion,

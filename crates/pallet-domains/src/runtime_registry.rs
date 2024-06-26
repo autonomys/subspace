@@ -206,6 +206,7 @@ pub(crate) fn do_register_runtime<T: Config>(
             created_at: at,
             updated_at: at,
             runtime_upgrades: 0u32,
+            instance_count: 0,
         },
     );
 
@@ -245,6 +246,7 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
             created_at: at,
             updated_at: at,
             runtime_upgrades: 0u32,
+            instance_count: 0,
         },
     );
 
@@ -386,6 +388,7 @@ mod tests {
                     },
                     created_at: Default::default(),
                     updated_at: Default::default(),
+                    instance_count: 0,
                 },
             );
 
@@ -524,6 +527,7 @@ mod tests {
                     version: version.clone(),
                     created_at: Default::default(),
                     updated_at: Default::default(),
+                    instance_count: 0,
                 },
             );
 
