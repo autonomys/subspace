@@ -32,6 +32,7 @@ mod metrics;
 pub mod rpc;
 pub mod sync_from_dsn;
 pub mod transaction_pool;
+pub mod network;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
