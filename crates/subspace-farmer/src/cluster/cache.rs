@@ -362,7 +362,6 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    "write piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
                     |request: ClusterCacheWritePieceRequest| async move {
@@ -395,7 +394,6 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    "read piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
                     |request: ClusterCacheReadPieceIndexRequest| async move {
@@ -428,7 +426,6 @@ where
         .map(|cache_details| async move {
             nats_client
                 .request_responder(
-                    "read piece",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
                     |request: ClusterCacheReadPieceRequest| async move {

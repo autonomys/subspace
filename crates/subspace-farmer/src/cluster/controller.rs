@@ -646,7 +646,6 @@ where
 {
     nats_client
         .request_responder(
-            "farmer app info",
             None,
             Some("subspace.controller".to_string()),
             |_: ClusterControllerFarmerAppInfoRequest| async move {
@@ -670,7 +669,6 @@ where
 {
     nats_client
         .request_responder(
-            "Segment headers",
             None,
             Some("subspace.controller".to_string()),
             |request: ClusterControllerSegmentHeadersRequest| async move {
@@ -692,7 +690,6 @@ async fn find_piece_responder(
 ) -> anyhow::Result<()> {
     nats_client
         .request_responder(
-            "find piece",
             None,
             Some("subspace.controller".to_string()),
             |request: ClusterControllerFindPieceInCacheRequest| async move {
@@ -708,7 +705,6 @@ where
 {
     nats_client
         .request_responder(
-            "piece",
             None,
             Some("subspace.controller".to_string()),
             |request: ClusterControllerPieceRequest| async move {

@@ -510,14 +510,11 @@ impl NatsClient {
     ///
     /// # Arguments
     ///
-    /// * `label` - A label to use for logging
-    /// * `nats_client` - The NATS client to use for the subscription and publishing responses
     /// * `instance` - Optional instance name to use in place of the `*` in the subject
     /// * `group` - The queue group name for the subscription
     /// * `process` - The function to call with the decoded request to produce a response
     pub async fn request_responder<Request, F, OP>(
         &self,
-        label: &'static str,
         instance: Option<&str>,
         queue_group: Option<String>,
         process: OP,
@@ -544,10 +541,16 @@ impl NatsClient {
             self.inner.client.subscribe(subject).await
         }
         .map_err(|error| {
-            anyhow!("Failed to subscribe to {label} requests for  {instance:?}: {error}")
+            anyhow!(
+                "Failed to subscribe to {} requests for {instance:?}: {error}",
+                type_name::<Request>(),
+            )
         })?;
 
-        debug!(%label, "requests subscription");
+        debug!(
+            request_type = %type_name::<Request>(),
+            "Requests subscription"
+        );
         let mut subscription = subscription.fuse();
 
         loop {
@@ -559,8 +562,6 @@ impl NatsClient {
 
                     // Create background task for concurrent processing
                     processing.push(Box::pin(self.process_request(
-                        label,
-                        // nats_client,
                         message,
                         &process,
                     )));
@@ -574,12 +575,8 @@ impl NatsClient {
         Ok(())
     }
 
-    async fn process_request<Request, F, OP>(
-        &self,
-        label: &'static str,
-        message: Message,
-        process: OP,
-    ) where
+    async fn process_request<Request, F, OP>(&self, message: Message, process: OP)
+    where
         Request: GenericRequest,
         F: Future<Output = Option<Request::Response>> + Send,
         OP: Fn(Request) -> F + Send + Sync,
@@ -591,16 +588,30 @@ impl NatsClient {
         let request = match Request::decode(&mut message.payload.as_ref()) {
             Ok(request) => request,
             Err(error) => {
-                warn!(%label, %error, message = %hex::encode(message.payload), "Failed to decode request");
+                warn!(
+                    request_type = %type_name::<Request>(),
+                    %error,
+                    message = %hex::encode(message.payload),
+                    "Failed to decode request"
+                );
                 return;
             }
         };
 
-        trace!(?request, %reply_subject, "{label} request");
+        trace!(
+            request_type = %type_name::<Request>(),
+            ?request,
+            %reply_subject,
+            "Processing request"
+        );
         if let Some(response) = process(request).await
             && let Err(error) = self.publish(reply_subject, response.encode().into()).await
         {
-            warn!(%label, %error, "Failed to send response");
+            warn!(
+                request_type = %type_name::<Request>(),
+                %error,
+                "Failed to send response"
+            );
         }
     }
 
