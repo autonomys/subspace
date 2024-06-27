@@ -500,13 +500,14 @@ impl NatsClient {
         Ok(response)
     }
 
-    /// Spawn a queue responder task that will process requests from the given subject
-    /// using the provided processing function.
+    /// Responds to requests from the given subject using the provided processing function.
     ///
-    /// This will create a subscription on the subject for the given instance (if provided)
-    /// and queue group. Incoming messages will be deserialized as the request type `GR`
-    /// and passed to the `process` function to produce a response of type `GR::Response`.
-    /// The response will then be sent back on the reply subject from the original request.
+    /// This will create a subscription on the subject for the given instance (if provided) and
+    /// queue group. Incoming messages will be deserialized as the request type `Request` and passed
+    /// to the `process` function to produce a response of type `Request::Response`. The response
+    /// will then be sent back on the reply subject from the original request.
+    ///
+    /// Each request is processed in a newly created async tokio task.
     ///
     /// # Arguments
     ///
@@ -525,11 +526,9 @@ impl NatsClient {
         OP: Fn(Request) -> F + Send + Sync,
     {
         // Initialize with pending future so it never ends
-        let mut processing =
-            FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([Box::pin(
-                pending(),
-            )
-                as Pin<Box<_>>]);
+        let mut processing = FuturesUnordered::from_iter([
+            Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
+        ]);
 
         let subject = subject_with_instance(Request::SUBJECT, instance);
         let subscription = if let Some(queue_group) = queue_group {
@@ -549,6 +548,7 @@ impl NatsClient {
 
         debug!(
             request_type = %type_name::<Request>(),
+            ?subscription,
             "Requests subscription"
         );
         let mut subscription = subscription.fuse();
