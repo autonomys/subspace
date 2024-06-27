@@ -7760,6 +7760,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-sudo"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 28.0.0 (git+https://github.com/subspace/polkadot-sdk?rev=98914adb256fed32c13ce251c5b4c9972af8ea0f)",
+ "sp-domain-sudo",
+ "sp-runtime 31.0.1 (git+https://github.com/subspace/polkadot-sdk?rev=98914adb256fed32c13ce251c5b4c9972af8ea0f)",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -12003,6 +12016,15 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sp-runtime 31.0.1 (git+https://github.com/subspace/polkadot-sdk?rev=98914adb256fed32c13ce251c5b4c9972af8ea0f)",
+]
+
+[[package]]
+name = "sp-domain-sudo"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sp-inherents",
 ]
 
 [[package]]
