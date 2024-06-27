@@ -702,7 +702,7 @@ async fn read_piece_responder(
             };
 
             nats_client
-                .generic_subscribe_responder(
+                .request_responder(
                     "read piece",
                     Some(farm_details.farm_id_string.as_str()),
                     Some(farm_details.farm_id_string.clone()),

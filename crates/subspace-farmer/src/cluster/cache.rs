@@ -370,7 +370,7 @@ where
                 )
             };
             nats_client
-                .generic_subscribe_responder(
+                .request_responder(
                     "write piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
@@ -404,7 +404,7 @@ where
                 )
             };
             nats_client
-                .generic_subscribe_responder(
+                .request_responder(
                     "read piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
@@ -438,7 +438,7 @@ where
                 )
             };
             nats_client
-                .generic_subscribe_responder(
+                .request_responder(
                     "read piece",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),

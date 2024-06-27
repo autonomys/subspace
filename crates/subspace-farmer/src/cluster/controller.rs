@@ -654,7 +654,7 @@ where
     };
 
     nats_client
-        .generic_subscribe_responder(
+        .request_responder(
             "farmer app info",
             None,
             Some("subspace.controller".to_string()),
@@ -681,7 +681,7 @@ where
     };
 
     nats_client
-        .generic_subscribe_responder(
+        .request_responder(
             "Segment headers",
             None,
             Some("subspace.controller".to_string()),
@@ -699,7 +699,7 @@ async fn find_piece_responder(
     };
 
     nats_client
-        .generic_subscribe_responder(
+        .request_responder(
             "find piece",
             None,
             Some("subspace.controller".to_string()),
@@ -723,7 +723,7 @@ where
     };
 
     nats_client
-        .generic_subscribe_responder(
+        .request_responder(
             "piece",
             None,
             Some("subspace.controller".to_string()),

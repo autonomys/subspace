@@ -859,7 +859,7 @@ impl NatsClient {
     /// * `instance` - Optional instance name to use in place of the `*` in the subject
     /// * `group` - The queue group name for the subscription
     /// * `process` - The function to call with the decoded request to produce a response
-    pub async fn generic_subscribe_responder<Request, F, OP>(
+    pub async fn request_responder<Request, F, OP>(
         &self,
         label: &'static str,
         instance: Option<&str>,
@@ -902,7 +902,7 @@ impl NatsClient {
                     };
 
                     // Create background task for concurrent processing
-                    processing.push(Box::pin(self.process_generic_subscribe_request(
+                    processing.push(Box::pin(self.process_request(
                         label,
                         // nats_client,
                         message,
@@ -918,7 +918,7 @@ impl NatsClient {
         Ok(())
     }
 
-    async fn process_generic_subscribe_request<Request, F, OP>(
+    async fn process_request<Request, F, OP>(
         &self,
         label: &'static str,
         message: Message,
