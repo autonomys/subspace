@@ -88,3 +88,15 @@ impl<RuntimeCall> IntoRuntimeCall<RuntimeCall> for () {
         None
     }
 }
+
+sp_api::decl_runtime_apis! {
+    /// Api to check and verify the Sudo calls
+    pub trait DomainSudoApi {
+        /// Returns true if the domain_sudo exists in the runtime
+        /// and extrinsic is valid
+        fn is_valid_sudo_call(extrinsic: Vec<u8>) -> bool;
+
+        /// Returns an encoded extrinsic for domain sudo call.
+        fn construct_domain_sudo_extrinsic(inner: Vec<u8>) -> Block::Extrinsic;
+    }
+}

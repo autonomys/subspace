@@ -9,7 +9,7 @@ use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
     into_complete_raw_genesis, BalanceOf, Config, DomainHashingFor, DomainRegistry,
-    ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    DomainSudoCalls, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -26,8 +26,8 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
     calculate_max_bundle_weight_and_size, derive_domain_block_hash, DomainBundleLimit, DomainId,
-    DomainsDigestItem, DomainsTransfersTracker, OnDomainInstantiated, OperatorAllowList, RuntimeId,
-    RuntimeType,
+    DomainSudoCall, DomainsDigestItem, DomainsTransfersTracker, OnDomainInstantiated,
+    OperatorAllowList, RuntimeId, RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -304,6 +304,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     import_genesis_receipt::<T>(domain_id, genesis_receipt);
     T::OnDomainInstantiated::on_domain_instantiated(domain_id);
+
+    DomainSudoCalls::<T>::insert(domain_id, DomainSudoCall { maybe_call: None });
 
     frame_system::Pallet::<T>::deposit_log(DigestItem::domain_instantiation(domain_id));
 

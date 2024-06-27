@@ -354,6 +354,7 @@ pub struct DomainInherentExtrinsicData {
     pub maybe_domain_runtime_upgrade: Option<Vec<u8>>,
     pub consensus_transaction_byte_fee: Balance,
     pub domain_chain_allowlist: DomainAllowlistUpdates,
+    pub maybe_sudo_runtime_call: Option<Vec<u8>>,
 }
 
 impl PassBy for DomainInherentExtrinsicData {
@@ -366,6 +367,7 @@ pub struct DomainInherentExtrinsic {
     maybe_domain_chain_allowlist_extrinsic: Option<Vec<u8>>,
     consensus_chain_byte_fee_extrinsic: Vec<u8>,
     maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
+    maybe_domain_sudo_call_extrinsic: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -387,6 +389,7 @@ pub enum StatelessDomainRuntimeCall {
     },
     IsInherentExtrinsic(OpaqueExtrinsic),
     IsDecodableExtrinsic(OpaqueExtrinsic),
+    IsValidDomainSudoCall(Vec<u8>),
 }
 
 impl PassBy for StatelessDomainRuntimeCall {

@@ -6,6 +6,7 @@ use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, Core, RuntimeApiInfo};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
+use sp_domain_sudo::DomainSudoApi;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{ChainId, ChannelId, DomainAllowlistUpdates};
 use sp_messenger::messages::MessageKey;
@@ -85,6 +86,22 @@ where
 
 impl<Block, Executor> RelayerApi<Block, NumberFor<Block>, BlockNumber, BlockHash>
     for StatelessRuntime<Block, Executor>
+where
+    Block: BlockT,
+    NumberFor<Block>: Codec,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<Block, Executor> DomainSudoApi<Block> for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     NumberFor<Block>: Codec,
@@ -348,5 +365,20 @@ where
         extrinsic: &<Block as BlockT>::Extrinsic,
     ) -> Result<Weight, ApiError> {
         <Self as DomainCoreApi<Block>>::extrinsic_weight(self, Default::default(), extrinsic)
+    }
+
+    pub fn is_valid_sudo_call(&self, extrinsic: Vec<u8>) -> Result<bool, ApiError> {
+        <Self as DomainSudoApi<Block>>::is_valid_sudo_call(self, Default::default(), extrinsic)
+    }
+
+    pub fn construct_domain_sudo_extrinsic(
+        &self,
+        inner_call: Vec<u8>,
+    ) -> Result<Block::Extrinsic, ApiError> {
+        <Self as DomainSudoApi<Block>>::construct_domain_sudo_extrinsic(
+            self,
+            Default::default(),
+            inner_call,
+        )
     }
 }

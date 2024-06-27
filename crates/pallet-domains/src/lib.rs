@@ -223,13 +223,14 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId,
+        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId, DomainSudoCall,
         DomainsTransfersTracker, EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated,
         OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
         RuntimeObject, RuntimeType,
     };
+    use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
-    use sp_domains_fraud_proof::InvalidTransactionCode;
+    use sp_domains_fraud_proof::{InvalidTransactionCode, StatelessDomainRuntimeCall};
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
@@ -705,6 +706,13 @@ mod pallet {
     #[pallet::storage]
     pub type DomainRuntimeUpgrades<T> = StorageValue<_, Vec<RuntimeId>, ValueQuery>;
 
+    /// Temporary storage to hold the sudo calls meant for the Domains.
+    /// Storage is cleared when there are any successful bundles in the next block.
+    /// Only one sudo call is allowed per domain per consensus block.
+    #[pallet::storage]
+    pub type DomainSudoCalls<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainSudoCall, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -868,6 +876,10 @@ mod pallet {
         BundleStorageFund(BundleStorageFundError),
         /// Permissioned action is not allowed by the caller.
         PermissionedActionNotAllowed,
+        /// Domain Sudo already exists.
+        DomainSudoCallExists,
+        /// Invalid Domain sudo call.
+        InvalidDomainSudoCall,
     }
 
     /// Reason for slashing an operator
@@ -1494,6 +1506,41 @@ mod pallet {
             PermissionedActionAllowedBy::<T>::put(permissioned_action_allowed_by);
             Ok(())
         }
+
+        /// Submit a domain sudo call.
+        #[pallet::call_index(16)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(3, 1))]
+        pub fn send_domain_sudo_call(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            call: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            ensure!(
+                DomainSudoCalls::<T>::get(domain_id).maybe_call.is_none(),
+                Error::<T>::DomainSudoCallExists
+            );
+
+            let domain_runtime = Self::domain_runtime_code(domain_id).ok_or(
+                Error::<T>::DomainRegistry(DomainRegistryError::DomainNotFound),
+            )?;
+            ensure!(
+                domain_runtime_call(
+                    domain_runtime,
+                    StatelessDomainRuntimeCall::IsValidDomainSudoCall(call.clone()),
+                )
+                .unwrap_or(false),
+                Error::<T>::InvalidDomainSudoCall
+            );
+
+            DomainSudoCalls::<T>::set(
+                domain_id,
+                DomainSudoCall {
+                    maybe_call: Some(call),
+                },
+            );
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
@@ -1609,6 +1656,9 @@ mod pallet {
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
                 T::DomainBundleSubmitted::domain_bundle_submitted(domain_id);
+                DomainSudoCalls::<T>::mutate(domain_id, |sudo_call| {
+                    sudo_call.clear();
+                });
             }
 
             for (operator_id, slot_set) in OperatorBundleSlot::<T>::drain() {

@@ -1144,6 +1144,9 @@ impl FraudProofStorageKeyProvider for StorageKeyProvider {
             FraudProofStorageKeyRequest::DynamicCostOfStorage => {
                 pallet_runtime_configs::EnableDynamicCostOfStorage::<Runtime>::hashed_key().to_vec()
             }
+            FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
+                pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)
+            }
         }
     }
 }

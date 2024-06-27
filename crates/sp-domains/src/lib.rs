@@ -1363,6 +1363,21 @@ impl DomainAllowlistUpdates {
     }
 }
 
+/// Domain Sudo runtime call.
+/// This structure exists because we need to generate a storage proof for FP
+/// and Storage shouldn't be None. So each domain must always hold this value even if
+/// there is an empty runtime call inside
+#[derive(Default, Debug, Encode, Decode, PartialEq, Eq, Clone, TypeInfo)]
+pub struct DomainSudoCall {
+    pub maybe_call: Option<Vec<u8>>,
+}
+
+impl DomainSudoCall {
+    pub fn clear(&mut self) {
+        self.maybe_call.take();
+    }
+}
+
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct RuntimeObject<Number, Hash> {
     pub runtime_name: String,
@@ -1411,7 +1426,7 @@ impl<Balance> OnChainRewards<Balance> for () {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(4)]
+    #[api_version(5)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);

@@ -83,6 +83,7 @@ where
         maybe_domain_chain_allowlist_extrinsic,
         consensus_chain_byte_fee_extrinsic,
         maybe_domain_set_code_extrinsic,
+        maybe_domain_sudo_call_extrinsic,
     } = fraud_proof_runtime_interface::construct_domain_inherent_extrinsic(
         domain_runtime_code,
         domain_inherent_extrinsic_data,
@@ -123,10 +124,18 @@ where
     // - executive set_code extrinsic
     // - messenger update_domain_allowlist extrinsic
     // - block_fees transaction_byte_fee_extrinsic
+    // - domain_sudo extrinsic
     // since we use `push_front` the extrinsic should be pushed in reversed order
     // TODO: this will not be valid once we have a different runtime. To achive consistency across
     //  domains, we should define a runtime api for each domain that should order the extrinsics
     //  like inherent are derived while domain block is being built
+
+    if let Some(domain_sudo_call_extrinsic) = maybe_domain_sudo_call_extrinsic {
+        let domain_sudo_call_extrinsic = ExtrinsicDigest::new::<
+            LayoutV1<HeaderHashingFor<DomainHeader>>,
+        >(domain_sudo_call_extrinsic);
+        ordered_extrinsics.push_front(domain_sudo_call_extrinsic);
+    }
 
     let transaction_byte_fee_extrinsic = ExtrinsicDigest::new::<
         LayoutV1<HeaderHashingFor<DomainHeader>>,
@@ -134,10 +143,10 @@ where
     ordered_extrinsics.push_front(transaction_byte_fee_extrinsic);
 
     if let Some(domain_chain_allowlist_extrinsic) = maybe_domain_chain_allowlist_extrinsic {
-        let domain_set_code_extrinsic = ExtrinsicDigest::new::<
+        let domain_chain_allowlist_extrinsic = ExtrinsicDigest::new::<
             LayoutV1<HeaderHashingFor<DomainHeader>>,
         >(domain_chain_allowlist_extrinsic);
-        ordered_extrinsics.push_front(domain_set_code_extrinsic);
+        ordered_extrinsics.push_front(domain_chain_allowlist_extrinsic);
     }
 
     if let Some(domain_set_code_extrinsic) = maybe_domain_set_code_extrinsic {
