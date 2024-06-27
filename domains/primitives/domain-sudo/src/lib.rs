@@ -80,13 +80,7 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
 /// Trait to convert Unchecked extrinsic into a Runtime specific call
 pub trait IntoRuntimeCall<RuntimeCall> {
-    fn runtime_call(call: Vec<u8>) -> Option<RuntimeCall>;
-}
-
-impl<RuntimeCall> IntoRuntimeCall<RuntimeCall> for () {
-    fn runtime_call(_call: Vec<u8>) -> Option<RuntimeCall> {
-        None
-    }
+    fn runtime_call(call: Vec<u8>) -> RuntimeCall;
 }
 
 sp_api::decl_runtime_apis! {

@@ -24,6 +24,8 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 mod pallet {
+    #[cfg(not(feature = "std"))]
+    use alloc::boxed::Box;
     use frame_support::dispatch::{GetDispatchInfo, RawOrigin};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::UnfilteredDispatchable;
@@ -88,10 +90,7 @@ mod pallet {
                 .expect("Domain sudo inherent data must be provided");
 
             if let Some(encoded_call) = inherent_data.maybe_call {
-                let call = Box::new(
-                    T::IntoRuntimeCall::runtime_call(encoded_call)
-                        .expect("Must be a valid runtime call as checked on consensus chain; qed"),
-                );
+                let call = Box::new(T::IntoRuntimeCall::runtime_call(encoded_call));
                 Some(Call::sudo { call })
             } else {
                 None
@@ -118,10 +117,7 @@ mod pallet {
                 .expect("Domain sudo inherent data must be provided");
 
             if let Some(encoded_call) = inherent_data.maybe_call {
-                let runtime_call = Box::new(
-                    T::IntoRuntimeCall::runtime_call(encoded_call)
-                        .ok_or(InherentError::InvalidRuntimeCall)?,
-                );
+                let runtime_call = Box::new(T::IntoRuntimeCall::runtime_call(encoded_call));
                 if let Call::sudo { call } = call {
                     if call != &runtime_call {
                         return Err(InherentError::IncorrectRuntimeCall);

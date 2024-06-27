@@ -35,9 +35,6 @@ fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
 }
 
 pub fn domain_dev_config() -> Result<GenericChainSpec, String> {
-    // Alith is sudo account
-    let sudo_account = AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"));
-
     Ok(GenericChainSpec::builder(
         evm_domain_runtime::WASM_BINARY.expect("WASM binary was not build, please build it!"),
         None,
@@ -54,9 +51,6 @@ pub fn domain_dev_config() -> Result<GenericChainSpec, String> {
 
         serde_json::to_value(evm_domain_runtime::RuntimeGenesisConfig {
             system: evm_domain_runtime::SystemConfig::default(),
-            sudo: evm_domain_runtime::SudoConfig {
-                key: Some(sudo_account),
-            },
             balances: evm_domain_runtime::BalancesConfig::default(),
             // this is set to default and chain_id will be set into genesis during the domain
             // instantiation on Consensus runtime.

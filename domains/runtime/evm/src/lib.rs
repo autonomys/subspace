@@ -428,12 +428,6 @@ impl domain_pallet_executive::Config for Runtime {
     type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
-impl pallet_sudo::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
-    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
-}
-
 parameter_types! {
     pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
@@ -724,6 +718,23 @@ impl pallet_base_fee::Config for Runtime {
 
 impl pallet_domain_id::Config for Runtime {}
 
+pub struct IntoRuntimeCall;
+
+impl sp_domain_sudo::IntoRuntimeCall<RuntimeCall> for IntoRuntimeCall {
+    fn runtime_call(call: Vec<u8>) -> RuntimeCall {
+        UncheckedExtrinsic::decode(&mut call.as_slice())
+            .expect("must always be a valid domain extrinsic as checked by consensus chain; qed")
+            .0
+            .function
+    }
+}
+
+impl pallet_domain_sudo::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type IntoRuntimeCall = IntoRuntimeCall;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -758,7 +769,7 @@ construct_runtime!(
         BlockFees: pallet_block_fees = 91,
 
         // Sudo account
-        Sudo: pallet_sudo = 100,
+        Sudo: pallet_domain_sudo = 100,
     }
 );
 
@@ -801,6 +812,23 @@ fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
     } else {
         None
     }
+}
+
+/// Returns a valid Sudo call.
+/// Should extend this function to limit specific calls Sudo can make when needed.
+fn is_valid_sudo_call(encoded_ext: Vec<u8>) -> bool {
+    UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()).is_ok()
+}
+
+fn construct_sudo_call_extrinsic(encoded_ext: Vec<u8>) -> <Block as BlockT>::Extrinsic {
+    let ext = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice())
+        .expect("must always be an valid extrinsic due to the check above; qed");
+    UncheckedExtrinsic::new_unsigned(
+        pallet_domain_sudo::Call::sudo {
+            call: Box::new(ext.0.function),
+        }
+        .into(),
+    )
 }
 
 fn extract_signer_inner<Lookup>(
@@ -1146,6 +1174,7 @@ impl_runtime_apis! {
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
                 RuntimeCall::Messenger(call) => Messenger::is_inherent(call),
+                RuntimeCall::Sudo(call) => Sudo::is_inherent(call),
                 _ => false,
             }
         }
@@ -1471,6 +1500,16 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
             )
+        }
+    }
+
+    impl sp_domain_sudo::DomainSudoApi<Block> for Runtime {
+        fn is_valid_sudo_call(extrinsic: Vec<u8>) -> bool {
+            is_valid_sudo_call(extrinsic)
+        }
+
+        fn construct_domain_sudo_extrinsic(inner: Vec<u8>) -> <Block as BlockT>::Extrinsic {
+            construct_sudo_call_extrinsic(inner)
         }
     }
 
