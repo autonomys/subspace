@@ -644,21 +644,19 @@ async fn farmer_app_info_responder<NC>(
 where
     NC: NodeClient,
 {
-    let process = |_: ClusterControllerFarmerAppInfoRequest| async move {
-        Some(
-            node_client
-                .farmer_app_info()
-                .await
-                .map_err(|error| error.to_string()),
-        )
-    };
-
     nats_client
         .request_responder(
             "farmer app info",
             None,
             Some("subspace.controller".to_string()),
-            process,
+            |_: ClusterControllerFarmerAppInfoRequest| async move {
+                Some(
+                    node_client
+                        .farmer_app_info()
+                        .await
+                        .map_err(|error| error.to_string()),
+                )
+            },
         )
         .await
 }
@@ -670,22 +668,20 @@ async fn segment_headers_responder<NC>(
 where
     NC: NodeClient,
 {
-    let process = |request: ClusterControllerSegmentHeadersRequest| async move {
-        node_client
-            .segment_headers(request.segment_indices.clone())
-            .await
-            .inspect_err(|error| {
-                warn!(%error, segment_indices = ?request.segment_indices, "Failed to get segment headers");
-            })
-            .ok()
-    };
-
     nats_client
         .request_responder(
             "Segment headers",
             None,
             Some("subspace.controller".to_string()),
-            process,
+            |request: ClusterControllerSegmentHeadersRequest| async move {
+                node_client
+                    .segment_headers(request.segment_indices.clone())
+                    .await
+                    .inspect_err(|error| {
+                        warn!(%error, segment_indices = ?request.segment_indices, "Failed to get segment headers");
+                    })
+                    .ok()
+            },
         )
         .await
 }
@@ -694,16 +690,14 @@ async fn find_piece_responder(
     nats_client: &NatsClient,
     farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
-    let process = |request: ClusterControllerFindPieceInCacheRequest| async move {
-        Some(farmer_cache.find_piece(request.piece_index).await)
-    };
-
     nats_client
         .request_responder(
             "find piece",
             None,
             Some("subspace.controller".to_string()),
-            process,
+            |request: ClusterControllerFindPieceInCacheRequest| async move {
+                Some(farmer_cache.find_piece(request.piece_index).await)
+            },
         )
         .await
 }
@@ -712,22 +706,20 @@ async fn piece_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> any
 where
     PG: PieceGetter + Sync,
 {
-    let process = |request: ClusterControllerPieceRequest| async move {
-        piece_getter
-            .get_piece(request.piece_index)
-            .await
-            .inspect_err(
-                |error| warn!(%error, piece_index = %request.piece_index, "Failed to get piece"),
-            )
-            .ok()
-    };
-
     nats_client
         .request_responder(
             "piece",
             None,
             Some("subspace.controller".to_string()),
-            process,
+            |request: ClusterControllerPieceRequest| async move {
+                piece_getter
+                    .get_piece(request.piece_index)
+                    .await
+                    .inspect_err(
+                        |error| warn!(%error, piece_index = %request.piece_index, "Failed to get piece"),
+                    )
+                    .ok()
+            },
         )
         .await
 }

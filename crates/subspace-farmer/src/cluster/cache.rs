@@ -360,21 +360,20 @@ where
     caches_details
         .iter()
         .map(|cache_details| async move {
-            let process = |request: ClusterCacheWritePieceRequest| async move {
-                Some(
-                    cache_details
-                        .cache
-                        .write_piece(request.offset, request.piece_index, &request.piece)
-                        .await
-                        .map_err(|error| error.to_string()),
-                )
-            };
             nats_client
                 .request_responder(
                     "write piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
-                    process,
+                    |request: ClusterCacheWritePieceRequest| async move {
+                        Some(
+                            cache_details
+                                .cache
+                                .write_piece(request.offset, request.piece_index, &request.piece)
+                                .await
+                                .map_err(|error| error.to_string()),
+                        )
+                    },
                 )
                 .await
         })
@@ -394,21 +393,20 @@ where
     caches_details
         .iter()
         .map(|cache_details| async move {
-            let process = |request: ClusterCacheReadPieceIndexRequest| async move {
-                Some(
-                    cache_details
-                        .cache
-                        .read_piece_index(request.offset)
-                        .await
-                        .map_err(|error| error.to_string()),
-                )
-            };
             nats_client
                 .request_responder(
                     "read piece index",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
-                    process,
+                    |request: ClusterCacheReadPieceIndexRequest| async move {
+                        Some(
+                            cache_details
+                                .cache
+                                .read_piece_index(request.offset)
+                                .await
+                                .map_err(|error| error.to_string()),
+                        )
+                    },
                 )
                 .await
         })
@@ -428,21 +426,20 @@ where
     caches_details
         .iter()
         .map(|cache_details| async move {
-            let process = |request: ClusterCacheReadPieceRequest| async move {
-                Some(
-                    cache_details
-                        .cache
-                        .read_piece(request.offset)
-                        .await
-                        .map_err(|error| error.to_string()),
-                )
-            };
             nats_client
                 .request_responder(
                     "read piece",
                     Some(cache_details.cache_id_string.as_str()),
                     Some(cache_details.cache_id_string.clone()),
-                    process,
+                    |request: ClusterCacheReadPieceRequest| async move {
+                        Some(
+                            cache_details
+                                .cache
+                                .read_piece(request.offset)
+                                .await
+                                .map_err(|error| error.to_string()),
+                        )
+                    },
                 )
                 .await
         })

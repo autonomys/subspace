@@ -688,25 +688,20 @@ async fn read_piece_responder(
     farms_details
         .iter()
         .map(|farm_details| async move {
-            let process = |ClusterFarmerReadPieceRequest {
-                               sector_index,
-                               piece_offset,
-                           }| async move {
-                Some(
-                    farm_details
-                        .piece_reader
-                        .read_piece(sector_index, piece_offset)
-                        .await
-                        .map_err(|error| error.to_string()),
-                )
-            };
-
             nats_client
                 .request_responder(
                     "read piece",
                     Some(farm_details.farm_id_string.as_str()),
                     Some(farm_details.farm_id_string.clone()),
-                    process,
+                    |request: ClusterFarmerReadPieceRequest| async move {
+                        Some(
+                            farm_details
+                                .piece_reader
+                                .read_piece(request.sector_index, request.piece_offset)
+                                .await
+                                .map_err(|error| error.to_string()),
+                        )
+                    },
                 )
                 .await
         })
