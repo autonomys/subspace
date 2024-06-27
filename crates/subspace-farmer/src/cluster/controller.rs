@@ -15,14 +15,12 @@ use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use anyhow::anyhow;
 use async_lock::Semaphore;
-use async_nats::{HeaderValue, Message};
+use async_nats::HeaderValue;
 use async_trait::async_trait;
-use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::error::Error;
-use std::future::{pending, Future};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -646,69 +644,20 @@ async fn farmer_app_info_responder<NC>(
 where
     NC: NodeClient,
 {
-    // Initialize with pending future so it never ends
-    let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
-        Box::pin(pending()) as Pin<Box<_>>,
-    ]);
-
-    let subscription = nats_client
-        .queue_subscribe(
-            ClusterControllerFarmerAppInfoRequest::SUBJECT,
-            "subspace.controller".to_string(),
+    nats_client
+        .request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |_: ClusterControllerFarmerAppInfoRequest| async move {
+                Some(
+                    node_client
+                        .farmer_app_info()
+                        .await
+                        .map_err(|error| error.to_string()),
+                )
+            },
         )
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to farmer app info requests: {error}"))?;
-    debug!(?subscription, "Farmer app info requests subscription");
-    let mut subscription = subscription.fuse();
-
-    loop {
-        select! {
-            maybe_message = subscription.next() => {
-                let Some(message) = maybe_message else {
-                    break;
-                };
-
-                // Create background task for concurrent processing
-                processing.push(Box::pin(process_farmer_app_info_request(
-                    nats_client,
-                    node_client,
-                    message,
-                )));
-            }
-            _ = processing.next() => {
-                // Nothing to do here
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn process_farmer_app_info_request<NC>(
-    nats_client: &NatsClient,
-    node_client: &NC,
-    message: Message,
-) where
-    NC: NodeClient,
-{
-    let Some(reply_subject) = message.reply else {
-        return;
-    };
-
-    trace!("Farmer app info request");
-
-    let farmer_app_info: <ClusterControllerFarmerAppInfoRequest as GenericRequest>::Response =
-        node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| error.to_string());
-
-    if let Err(error) = nats_client
-        .publish(reply_subject, farmer_app_info.encode().into())
-        .await
-    {
-        warn!(%error, "Failed to send farmer app info response");
-    }
 }
 
 async fn segment_headers_responder<NC>(
@@ -718,248 +667,55 @@ async fn segment_headers_responder<NC>(
 where
     NC: NodeClient,
 {
-    // Initialize with pending future so it never ends
-    let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
-        Box::pin(pending()) as Pin<Box<_>>,
-    ]);
-
-    let subscription = nats_client
-        .queue_subscribe(
-            ClusterControllerSegmentHeadersRequest::SUBJECT,
-            "subspace.controller".to_string(),
+    nats_client
+        .request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |request: ClusterControllerSegmentHeadersRequest| async move {
+                node_client
+                    .segment_headers(request.segment_indices.clone())
+                    .await
+                    .inspect_err(|error| {
+                        warn!(%error, segment_indices = ?request.segment_indices, "Failed to get segment headers");
+                    })
+                    .ok()
+            },
         )
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to segment headers requests: {error}"))?;
-    debug!(?subscription, "Segment headers requests subscription");
-    let mut subscription = subscription.fuse();
-
-    loop {
-        select! {
-            maybe_message = subscription.next() => {
-                let Some(message) = maybe_message else {
-                    break;
-                };
-
-                // Create background task for concurrent processing
-                processing.push(Box::pin(process_segment_headers_request(
-                    nats_client,
-                    node_client,
-                    message,
-                )));
-            }
-            _ = processing.next() => {
-                // Nothing to do here
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn process_segment_headers_request<NC>(
-    nats_client: &NatsClient,
-    node_client: &NC,
-    message: Message,
-) where
-    NC: NodeClient,
-{
-    let Some(reply_subject) = message.reply else {
-        return;
-    };
-
-    let request =
-        match ClusterControllerSegmentHeadersRequest::decode(&mut message.payload.as_ref()) {
-            Ok(request) => request,
-            Err(error) => {
-                warn!(
-                    %error,
-                    message = %hex::encode(message.payload),
-                    "Failed to decode segment headers request"
-                );
-                return;
-            }
-        };
-    trace!(?request, "Segment headers request");
-
-    let response: <ClusterControllerSegmentHeadersRequest as GenericRequest>::Response =
-        match node_client
-            .segment_headers(request.segment_indices.clone())
-            .await
-        {
-            Ok(segment_headers) => segment_headers,
-            Err(error) => {
-                warn!(
-                    %error,
-                    segment_indices = ?request.segment_indices,
-                    "Failed to get segment headers"
-                );
-                return;
-            }
-        };
-
-    if let Err(error) = nats_client
-        .publish(reply_subject, response.encode().into())
-        .await
-    {
-        warn!(%error, "Failed to send segment headers response");
-    }
 }
 
 async fn find_piece_responder(
     nats_client: &NatsClient,
     farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
-    // Initialize with pending future so it never ends
-    let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
-        Box::pin(pending()) as Pin<Box<_>>,
-    ]);
-
-    let subscription = nats_client
-        .queue_subscribe(
-            ClusterControllerFindPieceInCacheRequest::SUBJECT,
-            "subspace.controller".to_string(),
+    nats_client
+        .request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |request: ClusterControllerFindPieceInCacheRequest| async move {
+                Some(farmer_cache.find_piece(request.piece_index).await)
+            },
         )
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to find piece requests: {error}"))?;
-    debug!(?subscription, "Find piece requests subscription");
-    let mut subscription = subscription.fuse();
-
-    loop {
-        select! {
-            maybe_message = subscription.next() => {
-                let Some(message) = maybe_message else {
-                    break;
-                };
-
-                // Create background task for concurrent processing
-                processing.push(Box::pin(process_find_piece_request(
-                    nats_client,
-                    farmer_cache,
-                    message,
-                )));
-            }
-            _ = processing.next() => {
-                // Nothing to do here
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn process_find_piece_request(
-    nats_client: &NatsClient,
-    farmer_cache: &FarmerCache,
-    message: Message,
-) {
-    let Some(reply_subject) = message.reply else {
-        return;
-    };
-
-    let request =
-        match ClusterControllerFindPieceInCacheRequest::decode(&mut message.payload.as_ref()) {
-            Ok(request) => request,
-            Err(error) => {
-                warn!(
-                    %error,
-                    message = %hex::encode(message.payload),
-                    "Failed to decode find piece request"
-                );
-                return;
-            }
-        };
-    trace!(?request, "Find piece request");
-
-    let maybe_retrieval_details: <ClusterControllerFindPieceInCacheRequest as GenericRequest>::Response =
-        farmer_cache.find_piece(request.piece_index).await;
-
-    if let Err(error) = nats_client
-        .publish(reply_subject, maybe_retrieval_details.encode().into())
-        .await
-    {
-        warn!(%error, "Failed to send find piece response");
-    }
 }
 
 async fn piece_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> anyhow::Result<()>
 where
     PG: PieceGetter + Sync,
 {
-    // Initialize with pending future so it never ends
-    let mut processing = FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
-        Box::pin(pending()) as Pin<Box<_>>,
-    ]);
-
-    let subscription = nats_client
-        .queue_subscribe(
-            ClusterControllerPieceRequest::SUBJECT,
-            "subspace.controller".to_string(),
+    nats_client
+        .request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |request: ClusterControllerPieceRequest| async move {
+                piece_getter
+                    .get_piece(request.piece_index)
+                    .await
+                    .inspect_err(
+                        |error| warn!(%error, piece_index = %request.piece_index, "Failed to get piece"),
+                    )
+                    .ok()
+            },
         )
         .await
-        .map_err(|error| anyhow!("Failed to subscribe to piece requests: {error}"))?;
-    debug!(?subscription, "Piece requests subscription");
-    let mut subscription = subscription.fuse();
-
-    loop {
-        select! {
-            maybe_message = subscription.next() => {
-                let Some(message) = maybe_message else {
-                    break;
-                };
-
-                // Create background task for concurrent processing
-                processing.push(Box::pin(process_piece_request(
-                    nats_client,
-                    piece_getter,
-                    message,
-                )));
-            }
-            _ = processing.next() => {
-                // Nothing to do here
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn process_piece_request<PG>(nats_client: &NatsClient, piece_getter: &PG, message: Message)
-where
-    PG: PieceGetter,
-{
-    let Some(reply_subject) = message.reply else {
-        return;
-    };
-
-    let request = match ClusterControllerPieceRequest::decode(&mut message.payload.as_ref()) {
-        Ok(request) => request,
-        Err(error) => {
-            warn!(
-                %error,
-                message = %hex::encode(message.payload),
-                "Failed to decode piece request"
-            );
-            return;
-        }
-    };
-    trace!(?request, "Piece request");
-
-    let maybe_piece: <ClusterControllerPieceRequest as GenericRequest>::Response =
-        match piece_getter.get_piece(request.piece_index).await {
-            Ok(maybe_piece) => maybe_piece,
-            Err(error) => {
-                warn!(
-                    %error,
-                    piece_index = %request.piece_index,
-                    "Failed to get piece"
-                );
-                return;
-            }
-        };
-
-    if let Err(error) = nats_client
-        .publish(reply_subject, maybe_piece.encode().into())
-        .await
-    {
-        warn!(%error, "Failed to send get piece response");
-    }
 }
