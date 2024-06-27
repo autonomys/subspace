@@ -533,6 +533,12 @@ where
     PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
     PS::Error: Error,
 {
+    if !matches!(response, ClusterSectorPlottingProgress::SectorChunk(_)) {
+        trace!(?response, "Processing plotting response notification");
+    } else {
+        trace!("Processing plotting response notification (sector chunk)");
+    }
+
     match response {
         ClusterSectorPlottingProgress::Occupied => {
             debug!(%free_instance, "Instance was occupied, retrying #2");
