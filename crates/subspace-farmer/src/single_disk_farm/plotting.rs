@@ -156,8 +156,17 @@ where
                 loop {
                     select! {
                         sector_plotting_init_result = sector_plotting_init_fut => {
+                            let sector_plotting_fut = match sector_plotting_init_result {
+                                PlotSingleSectorResult::Scheduled(future) => future,
+                                PlotSingleSectorResult::Skipped => {
+                                    break;
+                                }
+                                PlotSingleSectorResult::FatalError(error) => {
+                                    return Err(error);
+                                }
+                            };
                             sectors_being_plotted.push_back(
-                                sector_plotting_init_result?.instrument(info_span!("", %sector_index))
+                                sector_plotting_fut.instrument(info_span!("", %sector_index))
                             );
                             break;
                         }
@@ -251,6 +260,12 @@ where
     }
 }
 
+enum PlotSingleSectorResult<F> {
+    Scheduled(F),
+    Skipped,
+    FatalError(PlottingError),
+}
+
 struct SectorPlottingResult {
     sector_index: SectorIndex,
     sector_metadata: SectorMetadataChecksummed,
@@ -263,7 +278,7 @@ async fn plot_single_sector<'a, NC>(
     sector_plotting_options: &'a SectorPlottingOptions<'a, NC>,
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
-) -> Result<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a, PlottingError>
+) -> PlotSingleSectorResult<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a>
 where
     NC: NodeClient,
 {
@@ -311,21 +326,35 @@ where
     // farmer app info to return old data, meaning we're replotting exactly the same sector that
     // just expired.
     let farmer_app_info = loop {
-        let farmer_app_info = node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
+        let farmer_app_info = match node_client.farmer_app_info().await {
+            Ok(farmer_app_info) => farmer_app_info,
+            Err(error) => {
+                return PlotSingleSectorResult::FatalError(PlottingError::FailedToGetFarmerInfo {
+                    error,
+                });
+            }
+        };
 
         if let Some(old_sector_metadata) = &maybe_old_sector_metadata {
             if farmer_app_info.protocol_info.history_size <= old_sector_metadata.history_size {
-                debug!(
-                    current_history_size = %farmer_app_info.protocol_info.history_size,
-                    old_sector_history_size = %old_sector_metadata.history_size,
-                    "Latest protocol history size is not yet newer than old sector history \
-                    size, wait for a bit and try again"
-                );
-                tokio::time::sleep(FARMER_APP_INFO_RETRY_INTERVAL).await;
-                continue;
+                if farmer_app_info.protocol_info.min_sector_lifetime == HistorySize::ONE {
+                    debug!(
+                        current_history_size = %farmer_app_info.protocol_info.history_size,
+                        old_sector_history_size = %old_sector_metadata.history_size,
+                        "Latest protocol history size is not yet newer than old sector history \
+                        size, wait for a bit and try again"
+                    );
+                    tokio::time::sleep(FARMER_APP_INFO_RETRY_INTERVAL).await;
+                    continue;
+                } else {
+                    debug!(
+                        current_history_size = %farmer_app_info.protocol_info.history_size,
+                        old_sector_history_size = %old_sector_metadata.history_size,
+                        "Skipped sector plotting, likely redundant due to redundant archived \
+                        segment notification"
+                    );
+                    return PlotSingleSectorResult::Skipped;
+                }
             }
         }
 
@@ -352,7 +381,7 @@ where
         info!("Plotting sector ({progress:.2}% complete)");
     }
 
-    Ok(async move {
+    PlotSingleSectorResult::Scheduled(async move {
         let plotted_sector = loop {
             match plot_single_sector_internal(
                 sector_index,

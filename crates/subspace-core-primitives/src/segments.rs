@@ -239,6 +239,9 @@ impl From<SegmentIndex> for HistorySize {
 }
 
 impl HistorySize {
+    /// History size of one
+    pub const ONE: Self = Self(NonZeroU64::new(1).expect("Not zero; qed"));
+
     /// Create new instance.
     pub const fn new(value: NonZeroU64) -> Self {
         Self(value)
