@@ -182,6 +182,7 @@ pub struct StreamResponseSubscriber<Response> {
     #[deref]
     #[deref_mut]
     subscriber: Subscriber,
+    response_subject: String,
     buffered_responses: Option<GenericStreamResponses<Response>>,
     next_index: u32,
     acknowledgement_sender: mpsc::UnboundedSender<(String, u32)>,
@@ -217,6 +218,7 @@ where
                                 actual_index = %responses.index(),
                                 expected_index = %*projected.next_index,
                                 message_type = %type_name::<Response>(),
+                                response_subject = %projected.response_subject,
                                 "Received unexpected response stream index, aborting stream"
                             );
 
@@ -235,6 +237,7 @@ where
                                     %error,
                                     %index,
                                     message_type = %type_name::<Response>(),
+                                    response_subject = %projected.response_subject,
                                     %ack_subject,
                                     "Failed to send acknowledgement for stream response"
                                 );
@@ -252,6 +255,7 @@ where
                         warn!(
                             %error,
                             response_type = %type_name::<Response>(),
+                            response_subject = %projected.response_subject,
                             message = %hex::encode(message.payload),
                             "Failed to decode stream response"
                         );
@@ -267,19 +271,37 @@ where
 }
 
 impl<Response> StreamResponseSubscriber<Response> {
-    fn new(subscriber: Subscriber, nats_client: NatsClient) -> Self {
+    fn new(subscriber: Subscriber, response_subject: String, nats_client: NatsClient) -> Self {
         let (acknowledgement_sender, mut acknowledgement_receiver) =
             mpsc::unbounded::<(String, u32)>();
 
         let background_task = AsyncJoinOnDrop::new(
-            tokio::spawn(async move {
-                while let Some((subject, index)) = acknowledgement_receiver.next().await {
-                    if let Err(error) = nats_client
-                        .publish(subject.clone(), index.to_le_bytes().to_vec().into())
-                        .await
-                    {
-                        warn!(%error, %subject, %index, "Failed to send acknowledgement");
-                        return;
+            tokio::spawn({
+                let response_subject = response_subject.clone();
+
+                async move {
+                    while let Some((subject, index)) = acknowledgement_receiver.next().await {
+                        warn!(
+                            %subject,
+                            %index,
+                            %response_subject,
+                            %index,
+                            "Sending stream response acknowledgement"
+                        );
+                        if let Err(error) = nats_client
+                            .publish(subject.clone(), index.to_le_bytes().to_vec().into())
+                            .await
+                        {
+                            warn!(
+                                %error,
+                                %subject,
+                                %index,
+                                %response_subject,
+                                %index,
+                                "Failed to send stream response acknowledgement"
+                            );
+                            return;
+                        }
                     }
                 }
             }),
@@ -287,6 +309,7 @@ impl<Response> StreamResponseSubscriber<Response> {
         );
 
         Self {
+            response_subject,
             subscriber,
             buffered_responses: None,
             next_index: 0,
@@ -631,17 +654,25 @@ impl NatsClient {
             .client
             .subscribe(stream_request.response_subject.clone())
             .await?;
-        debug!(request_type = %type_name::<Request>(), ?subscriber, "Stream request subscription");
+
+        let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
+        debug!(
+            request_type = %type_name::<Request>(),
+            %stream_request_subject,
+            ?subscriber,
+            "Stream request subscription"
+        );
 
         self.inner
             .client
-            .publish(
-                subject_with_instance(Request::SUBJECT, instance),
-                stream_request.encode().into(),
-            )
+            .publish(stream_request_subject, stream_request.encode().into())
             .await?;
 
-        Ok(StreamResponseSubscriber::new(subscriber, self.clone()))
+        Ok(StreamResponseSubscriber::new(
+            subscriber,
+            stream_request.response_subject,
+            self.clone(),
+        ))
     }
 
     /// Helper method to send responses to requests initiated with [`Self::stream_request`]
