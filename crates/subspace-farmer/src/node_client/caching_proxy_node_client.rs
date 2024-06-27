@@ -140,7 +140,13 @@ where
             let mut slot_info_subscription = client.subscribe_slot_info().await?;
 
             async move {
+                let mut last_slot_number = None;
                 while let Some(slot_info) = slot_info_subscription.next().await {
+                    if last_slot_number == Some(slot_info.slot_number) {
+                        continue;
+                    }
+                    last_slot_number.replace(slot_info.slot_number);
+
                     if let Err(error) = slot_info_sender.send(Some(slot_info)) {
                         warn!(%error, "Failed to proxy slot info notification");
                         return;
@@ -156,20 +162,18 @@ where
             let segment_headers = Arc::clone(&segment_headers);
 
             async move {
+                let mut last_archived_segment_index = None;
                 while let Some(archived_segment_header) =
                     archived_segments_notifications.next().await
                 {
+                    let segment_index = archived_segment_header.segment_index();
                     trace!(
                         ?archived_segment_header,
                         "New archived archived segment header notification"
                     );
 
-                    segment_headers.write().await.push(archived_segment_header);
-
                     while let Err(error) = client
-                        .acknowledge_archived_segment_header(
-                            archived_segment_header.segment_index(),
-                        )
+                        .acknowledge_archived_segment_header(segment_index)
                         .await
                     {
                         warn!(
@@ -177,6 +181,13 @@ where
                             "Failed to acknowledge archived segment header, trying again"
                         );
                     }
+
+                    if last_archived_segment_index == Some(segment_index) {
+                        continue;
+                    }
+                    last_archived_segment_index.replace(segment_index);
+
+                    segment_headers.write().await.push(archived_segment_header);
 
                     if let Err(error) =
                         archived_segment_headers_sender.send(Some(archived_segment_header))

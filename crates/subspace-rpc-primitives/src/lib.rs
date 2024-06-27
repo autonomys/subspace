@@ -107,7 +107,7 @@ impl Decode for FarmerAppInfo {
 }
 
 /// Information about new slot that just arrived
-#[derive(Debug, Copy, Clone, Encode, Decode, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlotInfo {
     /// Slot number
