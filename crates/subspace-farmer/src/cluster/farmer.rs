@@ -17,7 +17,6 @@ use crate::farm::{
 };
 use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
-use async_nats::Message;
 use async_trait::async_trait;
 use event_listener_primitives::Bag;
 use futures::channel::mpsc;
@@ -689,92 +688,30 @@ async fn read_piece_responder(
     farms_details
         .iter()
         .map(|farm_details| async move {
-            // Initialize with pending future so it never ends
-            let mut processing =
-                FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([
-                    Box::pin(pending()) as Pin<Box<_>>,
-                ]);
-            let subscription = nats_client
-                .queue_subscribe(
-                    ClusterFarmerReadPieceRequest::SUBJECT
-                        .replace('*', &farm_details.farm_id_string),
-                    farm_details.farm_id_string.clone(),
+            let process = |ClusterFarmerReadPieceRequest {
+                               sector_index,
+                               piece_offset,
+                           }| async move {
+                Some(
+                    farm_details
+                        .piece_reader
+                        .read_piece(sector_index, piece_offset)
+                        .await
+                        .map_err(|error| error.to_string()),
+                )
+            };
+
+            nats_client
+                .generic_subscribe_responder(
+                    "read piece",
+                    Some(farm_details.farm_id_string.as_str()),
+                    Some(farm_details.farm_id_string.clone()),
+                    process,
                 )
                 .await
-                .map_err(|error| {
-                    anyhow!(
-                        "Failed to subscribe to read piece requests for farm {}: {}",
-                        farm_details.farm_id,
-                        error
-                    )
-                })?;
-            debug!(?subscription, "Read piece requests subscription");
-            let mut subscription = subscription.fuse();
-
-            loop {
-                select! {
-                    maybe_message = subscription.next() => {
-                        let Some(message) = maybe_message else {
-                            break;
-                        };
-
-                        // Create background task for concurrent processing
-                        processing.push(Box::pin(process_read_piece_request(
-                            nats_client,
-                            farm_details,
-                            message,
-                        )));
-                    }
-                    _ = processing.next() => {
-                        // Nothing to do here
-                    }
-                }
-            }
-
-            Ok(())
         })
         .collect::<FuturesUnordered<_>>()
         .next()
         .await
         .ok_or_else(|| anyhow!("No farms"))?
-}
-
-async fn process_read_piece_request(
-    nats_client: &NatsClient,
-    farm_details: &FarmDetails,
-    message: Message,
-) {
-    let Some(reply_subject) = message.reply else {
-        return;
-    };
-
-    let ClusterFarmerReadPieceRequest {
-        sector_index,
-        piece_offset,
-    } = match ClusterFarmerReadPieceRequest::decode(&mut message.payload.as_ref()) {
-        Ok(request) => request,
-        Err(error) => {
-            warn!(
-                %error,
-                message = %hex::encode(message.payload),
-                "Failed to decode read piece request"
-            );
-            return;
-        }
-    };
-
-    trace!(%sector_index, %piece_offset, %reply_subject, "Read piece request");
-
-    let response: <ClusterFarmerReadPieceRequest as GenericRequest>::Response = farm_details
-        .piece_reader
-        .read_piece(sector_index, piece_offset)
-        .await
-        .map_err(|error| error.to_string());
-
-    if let Err(error) = nats_client
-        .publish(reply_subject, response.encode().into())
-        .await
-    {
-        warn!(%error, "Failed to send read piece response");
-    }
 }

@@ -14,18 +14,21 @@
 //! * broadcasts and corresponding subscriptions (for example slot info broadcast)
 
 use crate::utils::AsyncJoinOnDrop;
+use anyhow::anyhow;
 use async_nats::{
-    Client, ConnectOptions, HeaderMap, HeaderValue, PublishError, RequestError, RequestErrorKind,
-    Subject, SubscribeError, Subscriber, ToServerAddrs,
+    Client, ConnectOptions, HeaderMap, HeaderValue, Message, PublishError, RequestError,
+    RequestErrorKind, Subject, SubscribeError, Subscriber, ToServerAddrs,
 };
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::stream::FuturesUnordered;
+use futures::{select, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
+use std::future::{pending, Future};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -839,6 +842,110 @@ impl NatsClient {
             subscriber,
             _phantom: PhantomData,
         })
+    }
+
+    /// Spawn a queue responder task that will process requests from the given subject
+    /// using the provided processing function.
+    ///
+    /// This will create a subscription on the subject for the given instance (if provided)
+    /// and queue group. Incoming messages will be deserialized as the request type `GR`
+    /// and passed to the `process` function to produce a response of type `GR::Response`.
+    /// The response will then be sent back on the reply subject from the original request.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - A label to use for logging
+    /// * `nats_client` - The NATS client to use for the subscription and publishing responses
+    /// * `instance` - Optional instance name to use in place of the `*` in the subject
+    /// * `group` - The queue group name for the subscription
+    /// * `process` - The function to call with the decoded request to produce a response
+    pub async fn generic_subscribe_responder<Request, F, OP>(
+        &self,
+        label: &'static str,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+        process: OP,
+    ) -> anyhow::Result<()>
+    where
+        Request: GenericRequest,
+        F: Future<Output = Option<Request::Response>> + Send,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        // Initialize with pending future so it never ends
+        let mut processing =
+            FuturesUnordered::<Pin<Box<dyn Future<Output = ()> + Send>>>::from_iter([Box::pin(
+                pending(),
+            )
+                as Pin<Box<_>>]);
+
+        let subject = subject_with_instance(Request::SUBJECT, instance);
+        let subscription = if let Some(queue_group) = queue_group {
+            self.inner
+                .client
+                .queue_subscribe(subject, queue_group)
+                .await
+        } else {
+            self.inner.client.subscribe(subject).await
+        }
+        .map_err(|error| {
+            anyhow!("Failed to subscribe to {label} requests for  {instance:?}: {error}")
+        })?;
+
+        debug!(%label, "requests subscription");
+        let mut subscription = subscription.fuse();
+
+        loop {
+            select! {
+                maybe_message = subscription.next() => {
+                    let Some(message) = maybe_message else {
+                        break;
+                    };
+
+                    // Create background task for concurrent processing
+                    processing.push(Box::pin(self.process_generic_subscribe_request(
+                        label,
+                        // nats_client,
+                        message,
+                        &process,
+                    )));
+                }
+                _ = processing.next() => {
+                    // Nothing to do here
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_generic_subscribe_request<Request, F, OP>(
+        &self,
+        label: &'static str,
+        message: Message,
+        process: OP,
+    ) where
+        Request: GenericRequest,
+        F: Future<Output = Option<Request::Response>> + Send,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        let Some(reply_subject) = message.reply else {
+            return;
+        };
+
+        let request = match Request::decode(&mut message.payload.as_ref()) {
+            Ok(request) => request,
+            Err(error) => {
+                warn!(%label, %error, message = %hex::encode(message.payload), "Failed to decode request");
+                return;
+            }
+        };
+
+        trace!(?request, %reply_subject, "{label} request");
+        if let Some(response) = process(request).await
+            && let Err(error) = self.publish(reply_subject, response.encode().into()).await
+        {
+            warn!(%label, %error, "Failed to send response");
+        }
     }
 }
 
