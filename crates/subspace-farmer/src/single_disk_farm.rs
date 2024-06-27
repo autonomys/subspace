@@ -93,7 +93,7 @@ const_assert!(mem::size_of::<usize>() >= mem::size_of::<u64>());
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
-const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
+const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_mins(10);
 
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
 #[derive(Debug)]
