@@ -10,6 +10,7 @@ use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
 use std::error::Error;
+use std::fmt;
 use std::future::pending;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -39,7 +40,6 @@ struct Handlers {
 }
 
 /// CPU plotter
-#[derive(Debug)]
 pub struct CpuPlotter<PG, PosTable> {
     piece_getter: PG,
     downloading_semaphore: Arc<Semaphore>,
@@ -53,6 +53,13 @@ pub struct CpuPlotter<PG, PosTable> {
     _background_tasks: AsyncJoinOnDrop<()>,
     abort_early: Arc<AtomicBool>,
     _phantom: PhantomData<PosTable>,
+}
+
+impl<PG, PosTable> fmt::Debug for CpuPlotter<PG, PosTable> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CpuPlotter").finish_non_exhaustive()
+    }
 }
 
 impl<PG, PosTable> Drop for CpuPlotter<PG, PosTable> {
@@ -73,18 +80,15 @@ where
         Ok(self.downloading_semaphore.available_permits() > 0)
     }
 
-    async fn plot_sector<PS>(
+    async fn plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        mut progress_sender: PS,
-    ) where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        mut progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) {
         let start = Instant::now();
 
         // Done outside the future below as a backpressure, ensuring that it is not possible to
@@ -129,19 +133,15 @@ where
         .await
     }
 
-    async fn try_plot_sector<PS>(
+    async fn try_plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         replotting: bool,
-        progress_sender: PS,
-    ) -> bool
-    where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) -> bool {
         let start = Instant::now();
 
         let Ok(downloading_permit) = Arc::clone(&self.downloading_semaphore).try_acquire_owned()

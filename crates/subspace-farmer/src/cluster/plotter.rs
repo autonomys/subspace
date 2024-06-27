@@ -65,7 +65,7 @@ impl ClusterPlotterId {
 struct ClusterPlotterFreeInstanceRequest;
 
 impl GenericRequest for ClusterPlotterFreeInstanceRequest {
-    const SUBJECT: &'static str = "subspace.plotter.free-instance";
+    const SUBJECT: &'static str = "subspace.plotter.*.free-instance";
     /// Might be `None` if instance had to respond, but turned out it was fully occupied already
     type Response = Option<String>;
 }
@@ -127,6 +127,7 @@ pub struct ClusterPlotter {
     nats_client: NatsClient,
     handlers: Arc<Handlers>,
     tasks_sender: mpsc::Sender<AsyncJoinOnDrop<()>>,
+    modern: bool,
     _background_tasks: AsyncJoinOnDrop<()>,
 }
 
@@ -149,18 +150,15 @@ impl Plotter for ClusterPlotter {
                 .is_some())
     }
 
-    async fn plot_sector<PS>(
+    async fn plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         _replotting: bool,
-        mut progress_sender: PS,
-    ) where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        mut progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) {
         let start = Instant::now();
 
         // Done outside the future below as a backpressure, ensuring that it is not possible to
@@ -204,19 +202,15 @@ impl Plotter for ClusterPlotter {
         .await
     }
 
-    async fn try_plot_sector<PS>(
+    async fn try_plot_sector(
         &self,
         public_key: PublicKey,
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
         _replotting: bool,
-        progress_sender: PS,
-    ) -> bool
-    where
-        PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
-        PS::Error: Error,
-    {
+        progress_sender: mpsc::Sender<SectorPlottingProgress>,
+    ) -> bool {
         let start = Instant::now();
 
         let Ok(sector_encoding_permit) =
@@ -246,6 +240,7 @@ impl ClusterPlotter {
         nats_client: NatsClient,
         sector_encoding_concurrency: NonZeroUsize,
         retry_backoff_policy: ExponentialBackoff,
+        modern: bool,
     ) -> Self {
         let sector_encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
 
@@ -283,6 +278,7 @@ impl ClusterPlotter {
             nats_client,
             handlers: Arc::default(),
             tasks_sender,
+            modern,
             _background_tasks: background_tasks,
         }
     }
@@ -321,11 +317,13 @@ impl ClusterPlotter {
         retry_backoff_policy.reset();
 
         // Try to get plotter instance here first as a backpressure measure
+        let modern = self.modern;
         let free_plotter_instance_fut = get_free_plotter_instance(
             &self.nats_client,
             &progress_updater,
             &mut progress_sender,
             &mut retry_backoff_policy,
+            modern,
         );
         let mut maybe_free_instance = free_plotter_instance_fut.await;
         if maybe_free_instance.is_none() {
@@ -347,6 +345,7 @@ impl ClusterPlotter {
                             &progress_updater,
                             &mut progress_sender,
                             &mut retry_backoff_policy,
+                            modern,
                         );
                         let Some(free_instance) = free_plotter_instance_fut.await else {
                             break;
@@ -461,6 +460,7 @@ async fn get_free_plotter_instance<PS>(
     progress_updater: &ProgressUpdater,
     progress_sender: &mut PS,
     retry_backoff_policy: &mut ExponentialBackoff,
+    modern: bool,
 ) -> Option<String>
 where
     PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
@@ -468,7 +468,10 @@ where
 {
     loop {
         match nats_client
-            .request(&ClusterPlotterFreeInstanceRequest, None)
+            .request(
+                &ClusterPlotterFreeInstanceRequest,
+                Some(if modern { "modern" } else { "legacy" }),
+            )
             .await
         {
             Ok(Some(free_instance)) => {
@@ -677,17 +680,21 @@ impl ProgressUpdater {
 ///
 /// Implementation is using concurrency with multiple tokio tasks, but can be started multiple times
 /// per controller instance in order to parallelize more work across threads if needed.
-pub async fn plotter_service<P>(nats_client: &NatsClient, cpu_plotter: &P) -> anyhow::Result<()>
+pub async fn plotter_service<P>(
+    nats_client: &NatsClient,
+    plotter: &P,
+    modern: bool,
+) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
 {
     let plotter_id = ClusterPlotterId::new();
 
     select! {
-        result = free_instance_responder(&plotter_id, nats_client, cpu_plotter).fuse() => {
+        result = free_instance_responder(&plotter_id, nats_client, plotter, modern).fuse() => {
             result
         }
-        result = plot_sector_responder(&plotter_id, nats_client, cpu_plotter).fuse() => {
+        result = plot_sector_responder(&plotter_id, nats_client, plotter).fuse() => {
             result
         }
     }
@@ -696,19 +703,21 @@ where
 async fn free_instance_responder<P>(
     plotter_id: &ClusterPlotterId,
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
+    modern: bool,
 ) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
 {
     loop {
-        while !cpu_plotter.has_free_capacity().await.unwrap_or_default() {
+        while !plotter.has_free_capacity().await.unwrap_or_default() {
             tokio::time::sleep(FREE_CAPACITY_CHECK_INTERVAL).await;
         }
 
         let mut subscription = nats_client
             .queue_subscribe(
-                ClusterPlotterFreeInstanceRequest::SUBJECT,
+                ClusterPlotterFreeInstanceRequest::SUBJECT
+                    .replace('*', if modern { "modern" } else { "legacy" }),
                 "subspace.plotter".to_string(),
             )
             .await
@@ -722,7 +731,7 @@ where
 
             debug!(%reply_subject, "Free instance request");
 
-            let has_free_capacity = cpu_plotter.has_free_capacity().await.unwrap_or_default();
+            let has_free_capacity = plotter.has_free_capacity().await.unwrap_or_default();
             let response: <ClusterPlotterFreeInstanceRequest as GenericRequest>::Response =
                 has_free_capacity.then(|| plotter_id.to_string());
 
@@ -745,7 +754,7 @@ where
 async fn plot_sector_responder<P>(
     plotter_id: &ClusterPlotterId,
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
 ) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
@@ -773,7 +782,7 @@ where
                 // Create background task for concurrent processing
                 processing.push(Box::pin(process_plot_sector_request(
                     nats_client,
-                    cpu_plotter,
+                    plotter,
                     message,
                 )));
             }
@@ -788,7 +797,7 @@ where
 
 async fn process_plot_sector_request<P>(
     nats_client: &NatsClient,
-    cpu_plotter: &P,
+    plotter: &P,
     request: StreamRequest<ClusterPlotterPlotSectorRequest>,
 ) where
     P: Plotter,
@@ -810,7 +819,7 @@ async fn process_plot_sector_request<P>(
 
         let (progress_sender, mut progress_receiver) = mpsc::channel(1);
 
-        if !cpu_plotter
+        if !plotter
             .try_plot_sector(
                 public_key,
                 sector_index,
