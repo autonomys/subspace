@@ -142,7 +142,9 @@ where
             async move {
                 let mut last_slot_number = None;
                 while let Some(slot_info) = slot_info_subscription.next().await {
-                    if last_slot_number == Some(slot_info.slot_number) {
+                    if let Some(last_slot_number) = last_slot_number
+                        && last_slot_number >= slot_info.slot_number
+                    {
                         continue;
                     }
                     last_slot_number.replace(slot_info.slot_number);
@@ -182,7 +184,9 @@ where
                         );
                     }
 
-                    if last_archived_segment_index == Some(segment_index) {
+                    if let Some(last_archived_segment_index) = last_archived_segment_index
+                        && last_archived_segment_index >= segment_index
+                    {
                         continue;
                     }
                     last_archived_segment_index.replace(segment_index);

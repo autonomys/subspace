@@ -306,7 +306,9 @@ impl NodeClient for ClusterNodeClient {
                 move |broadcast| {
                     let slot_info = broadcast.slot_info;
 
-                    let maybe_slot_info = if last_slot_number == Some(slot_info.slot_number) {
+                    let maybe_slot_info = if let Some(last_slot_number) = last_slot_number
+                        && last_slot_number >= slot_info.slot_number
+                    {
                         None
                     } else {
                         last_slot_number.replace(slot_info.slot_number);
@@ -377,14 +379,16 @@ impl NodeClient for ClusterNodeClient {
                     let archived_segment_header = broadcast.archived_segment_header;
                     let segment_index = archived_segment_header.segment_index();
 
-                    let maybe_archived_segment_header =
-                        if last_archived_segment_index == Some(segment_index) {
-                            None
-                        } else {
-                            last_archived_segment_index.replace(segment_index);
+                    let maybe_archived_segment_header = if let Some(last_archived_segment_index) =
+                        last_archived_segment_index
+                        && last_archived_segment_index >= segment_index
+                    {
+                        None
+                    } else {
+                        last_archived_segment_index.replace(segment_index);
 
-                            Some(archived_segment_header)
-                        };
+                        Some(archived_segment_header)
+                    };
 
                     async move { maybe_archived_segment_header }
                 }
