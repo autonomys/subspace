@@ -23,6 +23,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use thiserror::Error;
+use tokio::task;
 use tracing::{debug, info, warn};
 
 /// Disk plot cache open error
@@ -255,7 +256,7 @@ impl DiskPlotCache {
         let cached_pieces = Arc::clone(&self.cached_pieces);
         let key = key.clone();
 
-        let read_fut = tokio::task::spawn_blocking(move || {
+        let read_fn = move || {
             let mut element = BytesMut::zeroed(Self::element_size() as usize);
             match Self::read_piece_internal(&file, offset, &mut element) {
                 Ok(Some(_piece_index)) => {
@@ -272,11 +273,22 @@ impl DiskPlotCache {
                     None
                 }
             }
-        });
+        };
+        // TODO: On Windows spawning blocking task that allows concurrent reads causes huge memory
+        //  usage. No idea why it happens, but not spawning anything at all helps for some reason.
+        //  Someone at some point should figure it out and fix, but it will probably be not me
+        //  (Nazar).
+        //  See https://github.com/subspace/subspace/issues/2813 and linked forum post for details.
+        //  This TODO exists in multiple files
+        if cfg!(windows) {
+            task::block_in_place(read_fn)
+        } else {
+            let read_fut = task::spawn_blocking(read_fn);
 
-        AsyncJoinOnDrop::new(read_fut, false)
-            .await
-            .unwrap_or_default()
+            AsyncJoinOnDrop::new(read_fut, false)
+                .await
+                .unwrap_or_default()
+        }
     }
 
     fn read_piece_internal(
