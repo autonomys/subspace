@@ -1514,6 +1514,9 @@ sp_api::decl_runtime_apis! {
         // TODO: change from `is_domain_runtime_updraded_since` to `is_domain_runtime_upgraded_since`
         //  before next network
         fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
+
+        /// Return domain sudo call.
+        fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

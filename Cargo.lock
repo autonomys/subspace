@@ -2748,6 +2748,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "pallet-balances",
+ "pallet-domain-sudo",
  "pallet-domains",
  "pallet-messenger",
  "pallet-sudo",

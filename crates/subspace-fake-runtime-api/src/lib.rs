@@ -305,6 +305,10 @@ sp_api::impl_runtime_apis! {
         fn is_domain_runtime_updraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
             unreachable!()
         }
+
+        fn domain_sudo_call(_domain_id: DomainId) -> Option<Vec<u8>> {
+            unreachable!()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

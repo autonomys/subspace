@@ -2623,6 +2623,11 @@ impl<T: Config> Pallet<T> {
     pub fn is_domain_registered(domain_id: DomainId) -> bool {
         DomainStakingSummary::<T>::contains_key(domain_id)
     }
+
+    /// Returns domain's sudo call if any.
+    pub fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>> {
+        DomainSudoCalls::<T>::get(domain_id).maybe_call
+    }
 }
 
 impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {

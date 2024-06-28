@@ -179,6 +179,7 @@ where
         sp_block_fees::InherentDataProvider,
         sp_executive::InherentDataProvider,
         sp_messenger::InherentDataProvider,
+        sp_domain_sudo::InherentDataProvider,
     );
 
     async fn create_inherent_data_providers(
@@ -229,11 +230,26 @@ where
                 maybe_updates: domain_chains_allowlist_update,
             });
 
+        // TODO: remove version check before next network
+        let domain_api_version = runtime_api
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)?
+            // safe to return default version as 1 since there will always be version 1.
+            .unwrap_or(1);
+
+        let maybe_domain_sudo_call = if domain_api_version >= 5 {
+            runtime_api.domain_sudo_call(consensus_block_hash, self.domain_id)?
+        } else {
+            None
+        };
+        let domain_sudo_call_inherent_provider =
+            sp_domain_sudo::InherentDataProvider::new(maybe_domain_sudo_call);
+
         Ok((
             timestamp_provider,
             storage_price_provider,
             runtime_upgrade_provider,
             messenger_inherent_provider,
+            domain_sudo_call_inherent_provider,
         ))
     }
 }

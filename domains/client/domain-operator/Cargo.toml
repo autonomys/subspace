@@ -51,6 +51,7 @@ evm-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/evm" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 pallet-domains = { version = "0.1.0", path = "../../../crates/pallet-domains" }
+pallet-domain-sudo = { version = "0.1.0", path = "../../pallets/domain-sudo" }
 pallet-messenger = { version = "0.1.0", path = "../../../domains/pallets/messenger" }
 pallet-sudo = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
 pallet-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
