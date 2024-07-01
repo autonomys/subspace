@@ -12,8 +12,8 @@ include = [
 ]
 
 [dependencies]
-domain-block-preprocessor = { version = "0.1.0",  path = "../../client/block-preprocessor" }
-fp-account = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier", rev = "0596ed9c113fa130d39e54ca3f21a3d0e0aed3be" }
+domain-block-preprocessor = { version = "0.1.0", path = "../../client/block-preprocessor" }
+fp-account = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier", rev = "4fc29bc287338e3eb51137f78916bc9e43acefde" }
 futures = "0.3.29"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 parking_lot = "0.12.2"
