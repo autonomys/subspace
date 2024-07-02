@@ -281,7 +281,7 @@ impl<Response> StreamResponseSubscriber<Response> {
 
                 async move {
                     while let Some((subject, index)) = acknowledgement_receiver.next().await {
-                        warn!(
+                        trace!(
                             %subject,
                             %index,
                             %response_subject,
