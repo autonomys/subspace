@@ -21,7 +21,7 @@ use tempfile::tempdir;
 const FAKE_SECTOR_SIZE: usize = 2 * 1024 * 1024;
 const TARGET_SECTOR_COUNT: SectorIndex = 5;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn basic() {
     let dummy_sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
         sector_index: 0,
