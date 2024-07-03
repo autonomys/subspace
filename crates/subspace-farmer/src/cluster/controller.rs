@@ -295,15 +295,30 @@ impl NodeClient for ClusterNodeClient {
     async fn subscribe_slot_info(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, NodeClientError> {
-        let last_slot_info_instance = Arc::clone(&self.last_slot_info_instance);
         let subscription = self
             .nats_client
             .subscribe_to_broadcasts::<ClusterControllerSlotInfoBroadcast>(None, None)
             .await?
-            .map(move |broadcast| {
-                *last_slot_info_instance.lock() = broadcast.instance;
+            .filter_map({
+                let mut last_slot_number = None;
+                let last_slot_info_instance = Arc::clone(&self.last_slot_info_instance);
 
-                broadcast.slot_info
+                move |broadcast| {
+                    let slot_info = broadcast.slot_info;
+
+                    let maybe_slot_info = if let Some(last_slot_number) = last_slot_number
+                        && last_slot_number >= slot_info.slot_number
+                    {
+                        None
+                    } else {
+                        last_slot_number.replace(slot_info.slot_number);
+                        *last_slot_info_instance.lock() = broadcast.instance;
+
+                        Some(slot_info)
+                    };
+
+                    async move { maybe_slot_info }
+                }
             });
 
         Ok(Box::pin(subscription))
@@ -357,7 +372,27 @@ impl NodeClient for ClusterNodeClient {
             .nats_client
             .subscribe_to_broadcasts::<ClusterControllerArchivedSegmentHeaderBroadcast>(None, None)
             .await?
-            .map(|broadcast| broadcast.archived_segment_header);
+            .filter_map({
+                let mut last_archived_segment_index = None;
+
+                move |broadcast| {
+                    let archived_segment_header = broadcast.archived_segment_header;
+                    let segment_index = archived_segment_header.segment_index();
+
+                    let maybe_archived_segment_header = if let Some(last_archived_segment_index) =
+                        last_archived_segment_index
+                        && last_archived_segment_index >= segment_index
+                    {
+                        None
+                    } else {
+                        last_archived_segment_index.replace(segment_index);
+
+                        Some(archived_segment_header)
+                    };
+
+                    async move { maybe_archived_segment_header }
+                }
+            });
 
         Ok(Box::pin(subscription))
     }
