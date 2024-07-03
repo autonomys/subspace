@@ -389,12 +389,26 @@ where
 
         let maybe_runtime_id =
             self.is_domain_runtime_updraded_at(domain_id, consensus_block_hash)?;
+
+        let consensus_runtime_api = self.consensus_client.runtime_api();
+        let api_version = consensus_runtime_api
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("DomainsApi not found at: {:?}", consensus_block_hash).into(),
+                ))
+            })?;
+
+        // Domains api must be atleast version 4
+        let should_include_domain_sudo_call = api_version >= 5;
         let domain_inherent_extrinsic_data_proof = DomainInherentExtrinsicDataProof::generate(
             &self.storage_key_provider,
             self.consensus_client.as_ref(),
             domain_id,
             consensus_block_hash,
             maybe_runtime_id,
+            should_include_domain_sudo_call,
         )?;
 
         let invalid_domain_extrinsics_root_proof = FraudProof {

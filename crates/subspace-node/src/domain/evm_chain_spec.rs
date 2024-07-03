@@ -21,7 +21,7 @@ use crate::domain::cli::{GenesisDomain, GenesisOperatorParams, SpecId};
 use domain_runtime_primitives::{AccountId20Converter, MultiAccountId};
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
-    SudoConfig, SystemConfig, WASM_BINARY,
+    SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
 use parity_scale_codec::Encode;
@@ -117,15 +117,9 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
     match spec_id {
-        SpecId::Dev => {
-            let accounts = get_dev_accounts();
-            testnet_genesis(
-                // Alith is Sudo
-                Some(accounts[0]),
-            )
-        }
-        SpecId::Gemini => testnet_genesis(None),
-        SpecId::DevNet => testnet_genesis(None),
+        SpecId::Dev => testnet_genesis(),
+        SpecId::Gemini => testnet_genesis(),
+        SpecId::DevNet => testnet_genesis(),
     }
 }
 
@@ -139,7 +133,7 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
     }
 }
 
-fn testnet_genesis(maybe_sudo_account: Option<AccountId>) -> RuntimeGenesisConfig {
+fn testnet_genesis() -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
@@ -148,9 +142,6 @@ fn testnet_genesis(maybe_sudo_account: Option<AccountId>) -> RuntimeGenesisConfi
 
     RuntimeGenesisConfig {
         system: SystemConfig::default(),
-        sudo: SudoConfig {
-            key: maybe_sudo_account,
-        },
         balances: BalancesConfig::default(),
         // this is set to default and chain_id will be set into genesis during the domain
         // instantiation on Consensus runtime.

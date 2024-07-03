@@ -401,6 +401,22 @@ where
             .get_open_channel_for_chain(self.client.info().best_hash, chain_id)
             .expect("Fail to get open channel for Chain")
     }
+
+    /// Construct an unsigned extrinsic that can be applied to the test runtime.
+    pub fn construct_unsigned_extrinsic(
+        &self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> UncheckedExtrinsicFor<Runtime>
+    where
+        Runtime:
+            frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+        Runtime::RuntimeCall:
+            Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+        BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    {
+        let function = function.into();
+        UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
+    }
 }
 
 /// A builder to create a [`DomainNode`].

@@ -284,7 +284,6 @@ where
                 runtime_api.is_within_tx_range(at, &extrinsic, &bundle_vrf_hash, tx_range)?;
 
             if !is_within_tx_range {
-                // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(
                     index as u32,
                 )));

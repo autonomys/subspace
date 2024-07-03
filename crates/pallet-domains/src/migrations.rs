@@ -13,7 +13,7 @@ impl<T: Config> UncheckedOnRuntimeUpgrade for VersionUncheckedMigrateV0ToV1<T> {
 
 pub(super) mod runtime_registry_instance_count_migration {
     use crate::pallet::{DomainRegistry, RuntimeRegistry as RuntimeRegistryV1};
-    use crate::Config;
+    use crate::{Config, DomainSudoCalls};
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
     use codec::{Decode, Encode};
@@ -22,7 +22,7 @@ pub(super) mod runtime_registry_instance_count_migration {
     use frame_system::pallet_prelude::BlockNumberFor;
     use sp_core::Get;
     use sp_domains::storage::RawGenesis;
-    use sp_domains::{RuntimeId, RuntimeObject as RuntimeObjectV1, RuntimeType};
+    use sp_domains::{DomainSudoCall, RuntimeId, RuntimeObject as RuntimeObjectV1, RuntimeType};
     use sp_version::RuntimeVersion;
 
     #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -50,15 +50,16 @@ pub(super) mod runtime_registry_instance_count_migration {
 
     // Return the number of domain instance that instantiated with the given runtime
     fn domain_instance_count<T: Config>(runtime_id: RuntimeId) -> (u32, u64) {
-        let mut read_count = 0;
+        let mut read_write_count = 0;
         (
             DomainRegistry::<T>::iter()
-                .filter(|(_, domain_obj)| {
-                    read_count += 1;
+                .filter(|(domain_id, domain_obj)| {
+                    read_write_count += 1;
+                    DomainSudoCalls::<T>::insert(domain_id, DomainSudoCall { maybe_call: None });
                     domain_obj.domain_config.runtime_id == runtime_id
                 })
                 .count() as u32,
-            read_count,
+            read_write_count,
         )
     }
 
@@ -66,7 +67,7 @@ pub(super) mod runtime_registry_instance_count_migration {
     pub(super) fn migrate_runtime_registry_storages<T: Config>() -> Weight {
         let (mut read_count, mut write_count) = (0, 0);
         RuntimeRegistry::<T>::drain().for_each(|(runtime_id, runtime_obj)| {
-            let (instance_count, domain_read_count) = domain_instance_count::<T>(runtime_id);
+            let (instance_count, domain_read_write_count) = domain_instance_count::<T>(runtime_id);
             RuntimeRegistryV1::<T>::set(
                 runtime_id,
                 Some(RuntimeObjectV1 {
@@ -83,9 +84,9 @@ pub(super) mod runtime_registry_instance_count_migration {
             );
 
             // domain_read_count + 1 since we read the old runtime registry as well
-            read_count += domain_read_count + 1;
-            // 1 write to new registry and 1 for old registry.
-            write_count += 2;
+            read_count += domain_read_write_count + 1;
+            // 1 write to new registry and 1 for old registry + domain_write_count to load Sudo Domain runtime call.
+            write_count += 2 + domain_read_write_count;
         });
 
         T::DbWeight::get().reads_writes(read_count, write_count)
@@ -100,13 +101,13 @@ mod tests {
     };
     use crate::pallet::RuntimeRegistry as RuntimeRegistryV1;
     use crate::tests::{new_test_ext, Balances, Test};
-    use crate::Config;
+    use crate::{Config, DomainSudoCalls};
     use domain_runtime_primitives::{AccountId20, AccountId20Converter};
     use frame_support::pallet_prelude::Weight;
     use frame_support::traits::Currency;
     use hex_literal::hex;
     use sp_domains::storage::RawGenesis;
-    use sp_domains::{OperatorAllowList, RuntimeObject as RuntimeObjectV1};
+    use sp_domains::{DomainId, OperatorAllowList, RuntimeObject as RuntimeObjectV1};
     use sp_runtime::traits::Convert;
     use sp_version::RuntimeVersion;
     use subspace_runtime_primitives::SSC;
@@ -194,13 +195,15 @@ mod tests {
                 crate::migrations::runtime_registry_instance_count_migration::migrate_runtime_registry_storages::<Test>();
             assert_eq!(
                 weights,
-                <Test as frame_system::Config>::DbWeight::get().reads_writes(2, 2),
+                <Test as frame_system::Config>::DbWeight::get().reads_writes(2, 3),
             );
 
             assert_eq!(
                 RuntimeRegistryV1::<Test>::get(0).unwrap().instance_count,
                 1
             );
+
+            assert!(DomainSudoCalls::<Test>::contains_key(DomainId::new(0)));
         });
     }
 }

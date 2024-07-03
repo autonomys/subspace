@@ -3412,6 +3412,131 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_domain_sudo_calls() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: GENESIS_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    produce_blocks!(ferdie, alice, 20).await.unwrap();
+
+    // close channel on Domain using domain sudo.
+    // Sudo on consensus chain will send a sudo call to domain
+    // once the call is executed in the domain,
+    // closing channel flow should happen and channel on both domain
+    // consensus chain should be closed.
+    let channel_id = alice
+        .get_open_channel_for_chain(ChainId::Consensus)
+        .unwrap();
+    let sudo_unsigned_extrinsic = alice
+        .construct_unsigned_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::close_channel {
+                chain_id: ChainId::Consensus,
+                channel_id,
+            },
+        ))
+        .encode();
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::send_domain_sudo_call {
+                    domain_id: GENESIS_DOMAIN_ID,
+                    call: sudo_unsigned_extrinsic,
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain to close channel");
+
+    // Wait until channel close
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_none()
+    })
+    .await
+    .unwrap();
+
+    // produce 150 more blocks to ensure nothing went wrong
+    produce_blocks!(ferdie, alice, 150).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_cross_domains_messages_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

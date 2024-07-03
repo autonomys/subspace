@@ -1127,8 +1127,8 @@ dependencies = [
  "pallet-balances",
  "pallet-block-fees",
  "pallet-domain-id",
+ "pallet-domain-sudo",
  "pallet-messenger",
- "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -1138,6 +1138,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
+ "sp-domain-sudo",
  "sp-domains",
  "sp-genesis-builder",
  "sp-inherents",
@@ -2668,6 +2669,7 @@ dependencies = [
  "sp-block-fees",
  "sp-blockchain",
  "sp-core",
+ "sp-domain-sudo",
  "sp-domains",
  "sp-executive",
  "sp-externalities",
@@ -2735,6 +2737,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "pallet-balances",
+ "pallet-domain-sudo",
  "pallet-domains",
  "pallet-messenger",
  "pallet-sudo",
@@ -3385,6 +3388,7 @@ dependencies = [
  "pallet-base-fee",
  "pallet-block-fees",
  "pallet-domain-id",
+ "pallet-domain-sudo",
  "pallet-ethereum",
  "pallet-evm",
  "pallet-evm-chain-id",
@@ -3393,7 +3397,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -3403,6 +3406,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
+ "sp-domain-sudo",
  "sp-domains",
  "sp-genesis-builder",
  "sp-inherents",
@@ -3439,6 +3443,7 @@ dependencies = [
  "pallet-base-fee",
  "pallet-block-fees",
  "pallet-domain-id",
+ "pallet-domain-sudo",
  "pallet-ethereum",
  "pallet-evm",
  "pallet-evm-chain-id",
@@ -3447,7 +3452,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -3457,6 +3461,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
+ "sp-domain-sudo",
  "sp-domains",
  "sp-genesis-builder",
  "sp-inherents",
@@ -7704,6 +7709,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-sudo"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domain-sudo",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -11849,6 +11867,16 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sp-runtime",
+]
+
+[[package]]
+name = "sp-domain-sudo"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-inherents",
 ]
 
 [[package]]

@@ -20,9 +20,7 @@ use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
 use crate::domain::cli::{GenesisDomain, GenesisOperatorParams, SpecId};
-use auto_id_domain_runtime::{
-    BalancesConfig, RuntimeGenesisConfig, SudoConfig, SystemConfig, WASM_BINARY,
-};
+use auto_id_domain_runtime::{BalancesConfig, RuntimeGenesisConfig, SystemConfig, WASM_BINARY};
 use domain_runtime_primitives::{AccountIdConverter, MultiAccountId};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
@@ -114,15 +112,9 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
     match spec_id {
-        SpecId::Dev => {
-            let accounts = get_dev_accounts();
-            testnet_genesis(
-                // Alice is Sudo
-                Some(accounts[0].clone()),
-            )
-        }
-        SpecId::Gemini => testnet_genesis(None),
-        SpecId::DevNet => testnet_genesis(None),
+        SpecId::Dev => testnet_genesis(),
+        SpecId::Gemini => testnet_genesis(),
+        SpecId::DevNet => testnet_genesis(),
     }
 }
 
@@ -141,12 +133,9 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
     }
 }
 
-fn testnet_genesis(maybe_sudo_account: Option<AccountId32>) -> RuntimeGenesisConfig {
+fn testnet_genesis() -> RuntimeGenesisConfig {
     RuntimeGenesisConfig {
         system: SystemConfig::default(),
-        sudo: SudoConfig {
-            key: maybe_sudo_account,
-        },
         balances: BalancesConfig::default(),
         ..Default::default()
     }

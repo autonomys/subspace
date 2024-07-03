@@ -743,6 +743,7 @@ where
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,
+            maybe_sudo_runtime_call,
         } = domain_inherent_extrinsic_data;
 
         let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
@@ -781,11 +782,22 @@ where
             ),
         };
 
+        let maybe_domain_sudo_call_extrinsic = match maybe_sudo_runtime_call {
+            None => None,
+            Some(call) => Some(
+                domain_stateless_runtime
+                    .construct_domain_sudo_extrinsic(call)
+                    .ok()
+                    .map(|call| call.encode())?,
+            ),
+        };
+
         Some(DomainInherentExtrinsic {
             domain_timestamp_extrinsic,
             maybe_domain_chain_allowlist_extrinsic,
             consensus_chain_byte_fee_extrinsic,
             maybe_domain_set_code_extrinsic,
+            maybe_domain_sudo_call_extrinsic,
         })
     }
 
@@ -843,6 +855,11 @@ where
                 domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
                 Ok(Ok(_))
             )),
+            StatelessDomainRuntimeCall::IsValidDomainSudoCall(encoded_extrinsic) => {
+                domain_stateless_runtime
+                    .is_valid_sudo_call(encoded_extrinsic)
+                    .ok()
+            }
         }
     }
 

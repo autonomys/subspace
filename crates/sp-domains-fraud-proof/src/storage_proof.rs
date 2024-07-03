@@ -8,7 +8,8 @@ use sp_domains::proof_provider_and_verifier::{
     StorageProofVerifier, VerificationError as StorageProofVerificationError,
 };
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainsDigestItem, OpaqueBundle, RuntimeId, RuntimeObject,
+    DomainAllowlistUpdates, DomainId, DomainSudoCall, DomainsDigestItem, OpaqueBundle, RuntimeId,
+    RuntimeObject,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -46,6 +47,7 @@ pub enum VerificationError {
     BlockFessStorageProof(StorageProofVerificationError),
     TransfersStorageProof(StorageProofVerificationError),
     ExtrinsicStorageProof(StorageProofVerificationError),
+    DomainSudoCallStorageProof(StorageProofVerificationError),
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
@@ -58,6 +60,7 @@ pub enum FraudProofStorageKeyRequest {
     BlockDigest,
     RuntimeRegistry(RuntimeId),
     DynamicCostOfStorage,
+    DomainSudoCall(DomainId),
 }
 
 impl FraudProofStorageKeyRequest {
@@ -73,6 +76,9 @@ impl FraudProofStorageKeyRequest {
             Self::BlockDigest => VerificationError::BlockDigestStorageProof(err),
             Self::RuntimeRegistry(_) => VerificationError::RuntimeRegistryStorageProof(err),
             Self::DynamicCostOfStorage => VerificationError::DynamicCostOfStorageStorageProof(err),
+            FraudProofStorageKeyRequest::DomainSudoCall(_) => {
+                VerificationError::DomainSudoCallStorageProof(err)
+            }
         }
     }
 }
@@ -227,13 +233,25 @@ impl<Block: BlockT> BasicStorageProof<Block> for BlockDigestProof {
     }
 }
 
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct DomainSudoCallStorageProof(StorageProof);
+
+impl_storage_proof!(DomainSudoCallStorageProof);
+impl<Block: BlockT> BasicStorageProof<Block> for DomainSudoCallStorageProof {
+    type StorageValue = DomainSudoCall;
+    type Key = DomainId;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest {
+        FraudProofStorageKeyRequest::DomainSudoCall(key)
+    }
+}
+
 // TODO: get the runtime id from pallet-domains since it won't change for a given domain
 // The domain runtime code with storage proof
 //
 // NOTE: usually we should use the parent consensus block hash to `generate` or `verify` the
 // domain runtime code because the domain's `set_code` extrinsic is always the last extrinsic
 // to execute thus the domain runtime code will take effect in the next domain block, in other
-// word the domain runtime code of the parent consensus block is the one used when construting
+// word the domain runtime code of the parent consensus block is the one used when constructing
 // the `ExecutionReceipt`.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct DomainRuntimeCodeProof(StorageProof);
@@ -395,6 +413,7 @@ pub struct DomainInherentExtrinsicDataProof {
     pub dynamic_cost_of_storage_proof: DynamicCostOfStorageProof,
     pub consensus_chain_byte_fee_proof: ConsensusTransactionByteFeeProof,
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
+    pub maybe_domain_sudo_call_proof: Option<DomainSudoCallStorageProof>,
 }
 
 impl DomainInherentExtrinsicDataProof {
@@ -410,6 +429,7 @@ impl DomainInherentExtrinsicDataProof {
         domain_id: DomainId,
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
+        should_include_domain_sudo_call: bool,
     ) -> Result<Self, GenerationError> {
         let timestamp_proof =
             TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
@@ -437,12 +457,29 @@ impl DomainInherentExtrinsicDataProof {
             domain_id,
             storage_key_provider,
         )?;
+
+        // Domain sudo call is optional since both Consensus and domain runtimes needs to have the functionality.
+        // If only consensus runtime is upgraded but not Domain, the storage proof will never contain the data
+        // Since sudo call extrinsic on Consensus will never go through.
+        // but it can still generate empty storage proof in this case
+        let maybe_domain_sudo_call_proof = if should_include_domain_sudo_call {
+            Some(DomainSudoCallStorageProof::generate(
+                proof_provider,
+                block_hash,
+                domain_id,
+                storage_key_provider,
+            )?)
+        } else {
+            None
+        };
+
         Ok(Self {
             timestamp_proof,
             maybe_domain_runtime_upgrade_proof,
             dynamic_cost_of_storage_proof,
             consensus_chain_byte_fee_proof,
             domain_chain_allowlist_proof,
+            maybe_domain_sudo_call_proof,
         })
     }
 
@@ -488,11 +525,26 @@ impl DomainInherentExtrinsicDataProof {
                 state_root,
             )?;
 
+        let domain_sudo_call =
+            if let Some(domain_sudo_call_proof) = &self.maybe_domain_sudo_call_proof {
+                Some(
+                    <DomainSudoCallStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
+                        domain_sudo_call_proof.clone(),
+                        domain_id,
+                        state_root,
+                    )?,
+                )
+            } else {
+                None
+            };
+
         Ok(DomainInherentExtrinsicData {
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,
+            maybe_sudo_runtime_call: domain_sudo_call
+                .and_then(|domain_sudo_call| domain_sudo_call.maybe_call),
         })
     }
 }

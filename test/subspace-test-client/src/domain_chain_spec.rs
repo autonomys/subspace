@@ -47,12 +47,9 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
     // (PUSH1 0x00 PUSH1 0x00 REVERT)
     let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
-    let alice = get_account_id_from_seed::<ecdsa::Public>("Alice");
-
     RuntimeGenesisConfig {
         system: evm_domain_test_runtime::SystemConfig::default(),
         balances: evm_domain_test_runtime::BalancesConfig::default(),
-        sudo: evm_domain_test_runtime::SudoConfig { key: Some(alice) },
         evm_chain_id: evm_domain_test_runtime::EVMChainIdConfig {
             chain_id: 100,
             ..Default::default()
