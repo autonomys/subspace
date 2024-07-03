@@ -15,28 +15,28 @@ include = [
 async-trait = { version = "0.1.57" }
 codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sc-executor-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sc-executor-common = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-domain-sudo = { version = "0.1.0", path = "../../primitives/domain-sudo" }
 sp-executive = { version = "0.1.0", path = "../../primitives/executive" }
-sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sp-externalities = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-inherents = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-version = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-version = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
 
 [dev-dependencies]
-sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-state-machine = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }

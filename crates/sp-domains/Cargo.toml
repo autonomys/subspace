@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 blake2 = { version = "0.10.6", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 hash-db = { version = "0.16.0", default-features = false }
 memory-db = { version = "0.32.0", default-features = false }
 hexlit = "0.5.5"
@@ -24,16 +24,16 @@ rand_chacha = { version = "0.3.1", default-features = false }
 rs_merkle = { version = "1.4.2", default-features = false }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 serde = { version = "1.0.203", default-features = false, features = ["alloc", "derive"] }
-sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-application-crypto = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-state-machine = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
-sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "98914adb256fed32c13ce251c5b4c9972af8ea0f" }
+sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-application-crypto = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-runtime-interface = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-state-machine = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-trie = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-version = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sp-weights = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 trie-db = { version = "0.29.1", default-features = false }
