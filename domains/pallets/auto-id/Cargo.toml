@@ -14,8 +14,10 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
+frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef", optional = true }
 frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+pallet-timestamp = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef", optional = true }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-auto-id = { version = "0.1.0", default-features = false, path = "../../primitives/auto-id" }
 sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
@@ -32,11 +34,23 @@ x509-parser = { version = "0.16.0" }
 default = ["std"]
 std = [
     "codec/std",
+    "frame-benchmarking?/std",
     "frame-support/std",
     "frame-system/std",
+    "pallet-timestamp",
     "scale-info/std",
     "sp-auto-id/std",
     "sp-core/std",
     "sp-runtime/std",
     "subspace-runtime-primitives/std",
+]
+try-runtime = ["frame-support/try-runtime"]
+runtime-benchmarks = [
+    "frame-benchmarking",
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "pallet-timestamp",
+    "pallet-timestamp/runtime-benchmarks",
+    "sp-auto-id/runtime-benchmarks",
 ]

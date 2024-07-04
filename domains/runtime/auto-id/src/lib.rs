@@ -567,6 +567,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
+        [pallet_auto_id, AutoId]
     );
 }
 
