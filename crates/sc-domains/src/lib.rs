@@ -134,7 +134,7 @@ impl<CBlock, DomainHeader, CClient> FPStorageKeyProvider<CBlock, DomainHeader, C
     }
 }
 
-impl<CBlock, DomainHeader, CClient> FraudProofStorageKeyProviderInstance
+impl<CBlock, DomainHeader, CClient> FraudProofStorageKeyProviderInstance<NumberFor<CBlock>>
     for FPStorageKeyProvider<CBlock, DomainHeader, CClient>
 where
     CBlock: BlockT,
@@ -142,7 +142,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: FraudProofApi<CBlock, DomainHeader>,
 {
-    fn storage_key(&self, req: FraudProofStorageKeyRequest) -> Option<Vec<u8>> {
+    fn storage_key(&self, req: FraudProofStorageKeyRequest<NumberFor<CBlock>>) -> Option<Vec<u8>> {
         let best_hash = self.consensus_client.info().best_hash;
         self.consensus_client
             .runtime_api()

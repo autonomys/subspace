@@ -424,7 +424,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn fraud_proof_storage_key(_req: FraudProofStorageKeyRequest) -> Vec<u8> {
+        fn fraud_proof_storage_key(_req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
             unreachable!()
         }
     }

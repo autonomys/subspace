@@ -339,6 +339,10 @@ pub enum VerificationError<DomainHash> {
     /// Failed to get bundle weight
     #[cfg_attr(feature = "thiserror", error("Failed to get bundle weight"))]
     FailedToGetBundleWeight,
+    #[cfg_attr(feature = "thiserror", error("Failed to extract xdm mmr proof"))]
+    FailedToGetExtractXdmMmrProof,
+    #[cfg_attr(feature = "thiserror", error("Failed to decode xdm mmr proof"))]
+    FailedToDecodeXdmMmrProof,
 }
 
 impl<DomainHash> From<storage_proof::VerificationError> for VerificationError<DomainHash> {
@@ -362,16 +366,16 @@ pub struct FraudProof<Number, Hash, DomainHeader: HeaderT, MmrHash> {
     /// or the required domain runtime code is available from the current runtime state.
     pub maybe_domain_runtime_code_proof: Option<DomainRuntimeCodeAt<Number, Hash, MmrHash>>,
     /// The specific fraud proof variant
-    pub proof: FraudProofVariant<Number, Hash, DomainHeader>,
+    pub proof: FraudProofVariant<Number, Hash, MmrHash, DomainHeader>,
 }
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProofVariant<Number, Hash, DomainHeader: HeaderT> {
+pub enum FraudProofVariant<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     InvalidStateTransition(InvalidStateTransitionProof),
     ValidBundle(ValidBundleProof<Number, Hash, DomainHeader>),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
-    InvalidBundles(InvalidBundlesProof<Number, Hash, DomainHeader>),
+    InvalidBundles(InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof),
     InvalidBlockFees(InvalidBlockFeesProof),
     InvalidTransfers(InvalidTransfersProof),
@@ -526,23 +530,33 @@ pub struct InvalidExtrinsicsRootProof {
     pub domain_inherent_extrinsic_data_proof: DomainInherentExtrinsicDataProof,
 }
 
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct MmrRootProof<Number, Hash, MmrHash> {
+    pub mmr_proof: ConsensusChainMmrLeafProof<Number, Hash, MmrHash>,
+    pub mmr_root_storage_proof: MmrRootStorageProof<MmrHash>,
+}
+
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesProofData<Number, Hash, DomainHeader: HeaderT> {
+pub enum InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     Extrinsic(StorageProof),
     Bundle(OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>),
     BundleAndExecution {
         bundle_with_proof: OpaqueBundleWithProof<Number, Hash, DomainHeader, Balance>,
         execution_proof: StorageProof,
     },
+    InvalidXDMProofData {
+        extrinsic_proof: StorageProof,
+        mmr_root_proof: Option<MmrRootProof<Number, Hash, MmrHash>>,
+    },
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidBundlesProof<Number, Hash, DomainHeader: HeaderT> {
+pub struct InvalidBundlesProof<Number, Hash, MmrHash, DomainHeader: HeaderT> {
     pub bundle_index: u32,
     pub invalid_bundle_type: InvalidBundleType,
     pub is_true_invalid_fraud_proof: bool,
     /// Proof data of the invalid bundle
-    pub proof_data: InvalidBundlesProofData<Number, Hash, DomainHeader>,
+    pub proof_data: InvalidBundlesProofData<Number, Hash, MmrHash, DomainHeader>,
 }
 
 /// Represents an invalid block fees proof.

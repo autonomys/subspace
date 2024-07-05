@@ -60,7 +60,7 @@ where
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     Hashing: Hasher<Out = CBlock::Hash>,
-    SKP: FraudProofStorageKeyProvider,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -198,7 +198,7 @@ where
     CBlock::Hash: Into<H256>,
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
-    SKP: FraudProofStorageKeyProvider,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
     let ValidBundleProof {
         bundle_with_proof, ..
@@ -514,7 +514,7 @@ fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
     })
 }
 
-pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
+pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, MmrHash, Balance, SKP>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
@@ -532,6 +532,7 @@ pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
     invalid_bundles_fraud_proof: &InvalidBundlesProof<
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
+        MmrHash,
         DomainHeader,
     >,
     domain_id: DomainId,
@@ -543,7 +544,8 @@ where
     DomainHeader: HeaderT,
     CBlock::Hash: Into<H256>,
     DomainHeader::Hash: Into<H256>,
-    SKP: FraudProofStorageKeyProvider,
+    MmrHash: Decode + Clone,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
     let InvalidBundlesProof {
         bundle_index,
@@ -574,6 +576,7 @@ where
             bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
         }
         InvalidBundlesProofData::Extrinsic(_) => {}
+        InvalidBundlesProofData::InvalidXDMProofData { .. } => {}
     }
 
     // Fast path to check if the fraud proof is targetting a bad receipt that claim a non-exist extrinsic

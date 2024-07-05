@@ -902,8 +902,8 @@ impl From<RewardAddress> for AccountId32 {
 }
 
 pub struct StorageKeyProvider;
-impl FraudProofStorageKeyProvider for StorageKeyProvider {
-    fn storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
+    fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
             FraudProofStorageKeyRequest::BlockRandomness => {
                 pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
@@ -929,6 +929,9 @@ impl FraudProofStorageKeyProvider for StorageKeyProvider {
             }
             FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
                 pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)
+            }
+            FraudProofStorageKeyRequest::MmrRoot(block_number) => {
+                pallet_subspace_mmr::MmrRootHashes::<Runtime>::hashed_key_for(block_number)
             }
         }
     }
@@ -1372,8 +1375,8 @@ impl_runtime_apis! {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
-        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
-            <StorageKeyProvider as FraudProofStorageKeyProvider>::storage_key(req)
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
+            <StorageKeyProvider as FraudProofStorageKeyProvider<NumberFor<Block>>>::storage_key(req)
         }
     }
 

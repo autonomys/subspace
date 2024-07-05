@@ -421,7 +421,7 @@ mod pallet {
         >;
 
         /// Fraud proof storage key provider
-        type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider;
+        type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider<BlockNumberFor<Self>>;
 
         /// Hook to handle chain rewards.
         type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
@@ -2207,6 +2207,7 @@ impl<T: Config> Pallet<T> {
                 verify_invalid_bundles_fraud_proof::<
                     T::Block,
                     T::DomainHeader,
+                    T::MmrHash,
                     BalanceOf<T>,
                     T::FraudProofStorageKeyProvider,
                 >(
