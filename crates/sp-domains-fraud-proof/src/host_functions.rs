@@ -115,6 +115,12 @@ pub trait FraudProofHostFunctions: Send + Sync {
         domain_runtime_code: Vec<u8>,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<Weight>;
+
+    fn extract_xdm_mmr_proof(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        opaque_extrinsic: Vec<u8>,
+    ) -> Option<Option<Vec<u8>>>;
 }
 
 sp_externalities::decl_extension! {
@@ -882,6 +888,22 @@ where
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
         }
         Some(estimated_bundle_weight)
+    }
+
+    fn extract_xdm_mmr_proof(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        opaque_extrinsic: Vec<u8>,
+    ) -> Option<Option<Vec<u8>>> {
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            domain_runtime_code.into(),
+        );
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut opaque_extrinsic.as_slice()).ok()?;
+        domain_stateless_runtime
+            .extract_xdm_mmr_proof(&extrinsic)
+            .ok()
     }
 }
 
