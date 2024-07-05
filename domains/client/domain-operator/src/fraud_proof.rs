@@ -706,6 +706,9 @@ where
 
                     InvalidBundlesProofData::Extrinsic(extrinsic_proof)
                 }
+                InvalidBundleType::InvalidXDM(extrinsic_index) => {
+                    todo!()
+                }
             }
         };
 

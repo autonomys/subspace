@@ -18,7 +18,7 @@ use crate::inherents::is_runtime_upgraded;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use sc_client_api::BlockBackend;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -28,8 +28,10 @@ use sp_domains::{
     InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
 use sp_state_machine::LayoutV1;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_weights::Weight;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
@@ -260,6 +262,15 @@ where
             .client
             .number(at)?
             .ok_or(sp_blockchain::Error::MissingHeader(at.to_string()))?;
+        
+        let api_version = runtime_api
+            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(at)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("MessengerApi not found at: {:?}", at).into(),
+                ))
+            })?;
 
         // Check the validity of each extrinsic
         //
@@ -298,6 +309,27 @@ where
                 return Ok(BundleValidity::Invalid(
                     InvalidBundleType::InherentExtrinsic(index as u32),
                 ));
+            }
+
+            if api_version >= 4 {
+                if let Some(xdm_mmr_proof) =
+                    runtime_api.extract_xdm_mmr_proof(at, &extrinsic)?
+                {
+                    let ConsensusChainMmrLeafProof {
+                        opaque_mmr_leaf,
+                        proof,
+                        ..
+                    } = xdm_mmr_proof;
+
+                    if consensus_runtime_api
+                        .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
+                        .is_err()
+                    {
+                        return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
+                            index as u32,
+                        )));
+                    }
+                }
             }
 
             // Using one instance of runtime_api throughout the loop in order to maintain context

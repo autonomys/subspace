@@ -734,5 +734,8 @@ where
             }
             Ok(())
         }
+        InvalidBundleType::InvalidXDM(extrinsic_index) => {
+            todo!()
+        }
     }
 }
