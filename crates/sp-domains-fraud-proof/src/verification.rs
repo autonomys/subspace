@@ -779,7 +779,7 @@ where
                         Err(VerificationError::InvalidProof)
                     } else {
                         Ok(())
-                    }
+                    };
                 }
             };
 

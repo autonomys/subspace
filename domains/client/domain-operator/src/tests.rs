@@ -6,7 +6,7 @@ use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::ChannelStorage;
-use domain_runtime_primitives::{AccountIdConverter, Hash};
+use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
@@ -40,15 +40,19 @@ use sp_domains_fraud_proof::fraud_proof::{
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_messenger::messages::{CrossDomainMessage, Proof};
+use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
 };
-use sp_runtime::transaction_validity::InvalidTransaction;
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidityError,
+};
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -1558,7 +1562,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
                     nonce: Default::default(),
                     proof: Proof::Domain {
                         consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
-                            consensus_block_number: Default::default(),
+                            consensus_block_number: 1,
                             consensus_block_hash: Default::default(),
                             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![0, 1, 2]),
                             proof: MmrProof {
@@ -1627,7 +1631,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
@@ -4432,9 +4436,9 @@ async fn test_skip_empty_bundle_production() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    // Wait for `BlockTreePruningDepth + 1` blocks which is 16 + 1 in test
+    // Wait for `BlockTreePruningDepth + 1` blocks which is 10 + 1 in test
     // to enure the genesis ER is confirmed
-    produce_blocks!(ferdie, alice, 17).await.unwrap();
+    produce_blocks!(ferdie, alice, 11).await.unwrap();
     let consensus_block_number = ferdie.client.info().best_number;
     let domain_block_number = alice.client.info().best_number;
 
@@ -4556,7 +4560,7 @@ async fn test_bad_receipt_chain() {
     // Produce more bundle with bad ER that use previous bad ER as parent
     let mut parent_bad_receipt_hash = bad_receipt_hash;
     let mut bad_receipt_descendants = vec![];
-    for _ in 0..10 {
+    for _ in 0..7 {
         let slot = ferdie.produce_slot();
         let bundle = bundle_producer
             .produce_bundle(
@@ -5044,4 +5048,439 @@ async fn test_equivocated_bundle_check() {
         .unwrap();
     assert_eq!(ferdie.client.info().best_number, pre_ferdie_best_number + 1);
     assert_eq!(alice.client.info().best_number, pre_alice_best_number);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_false_invalid_fraud_proof() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: GENESIS_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance through XDM
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(GENESIS_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: 10,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until a bundle that cantains the XDM
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+
+    // Produce a block that contains the XDM
+    let opaque_bundle = maybe_opaque_bundle.unwrap();
+    let bundle_extrinsic_root = opaque_bundle.extrinsics_root();
+    let slot = ferdie.produce_slot();
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bundle_to_tx(opaque_bundle)])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // produce another bundle that marks the XDM as invalid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::InvalidXDM(0),
+            bundle_extrinsic_root,
+        )];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+                assert!(!proof.is_true_invalid_fraud_proof);
+                assert_eq!(extrinsic_index, 0);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    // Produce a block that contains the `bad_submit_bundle_tx`
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: GENESIS_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance through XDM
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(GENESIS_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: 10,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until a bundle that cantains the XDM
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+
+    let xdm = maybe_opaque_bundle.unwrap().extrinsics[0].clone();
+    let mmr_proof_constructed_at_number = alice
+        .client
+        .runtime_api()
+        .extract_xdm_mmr_proof(alice.client.info().best_hash, &xdm)
+        .unwrap()
+        .unwrap()
+        .consensus_block_number;
+
+    // Construct a fork and make it the best fork so the XDM mmr proof is in the stale fork
+    let best_number = ferdie.client.info().best_number;
+    let mut fork_block_hash = ferdie
+        .client
+        .hash(mmr_proof_constructed_at_number - 2)
+        .unwrap()
+        .unwrap();
+    for _ in 0..(best_number - mmr_proof_constructed_at_number) + 5 {
+        let slot = ferdie.produce_slot();
+        fork_block_hash = ferdie
+            .produce_block_with_slot_at(slot, fork_block_hash, Some(vec![]))
+            .await
+            .unwrap();
+    }
+    // The XDM should be rejected as its mmr proof is in the stale fork
+    let alice_best_hash = alice.client.info().best_hash;
+    let res = alice
+        .client
+        .runtime_api()
+        .validate_transaction(
+            alice_best_hash,
+            TransactionSource::External,
+            xdm.clone(),
+            alice_best_hash,
+        )
+        .unwrap();
+    assert_eq!(
+        res,
+        Err(TransactionValidityError::Invalid(
+            InvalidTransaction::BadProof
+        ))
+    );
+
+    // Construct an bundle that contain the invalid xdm and submit the bundle
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bundle_extrinsic_root, bad_submit_bundle_tx) = {
+        opaque_bundle.extrinsics.push(xdm);
+        let extrinsics = opaque_bundle
+            .extrinsics
+            .iter()
+            .map(|ext| ext.encode())
+            .collect();
+        opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+            BlakeTwo256::ordered_trie_root(extrinsics, StateVersion::V1);
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (opaque_bundle.extrinsics_root(), bundle_to_tx(opaque_bundle))
+    };
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // produce another bundle that marks the invalid xdm as valid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        assert!(bad_receipt.inboxed_bundles[0].is_invalid());
+        bad_receipt.inboxed_bundles =
+            vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+                assert!(proof.is_true_invalid_fraud_proof);
+                assert_eq!(extrinsic_index, 0);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    // Produce a block that contains the `bad_submit_bundle_tx`
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }

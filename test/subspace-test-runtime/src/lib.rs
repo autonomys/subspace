@@ -278,7 +278,7 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
-    pub const ConfirmationDepthK: u32 = 100;
+    pub const ConfirmationDepthK: u32 = 5;
     pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
     pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
         HistorySize::new(NonZeroU64::new(1).unwrap()),
@@ -682,7 +682,7 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 16;
+    pub const BlockTreePruningDepth: u32 = 10;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
