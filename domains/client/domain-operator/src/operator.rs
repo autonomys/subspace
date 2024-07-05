@@ -77,7 +77,7 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>
         + TaggedTransactionQueue<Block>,
@@ -91,7 +91,7 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,

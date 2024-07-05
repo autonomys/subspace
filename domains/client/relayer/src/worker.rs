@@ -220,7 +220,7 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
         + ProofProvider<CBlock>
         + AuxStore,
     CClient::Api: DomainsApi<CBlock, Block::Header>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + MmrApi<CBlock, sp_core::H256, NumberFor<CBlock>>,
     SO: SyncOracle + Send,
 {

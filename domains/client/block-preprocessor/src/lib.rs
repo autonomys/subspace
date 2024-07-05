@@ -119,14 +119,16 @@ where
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block> + MessengerApi<Block>,
+    Client::Api: DomainCoreApi<Block> + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(

@@ -95,7 +95,10 @@ where
     CBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
+    Client::Api: BlockBuilder<Block>
+        + DomainCoreApi<Block>
+        + TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header>,
     TransactionPool:

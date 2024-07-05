@@ -257,7 +257,7 @@ where
         + DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
 {
     fn extensions_for(
         &self,
@@ -468,7 +468,7 @@ where
         + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -636,7 +636,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + SubspaceApi<Block, FarmerPublicKey>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -699,7 +699,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>
         + MmrApi<Block, Hash, BlockNumber>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     let PartialComponents {
         client,

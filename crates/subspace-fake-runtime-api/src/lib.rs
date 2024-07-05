@@ -37,6 +37,7 @@ use sp_messenger::messages::{
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
@@ -360,10 +361,14 @@ sp_api::impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block> for Runtime {
+    impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
         fn is_xdm_valid(
             _extrinsic: Vec<u8>,
         ) -> Option<bool> {
+            unreachable!()
+        }
+
+        fn extract_xdm_mmr_proof(_ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
             unreachable!()
         }
 

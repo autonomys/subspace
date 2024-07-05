@@ -165,7 +165,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -186,7 +186,7 @@ where
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let timestamp = runtime_api.timestamp(consensus_block_hash.into()).ok()?;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -208,7 +208,7 @@ where
             .domain_chains_allowlist_update(consensus_block_hash.into(), domain_id)
             .ok()??;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -230,7 +230,7 @@ where
             .ok()?;
 
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -280,7 +280,7 @@ where
 
         if let Some(upgraded_runtime) = maybe_upgraded_runtime {
             let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-            let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
                 self.domain_executor.clone(),
                 runtime_code.into(),
             );
@@ -371,7 +371,7 @@ where
         opaque_extrinsic: OpaqueExtrinsic,
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let mut domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let mut domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -416,7 +416,7 @@ where
         req: StorageKeyRequest,
     ) -> Option<Vec<u8>> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -485,7 +485,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -644,7 +644,7 @@ where
             extrinsics.push(ext);
         }
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -746,7 +746,7 @@ where
             maybe_sudo_runtime_call,
         } = domain_inherent_extrinsic_data;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -806,7 +806,7 @@ where
         domain_runtime_code: Vec<u8>,
         req: DomainStorageKeyRequest,
     ) -> Option<Vec<u8>> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -823,7 +823,7 @@ where
         domain_runtime_code: Vec<u8>,
         call: StatelessDomainRuntimeCall,
     ) -> Option<bool> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -868,7 +868,7 @@ where
         domain_runtime_code: Vec<u8>,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<Weight> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );

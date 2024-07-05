@@ -8,7 +8,7 @@ use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
 pub use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Header};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -61,7 +61,7 @@ where
         &self,
         consensus_block_hash: Block::Hash,
         domain_id: DomainId,
-    ) -> Option<StatelessRuntime<DomainBlock, Executor>> {
+    ) -> Option<StatelessRuntime<Block, DomainBlock, Executor>> {
         let runtime_api = self.consensus_client.runtime_api();
         // Use the parent hash to get the actual used domain runtime code
         // TODO: update once we can get the actual used domain runtime code by `consensus_block_hash`
@@ -81,7 +81,7 @@ where
             .ok()
             .flatten()
             .map(|(data, _)| data.raw_genesis.into_storage())?;
-        let mut domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let mut domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime.into(),
         );
@@ -98,7 +98,8 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: MessengerApi<Block> + DomainsApi<Block, DomainBlock::Header>,
+    Client::Api:
+        MessengerApi<Block, NumberFor<Block>, Block::Hash> + DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_storage_key(&self, req: StorageKeyRequest) -> Option<Vec<u8>> {

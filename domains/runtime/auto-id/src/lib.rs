@@ -858,11 +858,21 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block> for Runtime {
+    impl sp_messenger::MessengerApi<Block, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
         fn is_xdm_valid(
             extrinsic: Vec<u8>,
         ) -> Option<bool> {
             is_xdm_valid(extrinsic)
+        }
+
+        fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {
+            match &ext.function {
+                RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                    Some(msg.proof.consensus_mmr_proof())
+                }
+                _ => None,
+            }
         }
 
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {

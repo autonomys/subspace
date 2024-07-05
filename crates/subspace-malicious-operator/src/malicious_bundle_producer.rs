@@ -26,7 +26,8 @@ use sp_domains::{
 };
 use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
-use sp_runtime::traits::Block as BlockT;
+use sp_messenger::MessengerApi;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::{generic, RuntimeAppPublic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
@@ -104,6 +105,7 @@ where
         + 'static,
     Client::Api: BlockBuilder<DomainBlock>
         + DomainCoreApi<DomainBlock>
+        + MessengerApi<DomainBlock, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + TaggedTransactionQueue<DomainBlock>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: DomainsApi<CBlock, <DomainBlock as BlockT>::Header>
