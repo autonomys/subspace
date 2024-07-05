@@ -21,17 +21,20 @@
 mod benchmarking;
 #[cfg(test)]
 mod tests;
+pub mod weights;
 
 extern crate alloc;
 
+use crate::weights::WeightInfo;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use frame_support::dispatch::DispatchResult;
+use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::ensure;
 use frame_support::traits::Time;
+use frame_support::weights::Weight;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_auto_id::auto_id_runtime_interface::{decode_tbs_certificate, verify_signature};
@@ -241,6 +244,7 @@ pub struct CertificateAction {
 #[frame_support::pallet]
 mod pallet {
     use super::*;
+    use crate::weights::WeightInfo;
     use crate::{AutoId, Identifier, RegisterAutoId, Serial, Signature};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Time;
@@ -250,6 +254,7 @@ mod pallet {
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type Time: Time<Moment = subspace_runtime_primitives::Moment>;
+        type Weights: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -313,34 +318,32 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Registers a new AutoId after validating the provided certificate.
         #[pallet::call_index(0)]
-        // TODO: benchmark
-        #[pallet::weight({10_000})]
-        pub fn register_auto_id(origin: OriginFor<T>, req: RegisterAutoId) -> DispatchResult {
+        #[pallet::weight(Pallet::<T>::max_register_auto_id_weight())]
+        pub fn register_auto_id(
+            origin: OriginFor<T>,
+            req: RegisterAutoId,
+        ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
-            Self::do_register_auto_id(req)?;
-            Ok(())
+            Self::do_register_auto_id(req)
         }
 
         /// Revokes a certificate associated with given AutoId.
         ///
         /// The signature is verified against the issuer's public key.
-        // TODO: benchmark
         #[pallet::call_index(1)]
-        #[pallet::weight({10_000})]
+        #[pallet::weight(Pallet::<T>::max_revoke_auto_id_weight())]
         pub fn revoke_certificate(
             origin: OriginFor<T>,
             auto_id_identifier: Identifier,
             signature: Signature,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
-            Self::do_revoke_certificate(auto_id_identifier, signature)?;
-            Ok(())
+            Self::do_revoke_certificate(auto_id_identifier, signature)
         }
 
         /// Deactivates a given AutoId.
         #[pallet::call_index(2)]
-        // TODO: benchmark
-        #[pallet::weight({10_000})]
+        #[pallet::weight(<T as Config>::Weights::deactivate_auto_id())]
         pub fn deactivate_auto_id(
             origin: OriginFor<T>,
             auto_id_identifier: Identifier,
@@ -353,24 +356,22 @@ mod pallet {
 
         /// Renews a given AutoId.
         #[pallet::call_index(3)]
-        // TODO: benchmark
-        #[pallet::weight({10_000})]
+        #[pallet::weight(Pallet::<T>::max_renew_auto_id_weight())]
         pub fn renew_auto_id(
             origin: OriginFor<T>,
             auto_id_identifier: Identifier,
             req: RenewAutoId,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
-            Self::do_renew_auto_id_certificate(auto_id_identifier, req)?;
-            Ok(())
+            Self::do_renew_auto_id_certificate(auto_id_identifier, req)
         }
     }
 }
 
 impl<T: Config> Pallet<T> {
-    pub(crate) fn do_register_auto_id(req: RegisterAutoId) -> DispatchResult {
+    pub(crate) fn do_register_auto_id(req: RegisterAutoId) -> DispatchResultWithPostInfo {
         let current_time = T::Time::now();
-        let certificate = match req {
+        let (certificate, weight) = match req {
             RegisterAutoId::X509(x509_req) => match x509_req {
                 RegisterAutoIdX509::Root {
                     certificate,
@@ -392,16 +393,19 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::ExpiredCertificate
                     );
 
-                    Certificate::X509(X509Certificate {
-                        issuer_id: None,
-                        serial: tbs_certificate.serial,
-                        subject_common_name: tbs_certificate.subject_common_name,
-                        subject_public_key_info: tbs_certificate.subject_public_key_info,
-                        validity: tbs_certificate.validity,
-                        raw: certificate,
-                        issued_serials: BTreeSet::from([tbs_certificate.serial]),
-                        nonce: U256::zero(),
-                    })
+                    (
+                        Certificate::X509(X509Certificate {
+                            issuer_id: None,
+                            serial: tbs_certificate.serial,
+                            subject_common_name: tbs_certificate.subject_common_name,
+                            subject_public_key_info: tbs_certificate.subject_public_key_info,
+                            validity: tbs_certificate.validity,
+                            raw: certificate,
+                            issued_serials: BTreeSet::from([tbs_certificate.serial]),
+                            nonce: U256::zero(),
+                        }),
+                        T::Weights::register_issuer_auto_id(),
+                    )
                 }
                 RegisterAutoIdX509::Leaf {
                     issuer_id,
@@ -450,16 +454,19 @@ impl<T: Config> Pallet<T> {
 
                     AutoIds::<T>::insert(issuer_id, issuer_auto_id);
 
-                    Certificate::X509(X509Certificate {
-                        issuer_id: Some(issuer_id),
-                        serial: tbs_certificate.serial,
-                        subject_common_name: tbs_certificate.subject_common_name,
-                        subject_public_key_info: tbs_certificate.subject_public_key_info,
-                        validity: tbs_certificate.validity,
-                        raw: certificate,
-                        issued_serials: BTreeSet::from([tbs_certificate.serial]),
-                        nonce: U256::zero(),
-                    })
+                    (
+                        Certificate::X509(X509Certificate {
+                            issuer_id: Some(issuer_id),
+                            serial: tbs_certificate.serial,
+                            subject_common_name: tbs_certificate.subject_common_name,
+                            subject_public_key_info: tbs_certificate.subject_public_key_info,
+                            validity: tbs_certificate.validity,
+                            raw: certificate,
+                            issued_serials: BTreeSet::from([tbs_certificate.serial]),
+                            nonce: U256::zero(),
+                        }),
+                        T::Weights::register_leaf_auto_id(),
+                    )
                 }
             },
         };
@@ -475,20 +482,20 @@ impl<T: Config> Pallet<T> {
         AutoIds::<T>::insert(auto_id_identifier, auto_id);
 
         Self::deposit_event(Event::<T>::NewAutoIdRegistered(auto_id_identifier));
-        Ok(())
+        Ok(Some(weight).into())
     }
 
     fn do_renew_auto_id_certificate(
         auto_id_identifier: Identifier,
         req: RenewAutoId,
-    ) -> DispatchResult {
+    ) -> DispatchResultWithPostInfo {
         let current_time = T::Time::now();
         let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownAutoId)?;
         let RenewAutoId::X509(req) = req;
         let tbs_certificate = decode_tbs_certificate(req.certificate.clone())
             .ok_or(Error::<T>::InvalidCertificate)?;
 
-        let issuer_public_key_info = match req.issuer_id {
+        let (issuer_public_key_info, weight) = match req.issuer_id {
             None => {
                 // revoke old certificate serial
                 CertificateRevocationList::<T>::mutate(auto_id_identifier, |serials| {
@@ -496,7 +503,10 @@ impl<T: Config> Pallet<T> {
                         .get_or_insert_with(BTreeSet::new)
                         .insert(auto_id.certificate.serial());
                 });
-                auto_id.certificate.subject_public_key_info()
+                (
+                    auto_id.certificate.subject_public_key_info(),
+                    T::Weights::renew_issuer_auto_id(),
+                )
             }
             Some(issuer_id) => {
                 let mut issuer_auto_id =
@@ -528,7 +538,7 @@ impl<T: Config> Pallet<T> {
                 });
 
                 AutoIds::<T>::insert(issuer_id, issuer_auto_id);
-                issuer_public_key_info
+                (issuer_public_key_info, T::Weights::renew_leaf_auto_id())
             }
         };
 
@@ -573,7 +583,7 @@ impl<T: Config> Pallet<T> {
         AutoIds::<T>::insert(auto_id_identifier, updated_auto_id);
 
         Self::deposit_event(Event::<T>::AutoIdRenewed(auto_id_identifier));
-        Ok(())
+        Ok(Some(weight).into())
     }
 
     fn do_verify_signature(
@@ -599,16 +609,21 @@ impl<T: Config> Pallet<T> {
     fn do_revoke_certificate(
         auto_id_identifier: Identifier,
         signature: Signature,
-    ) -> DispatchResult {
+    ) -> DispatchResultWithPostInfo {
         let auto_id = AutoIds::<T>::get(auto_id_identifier).ok_or(Error::<T>::UnknownAutoId)?;
 
-        let (issuer_id, mut issuer_auto_id) = match auto_id.certificate.issuer_id() {
+        let (issuer_id, mut issuer_auto_id, weight) = match auto_id.certificate.issuer_id() {
             Some(issuer_id) => (
                 issuer_id,
                 AutoIds::<T>::get(issuer_id).ok_or(Error::<T>::UnknownIssuer)?,
+                T::Weights::revoke_leaf_auto_id(),
             ),
             // self revoke
-            None => (auto_id_identifier, auto_id.clone()),
+            None => (
+                auto_id_identifier,
+                auto_id.clone(),
+                T::Weights::revoke_issuer_auto_id(),
+            ),
         };
 
         ensure!(
@@ -640,7 +655,7 @@ impl<T: Config> Pallet<T> {
         AutoIds::<T>::insert(issuer_id, issuer_auto_id);
 
         Self::deposit_event(Event::<T>::CertificateRevoked(auto_id_identifier));
-        Ok(())
+        Ok(Some(weight).into())
     }
 
     fn do_deactivate_auto_id(
@@ -663,5 +678,17 @@ impl<T: Config> Pallet<T> {
 
         Self::deposit_event(Event::<T>::AutoIdDeactivated(auto_id_identifier));
         Ok(())
+    }
+
+    fn max_register_auto_id_weight() -> Weight {
+        T::Weights::register_issuer_auto_id().max(T::Weights::register_leaf_auto_id())
+    }
+
+    fn max_revoke_auto_id_weight() -> Weight {
+        T::Weights::revoke_issuer_auto_id().max(T::Weights::revoke_leaf_auto_id())
+    }
+
+    fn max_renew_auto_id_weight() -> Weight {
+        T::Weights::renew_issuer_auto_id().max(T::Weights::renew_leaf_auto_id())
     }
 }

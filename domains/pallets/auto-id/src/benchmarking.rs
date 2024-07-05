@@ -19,7 +19,7 @@ mod benchmarks {
         )
         .unwrap();
         Pallet::<T>::register_auto_id(RawOrigin::Signed(account).into(), issuer_register_params)
-            .unwrap()
+            .unwrap();
     }
 
     fn do_register_leaf<T: Config>() {
@@ -29,7 +29,7 @@ mod benchmarks {
         )
         .unwrap();
         Pallet::<T>::register_auto_id(RawOrigin::Signed(account).into(), leaf_register_params)
-            .unwrap()
+            .unwrap();
     }
 
     #[benchmark]
