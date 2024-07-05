@@ -130,6 +130,13 @@ pub trait MmrProofVerifier<MmrHash, CBlockNumber: Decode, CBlockHash: Decode> {
         mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
     ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>>;
 
+    fn verify_proof_stateless(
+        _mmr_root: MmrHash,
+        _mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>> {
+        None
+    }
+
     fn extract_leaf_without_verifying(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
     ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>> {

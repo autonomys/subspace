@@ -2210,6 +2210,7 @@ impl<T: Config> Pallet<T> {
                     T::MmrHash,
                     BalanceOf<T>,
                     T::FraudProofStorageKeyProvider,
+                    T::MmrProofVerifier,
                 >(
                     bad_receipt,
                     bad_receipt_parent,

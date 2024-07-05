@@ -550,14 +550,19 @@ impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for Mm
     fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
     ) -> Option<mmr::Leaf> {
+        let mmr_root = SubspaceMmr::mmr_root_hash(mmr_leaf_proof.consensus_block_number)?;
+        Self::verify_proof_stateless(mmr_root, mmr_leaf_proof)
+    }
+
+    fn verify_proof_stateless(
+        mmr_root: mmr::Hash,
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
+    ) -> Option<mmr::Leaf> {
         let ConsensusChainMmrLeafProof {
-            consensus_block_number,
             opaque_mmr_leaf,
             proof,
             ..
         } = mmr_leaf_proof;
-
-        let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
 
         pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
             mmr_root,
