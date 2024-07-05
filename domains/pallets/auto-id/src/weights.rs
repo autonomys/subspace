@@ -36,6 +36,9 @@ pub trait WeightInfo {
 	fn register_leaf_auto_id() -> Weight;
 	fn revoke_issuer_auto_id() -> Weight;
 	fn revoke_leaf_auto_id() -> Weight;
+	fn deactivate_auto_id() -> Weight;
+	fn renew_issuer_auto_id() -> Weight;
+	fn renew_leaf_auto_id() -> Weight;
 }
 
 /// Weights for pallet_auto_id using the Substrate node and recommended hardware.
@@ -49,8 +52,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `36`
 		//  Estimated: `3501`
-		// Minimum execution time: 34_000_000 picoseconds.
-		Weight::from_parts(35_000_000, 3501)
+		// Minimum execution time: 36_000_000 picoseconds.
+		Weight::from_parts(38_000_000, 3501)
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
@@ -64,7 +67,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `1284`
 		//  Estimated: `7224`
-		// Minimum execution time: 44_000_000 picoseconds.
+		// Minimum execution time: 42_000_000 picoseconds.
 		Weight::from_parts(45_000_000, 7224)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
@@ -77,8 +80,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `1248`
 		//  Estimated: `4713`
-		// Minimum execution time: 34_000_000 picoseconds.
-		Weight::from_parts(35_000_000, 4713)
+		// Minimum execution time: 35_000_000 picoseconds.
+		Weight::from_parts(36_000_000, 4713)
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -91,9 +94,50 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		//  Measured:  `2559`
 		//  Estimated: `8499`
 		// Minimum execution time: 38_000_000 picoseconds.
-		Weight::from_parts(38_000_000, 8499)
+		Weight::from_parts(43_000_000, 8499)
 			.saturating_add(T::DbWeight::get().reads(3_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
+	}
+	/// Storage: `AutoId::AutoIds` (r:1 w:1)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn deactivate_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1248`
+		//  Estimated: `4713`
+		// Minimum execution time: 29_000_000 picoseconds.
+		Weight::from_parts(30_000_000, 4713)
+			.saturating_add(T::DbWeight::get().reads(1_u64))
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
+	/// Storage: `Timestamp::Now` (r:1 w:0)
+	/// Proof: `Timestamp::Now` (`max_values`: Some(1), `max_size`: Some(8), added: 503, mode: `MaxEncodedLen`)
+	/// Storage: `AutoId::AutoIds` (r:1 w:1)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `AutoId::CertificateRevocationList` (r:1 w:1)
+	/// Proof: `AutoId::CertificateRevocationList` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn renew_issuer_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1284`
+		//  Estimated: `4749`
+		// Minimum execution time: 40_000_000 picoseconds.
+		Weight::from_parts(41_000_000, 4749)
+			.saturating_add(T::DbWeight::get().reads(3_u64))
+			.saturating_add(T::DbWeight::get().writes(2_u64))
+	}
+	/// Storage: `Timestamp::Now` (r:1 w:0)
+	/// Proof: `Timestamp::Now` (`max_values`: Some(1), `max_size`: Some(8), added: 503, mode: `MaxEncodedLen`)
+	/// Storage: `AutoId::AutoIds` (r:2 w:2)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `AutoId::CertificateRevocationList` (r:1 w:1)
+	/// Proof: `AutoId::CertificateRevocationList` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn renew_leaf_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `2595`
+		//  Estimated: `8535`
+		// Minimum execution time: 48_000_000 picoseconds.
+		Weight::from_parts(49_000_000, 8535)
+			.saturating_add(T::DbWeight::get().reads(4_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
 	}
 }
 
@@ -107,8 +151,8 @@ impl WeightInfo for () {
 		// Proof Size summary in bytes:
 		//  Measured:  `36`
 		//  Estimated: `3501`
-		// Minimum execution time: 34_000_000 picoseconds.
-		Weight::from_parts(35_000_000, 3501)
+		// Minimum execution time: 36_000_000 picoseconds.
+		Weight::from_parts(38_000_000, 3501)
 			.saturating_add(ParityDbWeight::get().reads(2_u64))
 			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
@@ -122,7 +166,7 @@ impl WeightInfo for () {
 		// Proof Size summary in bytes:
 		//  Measured:  `1284`
 		//  Estimated: `7224`
-		// Minimum execution time: 44_000_000 picoseconds.
+		// Minimum execution time: 42_000_000 picoseconds.
 		Weight::from_parts(45_000_000, 7224)
 			.saturating_add(ParityDbWeight::get().reads(4_u64))
 			.saturating_add(ParityDbWeight::get().writes(2_u64))
@@ -135,8 +179,8 @@ impl WeightInfo for () {
 		// Proof Size summary in bytes:
 		//  Measured:  `1248`
 		//  Estimated: `4713`
-		// Minimum execution time: 34_000_000 picoseconds.
-		Weight::from_parts(35_000_000, 4713)
+		// Minimum execution time: 35_000_000 picoseconds.
+		Weight::from_parts(36_000_000, 4713)
 			.saturating_add(ParityDbWeight::get().reads(2_u64))
 			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
@@ -149,8 +193,49 @@ impl WeightInfo for () {
 		//  Measured:  `2559`
 		//  Estimated: `8499`
 		// Minimum execution time: 38_000_000 picoseconds.
-		Weight::from_parts(38_000_000, 8499)
+		Weight::from_parts(43_000_000, 8499)
 			.saturating_add(ParityDbWeight::get().reads(3_u64))
 			.saturating_add(ParityDbWeight::get().writes(2_u64))
+	}
+	/// Storage: `AutoId::AutoIds` (r:1 w:1)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn deactivate_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1248`
+		//  Estimated: `4713`
+		// Minimum execution time: 29_000_000 picoseconds.
+		Weight::from_parts(30_000_000, 4713)
+			.saturating_add(ParityDbWeight::get().reads(1_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
+	}
+	/// Storage: `Timestamp::Now` (r:1 w:0)
+	/// Proof: `Timestamp::Now` (`max_values`: Some(1), `max_size`: Some(8), added: 503, mode: `MaxEncodedLen`)
+	/// Storage: `AutoId::AutoIds` (r:1 w:1)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `AutoId::CertificateRevocationList` (r:1 w:1)
+	/// Proof: `AutoId::CertificateRevocationList` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn renew_issuer_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `1284`
+		//  Estimated: `4749`
+		// Minimum execution time: 40_000_000 picoseconds.
+		Weight::from_parts(41_000_000, 4749)
+			.saturating_add(ParityDbWeight::get().reads(3_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
+	}
+	/// Storage: `Timestamp::Now` (r:1 w:0)
+	/// Proof: `Timestamp::Now` (`max_values`: Some(1), `max_size`: Some(8), added: 503, mode: `MaxEncodedLen`)
+	/// Storage: `AutoId::AutoIds` (r:2 w:2)
+	/// Proof: `AutoId::AutoIds` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `AutoId::CertificateRevocationList` (r:1 w:1)
+	/// Proof: `AutoId::CertificateRevocationList` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn renew_leaf_auto_id() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `2595`
+		//  Estimated: `8535`
+		// Minimum execution time: 48_000_000 picoseconds.
+		Weight::from_parts(49_000_000, 8535)
+			.saturating_add(ParityDbWeight::get().reads(4_u64))
+			.saturating_add(ParityDbWeight::get().writes(3_u64))
 	}
 }
