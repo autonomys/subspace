@@ -294,8 +294,15 @@ where
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
     }
 
-    pub fn is_valid_xdm(&self, extrinsic: Vec<u8>) -> Result<Option<bool>, ApiError> {
-        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>>::is_xdm_valid(self, Default::default(), extrinsic)
+    pub fn is_xdm_mmr_proof_valid(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<Option<bool>, ApiError> {
+        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::is_xdm_mmr_proof_valid(
+            self,
+            Default::default(),
+            extrinsic,
+        )
     }
 
     pub fn extract_xdm_mmr_proof(

@@ -11,6 +11,7 @@ use sp_domains::{
     BundleHeader, DomainBundleLimit, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor,
     OperatorId, ProofOfElection,
 };
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::Percent;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -190,6 +191,17 @@ where
         }
     }
 
+    pub(crate) fn messenger_api_version(&self, at: Block::Hash) -> sp_blockchain::Result<u32> {
+        self.client
+            .runtime_api()
+            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(at)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("MessengerApi not found at: {at:?}").into(),
+                ))
+            })
+    }
+
     pub(crate) async fn propose_bundle_at(
         &mut self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
@@ -236,6 +248,8 @@ where
             + 32
             // Header signature size
             + 64;
+
+        let messenger_api_version = self.messenger_api_version(parent_hash)?;
 
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
@@ -317,6 +331,15 @@ where
                         "Insufficient storage fund balance to pay for the bundle storage fee"
                     );
                     break;
+                }
+
+                // Double check XDM before adding it to the bundle
+                if messenger_api_version >= 4 {
+                    if let Some(false) =
+                        runtime_api_instance.is_xdm_mmr_proof_valid(parent_hash, pending_tx_data)?
+                    {
+                        continue;
+                    }
                 }
 
                 // Double check the transaction validity, because the tx pool are re-validate the transaction

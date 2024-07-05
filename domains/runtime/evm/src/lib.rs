@@ -805,19 +805,24 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
-fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
-    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        match &ext.0.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-                Some(Messenger::validate_relay_message(msg).is_ok())
+fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
+    match &ext.0.function {
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+        | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            let ConsensusChainMmrLeafProof {
+                consensus_block_number,
+                opaque_mmr_leaf,
+                proof,
+                ..
+            } = msg.proof.consensus_mmr_proof();
+
+            if !is_consensus_block_finalized(consensus_block_number) {
+                return Some(false);
             }
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-                Some(Messenger::validate_relay_message_response(msg).is_ok())
-            }
-            _ => None,
+
+            Some(verify_mmr_proof(vec![opaque_mmr_leaf], proof.encode()))
         }
-    } else {
-        None
+        _ => None,
     }
 }
 
@@ -1267,10 +1272,10 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::MessengerApi<Block, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
-        fn is_xdm_valid(
-            extrinsic: Vec<u8>,
+        fn is_xdm_mmr_proof_valid(
+            extrinsic: &<Block as BlockT>::Extrinsic
         ) -> Option<bool> {
-            is_xdm_valid(extrinsic)
+            is_xdm_mmr_proof_valid(extrinsic)
         }
 
         fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {

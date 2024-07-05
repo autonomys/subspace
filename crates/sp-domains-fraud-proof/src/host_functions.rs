@@ -397,8 +397,10 @@ where
         domain_stateless_runtime.set_storage(domain_initial_state);
 
         let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
         domain_stateless_runtime
-            .is_valid_xdm(encoded_extrinsic)
+            .is_xdm_mmr_proof_valid(&extrinsic)
             .expect("Runtime api must not fail. This is an unrecoverable error")
     }
 

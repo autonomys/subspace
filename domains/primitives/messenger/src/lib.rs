@@ -204,8 +204,8 @@ sp_api::decl_runtime_apis! {
     {
         /// Returns `Some(true)` if valid XDM or `Some(false)` if not
         /// Returns None if this is not an XDM
-        fn is_xdm_valid(
-            extrinsic: Vec<u8>
+        fn is_xdm_mmr_proof_valid(
+            ext: &Block::Extrinsic
         ) -> Option<bool>;
 
         // Extract the MMR proof from the XDM

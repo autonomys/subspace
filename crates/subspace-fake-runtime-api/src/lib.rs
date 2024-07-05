@@ -362,8 +362,8 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
-        fn is_xdm_valid(
-            _extrinsic: Vec<u8>,
+        fn is_xdm_mmr_proof_valid(
+            _ext: &<Block as BlockT>::Extrinsic
         ) -> Option<bool> {
             unreachable!()
         }
