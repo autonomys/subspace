@@ -992,7 +992,11 @@ fn check_transaction_and_do_pre_dispatch_inner(
                 .map(|_| ())
         }
         CheckedSignature::Unsigned => {
-            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            if let RuntimeCall::Messenger(call) = &xt.function {
+                Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
+            } else {
+                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            }
             SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }

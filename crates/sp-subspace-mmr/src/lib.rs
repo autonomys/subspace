@@ -26,6 +26,10 @@ pub use runtime_interface::domain_mmr_runtime_interface::HostFunctions as Domain
 pub use runtime_interface::subspace_mmr_runtime_interface::HostFunctions;
 pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_interface};
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
@@ -120,14 +124,25 @@ impl<CBlockNumber: Clone, CBlockHash: Clone, MmrHash: Clone> Clone
 }
 
 /// Trait to verify MMR proofs
-pub trait MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> {
+pub trait MmrProofVerifier<MmrHash, CBlockNumber: Decode, CBlockHash: Decode> {
     /// Returns consensus state root if the given MMR proof is valid
     fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
     ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>>;
+
+    fn extract_leaf_without_verifying(
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
+    ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>> {
+        mmr_leaf_proof
+            .opaque_mmr_leaf
+            .into_opaque_leaf()
+            .try_decode()
+    }
 }
 
-impl<MmrHash, CBlockNumber, CBlockHash> MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> for () {
+impl<MmrHash, CBlockNumber: Decode, CBlockHash: Decode>
+    MmrProofVerifier<MmrHash, CBlockNumber, CBlockHash> for ()
+{
     fn verify_proof_and_extract_leaf(
         _mmr_leaf_proof: ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>,
     ) -> Option<MmrLeaf<CBlockNumber, CBlockHash>> {
