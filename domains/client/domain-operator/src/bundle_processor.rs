@@ -282,7 +282,7 @@ where
 
         let maybe_preprocess_result = self
             .domain_block_preprocessor
-            .preprocess_consensus_block(consensus_block_hash, parent_hash)?;
+            .preprocess_consensus_block(consensus_block_hash, (parent_hash, parent_number))?;
 
         let preprocess_took = start.elapsed().as_millis();
         if preprocess_took >= SLOW_PREPROCESS_MILLIS.into() {
