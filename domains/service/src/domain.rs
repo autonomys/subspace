@@ -122,6 +122,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
+    confirmation_depth_k: NumberFor<CBlock>,
 ) -> Result<
     PartialComponents<
         FullClient<Block, RuntimeApi>,
@@ -140,7 +141,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
 >
 where
     CBlock: BlockT,
-    NumberFor<CBlock>: From<NumberFor<Block>>,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<u32>,
     CBlock::Hash: From<Hash> + Into<Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
@@ -179,7 +180,11 @@ where
 
     let executor = Arc::new(executor);
     client.execution_extensions().set_extensions_factory(
-        ExtensionsFactory::<_, CBlock, Block, _>::new(consensus_client.clone(), executor.clone()),
+        ExtensionsFactory::<_, CBlock, Block, _>::new(
+            consensus_client.clone(),
+            executor.clone(),
+            confirmation_depth_k.into(),
+        ),
     );
 
     let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
@@ -331,7 +336,12 @@ where
     // TODO: Do we even need block announcement on domain node?
     // domain_config.announce_block = false;
 
-    let params = new_partial(&domain_config, consensus_client.clone(), &provider)?;
+    let params = new_partial(
+        &domain_config,
+        consensus_client.clone(),
+        &provider,
+        confirmation_depth_k,
+    )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 

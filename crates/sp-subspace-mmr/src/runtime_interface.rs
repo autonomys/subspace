@@ -51,4 +51,11 @@ pub trait DomainMmrRuntimeInterface {
             .expect("No `SubspaceMmrExtension` associated for the current context!")
             .verify_mmr_proof(leaves, encoded_proof)
     }
+
+    // Return if the given consensus block is finalized
+    fn is_consensus_block_finalized(&mut self, block_number: BlockNumber) -> bool {
+        self.extension::<SubspaceMmrExtension>()
+            .expect("No `SubspaceMmrExtension` associated for the current context!")
+            .is_consensus_block_finalized(block_number)
+    }
 }

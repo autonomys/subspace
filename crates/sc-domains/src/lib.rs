@@ -61,14 +61,20 @@ pub type RuntimeExecutor = sc_executor::WasmExecutor<HostFunctions>;
 pub struct ExtensionsFactory<CClient, CBlock, Block, Executor> {
     consensus_client: Arc<CClient>,
     executor: Arc<Executor>,
+    confirmation_depth_k: u32,
     _marker: PhantomData<(CBlock, Block)>,
 }
 
 impl<CClient, CBlock, Block, Executor> ExtensionsFactory<CClient, CBlock, Block, Executor> {
-    pub fn new(consensus_client: Arc<CClient>, executor: Arc<Executor>) -> Self {
+    pub fn new(
+        consensus_client: Arc<CClient>,
+        executor: Arc<Executor>,
+        confirmation_depth_k: u32,
+    ) -> Self {
         Self {
             consensus_client,
             executor,
+            confirmation_depth_k,
             _marker: Default::default(),
         }
     }
@@ -93,7 +99,10 @@ where
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(SubspaceMmrExtension::new(Arc::new(
-            SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(self.consensus_client.clone()),
+            SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(
+                self.consensus_client.clone(),
+                self.confirmation_depth_k,
+            ),
         )));
 
         exts.register(MessengerExtension::new(Arc::new(

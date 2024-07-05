@@ -62,7 +62,9 @@ pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
+use sp_subspace_mmr::domain_mmr_runtime_interface::{
+    is_consensus_block_finalized, verify_mmr_proof,
+};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
@@ -327,10 +329,15 @@ impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrP
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, MmrHash>,
     ) -> Option<MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash>> {
         let ConsensusChainMmrLeafProof {
+            consensus_block_number,
             opaque_mmr_leaf: opaque_leaf,
             proof,
             ..
         } = mmr_leaf_proof;
+
+        if !is_consensus_block_finalized(consensus_block_number) {
+            return None;
+        }
 
         let leaf: MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash> =
             opaque_leaf.into_opaque_leaf().try_decode()?;
