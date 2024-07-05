@@ -29,6 +29,7 @@ frame_support::construct_runtime!(
     pub struct Test {
         System: frame_system,
         AutoId: pallet_auto_id,
+        Timestamp: pallet_timestamp,
     }
 );
 
@@ -45,6 +46,14 @@ impl Time for MockTime {
 impl pallet_auto_id::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type Time = MockTime;
+    type Weights = ();
+}
+
+impl pallet_timestamp::Config for Test {
+    type Moment = u64;
+    type OnTimestampSet = ();
+    type MinimumPeriod = ();
+    type WeightInfo = ();
 }
 
 impl frame_system::Config for Test {

@@ -3,7 +3,6 @@ use sp_core::U256;
 use std::sync::Arc;
 use x509_parser::der_parser::asn1_rs::BitString;
 use x509_parser::prelude::{AlgorithmIdentifier, FromDer, SubjectPublicKeyInfo};
-use x509_parser::verify::verify_signature;
 
 /// Host function trait for Certificate registration
 pub trait HostFunctions: Send + Sync {
@@ -28,36 +27,45 @@ pub struct HostFunctionsImpl;
 
 impl HostFunctions for HostFunctionsImpl {
     fn verify_signature(&self, req: SignatureVerificationRequest) -> Option<()> {
-        let SignatureVerificationRequest {
-            public_key_info,
-            signature_algorithm,
-            data,
-            signature,
-        } = req;
-
-        let (_, public_key_info) = SubjectPublicKeyInfo::from_der(public_key_info.as_ref()).ok()?;
-        let (_, signature_algorithm) =
-            AlgorithmIdentifier::from_der(signature_algorithm.as_ref()).ok()?;
-        let signature = BitString::new(0, &signature);
-        verify_signature(&public_key_info, &signature_algorithm, &signature, &data).ok()
+        verify_signature(req)
     }
 
     fn decode_tbs_certificate(&self, certificate: DerVec) -> Option<TbsCertificate> {
-        let (_, tbs_certificate) =
-            x509_parser::certificate::TbsCertificate::from_der(certificate.as_ref()).ok()?;
-        let serial = U256::from_big_endian(&tbs_certificate.serial.to_bytes_be());
-        let validity = Validity::try_from(tbs_certificate.validity).ok()?;
-        let subject_common_name = tbs_certificate
-            .subject
-            .iter_common_name()
-            .next()
-            .map(|cn| cn.attr_value().as_bytes().to_vec())?;
-
-        Some(TbsCertificate {
-            serial,
-            subject_common_name,
-            subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
-            validity,
-        })
+        decode_tbs_certificate(certificate)
     }
+}
+
+pub(crate) fn decode_tbs_certificate(certificate: DerVec) -> Option<TbsCertificate> {
+    let (_, tbs_certificate) =
+        x509_parser::certificate::TbsCertificate::from_der(certificate.as_ref()).ok()?;
+    let serial = U256::from_big_endian(&tbs_certificate.serial.to_bytes_be());
+    let validity = Validity::try_from(tbs_certificate.validity).ok()?;
+    let subject_common_name = tbs_certificate
+        .subject
+        .iter_common_name()
+        .next()
+        .map(|cn| cn.attr_value().as_bytes().to_vec())?;
+
+    Some(TbsCertificate {
+        serial,
+        subject_common_name,
+        subject_public_key_info: tbs_certificate.subject_pki.raw.to_vec().into(),
+        validity,
+    })
+}
+
+pub(crate) fn verify_signature(req: SignatureVerificationRequest) -> Option<()> {
+    let SignatureVerificationRequest {
+        public_key_info,
+        signature_algorithm,
+        data,
+        signature,
+    } = req;
+
+    let (_, public_key_info) = SubjectPublicKeyInfo::from_der(public_key_info.as_ref()).ok()?;
+    let (_, signature_algorithm) =
+        AlgorithmIdentifier::from_der(signature_algorithm.as_ref()).ok()?;
+    let signature = BitString::new(0, &signature);
+    x509_parser::verify::verify_signature(&public_key_info, &signature_algorithm, &signature, &data)
+        .ok()
 }

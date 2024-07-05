@@ -258,6 +258,7 @@ impl pallet_transaction_payment::Config for Runtime {
 impl pallet_auto_id::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Time = Timestamp;
+    type Weights = pallet_auto_id::weights::SubstrateWeight<Self>;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -567,6 +568,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [domain_pallet_executive, ExecutivePallet]
         [pallet_messenger, Messenger]
+        [pallet_auto_id, AutoId]
     );
 }
 
