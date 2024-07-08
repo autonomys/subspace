@@ -323,8 +323,8 @@ where
                     }
                 };
                 let Some(caches_offset) = FarmerCacheOffset::new(index as u8, offset) else {
-                    // offset out of range, ignore this element
-                    continue;
+                    // offset out of range, ignore elements after
+                    break;
                 };
                 match maybe_piece_index {
                     Some(piece_index) => {
