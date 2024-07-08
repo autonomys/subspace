@@ -1,9 +1,9 @@
 //! Miscellaneous utilities for networking.
 
+pub(crate) mod distance_for_key;
 pub mod multihash;
 pub mod piece_provider;
 pub(crate) mod rate_limiter;
-pub(crate) mod unique_record_binary_heap;
 
 use event_listener_primitives::Bag;
 use futures::future::{Fuse, FusedFuture, FutureExt};
