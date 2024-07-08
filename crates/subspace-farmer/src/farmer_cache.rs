@@ -30,6 +30,7 @@ use tokio::task::{block_in_place, yield_now};
 use tracing::{debug, error, info, trace, warn};
 
 const CACHE_INDEX_EXPONENT: u32 = 8;
+const CACHE_INDEX_MAX: usize = (1 << CACHE_INDEX_EXPONENT) - 1;
 const CACHE_OFFSET_EXPONENT: u32 = 32 - CACHE_INDEX_EXPONENT;
 /// The maximum offset, calculated as 2^OFFSET_EXPONENT - 1
 const CACHE_OFFSET_MAX: u32 = (1 << CACHE_OFFSET_EXPONENT) - 1;
@@ -51,8 +52,20 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 struct FarmerCacheOffset(u32);
 
 impl FarmerCacheOffset {
-    fn new(cache_index: u8, cache_offset: u32) -> Self {
-        FarmerCacheOffset((u32::from(cache_index) << CACHE_OFFSET_EXPONENT) | cache_offset)
+    fn new(cache_index: u8, cache_offset: u32) -> Option<Self> {
+        // Check if cache offset is valid
+        if cache_offset > CACHE_OFFSET_MAX {
+            warn!(
+                %cache_offset,
+                "Each cache has a maximum offset of {CACHE_OFFSET_MAX}; \
+                Any portion exceeding this limit will be ignored"
+            );
+            return None;
+        }
+
+        Some(FarmerCacheOffset(
+            (u32::from(cache_index) << CACHE_OFFSET_EXPONENT) | cache_offset,
+        ))
     }
 
     fn decode(&self) -> (u8 /* cache_index */, PieceCacheOffset) {
@@ -223,27 +236,24 @@ where
             WorkerCommand::ForgetKey { key } => {
                 let mut caches = self.piece_caches.write().await;
                 let key = DistanceForKey::new_with_record_key(self.peer_id, key);
-                let (cache_index, cache_offset) = match caches.stored_pieces.remove(&key) {
-                    Some(offset) => offset.decode(),
-                    None => return,
+                let Some(offset) = caches.stored_pieces.remove(&key) else {
+                    // key not exist.
+                    return;
                 };
+                let (cache_index, cache_offset) = offset.decode();
                 let Some(backend) = caches.backends.get(usize::from(cache_index)) else {
                     // cache not exist.
                     return;
                 };
                 match backend.read_piece_index(cache_offset).await {
-                    Ok(Some(_)) => {
-                        caches
-                            .free_offsets
-                            .push_front(FarmerCacheOffset::new(cache_index, cache_offset.0));
-                    }
+                    Ok(Some(_)) => caches.free_offsets.push_front(offset),
                     Ok(None) => {
                         warn!(
                             %cache_index,
                             %cache_offset,
                             "offset out of range, this is likely an implementation bug, \
                             not freeing heap element"
-                        );
+                        )
                     }
                     Err(error) => {
                         error!(
@@ -252,7 +262,7 @@ where
                             ?key,
                             %cache_offset,
                             "Error while reading piece from cache, might be a disk corruption"
-                        );
+                        )
                     }
                 }
             }
@@ -263,10 +273,20 @@ where
         &self,
         piece_getter: &PG,
         current_segment_index: &mut SegmentIndex,
-        new_piece_caches: Vec<Arc<dyn PieceCache>>,
+        mut new_piece_caches: Vec<Arc<dyn PieceCache>>,
     ) where
         PG: PieceGetter,
     {
+        const MAX_CACHES_NUM: usize = CACHE_INDEX_MAX + 1;
+        if new_piece_caches.len() > MAX_CACHES_NUM {
+            warn!(
+                piece_caches_number = ?new_piece_caches.len(),
+                "Too many piece caches provided; \
+                Any extra caches beyond the {MAX_CACHES_NUM} limit will be ignored",
+            );
+            new_piece_caches.truncate(CACHE_INDEX_MAX);
+        }
+
         info!("Initializing piece cache");
         let mut backends = Vec::new();
         let mut stored_pieces = BTreeMap::new();
@@ -302,7 +322,10 @@ where
                         break;
                     }
                 };
-                let caches_offset = FarmerCacheOffset::new(index as u8, offset);
+                let Some(caches_offset) = FarmerCacheOffset::new(index as u8, offset) else {
+                    // offset out of range, ignore this element
+                    continue;
+                };
                 match maybe_piece_index {
                     Some(piece_index) => {
                         stored_pieces.insert(
@@ -384,7 +407,7 @@ where
         }
         let piece_indices_to_store: Vec<_> = piece_indices_to_store
             .into_par_iter()
-            .filter(|(key, _)| piece_store_state.stored_pieces.contains_key(&key))
+            .filter(|(key, _)| piece_store_state.stored_pieces.contains_key(key))
             .map(|(_, piece_index)| piece_index)
             .collect();
         drop(piece_store_state);
