@@ -37,7 +37,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{fmt, mem};
 use thiserror::Error;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace, warn, Instrument};
 use ulid::Ulid;
 
 const EXPECTED_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
@@ -275,38 +275,37 @@ impl<Response> StreamResponseSubscriber<Response> {
         let (acknowledgement_sender, mut acknowledgement_receiver) =
             mpsc::unbounded::<(String, u32)>();
 
-        let background_task = AsyncJoinOnDrop::new(
-            tokio::spawn({
-                let response_subject = response_subject.clone();
+        let ack_publisher_fut = {
+            let response_subject = response_subject.clone();
 
-                async move {
-                    while let Some((subject, index)) = acknowledgement_receiver.next().await {
-                        trace!(
+            async move {
+                while let Some((subject, index)) = acknowledgement_receiver.next().await {
+                    trace!(
+                        %subject,
+                        %index,
+                        %response_subject,
+                        %index,
+                        "Sending stream response acknowledgement"
+                    );
+                    if let Err(error) = nats_client
+                        .publish(subject.clone(), index.to_le_bytes().to_vec().into())
+                        .await
+                    {
+                        warn!(
+                            %error,
                             %subject,
                             %index,
                             %response_subject,
                             %index,
-                            "Sending stream response acknowledgement"
+                            "Failed to send stream response acknowledgement"
                         );
-                        if let Err(error) = nats_client
-                            .publish(subject.clone(), index.to_le_bytes().to_vec().into())
-                            .await
-                        {
-                            warn!(
-                                %error,
-                                %subject,
-                                %index,
-                                %response_subject,
-                                %index,
-                                "Failed to send stream response acknowledgement"
-                            );
-                            return;
-                        }
+                        return;
                     }
                 }
-            }),
-            true,
-        );
+            }
+        };
+        let background_task =
+            AsyncJoinOnDrop::new(tokio::spawn(ack_publisher_fut.in_current_span()), true);
 
         Self {
             response_subject,
@@ -703,6 +702,7 @@ impl NatsClient {
                     .await
                 {
                     warn!(
+                        %response_subject,
                         %error,
                         request_type = %type_name::<Request>(),
                         response_type = %type_name::<Request::Response>(),
@@ -725,6 +725,7 @@ impl NatsClient {
             Ok(ack_subscription) => ack_subscription,
             Err(error) => {
                 warn!(
+                    %response_subject,
                     %error,
                     request_type = %type_name::<Request>(),
                     response_type = %type_name::<Request::Response>(),
@@ -734,6 +735,7 @@ impl NatsClient {
             }
         };
         debug!(
+            %response_subject,
             request_type = %type_name::<Request>(),
             response_type = %type_name::<Request::Response>(),
             ?ack_subscription,
@@ -781,6 +783,7 @@ impl NatsClient {
                 .await
             {
                 warn!(
+                    %response_subject,
                     %error,
                     request_type = %type_name::<Request>(),
                     response_type = %type_name::<Request::Response>(),
