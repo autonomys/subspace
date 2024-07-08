@@ -389,11 +389,6 @@ pub mod pallet {
     pub type BlockSlots<T: Config> =
         StorageValue<_, BoundedBTreeMap<BlockNumberFor<T>, Slot, T::BlockSlotCount>, ValueQuery>;
 
-    // TODO: Clarify when this value is updated (when it is updated, right now it is not)
-    /// Number of iterations for proof of time per slot
-    #[pallet::storage]
-    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
-
     /// Solution ranges used for challenges.
     #[pallet::storage]
     #[pallet::getter(fn solution_ranges)]
@@ -490,6 +485,11 @@ pub mod pallet {
             (T::AccountId, FarmerSignature),
         >,
     >;
+
+    // TODO: Clarify when this value is updated (when it is updated, right now it is not)
+    /// Number of iterations for proof of time per slot
+    #[pallet::storage]
+    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
 
     /// Entropy that needs to be injected into proof of time chain at specific slot associated with
     /// block number it came from.
