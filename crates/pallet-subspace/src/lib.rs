@@ -371,7 +371,9 @@ pub mod pallet {
         RewardsAlreadyEnabled,
     }
 
-    // TODO: Remove genesis slot
+    // TODO: Consider removing genesis slot when breaking compatibility with previous networks since
+    //  slots are no longer measured in timestamp, but rather in proof of time slots, which starts
+    //  with 0.
     /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
@@ -784,23 +786,24 @@ impl<T: Config> Pallet<T> {
             .iter()
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
             .expect("Block must always have pre-digest");
+        let current_slot = pre_digest.slot();
 
         // On the first non-zero block (i.e. block #1) we need to adjust internal storage
         // accordingly.
         if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(pre_digest.slot());
+            GenesisSlot::<T>::put(current_slot);
             debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
         }
 
         // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(pre_digest.slot());
+        CurrentSlot::<T>::put(current_slot);
 
         BlockSlots::<T>::mutate(|block_slots| {
             if let Some(to_remove) = block_number.checked_sub(&T::BlockSlotCount::get().into()) {
                 block_slots.remove(&to_remove);
             }
             block_slots
-                .try_insert(block_number, pre_digest.slot())
+                .try_insert(block_number, current_slot)
                 .expect("one entry just removed before inserting; qed");
         });
 
@@ -834,7 +837,7 @@ impl<T: Config> Pallet<T> {
                 pre_digest.solution().sector_index,
                 pre_digest.solution().piece_offset,
                 pre_digest.solution().chunk,
-                pre_digest.slot(),
+                current_slot,
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, _sector_index, _piece_offset, _chunk, slot) = key;
@@ -978,7 +981,7 @@ impl<T: Config> Pallet<T> {
             // Clean up old values we'll no longer need
             if let Some(entry) = entropy.first_entry() {
                 if let Some(target_slot) = entry.get().target_slot
-                    && target_slot < pre_digest.slot()
+                    && target_slot < current_slot
                 {
                     entry.remove();
                     PotEntropy::<T>::put(entropy);
