@@ -40,7 +40,7 @@ use tracing::{error, info, info_span, warn, Instrument};
 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 /// Interval between farmer self-identification broadcast messages
-pub(super) const FARMER_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_secs(5);
+pub(super) const FARMER_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_mins(1);
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]

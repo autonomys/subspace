@@ -17,7 +17,7 @@ use subspace_farmer::disk_piece_cache::DiskPieceCache;
 use subspace_farmer::utils::AsyncJoinOnDrop;
 
 /// Interval between cache self-identification broadcast messages
-pub(super) const CACHE_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_secs(5);
+pub(super) const CACHE_IDENTIFICATION_BROADCAST_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 struct DiskCache {
