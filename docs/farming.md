@@ -41,7 +41,7 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ```PowerShell
 # Replace `NODE_FILE_NAME.exe` with the name of the node file you downloaded from releases
-# Replace `PATH_TO_NODE` with location where you want you store node data
+# Replace `PATH_TO_NODE` with location where you want to store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe run `
@@ -76,7 +76,7 @@ If you're connected directly without any router, then again nothing needs to be 
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```PowerShell
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
-# Replace `PATH_TO_FARM` with location where you want you store plot files
+# Replace `PATH_TO_FARM` with location where you want to store plot files
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS path=PATH_TO_FARM,size=PLOT_SIZE
@@ -91,7 +91,7 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ```bash
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-# Replace `PATH_TO_NODE` with location where you want you store node data
+# Replace `PATH_TO_NODE` with location where you want to store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
@@ -125,7 +125,7 @@ If you're connected directly without any router, then again nothing needs to be 
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
-# Replace `PATH_TO_FARM` with location where you want you store plot files
+# Replace `PATH_TO_FARM` with location where you want to store plot files
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS path=PATH_TO_FARM,size=PLOT_SIZE
@@ -144,7 +144,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 ```bash
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-# Replace `PATH_TO_NODE` with location where you want you store node data
+# Replace `PATH_TO_NODE` with location where you want to store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
@@ -177,7 +177,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
-# Replace `PATH_TO_FARM` with location where you want you store plot files
+# Replace `PATH_TO_FARM` with location where you want to store plot files
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
