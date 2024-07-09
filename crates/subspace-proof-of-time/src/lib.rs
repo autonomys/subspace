@@ -10,11 +10,11 @@ use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum PotError {
-    /// Iterations is not multiple of number of checkpoints times two
+    /// Iterations are not multiple of number of checkpoints times two
     #[cfg_attr(
         feature = "thiserror",
         error(
-            "Iterations {iterations} is not multiple of number of checkpoints {num_checkpoints} \
+            "Iterations {iterations} are not multiple of number of checkpoints {num_checkpoints} \
             times two"
         )
     )]
