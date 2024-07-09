@@ -29,10 +29,11 @@
 pub mod config;
 pub mod dsn;
 mod metrics;
+pub(crate) mod mmr;
+pub(crate) mod network;
 pub mod rpc;
 pub mod sync_from_dsn;
 pub mod transaction_pool;
-pub mod network;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
@@ -837,24 +838,27 @@ where
     net_config.add_notification_protocol(pot_gossip_notification_config);
     let pause_sync = Arc::clone(&net_config.network_config.pause_sync);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
-        sc_service::build_network(sc_service::BuildNetworkParams {
-            config: &config.base,
-            net_config,
-            client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
-            spawn_handle: task_manager.spawn_handle(),
-            import_queue,
-            block_announce_validator_builder: None,
-            warp_sync_params: None,
-            block_relay,
-            metrics: NotificationMetrics::new(
-                config
-                    .base
-                    .prometheus_config
-                    .as_ref()
-                    .map(|cfg| &cfg.registry),
-            ),
-        })?;
+        network::build_network(
+            sc_service::BuildNetworkParams {
+                config: &config.base,
+                net_config,
+                client: client.clone(),
+                transaction_pool: transaction_pool.clone(),
+                spawn_handle: task_manager.spawn_handle(),
+                import_queue,
+                block_announce_validator_builder: None,
+                warp_sync_params: None,
+                block_relay,
+                metrics: NotificationMetrics::new(
+                    config
+                        .base
+                        .prometheus_config
+                        .as_ref()
+                        .map(|cfg| &cfg.registry),
+                ),
+            },
+            backend.offchain_storage(),
+        )?;
 
     task_manager.spawn_handle().spawn(
         "sync-target-follower",
@@ -930,7 +934,7 @@ where
     let snap_sync_task = snap_sync(
         segment_headers_store.clone(),
         node.clone(),
-        fork_id,
+        fork_id.clone(),
         Arc::clone(&client),
         import_queue_service1,
         pause_sync.clone(),
@@ -938,6 +942,21 @@ where
         Arc::clone(&network_service),
         sync_service.clone(),
     );
+
+    // TODO: enable after the domain-sync implementation
+    // if let Some(offchain_storage) = backend.offchain_storage() {
+    //     let mmr_sync_task = mmr_sync(
+    //         fork_id,
+    //         Arc::clone(&client),
+    //         Arc::clone(&network_service),
+    //         sync_service.clone(),
+    //         offchain_storage,
+    //     );
+    //
+    //     task_manager
+    //         .spawn_handle()
+    //         .spawn("mmr-sync", Some("mmr-sync"), mmr_sync_task);
+    // }
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
         segment_headers_store.clone(),
