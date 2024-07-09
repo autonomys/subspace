@@ -3,7 +3,7 @@
 License: Apache-2.0
 
 Pallet feeds provides the interactions with Subspace storage. The main design goal for Feeds is not only to push objects
-to the Storage but also to provide a way for the for feed owners to inject some verification logic through `FeedProcessor`
+to the Storage but also to provide a way for the feed owners to inject some verification logic through `FeedProcessor`
 impls.
 
 ## Calls
