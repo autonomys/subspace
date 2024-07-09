@@ -34,7 +34,7 @@ use frame_support::traits::{
     VariantCount,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
-use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
+use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_block_fees::fees::OnChargeDomainTransaction;
@@ -80,7 +80,7 @@ use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
-    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SSC,
+    BlockNumber as ConsensusBlockNumber, Hash as ConsensusBlockHash, Moment, SHANNON, SSC,
 };
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -352,6 +352,7 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub const OperationalFeeMultiplier: u8 = 5;
     pub const DomainChainByteFee: Balance = 1;
+    pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
 impl pallet_block_fees::Config for Runtime {
@@ -370,7 +371,7 @@ impl Get<Balance> for FinalDomainTransactionByteFee {
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = ();
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
@@ -518,7 +519,7 @@ impl pallet_messenger::Config for Runtime {
 
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = MmrHash;
     type MmrProofVerifier = MmrProofVerifier;
