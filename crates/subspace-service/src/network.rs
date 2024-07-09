@@ -1,8 +1,9 @@
+use crate::mmr::request_handler::MmrRequestHandler;
 use futures::channel::oneshot;
 use futures::{pin_mut, FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents, ProofProvider};
 use sc_consensus::ImportQueue;
-use sc_network::config::{ExHashT, PeerStore};
+use sc_network::config::PeerStore;
 use sc_network::service::traits::RequestResponseConfig;
 use sc_network::{NetworkBackend, NetworkBlock, Roles};
 use sc_network_light::light_client_requests::handler::LightClientRequestHandler;
@@ -21,13 +22,16 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
+use sp_core::offchain::OffchainStorage;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, Zero};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
 /// Build the network service, the network status sinks and an RPC sender.
-pub fn build_network<TBl, TNet, TExPool, TImpQu, TCl>(
+#[allow(clippy::type_complexity)]
+pub fn build_network<TBl, TNet, TExPool, TImpQu, TCl, TOs>(
     params: BuildNetworkParams<TBl, TNet, TExPool, TImpQu, TCl>,
+    offchain_storage: Option<TOs>,
 ) -> Result<
     (
         Arc<dyn sc_network::service::traits::NetworkService>,
@@ -52,6 +56,7 @@ where
     TExPool: TransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
     TImpQu: ImportQueue<TBl> + 'static,
     TNet: NetworkBackend<TBl, <TBl as BlockT>::Hash>,
+    TOs: OffchainStorage + 'static,
 {
     let BuildNetworkParams {
         config,
@@ -177,6 +182,27 @@ where
         );
         protocol_config
     };
+
+    if let Some(offchain_storage) = offchain_storage {
+        let num_peer_hint = net_config.network_config.default_peers_set_num_full as usize
+            + net_config
+                .network_config
+                .default_peers_set
+                .reserved_nodes
+                .len();
+
+        // Allow both outgoing and incoming requests.
+        let (handler, protocol_config) = MmrRequestHandler::new::<TNet, TCl>(
+            &protocol_id,
+            config.chain_spec.fork_id(),
+            client.clone(),
+            num_peer_hint,
+            offchain_storage,
+        );
+        spawn_handle.spawn("mmr-request-handler", Some("networking"), handler.run());
+
+        net_config.add_request_response_protocol(protocol_config);
+    }
 
     // install request handlers to `FullNetworkConfiguration`
     net_config.add_request_response_protocol(block_request_protocol_config);
@@ -314,7 +340,7 @@ where
         ),
     );
 
-    let future = build_network_future::<_, _, <TBl as BlockT>::Hash, _>(
+    let future = build_network_future(
         network_mut,
         client,
         sync_service.clone(),
@@ -375,7 +401,6 @@ async fn build_network_future<
         + Send
         + Sync
         + 'static,
-    H: ExHashT,
     N: NetworkBackend<B, <B as BlockT>::Hash>,
 >(
     network: N,
