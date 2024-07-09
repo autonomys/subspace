@@ -829,15 +829,6 @@ where
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
 
-        // Farmers may have not received all previous segments, send them now.
-        for archived_segment in older_archived_segments {
-            send_archived_segment_notification(
-                &archived_segment_notification_sender,
-                archived_segment,
-            )
-            .await;
-        }
-
         while let Some(ref block_import_notification) =
             block_importing_notification_stream.next().await
         {
