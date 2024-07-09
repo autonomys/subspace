@@ -242,7 +242,7 @@ mod pallet {
                 &sender,
                 amount,
                 WithdrawReasons::TRANSFER,
-                ExistenceRequirement::AllowDeath,
+                ExistenceRequirement::KeepAlive,
             )
             .map_err(|_| Error::<T>::LowBalance)?;
 

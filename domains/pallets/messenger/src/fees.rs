@@ -44,7 +44,7 @@ impl<T: Config> Pallet<T> {
         T::Currency::burn_from(
             sender,
             total_fees,
-            Preservation::Expendable,
+            Preservation::Preserve,
             Precision::Exact,
             Fortitude::Polite,
         )?;
