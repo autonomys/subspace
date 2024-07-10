@@ -580,6 +580,7 @@ async fn plot_single_sector_internal(
                 };
                 let sector_chunk_size = sector_chunk.len() as u64;
 
+                trace!(sector_chunk_size, "Writing sector chunk to disk");
                 let write_fut = task::spawn_blocking({
                     let plot_file = Arc::clone(plot_file);
 
