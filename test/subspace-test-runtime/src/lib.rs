@@ -36,7 +36,7 @@ use frame_support::traits::{
     Imbalance, VariantCount, WithdrawReasons,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
-use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
+use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
@@ -286,6 +286,7 @@ parameter_types! {
     );
     pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
     pub const BlockSlotCount: u32 = 6;
+    pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -522,7 +523,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
 }
@@ -628,7 +629,7 @@ impl pallet_messenger::Config for Runtime {
 
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
-    type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type OnXDMRewards = ();
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;

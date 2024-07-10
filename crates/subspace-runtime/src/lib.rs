@@ -45,7 +45,7 @@ use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
-use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
+use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
@@ -402,6 +402,7 @@ parameter_types! {
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
     pub DynamicCostOfStorage: bool = RuntimeConfigs::enable_dynamic_cost_of_storage();
+    pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
 impl pallet_transaction_fees::Config for Runtime {
@@ -420,7 +421,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
 }
@@ -546,7 +547,7 @@ impl pallet_messenger::Config for Runtime {
 
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
-    type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
+    type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
     type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
