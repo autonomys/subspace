@@ -361,7 +361,7 @@ where
         break farmer_app_info;
     };
 
-    let (progress_sender, mut progress_receiver) = mpsc::channel(0);
+    let (progress_sender, mut progress_receiver) = mpsc::channel(10);
 
     // Initiate plotting
     plotter
@@ -408,7 +408,7 @@ where
                 }
             }
 
-            let (retry_progress_sender, retry_progress_receiver) = mpsc::channel(0);
+            let (retry_progress_sender, retry_progress_receiver) = mpsc::channel(10);
             progress_receiver = retry_progress_receiver;
 
             // Initiate plotting
