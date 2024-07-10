@@ -1713,7 +1713,8 @@ mod pallet {
                             | BundleError::DuplicatedBundle
                             | BundleError::SlotInThePast
                             | BundleError::SlotInTheFuture
-                            | BundleError::InvalidProofOfTime => {
+                            | BundleError::InvalidProofOfTime
+                            | BundleError::SlotSmallerThanPreviousBlockBundle => {
                                 log::debug!(
                                     target: "runtime::domains",
                                     "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
