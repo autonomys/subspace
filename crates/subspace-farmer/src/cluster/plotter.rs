@@ -410,6 +410,7 @@ impl ClusterPlotter {
                                     break 'outer;
                                 }
                                 ResponseProcessingResult::Continue => {
+                                    trace!("Continue");
                                     // Nothing to do
                                 }
                             }
