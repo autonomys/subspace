@@ -607,8 +607,13 @@ impl NatsClient {
             return;
         };
 
+        let message_payload_size = message.payload.len();
         let request = match Request::decode(&mut message.payload.as_ref()) {
-            Ok(request) => request,
+            Ok(request) => {
+                // Free allocation early
+                drop(message.payload);
+                request
+            }
             Err(error) => {
                 warn!(
                     request_type = %type_name::<Request>(),
@@ -620,12 +625,22 @@ impl NatsClient {
             }
         };
 
-        trace!(
-            request_type = %type_name::<Request>(),
-            ?request,
-            %reply_subject,
-            "Processing request"
-        );
+        // Avoid printing large messages in logs
+        if message_payload_size > 1024 {
+            trace!(
+                request_type = %type_name::<Request>(),
+                %reply_subject,
+                "Processing request"
+            );
+        } else {
+            trace!(
+                request_type = %type_name::<Request>(),
+                ?request,
+                %reply_subject,
+                "Processing request"
+            );
+        }
+
         if let Some(response) = process(request).await
             && let Err(error) = self.publish(reply_subject, response.encode().into()).await
         {
