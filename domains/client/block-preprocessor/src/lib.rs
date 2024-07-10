@@ -18,7 +18,7 @@ use crate::inherents::is_runtime_upgraded;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use sc_client_api::BlockBackend;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -28,8 +28,10 @@ use sp_domains::{
     InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
 use sp_state_machine::LayoutV1;
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_weights::Weight;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
@@ -119,14 +121,16 @@ where
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block> + MessengerApi<Block>,
+    Client::Api: DomainCoreApi<Block> + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
@@ -147,7 +151,7 @@ where
     pub fn preprocess_consensus_block(
         &self,
         consensus_block_hash: CBlock::Hash,
-        domain_hash: Block::Hash,
+        parent_domain_block: (Block::Hash, NumberFor<Block>),
     ) -> sp_blockchain::Result<Option<PreprocessResult<Block>>> {
         let (primary_extrinsics, shuffling_seed) = prepare_domain_block_elements::<Block, CBlock, _>(
             &*self.consensus_client,
@@ -174,8 +178,12 @@ where
             .runtime_api()
             .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
-        let (inboxed_bundles, extrinsics) =
-            self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash)?;
+        let (inboxed_bundles, extrinsics) = self.compile_bundles_to_extrinsics(
+            bundles,
+            tx_range,
+            parent_domain_block,
+            consensus_block_hash,
+        )?;
 
         let extrinsics = deduplicate_and_shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(
             extrinsics,
@@ -195,7 +203,8 @@ where
         &self,
         bundles: OpaqueBundles<CBlock, Block::Header, Balance>,
         tx_range: U256,
-        at: Block::Hash,
+        (domain_hash, domain_number): (Block::Hash, NumberFor<Block>),
+        at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<(
         Vec<InboxedBundle<Block::Hash>>,
         Vec<(Option<AccountId>, Block::Extrinsic)>,
@@ -206,9 +215,16 @@ where
         let runtime_api = self.client.runtime_api();
         for bundle in bundles {
             let extrinsic_root = bundle.extrinsics_root();
-            match self.check_bundle_validity(&bundle, &tx_range, at)? {
+            match self.check_bundle_validity(
+                &bundle,
+                &tx_range,
+                (domain_hash, domain_number),
+                at_consensus_hash,
+            )? {
                 BundleValidity::Valid(extrinsics) => {
-                    let extrinsics: Vec<_> = match runtime_api.extract_signer(at, extrinsics) {
+                    let extrinsics: Vec<_> = match runtime_api
+                        .extract_signer(domain_hash, extrinsics)
+                    {
                         Ok(res) => res,
                         Err(e) => {
                             tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
@@ -246,7 +262,8 @@ where
         &self,
         bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
-        at: Block::Hash,
+        (domain_hash, domain_number): (Block::Hash, NumberFor<Block>),
+        at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
@@ -254,17 +271,23 @@ where
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
         let mut estimated_bundle_weight = Weight::default();
 
-        let domain_block_number = self
-            .client
-            .number(at)?
-            .ok_or(sp_blockchain::Error::MissingHeader(at.to_string()))?;
+        let runtime_api = self.client.runtime_api();
+        let consensus_runtime_api = self.consensus_client.runtime_api();
+        let api_version = runtime_api
+            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(domain_hash)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                    format!("MessengerApi not found at: {:?}", domain_hash).into(),
+                ))
+            })?;
 
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
-        let runtime_api = self.client.runtime_api();
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
-            let decode_result = runtime_api.decode_extrinsic(at, opaque_extrinsic.clone())?;
+            let decode_result =
+                runtime_api.decode_extrinsic(domain_hash, opaque_extrinsic.clone())?;
             let extrinsic = match decode_result {
                 Ok(extrinsic) => extrinsic,
                 Err(err) => {
@@ -280,8 +303,12 @@ where
                 }
             };
 
-            let is_within_tx_range =
-                runtime_api.is_within_tx_range(at, &extrinsic, &bundle_vrf_hash, tx_range)?;
+            let is_within_tx_range = runtime_api.is_within_tx_range(
+                domain_hash,
+                &extrinsic,
+                &bundle_vrf_hash,
+                tx_range,
+            )?;
 
             if !is_within_tx_range {
                 return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(
@@ -292,10 +319,31 @@ where
             // Check if this extrinsic is an inherent extrinsic.
             // If so, this is an invalid bundle since these extrinsics should not be included in the
             // bundle. Extrinsic is always decodable due to the check above.
-            if runtime_api.is_inherent_extrinsic(at, &extrinsic)? {
+            if runtime_api.is_inherent_extrinsic(domain_hash, &extrinsic)? {
                 return Ok(BundleValidity::Invalid(
                     InvalidBundleType::InherentExtrinsic(index as u32),
                 ));
+            }
+
+            if api_version >= 4 {
+                if let Some(xdm_mmr_proof) =
+                    runtime_api.extract_xdm_mmr_proof(domain_hash, &extrinsic)?
+                {
+                    let ConsensusChainMmrLeafProof {
+                        opaque_mmr_leaf,
+                        proof,
+                        ..
+                    } = xdm_mmr_proof;
+
+                    if consensus_runtime_api
+                        .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
+                        .is_err()
+                    {
+                        return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
+                            index as u32,
+                        )));
+                    }
+                }
             }
 
             // Using one instance of runtime_api throughout the loop in order to maintain context
@@ -304,10 +352,10 @@ where
             // to maintain side-effect in the storage buffer.
             let is_legal_tx = runtime_api
                 .check_extrinsics_and_do_pre_dispatch(
-                    at,
+                    domain_hash,
                     vec![extrinsic.clone()],
-                    domain_block_number,
-                    at,
+                    domain_number,
+                    domain_hash,
                 )?
                 .is_ok();
 
@@ -317,7 +365,7 @@ where
                 )));
             }
 
-            let tx_weight = runtime_api.extrinsic_weight(at, &extrinsic)?;
+            let tx_weight = runtime_api.extrinsic_weight(domain_hash, &extrinsic)?;
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
 
             extrinsics.push(extrinsic);

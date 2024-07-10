@@ -137,7 +137,7 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
@@ -147,7 +147,7 @@ where
         + ProvideRuntimeApi<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>
         + 'static,
@@ -282,7 +282,7 @@ where
 
         let maybe_preprocess_result = self
             .domain_block_preprocessor
-            .preprocess_consensus_block(consensus_block_hash, parent_hash)?;
+            .preprocess_consensus_block(consensus_block_hash, (parent_hash, parent_number))?;
 
         let preprocess_took = start.elapsed().as_millis();
         if preprocess_took >= SLOW_PREPROCESS_MILLIS.into() {

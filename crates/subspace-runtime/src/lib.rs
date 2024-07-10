@@ -466,14 +466,19 @@ impl sp_subspace_mmr::MmrProofVerifier<mmr::Hash, NumberFor<Block>, Hash> for Mm
     fn verify_proof_and_extract_leaf(
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
     ) -> Option<mmr::Leaf> {
+        let mmr_root = SubspaceMmr::mmr_root_hash(mmr_leaf_proof.consensus_block_number)?;
+        Self::verify_proof_stateless(mmr_root, mmr_leaf_proof)
+    }
+
+    fn verify_proof_stateless(
+        mmr_root: mmr::Hash,
+        mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, mmr::Hash>,
+    ) -> Option<mmr::Leaf> {
         let ConsensusChainMmrLeafProof {
-            consensus_block_number,
             opaque_mmr_leaf,
             proof,
             ..
         } = mmr_leaf_proof;
-
-        let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
 
         pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
             mmr_root,
@@ -864,19 +869,31 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
     }
 }
 
-fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
-    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        match &ext.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-                Some(Messenger::validate_relay_message(msg).is_ok())
-            }
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-                Some(Messenger::validate_relay_message_response(msg).is_ok())
-            }
-            _ => None,
+fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
+    match &ext.function {
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+        | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            let ConsensusChainMmrLeafProof {
+                consensus_block_number,
+                opaque_mmr_leaf,
+                proof,
+                ..
+            } = msg.proof.consensus_mmr_proof();
+
+            let mmr_root = SubspaceMmr::mmr_root_hash(consensus_block_number)?;
+
+            Some(
+                pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(
+                    mmr_root,
+                    vec![mmr::DataOrHash::Data(
+                        EncodableOpaqueLeaf(opaque_mmr_leaf.0.clone()).into_opaque_leaf(),
+                    )],
+                    proof,
+                )
+                .is_ok(),
+            )
         }
-    } else {
-        None
+        _ => None,
     }
 }
 
@@ -902,8 +919,8 @@ impl From<RewardAddress> for AccountId32 {
 }
 
 pub struct StorageKeyProvider;
-impl FraudProofStorageKeyProvider for StorageKeyProvider {
-    fn storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
+impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
+    fn storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
         match req {
             FraudProofStorageKeyRequest::BlockRandomness => {
                 pallet_subspace::BlockRandomness::<Runtime>::hashed_key().to_vec()
@@ -929,6 +946,9 @@ impl FraudProofStorageKeyProvider for StorageKeyProvider {
             }
             FraudProofStorageKeyRequest::DomainSudoCall(domain_id) => {
                 pallet_domains::DomainSudoCalls::<Runtime>::hashed_key_for(domain_id)
+            }
+            FraudProofStorageKeyRequest::MmrRoot(block_number) => {
+                pallet_subspace_mmr::MmrRootHashes::<Runtime>::hashed_key_for(block_number)
             }
         }
     }
@@ -1303,11 +1323,21 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block> for Runtime {
-        fn is_xdm_valid(
-            extrinsic: Vec<u8>,
+    impl sp_messenger::MessengerApi<Block, BlockNumber, <Block as BlockT>::Hash> for Runtime {
+        fn is_xdm_mmr_proof_valid(
+            ext: &<Block as BlockT>::Extrinsic
         ) -> Option<bool> {
-            is_xdm_valid(extrinsic)
+            is_xdm_mmr_proof_valid(ext)
+        }
+
+        fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<BlockNumber, <Block as BlockT>::Hash, sp_core::H256>> {
+            match &ext.function {
+                RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                    Some(msg.proof.consensus_mmr_proof())
+                }
+                _ => None,
+            }
         }
 
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
@@ -1362,8 +1392,8 @@ impl_runtime_apis! {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
-        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8> {
-            <StorageKeyProvider as FraudProofStorageKeyProvider>::storage_key(req)
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8> {
+            <StorageKeyProvider as FraudProofStorageKeyProvider<NumberFor<Block>>>::storage_key(req)
         }
     }
 

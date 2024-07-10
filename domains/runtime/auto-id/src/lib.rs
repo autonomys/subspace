@@ -62,7 +62,9 @@ pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_subspace_mmr::domain_mmr_runtime_interface::verify_mmr_proof;
+use sp_subspace_mmr::domain_mmr_runtime_interface::{
+    is_consensus_block_finalized, verify_mmr_proof,
+};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrLeaf};
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{
@@ -327,10 +329,15 @@ impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrP
         mmr_leaf_proof: ConsensusChainMmrLeafProof<NumberFor<Block>, Hash, MmrHash>,
     ) -> Option<MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash>> {
         let ConsensusChainMmrLeafProof {
+            consensus_block_number,
             opaque_mmr_leaf: opaque_leaf,
             proof,
             ..
         } = mmr_leaf_proof;
+
+        if !is_consensus_block_finalized(consensus_block_number) {
+            return None;
+        }
 
         let leaf: MmrLeaf<ConsensusBlockNumber, ConsensusBlockHash> =
             opaque_leaf.into_opaque_leaf().try_decode()?;
@@ -495,19 +502,24 @@ construct_runtime!(
     }
 );
 
-fn is_xdm_valid(encoded_ext: Vec<u8>) -> Option<bool> {
-    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        match &ext.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-                Some(Messenger::validate_relay_message(msg).is_ok())
+fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
+    match &ext.function {
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+        | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            let ConsensusChainMmrLeafProof {
+                consensus_block_number,
+                opaque_mmr_leaf,
+                proof,
+                ..
+            } = msg.proof.consensus_mmr_proof();
+
+            if !is_consensus_block_finalized(consensus_block_number) {
+                return Some(false);
             }
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-                Some(Messenger::validate_relay_message_response(msg).is_ok())
-            }
-            _ => None,
+
+            Some(verify_mmr_proof(vec![opaque_mmr_leaf], proof.encode()))
         }
-    } else {
-        None
+        _ => None,
     }
 }
 
@@ -598,7 +610,11 @@ fn check_transaction_and_do_pre_dispatch_inner(
             .map(|_| ()),
         // unsigned transaction
         None => {
-            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            if let RuntimeCall::Messenger(call) = &xt.function {
+                Messenger::pre_dispatch_with_trusted_mmr_proof(call)?;
+            } else {
+                Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            }
             SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
                 .map(|_| ())
         }
@@ -858,11 +874,21 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block> for Runtime {
-        fn is_xdm_valid(
-            extrinsic: Vec<u8>,
+    impl sp_messenger::MessengerApi<Block, ConsensusBlockNumber, ConsensusBlockHash> for Runtime {
+        fn is_xdm_mmr_proof_valid(
+            extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<bool> {
-            is_xdm_valid(extrinsic)
+            is_xdm_mmr_proof_valid(extrinsic)
+        }
+
+        fn extract_xdm_mmr_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<ConsensusChainMmrLeafProof<ConsensusBlockNumber, ConsensusBlockHash, sp_core::H256>> {
+            match &ext.function {
+                RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg })
+                | RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                    Some(msg.proof.consensus_mmr_proof())
+                }
+                _ => None,
+            }
         }
 
         fn confirmed_domain_block_storage_key(_domain_id: DomainId) -> Vec<u8> {

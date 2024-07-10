@@ -61,14 +61,20 @@ pub type RuntimeExecutor = sc_executor::WasmExecutor<HostFunctions>;
 pub struct ExtensionsFactory<CClient, CBlock, Block, Executor> {
     consensus_client: Arc<CClient>,
     executor: Arc<Executor>,
+    confirmation_depth_k: u32,
     _marker: PhantomData<(CBlock, Block)>,
 }
 
 impl<CClient, CBlock, Block, Executor> ExtensionsFactory<CClient, CBlock, Block, Executor> {
-    pub fn new(consensus_client: Arc<CClient>, executor: Arc<Executor>) -> Self {
+    pub fn new(
+        consensus_client: Arc<CClient>,
+        executor: Arc<Executor>,
+        confirmation_depth_k: u32,
+    ) -> Self {
         Self {
             consensus_client,
             executor,
+            confirmation_depth_k,
             _marker: Default::default(),
         }
     }
@@ -82,7 +88,7 @@ where
     CBlock::Hash: From<H256> + Into<H256>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + DomainsApi<CBlock, Block::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -93,7 +99,10 @@ where
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(SubspaceMmrExtension::new(Arc::new(
-            SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(self.consensus_client.clone()),
+            SubspaceMmrHostFunctionsImpl::<CBlock, _>::new(
+                self.consensus_client.clone(),
+                self.confirmation_depth_k,
+            ),
         )));
 
         exts.register(MessengerExtension::new(Arc::new(
@@ -134,7 +143,7 @@ impl<CBlock, DomainHeader, CClient> FPStorageKeyProvider<CBlock, DomainHeader, C
     }
 }
 
-impl<CBlock, DomainHeader, CClient> FraudProofStorageKeyProviderInstance
+impl<CBlock, DomainHeader, CClient> FraudProofStorageKeyProviderInstance<NumberFor<CBlock>>
     for FPStorageKeyProvider<CBlock, DomainHeader, CClient>
 where
     CBlock: BlockT,
@@ -142,7 +151,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: FraudProofApi<CBlock, DomainHeader>,
 {
-    fn storage_key(&self, req: FraudProofStorageKeyRequest) -> Option<Vec<u8>> {
+    fn storage_key(&self, req: FraudProofStorageKeyRequest<NumberFor<CBlock>>) -> Option<Vec<u8>> {
         let best_hash = self.consensus_client.info().best_hash;
         self.consensus_client
             .runtime_api()

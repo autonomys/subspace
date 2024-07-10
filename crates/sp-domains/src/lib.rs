@@ -1082,8 +1082,6 @@ pub enum ReceiptValidity {
 /// Bundle invalidity type
 ///
 /// Each type contains the index of the first invalid extrinsic within the bundle
-// TODO: `#[codec(index = 3)]` is reserved for the reomved `InvalidBundleType::InvalidXDM`
-// we can only reuse index 3 in the next network
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
@@ -1095,6 +1093,9 @@ pub enum InvalidBundleType {
     /// Transaction is illegal (unable to pay the fee, etc).
     #[codec(index = 2)]
     IllegalTx(u32),
+    /// Transaction is an invalid XDM.
+    #[codec(index = 3)]
+    InvalidXDM(u32),
     /// Transaction is an inherent extrinsic.
     #[codec(index = 4)]
     InherentExtrinsic(u32),
@@ -1112,6 +1113,7 @@ impl InvalidBundleType {
             Self::UndecodableTx(i) => *i,
             Self::OutOfRangeTx(i) => *i,
             Self::IllegalTx(i) => *i,
+            Self::InvalidXDM(i) => *i,
             Self::InherentExtrinsic(i) => *i,
             // NOTE: the `InvalidBundleWeight` is targetting the whole bundle not a specific
             // single extrinsic, as `extrinsic_index` is used as the order to check the extrinsic
@@ -1130,6 +1132,7 @@ impl InvalidBundleType {
             Self::UndecodableTx(_) => 1,
             Self::OutOfRangeTx(_) => 2,
             Self::InherentExtrinsic(_) => 3,
+            Self::InvalidXDM(_) => 4,
             Self::IllegalTx(_) => 5,
             Self::InvalidBundleWeight => 6,
         };
@@ -1150,6 +1153,7 @@ impl InvalidBundleType {
             Self::UndecodableTx(i) => Some(*i),
             Self::OutOfRangeTx(i) => Some(*i),
             Self::IllegalTx(i) => Some(*i),
+            Self::InvalidXDM(i) => Some(*i),
             Self::InherentExtrinsic(i) => Some(*i),
             Self::InvalidBundleWeight => None,
         }

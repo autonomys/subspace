@@ -74,7 +74,8 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock>,
+    CClient::Api:
+        DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
@@ -85,7 +86,7 @@ where
         + TaggedTransactionQueue<Block>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     AccountId: Encode + Decode,
 {
@@ -121,6 +122,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
+    confirmation_depth_k: NumberFor<CBlock>,
 ) -> Result<
     PartialComponents<
         FullClient<Block, RuntimeApi>,
@@ -139,7 +141,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
 >
 where
     CBlock: BlockT,
-    NumberFor<CBlock>: From<NumberFor<Block>>,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<u32>,
     CBlock::Hash: From<Hash> + Into<Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
@@ -147,10 +149,13 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, Header> + MessengerApi<CBlock> + MmrApi<CBlock, H256, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
-    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block> + MessengerApi<Block> + ApiExt<Block>,
+    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
+        + ApiExt<Block>,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi>>,
 {
     let telemetry = config
@@ -175,7 +180,11 @@ where
 
     let executor = Arc::new(executor);
     client.execution_extensions().set_extensions_factory(
-        ExtensionsFactory::<_, CBlock, Block, _>::new(consensus_client.clone(), executor.clone()),
+        ExtensionsFactory::<_, CBlock, Block, _>::new(
+            consensus_client.clone(),
+            executor.clone(),
+            confirmation_depth_k.into(),
+        ),
     );
 
     let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
@@ -264,7 +273,7 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header>
         + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
@@ -279,7 +288,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -327,7 +336,12 @@ where
     // TODO: Do we even need block announcement on domain node?
     // domain_config.announce_block = false;
 
-    let params = new_partial(&domain_config, consensus_client.clone(), &provider)?;
+    let params = new_partial(
+        &domain_config,
+        consensus_client.clone(),
+        &provider,
+        confirmation_depth_k,
+    )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 

@@ -170,4 +170,15 @@ pub trait FraudProofRuntimeInterface {
             .expect("No `FraudProofExtension` associated for the current context!")
             .bundle_weight(domain_runtime_code, bundle_body)
     }
+
+    #[version(1)]
+    fn extract_xdm_mmr_proof(
+        &mut self,
+        domain_runtime_code: Vec<u8>,
+        opaque_extrinsic: Vec<u8>,
+    ) -> Option<Option<Vec<u8>>> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .extract_xdm_mmr_proof(domain_runtime_code, opaque_extrinsic)
+    }
 }

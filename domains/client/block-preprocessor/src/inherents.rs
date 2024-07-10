@@ -17,7 +17,7 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Header};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_timestamp::InherentType;
 use std::error::Error;
 use std::sync::Arc;
@@ -32,7 +32,8 @@ where
     CBlock: BlockT,
     Block: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
+    CClient::Api:
+        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>,
 {
     let create_inherent_data_providers =
         CreateInherentDataProvider::new(consensus_client, Some(consensus_block_hash), domain_id);
@@ -172,7 +173,8 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock>,
+    CClient::Api:
+        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>,
 {
     type InherentDataProviders = (
         sp_timestamp::InherentDataProvider,
@@ -215,7 +217,9 @@ where
 
         // TODO: remove version check before next network
         let messenger_api_version = runtime_api
-            .api_version::<dyn MessengerApi<Block>>(consensus_block_hash)?
+            .api_version::<dyn MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>>(
+                consensus_block_hash,
+            )?
             // safe to return default version as 1 since there will always be version 1.
             .unwrap_or(1);
 

@@ -30,16 +30,17 @@ use subspace_runtime_primitives::Moment;
 /// - This perfectly fits the runtime APIs that are purely stateless, but it's also usable
 /// for the stateful APIs. If some states are used inside a runtime api, these states must
 /// be provided and set before dispatching otherwise [`StatelessRuntime`] may give invalid output.
-pub struct StatelessRuntime<Block, Executor> {
+pub struct StatelessRuntime<CBlock, Block, Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,
     storage: Storage,
     extension_factory: Box<dyn ExtensionsFactory<Block>>,
-    _marker: PhantomData<Block>,
+    _marker: PhantomData<(CBlock, Block)>,
 }
 
-impl<Block, Executor> Core<Block> for StatelessRuntime<Block, Executor>
+impl<CBlock, Block, Executor> Core<Block> for StatelessRuntime<CBlock, Block, Executor>
 where
+    CBlock: BlockT,
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -53,8 +54,9 @@ where
     }
 }
 
-impl<Block, Executor> DomainCoreApi<Block> for StatelessRuntime<Block, Executor>
+impl<CBlock, Block, Executor> DomainCoreApi<Block> for StatelessRuntime<CBlock, Block, Executor>
 where
+    CBlock: BlockT,
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -68,25 +70,10 @@ where
     }
 }
 
-impl<Block, Executor> MessengerApi<Block> for StatelessRuntime<Block, Executor>
+impl<CBlock, Block, Executor> MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
+    for StatelessRuntime<CBlock, Block, Executor>
 where
-    Block: BlockT,
-    NumberFor<Block>: Codec,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn __runtime_api_internal_call_api_at(
-        &self,
-        _at: <Block as BlockT>::Hash,
-        params: Vec<u8>,
-        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
-    ) -> Result<Vec<u8>, ApiError> {
-        self.dispatch_call(fn_name, params)
-    }
-}
-
-impl<Block, Executor> RelayerApi<Block, NumberFor<Block>, BlockNumber, BlockHash>
-    for StatelessRuntime<Block, Executor>
-where
+    CBlock: BlockT,
     Block: BlockT,
     NumberFor<Block>: Codec,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -101,8 +88,10 @@ where
     }
 }
 
-impl<Block, Executor> DomainSudoApi<Block> for StatelessRuntime<Block, Executor>
+impl<CBlock, Block, Executor> RelayerApi<Block, NumberFor<Block>, BlockNumber, BlockHash>
+    for StatelessRuntime<CBlock, Block, Executor>
 where
+    CBlock: BlockT,
     Block: BlockT,
     NumberFor<Block>: Codec,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -117,7 +106,24 @@ where
     }
 }
 
-impl<Block, Executor> FetchRuntimeCode for StatelessRuntime<Block, Executor> {
+impl<CBlock, Block, Executor> DomainSudoApi<Block> for StatelessRuntime<CBlock, Block, Executor>
+where
+    CBlock: BlockT,
+    Block: BlockT,
+    NumberFor<Block>: Codec,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<CBlock, Block, Executor> FetchRuntimeCode for StatelessRuntime<CBlock, Block, Executor> {
     fn fetch_runtime_code(&self) -> Option<Cow<'static, [u8]>> {
         Some(self.runtime_code.clone())
     }
@@ -125,8 +131,9 @@ impl<Block, Executor> FetchRuntimeCode for StatelessRuntime<Block, Executor> {
 
 pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
-impl<Block, Executor> StatelessRuntime<Block, Executor>
+impl<CBlock, Block, Executor> StatelessRuntime<CBlock, Block, Executor>
 where
+    CBlock: BlockT,
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -200,16 +207,17 @@ where
     }
 
     pub fn outbox_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
-        let storage_key = <Self as MessengerApi<Block>>::outbox_storage_key(
-            self,
-            Default::default(),
-            message_key,
-        )?;
+        let storage_key =
+            <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::outbox_storage_key(
+                self,
+                Default::default(),
+                message_key,
+            )?;
         Ok(storage_key)
     }
 
     pub fn inbox_response_storage_key(&self, message_key: MessageKey) -> Result<Vec<u8>, ApiError> {
-        let storage_key = <Self as MessengerApi<Block>>::inbox_response_storage_key(
+        let storage_key = <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::inbox_response_storage_key(
             self,
             Default::default(),
             message_key,
@@ -286,8 +294,27 @@ where
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
     }
 
-    pub fn is_valid_xdm(&self, extrinsic: Vec<u8>) -> Result<Option<bool>, ApiError> {
-        <Self as MessengerApi<Block>>::is_xdm_valid(self, Default::default(), extrinsic)
+    pub fn is_xdm_mmr_proof_valid(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<Option<bool>, ApiError> {
+        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::is_xdm_mmr_proof_valid(
+            self,
+            Default::default(),
+            extrinsic,
+        )
+    }
+
+    pub fn extract_xdm_mmr_proof(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<Option<Vec<u8>>, ApiError> {
+        <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::extract_xdm_mmr_proof(
+            self,
+            Default::default(),
+            extrinsic,
+        )
+        .map(|maybe_proof| maybe_proof.map(|p| p.encode()))
     }
 
     pub fn decode_extrinsic(

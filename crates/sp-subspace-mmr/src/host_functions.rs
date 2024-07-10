@@ -4,7 +4,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 pub use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof, MmrApi};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
@@ -22,6 +22,9 @@ pub trait SubspaceMmrHostFunctions: Send + Sync {
         &self,
         block_number: subspace_core_primitives::BlockNumber,
     ) -> Option<H256>;
+
+    // Return if the given consensus block is finalized
+    fn is_consensus_block_finalized(&self, block_number: BlockNumber) -> bool;
 }
 
 sp_externalities::decl_extension! {
@@ -38,13 +41,15 @@ impl SubspaceMmrExtension {
 /// Implementation of MMR host function.
 pub struct SubspaceMmrHostFunctionsImpl<Block, Client> {
     consensus_client: Arc<Client>,
+    confirmation_depth_k: BlockNumber,
     _phantom: PhantomData<Block>,
 }
 
 impl<Block, Client> SubspaceMmrHostFunctionsImpl<Block, Client> {
-    pub fn new(consensus_client: Arc<Client>) -> Self {
+    pub fn new(consensus_client: Arc<Client>, confirmation_depth_k: BlockNumber) -> Self {
         SubspaceMmrHostFunctionsImpl {
             consensus_client,
+            confirmation_depth_k,
             _phantom: Default::default(),
         }
     }
@@ -95,5 +100,16 @@ where
             .hash(block_number)
             .expect("Header must be available. This is unrecoverable error")
             .map(|block_hash| block_hash.into())
+    }
+
+    fn is_consensus_block_finalized(&self, block_number: BlockNumber) -> bool {
+        let block_number = NumberFor::<Block>::from(block_number);
+        let last_finalized_block = self
+            .consensus_client
+            .info()
+            .best_number
+            .saturating_sub(self.confirmation_depth_k.into());
+
+        block_number <= last_finalized_block
     }
 }

@@ -86,7 +86,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::{PotOutput, Solution};
+use subspace_core_primitives::{BlockNumber, PotOutput, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
 use subspace_service::transaction_pool::FullPool;
@@ -207,6 +207,7 @@ struct MockExtensionsFactory<Client, DomainBlock, Executor, CBackend> {
     consensus_backend: Arc<CBackend>,
     executor: Arc<Executor>,
     mock_pot_verifier: Arc<MockPotVerfier>,
+    confirmation_depth_k: BlockNumber,
     _phantom: PhantomData<DomainBlock>,
 }
 
@@ -218,12 +219,14 @@ impl<Client, DomainBlock, Executor, CBackend>
         executor: Arc<Executor>,
         mock_pot_verifier: Arc<MockPotVerfier>,
         consensus_backend: Arc<CBackend>,
+        confirmation_depth_k: BlockNumber,
     ) -> Self {
         Self {
             consensus_client,
             consensus_backend,
             executor,
             mock_pot_verifier,
+            confirmation_depth_k,
             _phantom: Default::default(),
         }
     }
@@ -252,7 +255,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>
         + MmrApi<Block, H256, NumberFor<Block>>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
     CBackend: BackendT<Block> + 'static,
@@ -262,20 +265,28 @@ where
         _block_hash: Block::Hash,
         _block_number: NumberFor<Block>,
     ) -> Extensions {
+        let confirmation_depth_k = self.confirmation_depth_k;
         let mut exts = Extensions::new();
         exts.register(FraudProofExtension::new(Arc::new(
             FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor, _>::new(
                 self.consensus_client.clone(),
                 self.executor.clone(),
-                |client, executor| {
+                move |client, executor| {
                     let extension_factory =
-                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(client, executor);
+                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                            client,
+                            executor,
+                            confirmation_depth_k,
+                        );
                     Box::new(extension_factory) as Box<dyn ExtensionsFactory<DomainBlock>>
                 },
             ),
         )));
         exts.register(SubspaceMmrExtension::new(Arc::new(
-            SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.consensus_client.clone()),
+            SubspaceMmrHostFunctionsImpl::<Block, _>::new(
+                self.consensus_client.clone(),
+                confirmation_depth_k,
+            ),
         )));
         exts.register(MessengerExtension::new(Arc::new(
             MessengerHostFunctionsImpl::<Block, _, DomainBlock, _>::new(
@@ -407,6 +418,10 @@ impl MockConsensusNode {
         let domain_executor = Arc::new(sc_service::new_wasm_executor(&config));
         let client = Arc::new(client);
         let mock_pot_verifier = Arc::new(MockPotVerfier::default());
+        let chain_constants = client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)
+            .expect("Fail to get chain constants");
         client
             .execution_extensions()
             .set_extensions_factory(MockExtensionsFactory::<
@@ -419,6 +434,7 @@ impl MockConsensusNode {
                 domain_executor.clone(),
                 Arc::clone(&mock_pot_verifier),
                 backend.clone(),
+                chain_constants.confirmation_depth_k(),
             ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());

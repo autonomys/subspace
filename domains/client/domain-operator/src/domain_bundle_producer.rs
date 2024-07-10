@@ -14,6 +14,7 @@ use sp_domains::{
     OperatorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::RuntimeAppPublic;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -79,7 +80,10 @@ where
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
+    Client::Api: BlockBuilder<Block>
+        + DomainCoreApi<Block>
+        + TaggedTransactionQueue<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool:

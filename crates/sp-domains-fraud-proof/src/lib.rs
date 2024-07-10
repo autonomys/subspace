@@ -404,6 +404,6 @@ sp_api::decl_runtime_apis! {
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);
 
         /// Reture the storage key used in fraud proof
-        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8>;
+        fn fraud_proof_storage_key(req: FraudProofStorageKeyRequest<NumberFor<Block>>) -> Vec<u8>;
     }
 }

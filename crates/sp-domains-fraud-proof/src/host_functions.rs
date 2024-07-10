@@ -115,6 +115,12 @@ pub trait FraudProofHostFunctions: Send + Sync {
         domain_runtime_code: Vec<u8>,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<Weight>;
+
+    fn extract_xdm_mmr_proof(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        opaque_extrinsic: Vec<u8>,
+    ) -> Option<Option<Vec<u8>>>;
 }
 
 sp_externalities::decl_extension! {
@@ -165,7 +171,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -186,7 +192,7 @@ where
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let timestamp = runtime_api.timestamp(consensus_block_hash.into()).ok()?;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -208,7 +214,7 @@ where
             .domain_chains_allowlist_update(consensus_block_hash.into(), domain_id)
             .ok()??;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -230,7 +236,7 @@ where
             .ok()?;
 
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -280,7 +286,7 @@ where
 
         if let Some(upgraded_runtime) = maybe_upgraded_runtime {
             let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-            let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
                 self.domain_executor.clone(),
                 runtime_code.into(),
             );
@@ -371,7 +377,7 @@ where
         opaque_extrinsic: OpaqueExtrinsic,
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let mut domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let mut domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -391,8 +397,10 @@ where
         domain_stateless_runtime.set_storage(domain_initial_state);
 
         let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
         domain_stateless_runtime
-            .is_valid_xdm(encoded_extrinsic)
+            .is_xdm_mmr_proof_valid(&extrinsic)
             .expect("Runtime api must not fail. This is an unrecoverable error")
     }
 
@@ -416,7 +424,7 @@ where
         req: StorageKeyRequest,
     ) -> Option<Vec<u8>> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             runtime_code.into(),
         );
@@ -485,7 +493,7 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
     EFC: Fn(Arc<Client>, Arc<Executor>) -> Box<dyn ExtensionsFactory<DomainBlock>> + Send + Sync,
 {
@@ -644,7 +652,7 @@ where
             extrinsics.push(ext);
         }
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -746,7 +754,7 @@ where
             maybe_sudo_runtime_call,
         } = domain_inherent_extrinsic_data;
 
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -806,7 +814,7 @@ where
         domain_runtime_code: Vec<u8>,
         req: DomainStorageKeyRequest,
     ) -> Option<Vec<u8>> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -823,7 +831,7 @@ where
         domain_runtime_code: Vec<u8>,
         call: StatelessDomainRuntimeCall,
     ) -> Option<bool> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -868,7 +876,7 @@ where
         domain_runtime_code: Vec<u8>,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<Weight> {
-        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
@@ -882,6 +890,22 @@ where
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
         }
         Some(estimated_bundle_weight)
+    }
+
+    fn extract_xdm_mmr_proof(
+        &self,
+        domain_runtime_code: Vec<u8>,
+        opaque_extrinsic: Vec<u8>,
+    ) -> Option<Option<Vec<u8>>> {
+        let domain_stateless_runtime = StatelessRuntime::<Block, DomainBlock, _>::new(
+            self.domain_executor.clone(),
+            domain_runtime_code.into(),
+        );
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut opaque_extrinsic.as_slice()).ok()?;
+        domain_stateless_runtime
+            .extract_xdm_mmr_proof(&extrinsic)
+            .ok()
     }
 }
 
