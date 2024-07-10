@@ -101,7 +101,7 @@ impl farm::PieceCache for DiskPieceCache {
         FarmError,
     > {
         let this = self.clone();
-        let (mut sender, receiver) = mpsc::channel(1);
+        let (mut sender, receiver) = mpsc::channel(100_000);
         let read_contents = task::spawn_blocking(move || {
             let contents = this.contents();
             for (piece_cache_offset, maybe_piece) in contents {
