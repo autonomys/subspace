@@ -757,7 +757,7 @@ impl NatsClient {
                 buffer.push_back(element);
             }
 
-            while !buffer.is_empty() {
+            loop {
                 let is_done = response_stream.is_done() && overflow_buffer.is_empty();
                 let num_messages = buffer.len();
                 let response = if is_done {
@@ -895,6 +895,11 @@ impl NatsClient {
                 }
 
                 index += 1;
+
+                // Unless `overflow_buffer` wasn't empty abort inner loop
+                if buffer.is_empty() {
+                    break;
+                }
             }
         }
     }
