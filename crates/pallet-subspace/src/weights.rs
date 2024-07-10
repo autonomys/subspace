@@ -37,6 +37,7 @@ pub trait WeightInfo {
 	fn vote() -> Weight;
 	fn enable_rewards() -> Weight;
 	fn enable_authoring_by_anyone() -> Weight;
+	fn set_pot_slot_iterations() -> Weight;
 }
 
 /// Weights for pallet_subspace using the Substrate node and recommended hardware.
@@ -133,6 +134,18 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
+	/// Storage: Subspace PotSlotIterations (r:1 w:0)
+	/// Storage: Subspace PotSlotIterationsUpdate (r:1 w:1)
+	/// Proof Skipped: Subspace PotSlotIterationsUpdate (max_values: Some(1), max_size: None, mode: Measured)
+	fn set_pot_slot_iterations() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `48`
+		//  Estimated: `1533`
+		// Minimum execution time: 6_000_000 picoseconds.
+		Weight::from_parts(6_000_000, 1533)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
 }
 
 // For backwards compatibility and tests
@@ -227,5 +240,17 @@ impl WeightInfo for () {
 		Weight::from_parts(7_000_000, 3114)
 			.saturating_add(ParityDbWeight::get().reads(2_u64))
 			.saturating_add(ParityDbWeight::get().writes(2_u64))
+	}
+	/// Storage: Subspace PotSlotIterations (r:1 w:0)
+	/// Storage: Subspace PotSlotIterationsUpdate (r:1 w:1)
+	/// Proof Skipped: Subspace PotSlotIterationsUpdate (max_values: Some(1), max_size: None, mode: Measured)
+	fn set_pot_slot_iterations() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `48`
+		//  Estimated: `1533`
+		// Minimum execution time: 6_000_000 picoseconds.
+		Weight::from_parts(6_000_000, 1533)
+			.saturating_add(ParityDbWeight::get().reads(2_u64))
+			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 }

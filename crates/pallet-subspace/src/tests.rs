@@ -25,7 +25,8 @@ use crate::mock::{
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, EnableRewardsAt,
-    ParentBlockAuthorInfo, ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
+    ParentBlockAuthorInfo, ParentBlockVoters, PotSlotIterations, SegmentCommitment,
+    SubspaceEquivocationOffence,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
@@ -43,6 +44,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
@@ -1729,6 +1731,66 @@ fn allow_authoring_by_anyone_works() {
             &keypair2,
             frame_system::Pallet::<Test>::current_block_number() + 1,
             1,
+        );
+    });
+}
+
+#[test]
+fn set_pot_slot_iterations_works() {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
+        PotSlotIterations::<Test>::put(NonZeroU32::new(100_000_000).unwrap());
+
+        // Only root can do this
+        assert_err!(
+            Subspace::set_pot_slot_iterations(
+                RuntimeOrigin::signed(1),
+                NonZeroU32::new(100_000_000).unwrap()
+            ),
+            DispatchError::BadOrigin
+        );
+
+        // Must increase
+        assert_matches!(
+            Subspace::set_pot_slot_iterations(
+                RuntimeOrigin::root(),
+                NonZeroU32::new(100_000_000).unwrap()
+            ),
+            Err(DispatchError::Module(_))
+        );
+
+        // Must be multiple of PotCheckpoints iterations times two
+        assert_matches!(
+            Subspace::set_pot_slot_iterations(
+                RuntimeOrigin::root(),
+                NonZeroU32::new(100_000_001).unwrap()
+            ),
+            Err(DispatchError::Module(_))
+        );
+
+        // Now it succeeds
+        Subspace::set_pot_slot_iterations(
+            RuntimeOrigin::root(),
+            NonZeroU32::new(110_000_000).unwrap(),
+        )
+        .unwrap();
+
+        // Subsequent calls succeed too
+        Subspace::set_pot_slot_iterations(
+            RuntimeOrigin::root(),
+            NonZeroU32::new(120_000_000).unwrap(),
+        )
+        .unwrap();
+
+        // Unless update is already scheduled to be applied
+        pallet::PotSlotIterationsUpdate::<Test>::mutate(|update| {
+            update.as_mut().unwrap().target_slot.replace(Slot::from(1));
+        });
+        assert_matches!(
+            Subspace::set_pot_slot_iterations(
+                RuntimeOrigin::root(),
+                NonZeroU32::new(130_000_000).unwrap()
+            ),
+            Err(DispatchError::Module(_))
         );
     });
 }
