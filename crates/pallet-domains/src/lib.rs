@@ -727,16 +727,12 @@ mod pallet {
         BadOperator,
         /// Failed to pass the threshold check.
         ThresholdUnsatisfied,
-        /// The Bundle is created too long ago.
-        StaleBundle,
         /// An invalid execution receipt found in the bundle.
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
         BundleTooLarge,
         /// Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
-        /// This bundle duplicated with an already submitted bundle
-        DuplicatedBundle,
         /// Invalid proof of time in the proof of election
         InvalidProofOfTime,
         /// The bundle is built on a slot in the future
@@ -1710,10 +1706,10 @@ mod pallet {
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
                             | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
                             | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
-                            | BundleError::DuplicatedBundle
                             | BundleError::SlotInThePast
                             | BundleError::SlotInTheFuture
-                            | BundleError::InvalidProofOfTime => {
+                            | BundleError::InvalidProofOfTime
+                            | BundleError::SlotSmallerThanPreviousBlockBundle => {
                                 log::debug!(
                                     target: "runtime::domains",
                                     "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
@@ -1956,9 +1952,10 @@ impl<T: Config> Pallet<T> {
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
+        let operator_status = operator.status::<T>(operator_id);
         ensure!(
-            *operator.status::<T>(operator_id) != OperatorStatus::Slashed
-                && *operator.status::<T>(operator_id) != OperatorStatus::PendingSlash,
+            *operator_status != OperatorStatus::Slashed
+                && *operator_status != OperatorStatus::PendingSlash,
             BundleError::BadOperator
         );
 
@@ -1969,14 +1966,14 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        // Ensure this is not equivocated bundle that reuse `ProofOfElection` from the previous block
+        // Ensure this is no equivocated bundle that reuse `ProofOfElection` from the previous block
         ensure!(
             slot_number
                 > Self::operator_highest_slot_from_previous_block(operator_id, pre_dispatch),
             BundleError::SlotSmallerThanPreviousBlockBundle,
         );
 
-        // Ensure there is not equivocated/duplicated bundle in the same block
+        // Ensure there is no equivocated/duplicated bundle in the same block
         ensure!(
             !OperatorBundleSlot::<T>::get(operator_id).contains(&slot_number),
             BundleError::EquivocatedBundle,
