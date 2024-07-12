@@ -568,6 +568,7 @@ async fn plot_single_sector_internal(
 
         {
             let sector_write_base_offset = u64::from(sector_index) * sector_size as u64;
+            let mut total_received = 0;
             let mut sector_write_offset = sector_write_base_offset;
             while let Some(maybe_sector_chunk) = sector.next().await {
                 let sector_chunk = match maybe_sector_chunk {
@@ -578,6 +579,16 @@ async fn plot_single_sector_internal(
                         ))));
                     }
                 };
+
+                total_received += sector_chunk.len();
+
+                if total_received > sector_size {
+                    return Ok(Err(PlottingError::LowLevel(format!(
+                        "Received too many bytes {total_received} instead of expected \
+                        {sector_size} bytes"
+                    ))));
+                }
+
                 let sector_chunk_size = sector_chunk.len() as u64;
 
                 trace!(sector_chunk_size, "Writing sector chunk to disk");
@@ -594,9 +605,9 @@ async fn plot_single_sector_internal(
             }
             drop(sector);
 
-            if (sector_write_offset - sector_write_base_offset) != sector_size as u64 {
+            if total_received != sector_size {
                 return Ok(Err(PlottingError::LowLevel(format!(
-                    "Received only {sector_write_offset} sector bytes out of {sector_size} \
+                    "Received only {total_received} sector bytes out of {sector_size} \
                     expected bytes"
                 ))));
             }
