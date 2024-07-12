@@ -1,3 +1,6 @@
+//! Metrics for single disk farm
+
+use crate::farm::{FarmId, FarmingError, ProvingResult};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
@@ -7,10 +10,9 @@ use std::fmt;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
 use subspace_core_primitives::SectorIndex;
-use subspace_farmer::farm::{FarmId, FarmingError, ProvingResult};
 
 #[derive(Debug, Copy, Clone)]
-pub(in super::super) enum SectorState {
+pub(super) enum SectorState {
     NotPlotted,
     Plotted,
     AboutToExpire,
@@ -29,8 +31,9 @@ impl fmt::Display for SectorState {
     }
 }
 
+/// Metrics for single disk farm
 #[derive(Debug, Clone)]
-pub(in super::super) struct FarmerMetrics {
+pub struct SingleDiskFarmMetrics {
     auditing_time: Family<Vec<(String, String)>, Histogram>,
     proving_time: Family<Vec<(String, String)>, Histogram>,
     farming_errors: Family<Vec<(String, String)>, Counter<u64, AtomicU64>>,
@@ -39,19 +42,21 @@ pub(in super::super) struct FarmerMetrics {
     sector_writing_time: Family<Vec<(String, String)>, Histogram>,
     sector_plotting_time: Family<Vec<(String, String)>, Histogram>,
     sectors_total: Family<Vec<(String, String)>, Gauge<i64, AtomicI64>>,
-    pub(in super::super) sector_downloading: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_downloaded: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_encoding: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_encoded: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_writing: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_written: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_plotting: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_plotted: Counter<u64, AtomicU64>,
-    pub(in super::super) sector_plotting_error: Counter<u64, AtomicU64>,
+    pub(super) sector_downloading: Counter<u64, AtomicU64>,
+    pub(super) sector_downloaded: Counter<u64, AtomicU64>,
+    pub(super) sector_encoding: Counter<u64, AtomicU64>,
+    pub(super) sector_encoded: Counter<u64, AtomicU64>,
+    pub(super) sector_writing: Counter<u64, AtomicU64>,
+    pub(super) sector_written: Counter<u64, AtomicU64>,
+    pub(super) sector_plotting: Counter<u64, AtomicU64>,
+    pub(super) sector_plotted: Counter<u64, AtomicU64>,
+    pub(super) sector_plotting_error: Counter<u64, AtomicU64>,
 }
 
-impl FarmerMetrics {
-    pub(in super::super) fn new(registry: &mut Registry) -> Self {
+impl SingleDiskFarmMetrics {
+    /// Create new instance (note that a single instance must be created and cloned instead of
+    /// creating multiple separate instances for different farm)
+    pub fn new(registry: &mut Registry) -> Self {
         let sub_registry = registry.sub_registry_with_prefix("subspace_farmer");
 
         let auditing_time = Family::<_, _>::new_with_constructor(|| {
@@ -239,13 +244,13 @@ impl FarmerMetrics {
         }
     }
 
-    pub(in super::super) fn observe_auditing_time(&self, farm_id: &FarmId, time: &Duration) {
+    pub(super) fn observe_auditing_time(&self, farm_id: &FarmId, time: &Duration) {
         self.auditing_time
             .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(in super::super) fn observe_proving_time(
+    pub(super) fn observe_proving_time(
         &self,
         farm_id: &FarmId,
         time: &Duration,
@@ -259,7 +264,7 @@ impl FarmerMetrics {
             .observe(time.as_secs_f64());
     }
 
-    pub(in super::super) fn note_farming_error(&self, farm_id: &FarmId, error: &FarmingError) {
+    pub(super) fn note_farming_error(&self, farm_id: &FarmId, error: &FarmingError) {
         self.farming_errors
             .get_or_create(&vec![
                 ("farm_id".to_string(), farm_id.to_string()),
@@ -268,7 +273,7 @@ impl FarmerMetrics {
             .inc();
     }
 
-    pub(in super::super) fn update_sectors_total(
+    pub(super) fn update_sectors_total(
         &self,
         farm_id: &FarmId,
         sectors: SectorIndex,
@@ -282,7 +287,7 @@ impl FarmerMetrics {
             .set(i64::from(sectors));
     }
 
-    pub(in super::super) fn update_sector_state(&self, farm_id: &FarmId, state: SectorState) {
+    pub(super) fn update_sector_state(&self, farm_id: &FarmId, state: SectorState) {
         self.sectors_total
             .get_or_create(&vec![
                 ("farm_id".to_string(), farm_id.to_string()),
@@ -337,29 +342,25 @@ impl FarmerMetrics {
         }
     }
 
-    pub(in super::super) fn observe_sector_downloading_time(
-        &self,
-        farm_id: &FarmId,
-        time: &Duration,
-    ) {
+    pub(super) fn observe_sector_downloading_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_downloading_time
             .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(in super::super) fn observe_sector_encoding_time(&self, farm_id: &FarmId, time: &Duration) {
+    pub(super) fn observe_sector_encoding_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_encoding_time
             .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(in super::super) fn observe_sector_writing_time(&self, farm_id: &FarmId, time: &Duration) {
+    pub(super) fn observe_sector_writing_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_writing_time
             .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
     }
 
-    pub(in super::super) fn observe_sector_plotting_time(&self, farm_id: &FarmId, time: &Duration) {
+    pub(super) fn observe_sector_plotting_time(&self, farm_id: &FarmId, time: &Duration) {
         self.sector_plotting_time
             .get_or_create(&vec![("farm_id".to_string(), farm_id.to_string())])
             .observe(time.as_secs_f64());
