@@ -1,4 +1,3 @@
-pub(super) mod metrics;
 pub(super) mod network;
 
 use bytesize::ByteSize;
