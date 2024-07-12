@@ -515,7 +515,8 @@ where
                     %peer_id,
                     %is_reserved_peer,
                     ?endpoint,
-                    "Connection established [{num_established} from peer]"
+                    %num_established,
+                    "Connection established"
                 );
 
                 let maybe_remote_ip =
@@ -567,9 +568,12 @@ where
                         return;
                     }
                 };
+
                 debug!(
+                    %peer_id,
                     ?cause,
-                    "Connection closed with peer {peer_id} [{num_established} from peer]"
+                    %num_established,
+                    "Connection closed with peer"
                 );
 
                 if num_established == 0 {
@@ -1338,7 +1342,10 @@ where
                                     }
                                 }
                                 Ok(false) => {
-                                    panic!("Logic error, topic subscription wasn't created, this must never happen");
+                                    panic!(
+                                        "Logic error, topic subscription wasn't created, this \
+                                        must never happen"
+                                    );
                                 }
                                 Err(error) => {
                                     let _ = result_sender.send(Err(error));

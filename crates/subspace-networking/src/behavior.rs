@@ -52,7 +52,6 @@ pub(crate) struct BehaviorConfig<RecordStore> {
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event")]
-#[behaviour(event_process = false)]
 pub(crate) struct Behavior<RecordStore> {
     // TODO: Connection limits must be the first protocol due to https://github.com/libp2p/rust-libp2p/issues/4773 as
     //  suggested in https://github.com/libp2p/rust-libp2p/issues/4898#issuecomment-1818013483
