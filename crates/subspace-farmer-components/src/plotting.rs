@@ -551,8 +551,8 @@ fn record_encoding<PosTable>(
         .expect("Instance was verified to be able to work with this many values earlier; qed");
 
     chunks_scratch.clear();
-    // For every erasure coded chunk check if there is quality present, if so then encode
-    // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
+    // For every erasure coded chunk check if there is proof present, if so then encode
+    // with PoSpace proof bytes and set corresponding `encoded_chunks_used` bit to `true`
     (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
         .into_par_iter()
         .map(SBucket::from)
@@ -589,7 +589,7 @@ fn record_encoding<PosTable>(
         })
         .count();
 
-    // In some cases there is not enough PoSpace qualities available, in which case we add
+    // In some cases there is not enough PoSpace proofs available, in which case we add
     // remaining number of unencoded erasure coded record chunks to the end
     source_record_chunks
         .iter()

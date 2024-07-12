@@ -112,8 +112,8 @@ pub(crate) enum Command {
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
     pub(crate) num_established_peer_connections_change: Handler<usize>,
-    pub(crate) disconnected_peer: Handler<PeerId>,
     pub(crate) connected_peer: Handler<PeerId>,
+    pub(crate) disconnected_peer: Handler<PeerId>,
     pub(crate) peer_discovered: Handler<PeerDiscovered>,
 }
 
