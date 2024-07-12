@@ -529,26 +529,31 @@ fn record_encoding<PosTable>(
     mut encoded_chunks_used: EncodedChunksUsed<'_>,
     table_generator: &mut PosTable::Generator,
     erasure_coding: &ErasureCoding,
-    chunks_scratch: &mut Vec<Option<Simd<u8, 32>>>,
+    chunks_scratch: &mut Vec<Option<[u8; Scalar::FULL_BYTES]>>,
 ) where
     PosTable: Table,
 {
     // Derive PoSpace table
     let pos_table = table_generator.generate_parallel(pos_seed);
 
-    let source_record_chunks = record
-        .iter()
-        .map(|scalar_bytes| {
-            Scalar::try_from(scalar_bytes).expect(
-                "Piece getter must returns valid pieces of history that contain proper \
-                    scalar bytes; qed",
-            )
-        })
-        .collect::<Vec<_>>();
     // Erasure code source record chunks
     let parity_record_chunks = erasure_coding
-        .extend(&source_record_chunks)
-        .expect("Instance was verified to be able to work with this many values earlier; qed");
+        .extend(
+            &record
+                .iter()
+                .map(|scalar_bytes| {
+                    Scalar::try_from(scalar_bytes).expect(
+                        "Piece getter must returns valid pieces of history that contain \
+                        proper scalar bytes; qed",
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("Instance was verified to be able to work with this many values earlier; qed")
+        .into_iter()
+        .map(<[u8; Scalar::FULL_BYTES]>::from)
+        .collect::<Vec<_>>();
+    let source_record_chunks = record.to_vec();
 
     chunks_scratch.clear();
     // For every erasure coded chunk check if there is proof present, if so then encode
@@ -564,7 +569,7 @@ fn record_encoding<PosTable>(
         .map(|(s_bucket, record_chunk)| {
             let proof = pos_table.find_proof(s_bucket.into())?;
 
-            Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(proof.hash()))
+            Some((Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array())
         })
         .collect_into_vec(chunks_scratch);
     let num_successfully_encoded_chunks = chunks_scratch
@@ -585,7 +590,7 @@ fn record_encoding<PosTable>(
         .zip(record.iter_mut())
         // Write encoded chunk back so we can reuse original allocation
         .map(|(input_chunk, output_chunk)| {
-            *output_chunk = input_chunk.to_array();
+            *output_chunk = input_chunk;
         })
         .count();
 
@@ -608,7 +613,7 @@ fn record_encoding<PosTable>(
         .zip(record.iter_mut().skip(num_successfully_encoded_chunks))
         // Write necessary number of unencoded chunks at the end
         .for_each(|(input_chunk, output_chunk)| {
-            *output_chunk = input_chunk.to_bytes();
+            *output_chunk = *input_chunk;
         });
 }
 
