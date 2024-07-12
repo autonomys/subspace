@@ -529,7 +529,7 @@ fn record_encoding<PosTable>(
     mut encoded_chunks_used: EncodedChunksUsed<'_>,
     table_generator: &mut PosTable::Generator,
     erasure_coding: &ErasureCoding,
-    chunks_scratch: &mut Vec<Option<[u8; Scalar::FULL_BYTES]>>,
+    chunks_scratch: &mut Vec<[u8; Scalar::FULL_BYTES]>,
 ) where
     PosTable: Table,
 {
@@ -567,20 +567,27 @@ fn record_encoding<PosTable>(
                 .interleave(&parity_record_chunks),
         )
         .map(|(s_bucket, record_chunk)| {
-            let proof = pos_table.find_proof(s_bucket.into())?;
-
-            Some((Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array())
+            if let Some(proof) = pos_table.find_proof(s_bucket.into()) {
+                (Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array()
+            } else {
+                // We represent missing proof as invalid set of bits of Scalar (Scalar is 254-bit
+                // and must have two bits set to 0)
+                [u8::MAX; Scalar::FULL_BYTES]
+            }
         })
         .collect_into_vec(chunks_scratch);
     let num_successfully_encoded_chunks = chunks_scratch
         .drain(..)
         .zip(encoded_chunks_used.iter_mut())
         .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
-            let encoded_chunk = maybe_encoded_chunk?;
+            // Last byte's bits all set to 1 represents missing proof, see above
+            if maybe_encoded_chunk[31] == u8::MAX {
+                None
+            } else {
+                *encoded_chunk_used = true;
 
-            *encoded_chunk_used = true;
-
-            Some(encoded_chunk)
+                Some(maybe_encoded_chunk)
+            }
         })
         // Make sure above filter function (and corresponding `encoded_chunk_used` update)
         // happen at most as many times as there is number of chunks in the record,
