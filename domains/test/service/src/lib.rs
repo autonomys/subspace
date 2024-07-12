@@ -53,9 +53,6 @@ use std::str::FromStr;
 pub use domain::*;
 pub use evm_domain_test_runtime;
 
-/// The domain id of the genesis domain
-pub const GENESIS_DOMAIN_ID: DomainId = DomainId::new(0u32);
-
 /// The domain id of the evm domain
 pub const EVM_DOMAIN_ID: DomainId = DomainId::new(0u32);
 

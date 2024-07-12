@@ -1159,6 +1159,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto-id-domain-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "domain-test-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "pallet-auto-id",
+ "pallet-balances",
+ "pallet-block-fees",
+ "pallet-domain-id",
+ "pallet-domain-sudo",
+ "pallet-messenger",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-transporter",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domain-sudo",
+ "sp-domains",
+ "sp-genesis-builder",
+ "sp-inherents",
+ "sp-messenger",
+ "sp-messenger-host-functions",
+ "sp-mmr-primitives",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-storage",
+ "sp-subspace-mmr",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "auto_impl"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2728,6 +2775,7 @@ dependencies = [
 name = "domain-client-operator"
 version = "0.1.0"
 dependencies = [
+ "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-block-builder",
  "domain-block-preprocessor",
@@ -2936,6 +2984,7 @@ dependencies = [
 name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
+ "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-client-operator",
  "domain-runtime-primitives",
@@ -13171,6 +13220,7 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "auto-id-domain-test-runtime",
  "domain-runtime-primitives",
  "evm-domain-test-runtime",
  "fp-evm",

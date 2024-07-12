@@ -8,7 +8,7 @@ use domain_test_service::evm_domain_test_runtime::{
 };
 use domain_test_service::EcdsaKeyring::{Alice, Charlie};
 use domain_test_service::Sr25519Keyring::Ferdie;
-use domain_test_service::{construct_extrinsic_raw_payload, EvmDomainNode, GENESIS_DOMAIN_ID};
+use domain_test_service::{construct_extrinsic_raw_payload, EvmDomainNode};
 use ethereum::TransactionV2 as Transaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::pallet_prelude::DispatchClass;
@@ -295,10 +295,9 @@ async fn domain_bundle_storage_proof_benchmark() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let (recorded_keys, storage_proof) = benchmark_bundle_with_evm_tx(400, alice, ferdie).await;
@@ -335,10 +334,9 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let best_hash = alice.client.as_ref().info().best_hash;
@@ -529,10 +527,9 @@ async fn check_bundle_validity_runtime_api_should_work() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let mut alice_nonce = alice.account_nonce();
@@ -687,10 +684,9 @@ async fn test_evm_domain_block_fee() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -807,10 +803,10 @@ async fn test_evm_domain_block_fee() {
 //     // Run Alice (a evm domain authority node)
 //     let mut alice = domain_test_service::DomainNodeBuilder::new(
 //         tokio_handle.clone(),
-//         Alice,
+//
 //         BasePath::new(directory.path().join("alice")),
 //     )
-//     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+//     .build_evm_node(Role::Authority, Alice, &mut ferdie)
 //     .await;
 //
 //     // Run Bob (a evm domain full node)
@@ -819,7 +815,7 @@ async fn test_evm_domain_block_fee() {
 //         Bob,
 //         BasePath::new(directory.path().join("bob")),
 //     )
-//     .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+//     .build_evm_node(Role::Full, Alice, &mut ferdie)
 //     .await;
 //
 //     // Bob is able to sync blocks.
@@ -1101,10 +1097,10 @@ async fn test_evm_domain_block_fee() {
 //     // Run Alice (a evm domain authority node)
 //     let mut alice = domain_test_service::DomainNodeBuilder::new(
 //         tokio_handle.clone(),
-//         Alice,
+//
 //         BasePath::new(directory.path().join("alice")),
 //     )
-//     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+//     .build_evm_node(Role::Authority, Alice, &mut ferdie)
 //     .await;
 //
 //     // Run Bob (a evm domain full node)
@@ -1113,7 +1109,7 @@ async fn test_evm_domain_block_fee() {
 //         Bob,
 //         BasePath::new(directory.path().join("bob")),
 //     )
-//     .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+//     .build_evm_node(Role::Full, Alice, &mut ferdie)
 //     .await;
 //
 //     // Bob is able to sync blocks.
@@ -1294,7 +1290,7 @@ async fn test_evm_domain_block_fee() {
 //     // Run Alice (a system domain authority node)
 //     let mut alice = domain_test_service::DomainNodeBuilder::new(
 //         tokio_handle.clone(),
-//         Alice,
+//
 //         BasePath::new(directory.path().join("alice")),
 //     )
 //     .build_evm_node(Role::Authority, &mut ferdie)

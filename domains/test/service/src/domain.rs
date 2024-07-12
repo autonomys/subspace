@@ -406,7 +406,6 @@ where
 /// A builder to create a [`DomainNode`].
 pub struct DomainNodeBuilder {
     tokio_handle: tokio::runtime::Handle,
-    key: EcdsaKeyring,
     domain_nodes: Vec<MultiaddrWithPeerId>,
     domain_nodes_exclusive: bool,
     skip_empty_bundle_production: bool,
@@ -418,13 +417,8 @@ impl DomainNodeBuilder {
     ///
     /// `tokio_handle` - The tokio handler to use.
     /// `base_path` - Where databases will be stored.
-    pub fn new(
-        tokio_handle: tokio::runtime::Handle,
-        key: EcdsaKeyring,
-        base_path: BasePath,
-    ) -> Self {
+    pub fn new(tokio_handle: tokio::runtime::Handle, base_path: BasePath) -> Self {
         DomainNodeBuilder {
-            key,
             tokio_handle,
             domain_nodes: Vec::new(),
             domain_nodes_exclusive: false,
@@ -460,13 +454,13 @@ impl DomainNodeBuilder {
     pub async fn build_evm_node(
         self,
         role: Role,
-        domain_id: DomainId,
+        key: EcdsaKeyring,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
         DomainNode::build(
-            domain_id,
+            EVM_DOMAIN_ID,
             self.tokio_handle,
-            self.key,
+            key,
             self.base_path,
             self.domain_nodes,
             self.domain_nodes_exclusive,
@@ -480,8 +474,8 @@ impl DomainNodeBuilder {
     /// Build a evm domain node
     pub async fn build_auto_id_node(
         self,
-        key: Sr25519Keyring,
         role: Role,
+        key: Sr25519Keyring,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> AutoIdDomainNode {
         DomainNode::build(
