@@ -3,7 +3,8 @@
 
 use crate::chain_spec::create_domain_spec;
 use crate::{
-    construct_extrinsic_generic, node_config, BalanceOf, EcdsaKeyring, UncheckedExtrinsicFor,
+    construct_extrinsic_generic, node_config, BalanceOf, DomainRuntime, EcdsaKeyring,
+    Sr25519Keyring, UncheckedExtrinsicFor, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use cross_domain_message_gossip::ChainMsg;
 use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
@@ -12,8 +13,6 @@ use domain_runtime_primitives::Balance;
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use domain_test_primitives::OnchainStateApi;
-use evm_domain_test_runtime::AccountId as AccountId20;
-use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -25,11 +24,10 @@ use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, PruningMode, Role, RpcHandlers, TFullBackend, TaskManager};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
-use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_consensus_subspace::SubspaceApi;
-use sp_core::{Decode, Encode, H256};
+use sp_core::{Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChainId, ChannelId};
@@ -39,10 +37,7 @@ use sp_runtime::traits::{Block as BlockT, Dispatchable, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::fmt::{Debug, Display};
 use std::future::Future;
-use std::marker::PhantomData;
-use std::str::FromStr;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Nonce;
@@ -51,18 +46,6 @@ use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
-
-/// Trait for convert keyring to account id
-pub trait FromKeyring {
-    /// Convert keyring to account id
-    fn from_keyring(key: EcdsaKeyring) -> Self;
-}
-
-impl FromKeyring for AccountId20 {
-    fn from_keyring(key: EcdsaKeyring) -> Self {
-        key.to_account_id()
-    }
-}
 
 /// The backend type used by the test service.
 pub type Backend = TFullBackend<Block>;
@@ -74,8 +57,9 @@ pub type DomainOperator<RuntimeApi> =
     domain_service::DomainOperator<Block, CBlock, subspace_test_client::Client, RuntimeApi>;
 
 /// A generic domain node instance used for testing.
-pub struct DomainNode<Runtime, RuntimeApi, AccountId>
+pub struct DomainNode<Runtime, RuntimeApi>
 where
+    Runtime: DomainRuntime,
     RuntimeApi: ConstructRuntimeApi<Block, Client<RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
@@ -85,17 +69,14 @@ where
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, AccountId, Nonce>
+        + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>,
-    AccountId: Encode + Decode + FromKeyring,
 {
     /// The domain id
     pub domain_id: DomainId,
-    // TODO: Make the signing scheme generic over domains, because Ecdsa only used in the EVM domain,
-    // other (incoming) domains may use Sr25519
     /// The node's account key
-    pub key: EcdsaKeyring,
+    pub key: <Runtime as DomainRuntime>::Keyring,
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -117,12 +98,15 @@ where
     pub operator: DomainOperator<RuntimeApi>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<ChainMsg>,
-    _phantom_data: PhantomData<(Runtime, AccountId)>,
 }
 
-impl<Runtime, RuntimeApi, AccountId> DomainNode<Runtime, RuntimeApi, AccountId>
+impl<Runtime, RuntimeApi> DomainNode<Runtime, RuntimeApi>
 where
-    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+    Runtime: frame_system::Config<Hash = H256>
+        + pallet_transaction_payment::Config
+        + DomainRuntime
+        + Send
+        + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     crate::BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
@@ -135,29 +119,17 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block>
         + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, AccountId, Nonce>
+        + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
-        + OnchainStateApi<Block, AccountId, Balance>
-        + EthereumRuntimeRPCApi<Block>,
-    AccountId: DeserializeOwned
-        + Encode
-        + Decode
-        + Clone
-        + Debug
-        + Display
-        + FromStr
-        + Sync
-        + Send
-        + FromKeyring
-        + 'static,
+        + OnchainStateApi<Block, <Runtime as DomainRuntime>::AccountId, Balance>,
 {
     #[allow(clippy::too_many_arguments)]
     async fn build(
         domain_id: DomainId,
         tokio_handle: tokio::runtime::Handle,
-        key: EcdsaKeyring,
+        key: <Runtime as DomainRuntime>::Keyring,
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
@@ -173,10 +145,11 @@ where
             .await
             .expect("Failed to get domain instance data");
         let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
+        let key_seed = <Runtime as DomainRuntime>::to_seed(key);
         let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
-            key,
+            key_seed,
             domain_nodes,
             domain_nodes_exclusive,
             role.clone(),
@@ -211,7 +184,9 @@ where
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
 
-        let maybe_operator_id = role.is_authority().then_some(0);
+        let maybe_operator_id = role
+            .is_authority()
+            .then_some(if domain_id == EVM_DOMAIN_ID { 0 } else { 1 });
 
         let consensus_best_hash = mock_consensus_node.client.info().best_hash;
         let chain_constants = mock_consensus_node
@@ -241,10 +216,19 @@ where
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
         };
 
-        let domain_node =
-            domain_service::new_full::<_, _, _, _, _, _, RuntimeApi, AccountId, _>(domain_params)
-                .await
-                .expect("failed to build domain node");
+        let domain_node = domain_service::new_full::<
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            RuntimeApi,
+            <Runtime as DomainRuntime>::AccountId,
+            _,
+        >(domain_params)
+        .await
+        .expect("failed to build domain node");
 
         let domain_service::NewFull {
             task_manager,
@@ -285,7 +269,7 @@ where
             rpc_handlers,
             operator,
             tx_pool_sink: domain_message_sink,
-            _phantom_data: Default::default(),
+            // _phantom_data: Default::default(),
         }
     }
 
@@ -302,7 +286,7 @@ where
             .runtime_api()
             .account_nonce(
                 self.client.info().best_hash,
-                <AccountId as FromKeyring>::from_keyring(self.key),
+                <Runtime as DomainRuntime>::account_id(self.key),
             )
             .expect("Fail to get account nonce")
     }
@@ -387,7 +371,7 @@ where
     }
 
     /// Get the free balance of the given account
-    pub fn free_balance(&self, account_id: AccountId) -> Balance {
+    pub fn free_balance(&self, account_id: <Runtime as DomainRuntime>::AccountId) -> Balance {
         self.client
             .runtime_api()
             .free_balance(self.client.info().best_hash, account_id)
@@ -433,7 +417,6 @@ impl DomainNodeBuilder {
     /// Create a new instance of `Self`.
     ///
     /// `tokio_handle` - The tokio handler to use.
-    /// `key` - The key that will be used to generate the name.
     /// `base_path` - Where databases will be stored.
     pub fn new(
         tokio_handle: tokio::runtime::Handle,
@@ -493,11 +476,39 @@ impl DomainNodeBuilder {
         )
         .await
     }
+
+    /// Build a evm domain node
+    pub async fn build_auto_id_node(
+        self,
+        key: Sr25519Keyring,
+        role: Role,
+        mock_consensus_node: &mut MockConsensusNode,
+    ) -> AutoIdDomainNode {
+        DomainNode::build(
+            AUTO_ID_DOMAIN_ID,
+            self.tokio_handle,
+            key,
+            self.base_path,
+            self.domain_nodes,
+            self.domain_nodes_exclusive,
+            self.skip_empty_bundle_production,
+            role,
+            mock_consensus_node,
+        )
+        .await
+    }
 }
 
 /// The evm domain node
 pub type EvmDomainNode =
-    DomainNode<evm_domain_test_runtime::Runtime, evm_domain_test_runtime::RuntimeApi, AccountId20>;
+    DomainNode<evm_domain_test_runtime::Runtime, evm_domain_test_runtime::RuntimeApi>;
 
 /// The evm domain client
 pub type EvmDomainClient = Client<evm_domain_test_runtime::RuntimeApi>;
+
+/// The auto-id domain node
+pub type AutoIdDomainNode =
+    DomainNode<auto_id_domain_test_runtime::Runtime, auto_id_domain_test_runtime::RuntimeApi>;
+
+/// The auto-id domain client
+pub type AutoIdDomainClient = Client<auto_id_domain_test_runtime::RuntimeApi>;

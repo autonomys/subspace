@@ -4,13 +4,11 @@ use crate::test_ethereum_tx::{
 use codec::Encode;
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError};
 use domain_test_service::evm_domain_test_runtime::{
-    Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as RuntimeUncheckedExtrinsic,
+    Runtime as TestRuntime, RuntimeCall, Signature, UncheckedExtrinsic as RuntimeUncheckedExtrinsic,
 };
 use domain_test_service::EcdsaKeyring::{Alice, Charlie};
 use domain_test_service::Sr25519Keyring::Ferdie;
-use domain_test_service::{
-    construct_extrinsic_generic_with_custom_key, EvmDomainNode, GENESIS_DOMAIN_ID,
-};
+use domain_test_service::{construct_extrinsic_raw_payload, EvmDomainNode, GENESIS_DOMAIN_ID};
 use ethereum::TransactionV2 as Transaction;
 use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::pallet_prelude::DispatchClass;
@@ -224,17 +222,23 @@ async fn benchmark_bundle_with_evm_tx(
             }
             3 => {
                 let ecdsa_key = Pair::from_seed_slice(&account_info.private_key.0).unwrap();
+                let function: RuntimeCall = pallet_balances::Call::transfer_allow_death {
+                    dest: account_info.address.0.into(),
+                    value: other_accounts_balance,
+                }
+                .into();
+                let (raw_payload, extra) =
+                    construct_extrinsic_raw_payload(&alice.client, function.clone(), false, 0, 1);
+                let signature = raw_payload.using_encoded(|e| {
+                    let msg = keccak_256(e);
+                    ecdsa_key.sign_prehashed(&msg)
+                });
                 fp_self_contained::UncheckedExtrinsic(
-                    construct_extrinsic_generic_with_custom_key::<TestRuntime, _>(
-                        &alice.client,
-                        pallet_balances::Call::transfer_allow_death {
-                            dest: account_info.address.0.into(),
-                            value: other_accounts_balance,
-                        },
-                        ecdsa_key,
-                        false,
-                        0,
-                        1,
+                    sp_runtime::generic::UncheckedExtrinsic::new_signed(
+                        function.clone(),
+                        ecdsa_key.public().into(),
+                        Signature::new(signature),
+                        extra,
                     ),
                 )
             }

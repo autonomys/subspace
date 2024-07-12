@@ -17,19 +17,15 @@
 //! Crate used for testing with Domain.
 
 #![feature(trait_upcasting)]
-#![warn(missing_docs)]
 
 pub mod chain_spec;
 pub mod domain;
 pub mod keyring;
 
-pub use keyring::Keyring as EcdsaKeyring;
-pub use sp_keyring::Sr25519Keyring;
-
 use domain_runtime_primitives::opaque::Block;
-use evm_domain_test_runtime::{Address, Signature};
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use frame_system::pallet_prelude::BlockNumberFor;
+pub use keyring::Keyring as EcdsaKeyring;
 use sc_network::config::{NonReservedPeerMode, TransportConfig};
 use sc_network::multiaddr;
 use sc_service::config::{
@@ -41,20 +37,30 @@ use sc_service::{
     BasePath, BlocksPruning, ChainSpec, Configuration as ServiceConfiguration,
     Error as ServiceError, Role,
 };
+use serde::de::DeserializeOwned;
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{ecdsa, keccak_256, Get, Pair, H256};
+use sp_core::{Get, H256};
 use sp_domains::DomainId;
-use sp_runtime::codec::Encode;
+pub use sp_keyring::Sr25519Keyring;
+use sp_runtime::codec::{Decode, Encode};
 use sp_runtime::generic;
 use sp_runtime::generic::SignedPayload;
 use sp_runtime::traits::Dispatchable;
+use std::fmt::{Debug, Display};
+use std::str::FromStr;
 
 pub use domain::*;
 pub use evm_domain_test_runtime;
 
 /// The domain id of the genesis domain
 pub const GENESIS_DOMAIN_ID: DomainId = DomainId::new(0u32);
+
+/// The domain id of the evm domain
+pub const EVM_DOMAIN_ID: DomainId = DomainId::new(0u32);
+
+/// The domain id of the auto-id domain
+pub const AUTO_ID_DOMAIN_ID: DomainId = DomainId::new(1u32);
 
 /// Create a domain node `Configuration`.
 ///
@@ -65,7 +71,7 @@ pub const GENESIS_DOMAIN_ID: DomainId = DomainId::new(0u32);
 pub fn node_config(
     domain_id: DomainId,
     tokio_handle: tokio::runtime::Handle,
-    key: EcdsaKeyring,
+    key_seed: String,
     nodes: Vec<MultiaddrWithPeerId>,
     nodes_exclusive: bool,
     role: Role,
@@ -73,7 +79,6 @@ pub fn node_config(
     chain_spec: Box<dyn ChainSpec>,
 ) -> Result<ServiceConfiguration, ServiceError> {
     let root = base_path.path().to_path_buf();
-    let key_seed = key.to_seed();
 
     let domain_name = format!("{domain_id:?}");
 
@@ -170,15 +175,15 @@ type SignedExtraFor<Runtime> = (
 );
 
 type UncheckedExtrinsicFor<Runtime> = generic::UncheckedExtrinsic<
-    Address,
+    <Runtime as DomainRuntime>::Address,
     <Runtime as frame_system::Config>::RuntimeCall,
-    Signature,
+    <Runtime as DomainRuntime>::Signature,
     SignedExtraFor<Runtime>,
 >;
 
 type BalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
 
-fn construct_extrinsic_raw_payload<Runtime, Client>(
+pub fn construct_extrinsic_raw_payload<Runtime, Client>(
     client: impl AsRef<Client>,
     function: <Runtime as frame_system::Config>::RuntimeCall,
     immortal: bool,
@@ -230,49 +235,87 @@ where
     )
 }
 
-/// Construct a generic extrinsic signed by custom key
-pub fn construct_extrinsic_generic_with_custom_key<Runtime, Client>(
-    client: impl AsRef<Client>,
-    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
-    caller: ecdsa::Pair,
-    immortal: bool,
-    nonce: u32,
-    tip: BalanceOf<Runtime>,
-) -> UncheckedExtrinsicFor<Runtime>
-where
-    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
-    Runtime::RuntimeCall:
-        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
-    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
-    u64: From<BlockNumberFor<Runtime>>,
-    Client: HeaderBackend<Block>,
-{
-    let function = function.into();
-    let (raw_payload, extra) =
-        construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
-    let signature = raw_payload.using_encoded(|e| {
-        let msg = keccak_256(e);
-        caller.sign_prehashed(&msg)
-    });
-    UncheckedExtrinsicFor::<Runtime>::new_signed(
-        function.clone(),
-        caller.public().into(),
-        Signature::new(signature),
-        extra,
-    )
+pub trait DomainRuntime {
+    type Keyring: Copy;
+    type AccountId: DeserializeOwned
+        + Encode
+        + Decode
+        + Clone
+        + Debug
+        + Display
+        + FromStr
+        + Sync
+        + Send
+        + 'static;
+    type Address: Encode + Decode;
+    type Signature: Encode + Decode;
+    fn sign(key: Self::Keyring, payload: &[u8]) -> Self::Signature;
+    fn account_id(key: Self::Keyring) -> Self::AccountId;
+    fn address(key: Self::Keyring) -> Self::Address;
+    fn to_seed(key: Self::Keyring) -> String;
+}
+
+impl DomainRuntime for evm_domain_test_runtime::Runtime {
+    type Keyring = EcdsaKeyring;
+    type AccountId = evm_domain_test_runtime::AccountId;
+    type Address = evm_domain_test_runtime::Address;
+    type Signature = evm_domain_test_runtime::Signature;
+
+    fn sign(key: Self::Keyring, payload: &[u8]) -> Self::Signature {
+        evm_domain_test_runtime::Signature::new(key.sign(payload))
+    }
+
+    fn account_id(key: Self::Keyring) -> Self::AccountId {
+        key.to_account_id()
+    }
+
+    fn address(key: Self::Keyring) -> Self::Address {
+        key.to_account_id()
+    }
+
+    fn to_seed(key: Self::Keyring) -> String {
+        key.to_seed()
+    }
+}
+
+impl DomainRuntime for auto_id_domain_test_runtime::Runtime {
+    type Keyring = Sr25519Keyring;
+    type AccountId = auto_id_domain_test_runtime::AccountId;
+    type Address = auto_id_domain_test_runtime::Address;
+    type Signature = auto_id_domain_test_runtime::Signature;
+
+    fn sign(key: Self::Keyring, payload: &[u8]) -> Self::Signature {
+        key.sign(payload).into()
+    }
+
+    fn account_id(key: Self::Keyring) -> Self::AccountId {
+        key.to_account_id()
+    }
+
+    fn address(key: Self::Keyring) -> Self::Address {
+        sp_runtime::MultiAddress::Id(key.to_account_id())
+    }
+
+    fn to_seed(key: Self::Keyring) -> String {
+        key.to_seed()
+    }
 }
 
 /// Construct an extrinsic that can be applied to the test runtime.
 pub fn construct_extrinsic_generic<Runtime, Client>(
     client: impl AsRef<Client>,
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
-    caller: EcdsaKeyring,
+    caller: <Runtime as DomainRuntime>::Keyring,
     immortal: bool,
     nonce: u32,
     tip: BalanceOf<Runtime>,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
-    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+    Runtime: frame_system::Config<Hash = H256>
+        + pallet_transaction_payment::Config
+        + DomainRuntime
+        + Send
+        + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
@@ -282,13 +325,9 @@ where
     let function = function.into();
     let (raw_payload, extra) =
         construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
-    let signature = raw_payload.using_encoded(|e| caller.sign(e));
-    UncheckedExtrinsicFor::<Runtime>::new_signed(
-        function,
-        caller.to_account_id(),
-        Signature::new(signature),
-        extra,
-    )
+    let signature = raw_payload.using_encoded(|e| <Runtime as DomainRuntime>::sign(caller, e));
+    let address = <Runtime as DomainRuntime>::address(caller);
+    UncheckedExtrinsicFor::<Runtime>::new_signed(function, address, signature, extra)
 }
 
 /// Construct an unsigned extrinsic that can be applied to the test runtime.
@@ -296,7 +335,11 @@ pub fn construct_unsigned_extrinsic<Runtime>(
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
-    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+    Runtime: frame_system::Config<Hash = H256>
+        + pallet_transaction_payment::Config
+        + DomainRuntime
+        + Send
+        + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
