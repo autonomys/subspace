@@ -28,8 +28,8 @@ use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
-    dummy_opaque_bundle, ConfirmedDomainBlock, DomainId, ExecutionReceipt, OperatorAllowList,
-    OperatorId, OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, RuntimeType,
+    dummy_opaque_bundle, BlockFees, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
+    OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, RuntimeType, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
@@ -753,19 +753,26 @@ mod benchmarks {
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
-        // Update the `LatestConfirmedDomainBlock` so unlock can success
+        // Update the `LatestConfirmedDomainExecutionReceipt` so unlock can success
         let confirmed_domain_block_number =
             Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
                 + T::StakeWithdrawalLockingPeriod::get()
                 + One::one();
-        LatestConfirmedDomainBlock::<T>::insert(
+        LatestConfirmedDomainExecutionReceipt::<T>::insert(
             domain_id,
-            ConfirmedDomainBlock {
-                block_number: confirmed_domain_block_number,
-                block_hash: Default::default(),
-                parent_block_receipt_hash: Default::default(),
-                state_root: Default::default(),
-                extrinsics_root: Default::default(),
+            ExecutionReceiptOf::<T> {
+                domain_block_number: confirmed_domain_block_number,
+                domain_block_hash: Default::default(),
+                domain_block_extrinsic_root: Default::default(),
+                parent_domain_block_receipt_hash: Default::default(),
+                consensus_block_number: Default::default(),
+                consensus_block_hash: Default::default(),
+                inboxed_bundles: vec![],
+                final_state_root: Default::default(),
+                execution_trace: vec![],
+                execution_trace_root: Default::default(),
+                block_fees: BlockFees::default(),
+                transfers: Transfers::default(),
             },
         );
 
@@ -797,19 +804,26 @@ mod benchmarks {
             operator_id,
         ));
 
-        // Update the `LatestConfirmedDomainBlock` so unlock can success
+        // Update the `LatestConfirmedDomainExecutionReceipt` so unlock can success
         let confirmed_domain_block_number =
             Pallet::<T>::latest_confirmed_domain_block_number(domain_id)
                 + T::StakeWithdrawalLockingPeriod::get()
                 + One::one();
-        LatestConfirmedDomainBlock::<T>::insert(
+        LatestConfirmedDomainExecutionReceipt::<T>::insert(
             domain_id,
-            ConfirmedDomainBlock {
-                block_number: confirmed_domain_block_number,
-                block_hash: Default::default(),
-                parent_block_receipt_hash: Default::default(),
-                state_root: Default::default(),
-                extrinsics_root: Default::default(),
+            ExecutionReceiptOf::<T> {
+                domain_block_number: confirmed_domain_block_number,
+                domain_block_hash: Default::default(),
+                domain_block_extrinsic_root: Default::default(),
+                parent_domain_block_receipt_hash: Default::default(),
+                consensus_block_number: Default::default(),
+                consensus_block_hash: Default::default(),
+                inboxed_bundles: vec![],
+                final_state_root: Default::default(),
+                execution_trace: vec![],
+                execution_trace_root: Default::default(),
+                block_fees: BlockFees::default(),
+                transfers: Transfers::default(),
             },
         );
 
