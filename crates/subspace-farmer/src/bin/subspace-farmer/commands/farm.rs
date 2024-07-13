@@ -31,7 +31,6 @@ use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::single_disk_farm::identity::Identity;
-use subspace_farmer::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -526,7 +525,7 @@ where
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
-        let metrics = &SingleDiskFarmMetrics::new(&mut prometheus_metrics_registry);
+        let registry = &Mutex::new(&mut prometheus_metrics_registry);
 
         let mut farms = Vec::with_capacity(disk_farms.len());
         let mut farms_stream = disk_farms
@@ -568,7 +567,7 @@ where
                                 .read_sector_record_chunks_mode,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
-                            metrics: Some(metrics.clone()),
+                            registry: Some(registry),
                             create,
                         },
                         farm_index,
