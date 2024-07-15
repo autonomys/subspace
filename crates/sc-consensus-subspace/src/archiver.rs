@@ -452,7 +452,6 @@ where
 {
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
-    older_archived_segments: Vec<NewArchivedSegment>,
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
@@ -600,8 +599,6 @@ where
             Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
 
-    let mut older_archived_segments = Vec::new();
-
     // Process blocks since last fully archived block up to the current head minus K
     {
         let blocks_to_archive_from = archiver
@@ -691,8 +688,6 @@ where
                     .map(|archived_segment| archived_segment.segment_header)
                     .collect();
 
-                older_archived_segments.extend(archived_segments);
-
                 if !new_segment_headers.is_empty() {
                     segment_headers_store.add_segment_headers(&new_segment_headers)?;
                 }
@@ -703,7 +698,6 @@ where
     Ok(InitializedArchiver {
         confirmation_depth_k,
         archiver,
-        older_archived_segments,
         best_archived_block: best_archived_block
             .expect("Must always set if there is no logical error; qed"),
     })
@@ -840,22 +834,9 @@ where
         let InitializedArchiver {
             confirmation_depth_k,
             mut archiver,
-            older_archived_segments,
             best_archived_block,
         } = archiver;
         let (mut best_archived_block_hash, mut best_archived_block_number) = best_archived_block;
-
-        let archived_segment_notification_sender =
-            subspace_link.archived_segment_notification_sender.clone();
-
-        // Farmers may have not received all previous segments, send them now.
-        for archived_segment in older_archived_segments {
-            send_archived_segment_notification(
-                &archived_segment_notification_sender,
-                archived_segment,
-            )
-            .await;
-        }
 
         while let Some(ref block_import_notification) =
             block_importing_notification_stream.next().await
@@ -884,7 +865,6 @@ where
                 InitializedArchiver {
                     confirmation_depth_k: _,
                     archiver,
-                    older_archived_segments: _,
                     best_archived_block: (best_archived_block_hash, best_archived_block_number),
                 } = initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?;
 
@@ -919,7 +899,7 @@ where
                 client.clone(),
                 &sync_oracle,
                 telemetry.clone(),
-                archived_segment_notification_sender.clone(),
+                subspace_link.archived_segment_notification_sender.clone(),
                 best_archived_block_hash,
                 block_number_to_archive,
             )
