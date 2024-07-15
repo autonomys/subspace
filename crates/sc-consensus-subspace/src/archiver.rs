@@ -815,7 +815,26 @@ where
     Ok(async move {
         let archiver = match maybe_archiver {
             Some(archiver) => archiver,
-            None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
+            None => {
+                let Some(last_segment_header) = segment_headers_store.last_segment_header() else {
+                    unreachable!("Already checked above that max_segment_index is not None")
+                };
+                let last_archived_block = last_segment_header.last_archived_block();
+
+                // wait for unknown blocks to arrive.
+                while let Some(ref block_import_notification) =
+                    block_importing_notification_stream.next().await
+                {
+                    if block_import_notification
+                        .block_number
+                        .checked_sub(&(last_archived_block.number + 1).into())
+                        .is_none()
+                    {
+                        break;
+                    }
+                }
+                initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?
+            }
         };
 
         let InitializedArchiver {
