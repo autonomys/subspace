@@ -269,7 +269,6 @@ where
             rpc_handlers,
             operator,
             tx_pool_sink: domain_message_sink,
-            // _phantom_data: Default::default(),
         }
     }
 
