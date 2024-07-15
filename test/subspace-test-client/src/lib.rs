@@ -16,10 +16,11 @@
 
 //! Subspace test client only.
 
-#![warn(missing_docs, unused_crate_dependencies)]
+#![warn(unused_crate_dependencies)]
 
+pub mod auto_id_domain_chain_spec;
 pub mod chain_spec;
-pub mod domain_chain_spec;
+pub mod evm_domain_chain_spec;
 
 use futures::executor::block_on;
 use futures::StreamExt;

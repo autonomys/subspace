@@ -85,6 +85,11 @@ impl GossipWorkerBuilder {
         self.chain_sinks.insert(chain_id, sink);
     }
 
+    // Remove the chain sink
+    pub fn remove_chain_sink(&mut self, chain_id: &ChainId) -> Option<ChainSink> {
+        self.chain_sinks.remove(chain_id)
+    }
+
     /// Get the gossip message sink
     pub fn gossip_msg_sink(&self) -> TracingUnboundedSender<Message> {
         self.gossip_msg_sink.clone()
