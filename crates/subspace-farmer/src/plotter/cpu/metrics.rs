@@ -62,7 +62,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_downloading_counter",
             "Number of sectors being downloaded",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_downloading.clone(),
         );
 
@@ -70,7 +70,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_downloaded_counter",
             "Number of downloaded sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_downloaded.clone(),
         );
 
@@ -78,7 +78,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_encoding_counter",
             "Number of sectors being encoded",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_encoding.clone(),
         );
 
@@ -86,7 +86,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_encoded_counter",
             "Number of encoded sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_encoded.clone(),
         );
 
@@ -94,7 +94,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_plotting_counter",
             "Number of sectors being plotted",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotting.clone(),
         );
 
@@ -102,7 +102,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_plotted_counter",
             "Number of plotted sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotted.clone(),
         );
 
@@ -110,7 +110,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "sector_plotting_error_counter",
             "Number of sector plotting failures",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotting_error.clone(),
         );
 
@@ -119,7 +119,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "plotting_capacity_total",
             "Plotting capacity total",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             plotting_capacity_total,
         );
 
@@ -127,7 +127,7 @@ impl CpuPlotterMetrics {
         registry.register_with_unit(
             "plotting_capacity_used",
             "Plotting capacity used",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             plotting_capacity_used.clone(),
         );
 

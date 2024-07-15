@@ -66,7 +66,6 @@ impl SingleDiskFarmMetrics {
             .sub_registry_with_label(("farm_id".into(), farm_id.to_string().into()));
 
         let auditing_time = Histogram::new(exponential_buckets(0.0002, 2.0, 15));
-
         sub_registry.register_with_unit(
             "auditing_time",
             "Auditing time",
@@ -77,7 +76,6 @@ impl SingleDiskFarmMetrics {
         let proving_time = Family::<_, _>::new_with_constructor(|| {
             Histogram::new(exponential_buckets(0.0002, 2.0, 15))
         });
-
         sub_registry.register_with_unit(
             "proving_time",
             "Proving time",
@@ -86,7 +84,6 @@ impl SingleDiskFarmMetrics {
         );
 
         let farming_errors = Family::default();
-
         sub_registry.register(
             "farming_errors",
             "Non-fatal farming errors",
@@ -94,7 +91,6 @@ impl SingleDiskFarmMetrics {
         );
 
         let sector_downloading_time = Histogram::new(exponential_buckets(0.1, 2.0, 15));
-
         sub_registry.register_with_unit(
             "sector_downloading_time",
             "Sector downloading time",
@@ -103,7 +99,6 @@ impl SingleDiskFarmMetrics {
         );
 
         let sector_encoding_time = Histogram::new(exponential_buckets(0.1, 2.0, 15));
-
         sub_registry.register_with_unit(
             "sector_encoding_time",
             "Sector encoding time",
@@ -112,7 +107,6 @@ impl SingleDiskFarmMetrics {
         );
 
         let sector_writing_time = Histogram::new(exponential_buckets(0.0002, 2.0, 15));
-
         sub_registry.register_with_unit(
             "sector_writing_time",
             "Sector writing time",
@@ -121,7 +115,6 @@ impl SingleDiskFarmMetrics {
         );
 
         let sector_plotting_time = Histogram::new(exponential_buckets(0.1, 2.0, 15));
-
         sub_registry.register_with_unit(
             "sector_plotting_time",
             "Sector plotting time",
@@ -130,92 +123,82 @@ impl SingleDiskFarmMetrics {
         );
 
         let sectors_total = Family::default();
-
         sub_registry.register_with_unit(
             "sectors_total",
             "Total number of sectors with corresponding state",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sectors_total.clone(),
         );
 
         let sector_downloading = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_downloading_counter",
             "Number of sectors being downloaded",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_downloading.clone(),
         );
 
         let sector_downloaded = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_downloaded_counter",
             "Number of downloaded sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_downloaded.clone(),
         );
 
         let sector_encoding = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_encoding_counter",
             "Number of sectors being encoded",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_encoding.clone(),
         );
 
         let sector_encoded = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_encoded_counter",
             "Number of encoded sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_encoded.clone(),
         );
 
         let sector_writing = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_writing_counter",
             "Number of sectors being written",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_writing.clone(),
         );
 
         let sector_written = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_written_counter",
             "Number of written sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_written.clone(),
         );
 
         let sector_plotting = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_plotting_counter",
             "Number of sectors being plotted",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotting.clone(),
         );
 
         let sector_plotted = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_plotted_counter",
             "Number of plotted sectors",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotted.clone(),
         );
 
         let sector_plotting_error = Counter::default();
-
         sub_registry.register_with_unit(
             "sector_plotting_error_counter",
             "Number of sector plotting failures",
-            Unit::Other("sectors".to_string()),
+            Unit::Other("Sectors".to_string()),
             sector_plotting_error.clone(),
         );
 
