@@ -6,7 +6,7 @@
 
 pub mod farming;
 pub mod identity;
-pub mod metrics;
+mod metrics;
 pub mod piece_cache;
 pub mod piece_reader;
 pub mod plot_cache;
@@ -18,7 +18,7 @@ pub mod unbuffered_io_file_windows;
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::farm::{
     Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceReader, PlottedSectors,
-    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
+    SectorUpdate,
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
@@ -27,7 +27,7 @@ use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::identity::{Identity, IdentityError};
-use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
+use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use crate::single_disk_farm::piece_cache::SingleDiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
@@ -50,6 +50,7 @@ use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use rand::prelude::*;
 use rayon::prelude::*;
 use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
@@ -296,7 +297,7 @@ impl PlotMetadataHeader {
 
 /// Options used to open single disk farm
 #[derive(Debug)]
-pub struct SingleDiskFarmOptions<NC>
+pub struct SingleDiskFarmOptions<'a, NC>
 where
     NC: Clone,
 {
@@ -341,8 +342,8 @@ where
     pub faster_read_sector_record_chunks_mode_barrier: Arc<Barrier>,
     /// Limit concurrency of internal benchmarking between different farms
     pub faster_read_sector_record_chunks_mode_concurrency: Arc<Semaphore>,
-    /// Single disk farm metrics
-    pub metrics: Option<SingleDiskFarmMetrics>,
+    /// Prometheus registry
+    pub registry: Option<&'a Mutex<&'a mut Registry>>,
     /// Whether to create a farm if it doesn't yet exist
     pub create: bool,
 }
@@ -774,7 +775,7 @@ impl SingleDiskFarm {
 
     /// Create new single disk farm instance
     pub async fn new<NC, PosTableLegacy, PosTable>(
-        options: SingleDiskFarmOptions<NC>,
+        options: SingleDiskFarmOptions<'_, NC>,
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
@@ -784,16 +785,49 @@ impl SingleDiskFarm {
     {
         let span = Span::current();
 
+        let SingleDiskFarmOptions {
+            directory,
+            farmer_app_info,
+            allocated_space,
+            max_pieces_in_sector,
+            node_client,
+            reward_address,
+            plotter_legacy,
+            plotter,
+            kzg,
+            erasure_coding,
+            cache_percentage,
+            farming_thread_pool_size,
+            plotting_delay,
+            global_mutex,
+            disable_farm_locking,
+            read_sector_record_chunks_mode,
+            faster_read_sector_record_chunks_mode_barrier,
+            faster_read_sector_record_chunks_mode_concurrency,
+            registry,
+            create,
+        } = options;
+
         let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+            let directory = directory.clone();
+            let farmer_app_info = farmer_app_info.clone();
             let span = span.clone();
 
             move || {
                 let _span_guard = span.enter();
-                Self::init(&options).map(|single_disk_farm_init| (single_disk_farm_init, options))
+                Self::init(
+                    &directory,
+                    &farmer_app_info,
+                    allocated_space,
+                    max_pieces_in_sector,
+                    cache_percentage,
+                    disable_farm_locking,
+                    create,
+                )
             }
         });
 
-        let (single_disk_farm_init, options) =
+        let single_disk_farm_init =
             AsyncJoinOnDrop::new(single_disk_farm_init_fut, false).await??;
 
         let SingleDiskFarmInit {
@@ -813,24 +847,14 @@ impl SingleDiskFarm {
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
 
-        let SingleDiskFarmOptions {
-            directory,
-            farmer_app_info,
-            node_client,
-            reward_address,
-            plotter_legacy,
-            plotter,
-            kzg,
-            erasure_coding,
-            farming_thread_pool_size,
-            plotting_delay,
-            global_mutex,
-            read_sector_record_chunks_mode,
-            faster_read_sector_record_chunks_mode_barrier,
-            faster_read_sector_record_chunks_mode_concurrency,
-            metrics,
-            ..
-        } = options;
+        let metrics = registry.map(|registry| {
+            Arc::new(SingleDiskFarmMetrics::new(
+                *registry.lock(),
+                single_disk_farm_info.id(),
+                target_sector_count,
+                sectors_metadata.read_blocking().len() as SectorIndex,
+            ))
+        });
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -924,6 +948,7 @@ impl SingleDiskFarm {
             let error_sender = Arc::clone(&error_sender);
             let span = span.clone();
             let global_mutex = Arc::clone(&global_mutex);
+            let metrics = metrics.clone();
 
             move || {
                 let _span_guard = span.enter();
@@ -948,6 +973,7 @@ impl SingleDiskFarm {
                         handlers: &handlers,
                         global_mutex: &global_mutex,
                         plotter,
+                        metrics,
                     },
                 };
 
@@ -1009,6 +1035,7 @@ impl SingleDiskFarm {
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
+            metrics: metrics.clone(),
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
@@ -1060,6 +1087,7 @@ impl SingleDiskFarm {
                         thread_pool: farming_thread_pool,
                         read_sector_record_chunks_mode,
                         global_mutex,
+                        metrics,
                     };
                     match single_disk_farm_info {
                         SingleDiskFarmInfo::V0 { .. } => {
@@ -1212,37 +1240,21 @@ impl SingleDiskFarm {
             stop_sender: Some(stop_sender),
             _single_disk_farm_info_lock: single_disk_farm_info_lock,
         };
-
-        if let Some(metrics) = metrics {
-            farm.register_metrics(metrics);
-        }
-
         Ok(farm)
     }
 
-    fn init<NC>(
-        options: &SingleDiskFarmOptions<NC>,
-    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError>
-    where
-        NC: Clone,
-    {
-        let SingleDiskFarmOptions {
-            directory,
-            farmer_app_info,
-            allocated_space,
-            max_pieces_in_sector,
-            cache_percentage,
-            disable_farm_locking,
-            create,
-            ..
-        } = options;
-
-        let allocated_space = *allocated_space;
-        let max_pieces_in_sector = *max_pieces_in_sector;
-
+    fn init(
+        directory: &PathBuf,
+        farmer_app_info: &FarmerAppInfo,
+        allocated_space: u64,
+        max_pieces_in_sector: u16,
+        cache_percentage: u8,
+        disable_farm_locking: bool,
+        create: bool,
+    ) -> Result<SingleDiskFarmInit, SingleDiskFarmError> {
         fs::create_dir_all(directory)?;
 
-        let identity = if *create {
+        let identity = if create {
             Identity::open_or_create(directory)?
         } else {
             Identity::open(directory)?.ok_or_else(|| {
@@ -1334,7 +1346,7 @@ impl SingleDiskFarm {
             }
         };
 
-        let single_disk_farm_info_lock = if *disable_farm_locking {
+        let single_disk_farm_info_lock = if disable_farm_locking {
             None
         } else {
             Some(
@@ -1356,7 +1368,7 @@ impl SingleDiskFarm {
         let target_sector_count = {
             let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
                 / 100
-                * (100 - u64::from(*cache_percentage));
+                * (100 - u64::from(cache_percentage));
             // Do the rounding to make sure we have exactly as much space as fits whole number of
             // sectors, account for disk sector size just in case
             (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
@@ -1364,7 +1376,7 @@ impl SingleDiskFarm {
 
         if target_sector_count == 0 {
             let mut single_plot_with_cache_space =
-                single_sector_overhead.div_ceil(100 - u64::from(*cache_percentage)) * 100;
+                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage)) * 100;
             // Cache must not be empty, ensure it contains at least one element even if
             // percentage-wise it will use more space
             if single_plot_with_cache_space - single_sector_overhead
@@ -1385,7 +1397,7 @@ impl SingleDiskFarm {
             plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
-        let cache_capacity = if *cache_percentage > 0 {
+        let cache_capacity = if cache_percentage > 0 {
             let cache_space = allocated_space
                 - fixed_space_usage
                 - plot_file_size
@@ -1568,86 +1580,6 @@ impl SingleDiskFarm {
             piece_cache,
             plot_cache,
         })
-    }
-
-    fn register_metrics(&self, metrics: SingleDiskFarmMetrics) {
-        let farm_id = *self.id();
-
-        let total_sector_count = self.total_sectors_count;
-        let plotted_sectors_count = self.sectors_metadata.read_blocking().len() as SectorIndex;
-        metrics.update_sectors_total(
-            &farm_id,
-            total_sector_count - plotted_sectors_count,
-            SectorState::NotPlotted,
-        );
-        metrics.update_sectors_total(&farm_id, plotted_sectors_count, SectorState::Plotted);
-        self.on_sector_update(Arc::new({
-            let metrics = metrics.clone();
-
-            move |(_sector_index, sector_state)| match sector_state {
-                SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
-                    metrics.sector_plotting.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
-                    metrics.sector_downloading.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
-                    metrics.observe_sector_downloading_time(&farm_id, time);
-                    metrics.sector_downloaded.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
-                    metrics.sector_encoding.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
-                    metrics.observe_sector_encoding_time(&farm_id, time);
-                    metrics.sector_encoded.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
-                    metrics.sector_writing.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
-                    metrics.observe_sector_writing_time(&farm_id, time);
-                    metrics.sector_written.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Finished { time, .. }) => {
-                    metrics.observe_sector_plotting_time(&farm_id, time);
-                    metrics.sector_plotted.inc();
-                    metrics.update_sector_state(&farm_id, SectorState::Plotted);
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Error(_)) => {
-                    metrics.sector_plotting_error.inc();
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
-                    metrics.update_sector_state(&farm_id, SectorState::AboutToExpire);
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
-                    metrics.update_sector_state(&farm_id, SectorState::Expired);
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::Determined { .. }) => {
-                    // Not interested in here
-                }
-            }
-        }))
-        .detach();
-
-        self.on_farming_notification(Arc::new(
-            move |farming_notification| match farming_notification {
-                FarmingNotification::Auditing(auditing_details) => {
-                    metrics.observe_auditing_time(&farm_id, &auditing_details.time);
-                }
-                FarmingNotification::Proving(proving_details) => {
-                    metrics.observe_proving_time(
-                        &farm_id,
-                        &proving_details.time,
-                        proving_details.result,
-                    );
-                }
-                FarmingNotification::NonFatalError(error) => {
-                    metrics.note_farming_error(&farm_id, error);
-                }
-            },
-        ))
-        .detach();
     }
 
     /// Collect summary of single disk farm for presentational purposes

@@ -3,16 +3,19 @@
 //! Farmer cache is a container that orchestrates a bunch of piece and plot caches that together
 //! persist pieces in a way that is easy to retrieve comparing to decoding pieces from plots.
 
+mod metrics;
 #[cfg(test)]
 mod tests;
 
 use crate::farm::{MaybePieceStoredResult, PieceCache, PieceCacheId, PieceCacheOffset, PlotCache};
+use crate::farmer_cache::metrics::FarmerCacheMetrics;
 use crate::node_client::NodeClient;
 use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, stream, FutureExt, StreamExt};
+use prometheus_client::registry::Registry;
 use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -84,6 +87,7 @@ where
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
+    metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
 impl<NC> FarmerCacheWorker<NC>
@@ -233,6 +237,10 @@ where
 
         debug!("Collecting pieces that were in the cache before");
 
+        if let Some(metrics) = &self.metrics {
+            metrics.piece_cache_capacity_total.set(0);
+            metrics.piece_cache_capacity_used.set(0);
+        }
         // Build cache state of all backends
         let maybe_caches_futures = stored_pieces
             .into_iter()
@@ -241,6 +249,11 @@ where
             .enumerate()
             .map(
                 |(index, ((mut stored_pieces, mut free_offsets), new_cache))| {
+                    if let Some(metrics) = &self.metrics {
+                        metrics
+                            .piece_cache_capacity_total
+                            .inc_by(new_cache.max_num_elements() as i64);
+                    }
                     run_future_in_dedicated_thread(
                         move || async move {
                             // Hack with first collecting into `Option` with `Option::take()` call
@@ -411,6 +424,14 @@ where
                 });
         });
 
+        if let Some(metrics) = &self.metrics {
+            for cache in &mut caches {
+                metrics
+                    .piece_cache_capacity_used
+                    .inc_by(cache.stored_pieces.len() as i64);
+            }
+        }
+
         // Store whatever correct pieces are immediately available after restart
         self.piece_caches.write().await.clone_from(&caches);
 
@@ -487,6 +508,9 @@ where
                             "Failed to write piece into cache"
                         );
                         return false;
+                    }
+                    if let Some(metrics) = &self.metrics {
+                        metrics.piece_cache_capacity_used.inc();
                     }
                     cache
                         .stored_pieces
@@ -798,6 +822,9 @@ where
                             %offset,
                             "Successfully stored piece in cache"
                         );
+                        if let Some(metrics) = &self.metrics {
+                            metrics.piece_cache_capacity_used.inc();
+                        }
                         cache.stored_pieces.insert(record_key, offset);
                     }
                     return;
@@ -905,6 +932,7 @@ pub struct FarmerCache {
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
     worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
+    metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
 impl FarmerCache {
@@ -912,7 +940,11 @@ impl FarmerCache {
     ///
     /// NOTE: Returned future is async, but does blocking operations and should be running in
     /// dedicated thread.
-    pub fn new<NC>(node_client: NC, peer_id: PeerId) -> (Self, FarmerCacheWorker<NC>)
+    pub fn new<NC>(
+        node_client: NC,
+        peer_id: PeerId,
+        registry: Option<&mut Registry>,
+    ) -> (Self, FarmerCacheWorker<NC>)
     where
         NC: NodeClient,
     {
@@ -924,6 +956,7 @@ impl FarmerCache {
             caches: AsyncRwLock::default(),
             next_plot_cache: AtomicUsize::new(0),
         });
+        let metrics = registry.map(|registry| Arc::new(FarmerCacheMetrics::new(registry)));
 
         let instance = Self {
             peer_id,
@@ -931,6 +964,7 @@ impl FarmerCache {
             plot_caches: Arc::clone(&plot_caches),
             handlers: Arc::clone(&handlers),
             worker_sender: Arc::new(worker_sender),
+            metrics: metrics.clone(),
         };
         let worker = FarmerCacheWorker {
             peer_id,
@@ -939,6 +973,7 @@ impl FarmerCache {
             plot_caches,
             handlers,
             worker_receiver: Some(worker_receiver),
+            metrics,
         };
 
         (instance, worker)
@@ -952,7 +987,20 @@ impl FarmerCache {
             };
             match cache.backend.read_piece(offset).await {
                 Ok(maybe_piece) => {
-                    return maybe_piece.map(|(_piece_index, piece)| piece);
+                    return match maybe_piece {
+                        Some((_piece_index, piece)) => {
+                            if let Some(metrics) = &self.metrics {
+                                metrics.cache_hit.inc();
+                            }
+                            Some(piece)
+                        }
+                        None => {
+                            if let Some(metrics) = &self.metrics {
+                                metrics.cache_miss.inc();
+                            }
+                            None
+                        }
+                    };
                 }
                 Err(error) => {
                     error!(
@@ -971,6 +1019,9 @@ impl FarmerCache {
                         trace!(%error, "Failed to send ForgetKey command to worker");
                     }
 
+                    if let Some(metrics) = &self.metrics {
+                        metrics.cache_error.inc();
+                    }
                     return None;
                 }
             }
@@ -978,10 +1029,16 @@ impl FarmerCache {
 
         for cache in self.plot_caches.caches.read().await.iter() {
             if let Ok(Some(piece)) = cache.read_piece(&key).await {
+                if let Some(metrics) = &self.metrics {
+                    metrics.cache_hit.inc();
+                }
                 return Some(piece);
             }
         }
 
+        if let Some(metrics) = &self.metrics {
+            metrics.cache_miss.inc();
+        }
         None
     }
 

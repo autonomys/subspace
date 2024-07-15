@@ -83,7 +83,7 @@ pub(super) struct PlotterArgs {
 
 pub(super) async fn plotter<PosTableLegacy, PosTable>(
     nats_client: NatsClient,
-    _registry: &mut Registry,
+    registry: &mut Registry,
     plotter_args: PlotterArgs,
 ) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
 where
@@ -169,6 +169,7 @@ where
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
+        Some(registry),
     ));
     let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
         piece_getter.clone(),
@@ -178,9 +179,8 @@ where
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
+        Some(registry),
     ));
-
-    // TODO: Metrics
 
     Ok(Box::pin(async move {
         select! {

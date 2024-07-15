@@ -185,7 +185,7 @@ async fn basic() {
 
     {
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited =
             tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
@@ -385,7 +385,7 @@ async fn basic() {
         pieces.lock().clear();
 
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
 

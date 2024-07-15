@@ -31,7 +31,6 @@ use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::single_disk_farm::identity::Identity;
-use subspace_farmer::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -339,11 +338,11 @@ where
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
-    let (farmer_cache, farmer_cache_worker) = FarmerCache::new(node_client.clone(), peer_id);
-
-    // Metrics
-    let mut prometheus_metrics_registry = Registry::default();
+    let mut registry = Registry::with_prefix("subspace_farmer");
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
+
+    let (farmer_cache, farmer_cache_worker) =
+        FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
@@ -364,7 +363,7 @@ where
             Arc::downgrade(&plotted_pieces),
             node_client.clone(),
             farmer_cache.clone(),
-            should_start_prometheus_server.then_some(&mut prometheus_metrics_registry),
+            should_start_prometheus_server.then_some(&mut registry),
         )
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
@@ -507,6 +506,7 @@ where
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
+        Some(&mut registry),
     ));
     let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
         piece_getter.clone(),
@@ -516,6 +516,7 @@ where
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
+        Some(&mut registry),
     ));
 
     let (farms, plotting_delay_senders) = {
@@ -526,7 +527,7 @@ where
         let (plotting_delay_senders, plotting_delay_receivers) = (0..disk_farms.len())
             .map(|_| oneshot::channel())
             .unzip::<_, _, Vec<_>, Vec<_>>();
-        let metrics = &SingleDiskFarmMetrics::new(&mut prometheus_metrics_registry);
+        let registry = &Mutex::new(&mut registry);
 
         let mut farms = Vec::with_capacity(disk_farms.len());
         let mut farms_stream = disk_farms
@@ -568,7 +569,7 @@ where
                                 .read_sector_record_chunks_mode,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
-                            metrics: Some(metrics.clone()),
+                            registry: Some(registry),
                             create,
                         },
                         farm_index,
@@ -750,7 +751,7 @@ where
     let _prometheus_worker = if should_start_prometheus_server {
         let prometheus_task = start_prometheus_metrics_server(
             prometheus_listen_on,
-            RegistryAdapter::PrometheusClient(prometheus_metrics_registry),
+            RegistryAdapter::PrometheusClient(registry),
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);
