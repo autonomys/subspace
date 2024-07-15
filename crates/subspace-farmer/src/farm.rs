@@ -228,15 +228,18 @@ pub enum ProvingResult {
     /// Managed to prove within time limit, but node rejected solution, likely due to timeout on its
     /// end
     Rejected,
+    /// Proving failed altogether
+    Failed,
 }
 
 impl fmt::Display for ProvingResult {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            ProvingResult::Success => "Success",
-            ProvingResult::Timeout => "Timeout",
-            ProvingResult::Rejected => "Rejected",
+            Self::Success => "Success",
+            Self::Timeout => "Timeout",
+            Self::Rejected => "Rejected",
+            Self::Failed => "Failed",
         })
     }
 }

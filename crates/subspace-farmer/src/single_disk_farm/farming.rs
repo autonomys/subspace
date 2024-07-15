@@ -318,6 +318,10 @@ where
                     let solution = match maybe_solution {
                         Ok(solution) => solution,
                         Err(error) => {
+                            if let Some(metrics) = &metrics {
+                                metrics
+                                    .observe_proving_time(&start.elapsed(), ProvingResult::Failed);
+                            }
                             error!(%slot, %sector_index, %error, "Failed to prove");
                             // Do not error completely as disk corruption or other reasons why
                             // proving might fail
