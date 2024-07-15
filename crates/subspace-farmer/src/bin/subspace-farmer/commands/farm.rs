@@ -338,11 +338,11 @@ where
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
-    let (farmer_cache, farmer_cache_worker) = FarmerCache::new(node_client.clone(), peer_id);
-
-    // Metrics
     let mut registry = Registry::with_prefix("subspace_farmer");
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
+
+    let (farmer_cache, farmer_cache_worker) =
+        FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
