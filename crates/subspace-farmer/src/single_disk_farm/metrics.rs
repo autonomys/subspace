@@ -55,7 +55,12 @@ pub(super) struct SingleDiskFarmMetrics {
 
 impl SingleDiskFarmMetrics {
     /// Create new instance for specified farm
-    pub(super) fn new(registry: &mut Registry, farm_id: &FarmId) -> Self {
+    pub(super) fn new(
+        registry: &mut Registry,
+        farm_id: &FarmId,
+        total_sectors_count: SectorIndex,
+        plotted_sectors_count: SectorIndex,
+    ) -> Self {
         let sub_registry = registry
             .sub_registry_with_prefix("farm")
             .sub_registry_with_label(("farm_id".into(), farm_id.to_string().into()));
@@ -214,7 +219,7 @@ impl SingleDiskFarmMetrics {
             sector_plotting_error.clone(),
         );
 
-        Self {
+        let metrics = Self {
             auditing_time,
             proving_time,
             farming_errors,
@@ -232,7 +237,15 @@ impl SingleDiskFarmMetrics {
             sector_plotting,
             sector_plotted,
             sector_plotting_error,
-        }
+        };
+
+        metrics.update_sectors_total(
+            total_sectors_count - plotted_sectors_count,
+            SectorState::NotPlotted,
+        );
+        metrics.update_sectors_total(plotted_sectors_count, SectorState::Plotted);
+
+        metrics
     }
 
     pub(super) fn observe_proving_time(&self, time: &Duration, result: ProvingResult) {

@@ -18,7 +18,7 @@ pub mod unbuffered_io_file_windows;
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::farm::{
     Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceReader, PlottedSectors,
-    SectorExpirationDetails, SectorPlottingDetails, SectorUpdate,
+    SectorUpdate,
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
@@ -27,7 +27,7 @@ use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::identity::{Identity, IdentityError};
-use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
+use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use crate::single_disk_farm::piece_cache::SingleDiskPieceCache;
 use crate::single_disk_farm::piece_reader::DiskPieceReader;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
@@ -847,6 +847,15 @@ impl SingleDiskFarm {
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
 
+        let metrics = registry.map(|registry| {
+            Arc::new(SingleDiskFarmMetrics::new(
+                *registry.lock(),
+                single_disk_farm_info.id(),
+                target_sector_count,
+                sectors_metadata.read_blocking().len() as SectorIndex,
+            ))
+        });
+
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -939,6 +948,7 @@ impl SingleDiskFarm {
             let error_sender = Arc::clone(&error_sender);
             let span = span.clone();
             let global_mutex = Arc::clone(&global_mutex);
+            let metrics = metrics.clone();
 
             move || {
                 let _span_guard = span.enter();
@@ -963,6 +973,7 @@ impl SingleDiskFarm {
                         handlers: &handlers,
                         global_mutex: &global_mutex,
                         plotter,
+                        metrics,
                     },
                 };
 
@@ -1024,6 +1035,7 @@ impl SingleDiskFarm {
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
+            metrics: metrics.clone(),
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
@@ -1075,6 +1087,7 @@ impl SingleDiskFarm {
                         thread_pool: farming_thread_pool,
                         read_sector_record_chunks_mode,
                         global_mutex,
+                        metrics,
                     };
                     match single_disk_farm_info {
                         SingleDiskFarmInfo::V0 { .. } => {
@@ -1227,11 +1240,6 @@ impl SingleDiskFarm {
             stop_sender: Some(stop_sender),
             _single_disk_farm_info_lock: single_disk_farm_info_lock,
         };
-
-        if let Some(registry) = registry {
-            farm.register_metrics(SingleDiskFarmMetrics::new(*registry.lock(), farm.id()));
-        }
-
         Ok(farm)
     }
 
@@ -1572,83 +1580,6 @@ impl SingleDiskFarm {
             piece_cache,
             plot_cache,
         })
-    }
-
-    fn register_metrics(&self, metrics: SingleDiskFarmMetrics) {
-        let metrics = Arc::new(metrics);
-
-        let total_sector_count = self.total_sectors_count;
-        let plotted_sectors_count = self.sectors_metadata.read_blocking().len() as SectorIndex;
-        metrics.update_sectors_total(
-            total_sector_count - plotted_sectors_count,
-            SectorState::NotPlotted,
-        );
-        metrics.update_sectors_total(plotted_sectors_count, SectorState::Plotted);
-        self.on_sector_update(Arc::new({
-            let metrics = Arc::clone(&metrics);
-
-            move |(_sector_index, sector_state)| match sector_state {
-                SectorUpdate::Plotting(SectorPlottingDetails::Starting { .. }) => {
-                    metrics.sector_plotting.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Downloading) => {
-                    metrics.sector_downloading.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)) => {
-                    metrics.sector_downloading_time.observe(time.as_secs_f64());
-                    metrics.sector_downloaded.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Encoding) => {
-                    metrics.sector_encoding.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)) => {
-                    metrics.sector_encoding_time.observe(time.as_secs_f64());
-                    metrics.sector_encoded.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Writing) => {
-                    metrics.sector_writing.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Written(time)) => {
-                    metrics.sector_writing_time.observe(time.as_secs_f64());
-                    metrics.sector_written.inc();
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Finished { time, .. }) => {
-                    metrics.sector_plotting_time.observe(time.as_secs_f64());
-                    metrics.sector_plotted.inc();
-                    metrics.update_sector_state(SectorState::Plotted);
-                }
-                SectorUpdate::Plotting(SectorPlottingDetails::Error(_)) => {
-                    metrics.sector_plotting_error.inc();
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::AboutToExpire) => {
-                    metrics.update_sector_state(SectorState::AboutToExpire);
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::Expired) => {
-                    metrics.update_sector_state(SectorState::Expired);
-                }
-                SectorUpdate::Expiration(SectorExpirationDetails::Determined { .. }) => {
-                    // Not interested in here
-                }
-            }
-        }))
-        .detach();
-
-        self.on_farming_notification(Arc::new(
-            move |farming_notification| match farming_notification {
-                FarmingNotification::Auditing(auditing_details) => {
-                    metrics
-                        .auditing_time
-                        .observe(auditing_details.time.as_secs_f64());
-                }
-                FarmingNotification::Proving(proving_details) => {
-                    metrics.observe_proving_time(&proving_details.time, proving_details.result);
-                }
-                FarmingNotification::NonFatalError(error) => {
-                    metrics.note_farming_error(error);
-                }
-            },
-        ))
-        .detach();
     }
 
     /// Collect summary of single disk farm for presentational purposes
