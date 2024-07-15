@@ -276,7 +276,8 @@ where
         get_blocks_from_target_segment(segment_headers_store, node, piece_getter, target_block)
             .await?
     else {
-        return Ok(()); // Snap-sync skipped
+        // Snap-sync skipped
+        return Ok(());
     };
 
     debug!(
