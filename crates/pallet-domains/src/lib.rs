@@ -203,8 +203,8 @@ mod pallet {
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, StateRootOf,
-        MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        ReceiptHashFor, StateRootOf, MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -223,10 +223,9 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId, DomainSudoCall,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated,
-        OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
-        RuntimeObject, RuntimeType,
+        BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
+        EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
+        OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -662,13 +661,8 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
-    pub(super) type LatestConfirmedDomainBlock<T: Config> = StorageMap<
-        _,
-        Identity,
-        DomainId,
-        ConfirmedDomainBlock<DomainBlockNumberFor<T>, T::DomainHash>,
-        OptionQuery,
-    >;
+    pub(super) type LatestConfirmedDomainExecutionReceipt<T: Config> =
+        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
     /// has submitted bad ER and is pending to slash.
@@ -2328,16 +2322,16 @@ impl<T: Config> Pallet<T> {
     /// Returns the latest confirmed domain block number for a given domain
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        LatestConfirmedDomainBlock::<T>::get(domain_id)
-            .map(|block| block.block_number)
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| er.domain_block_number)
             .unwrap_or_default()
     }
 
     pub fn latest_confirmed_domain_block(
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
-        LatestConfirmedDomainBlock::<T>::get(domain_id)
-            .map(|block| (block.block_number, block.block_hash))
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| (er.domain_block_number, er.domain_block_hash))
     }
 
     /// Returns the domain block limit of the given domain.
@@ -2407,7 +2401,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
-        LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
+        LatestConfirmedDomainExecutionReceipt::<T>::hashed_key_for(domain_id)
     }
 
     pub fn is_bad_er_pending_to_prune(

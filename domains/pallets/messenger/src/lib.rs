@@ -1265,7 +1265,13 @@ mod pallet {
                         .ok_or(UnknownTransaction::CannotLookup)?;
 
                 StorageProofVerifier::<T::Hashing>::get_decoded_value::<
-                    sp_domains::ConfirmedDomainBlock<BlockNumberFor<T>, T::Hash>,
+                    sp_domains::ExecutionReceipt<
+                        BlockNumberFor<T>,
+                        T::Hash,
+                        BlockNumberFor<T>,
+                        T::Hash,
+                        BalanceOf<T>,
+                    >,
                 >(
                     &consensus_state_root,
                     domain_proof,
@@ -1279,7 +1285,7 @@ mod pallet {
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?
-                .state_root
+                .final_state_root
             } else {
                 consensus_state_root
             };
