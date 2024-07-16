@@ -813,17 +813,31 @@ where
                 let Some(last_segment_header) = segment_headers_store.last_segment_header() else {
                     unreachable!("Already checked above that max_segment_index is not None")
                 };
-                let last_archived_block = last_segment_header.last_archived_block();
-
+                let last_archived_block_number =
+                    last_segment_header.last_archived_block().number.into();
+                let mut block_number_to_archive = Zero::zero();
                 // wait for unknown blocks to arrive.
                 while let Some(ref block_import_notification) =
                     block_importing_notification_stream.next().await
                 {
-                    if block_import_notification
-                        .block_number
-                        .checked_sub(&(last_archived_block.number + 1).into())
-                        .is_none()
-                    {
+                    let block_number = block_import_notification.block_number;
+                    if block_number < last_archived_block_number {
+                        debug!(%block_number, %last_archived_block_number, "skip already know block");
+                        continue;
+                    }
+                    if block_number == last_archived_block_number {
+                        debug!(%block_number, "hit an edge of the last archived block");
+                        let best_block_hash = client.info().best_hash;
+                        block_number_to_archive = last_archived_block_number
+                            + client
+                                .runtime_api()
+                                .chain_constants(best_block_hash)?
+                                .confirmation_depth_k()
+                                .into();
+                        continue;
+                    }
+                    if block_number > block_number_to_archive {
+                        debug!(%block_number, %last_archived_block_number, %block_number_to_archive, "import unknow block, initialize archiver");
                         break;
                     }
                 }
