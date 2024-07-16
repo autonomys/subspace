@@ -35,6 +35,7 @@ impl fmt::Display for SectorState {
 #[derive(Debug)]
 pub(super) struct SingleDiskFarmMetrics {
     pub(super) auditing_time: Histogram,
+    pub(super) skipped_slots: Counter<u64, AtomicU64>,
     proving_time: Family<Vec<(&'static str, String)>, Histogram>,
     farming_errors: Family<Vec<(&'static str, String)>, Counter<u64, AtomicU64>>,
     pub(super) sector_downloading_time: Histogram,
@@ -71,6 +72,13 @@ impl SingleDiskFarmMetrics {
             "Auditing time",
             Unit::Seconds,
             auditing_time.clone(),
+        );
+
+        let skipped_slots = Counter::default();
+        sub_registry.register(
+            "skipped_slots",
+            "Completely skipped slots (not even auditing)",
+            skipped_slots.clone(),
         );
 
         let proving_time = Family::<_, _>::new_with_constructor(|| {
@@ -204,6 +212,7 @@ impl SingleDiskFarmMetrics {
 
         let metrics = Self {
             auditing_time,
+            skipped_slots,
             proving_time,
             farming_errors,
             sector_downloading_time,

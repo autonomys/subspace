@@ -1,8 +1,10 @@
 //! Disk piece cache implementation
 
+mod metrics;
 #[cfg(test)]
 mod tests;
 
+use crate::disk_piece_cache::metrics::DiskPieceCacheMetrics;
 use crate::farm;
 use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
 #[cfg(windows)]
@@ -14,6 +16,7 @@ use bytes::BytesMut;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 #[cfg(not(windows))]
 use std::fs::{File, OpenOptions};
 use std::path::Path;
@@ -67,6 +70,7 @@ struct Inner {
     #[cfg(windows)]
     file: UnbufferedIoFileWindows,
     max_num_elements: u32,
+    metrics: Option<DiskPieceCacheMetrics>,
 }
 
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
@@ -182,7 +186,12 @@ impl DiskPieceCache {
     pub(crate) const FILE_NAME: &'static str = "piece_cache.bin";
 
     /// Open cache, capacity is measured in elements of [`DiskPieceCache::element_size()`] size
-    pub fn open(directory: &Path, capacity: u32) -> Result<Self, DiskPieceCacheError> {
+    pub fn open(
+        directory: &Path,
+        capacity: u32,
+        id: Option<PieceCacheId>,
+        registry: Option<&mut Registry>,
+    ) -> Result<Self, DiskPieceCacheError> {
         if capacity == 0 {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
@@ -214,12 +223,16 @@ impl DiskPieceCache {
             file.set_len(expected_size)?;
         }
 
+        // ID for cache is ephemeral unless provided explicitly
+        let id = id.unwrap_or_else(PieceCacheId::new);
+        let metrics = registry.map(|registry| DiskPieceCacheMetrics::new(registry, &id, capacity));
+
         Ok(Self {
             inner: Arc::new(Inner {
-                // ID for cache is ephemeral
-                id: PieceCacheId::new(),
+                id,
                 file,
                 max_num_elements: capacity,
+                metrics,
             }),
         })
     }
@@ -237,6 +250,15 @@ impl DiskPieceCache {
         &self,
     ) -> impl ExactSizeIterator<Item = (PieceCacheOffset, Option<PieceIndex>)> + '_ {
         let mut element = vec![0; Self::element_size() as usize];
+        let count_total = self
+            .inner
+            .metrics
+            .as_ref()
+            .map(|metrics| {
+                metrics.contents.inc();
+                metrics.capacity_used.get() == 0
+            })
+            .unwrap_or_default();
         let mut current_skip = 0;
 
         // TODO: Parallelize or read in larger batches
@@ -250,6 +272,9 @@ impl DiskPieceCache {
                     if maybe_piece_index.is_none() {
                         current_skip += 1;
                     } else {
+                        if count_total && let Some(metrics) = &self.inner.metrics {
+                            metrics.capacity_used.inc();
+                        }
                         current_skip = 0;
                     }
 
@@ -284,6 +309,13 @@ impl DiskPieceCache {
             });
         }
 
+        if let Some(metrics) = &self.inner.metrics {
+            metrics.write_piece.inc();
+            let capacity_used = i64::from(offset + 1);
+            if metrics.capacity_used.get() != capacity_used {
+                metrics.capacity_used.set(capacity_used);
+            }
+        }
         let element_offset = u64::from(offset) * u64::from(Self::element_size());
 
         let piece_index_bytes = piece_index.to_bytes();
@@ -320,6 +352,9 @@ impl DiskPieceCache {
             });
         }
 
+        if let Some(metrics) = &self.inner.metrics {
+            metrics.read_piece_index.inc();
+        }
         self.read_piece_internal(offset, &mut vec![0; Self::element_size() as usize])
     }
 
@@ -342,6 +377,9 @@ impl DiskPieceCache {
             });
         }
 
+        if let Some(metrics) = &self.inner.metrics {
+            metrics.read_piece.inc();
+        }
         let mut element = BytesMut::zeroed(Self::element_size() as usize);
         if let Some(piece_index) = self.read_piece_internal(offset, &mut element)? {
             let element = element.freeze();

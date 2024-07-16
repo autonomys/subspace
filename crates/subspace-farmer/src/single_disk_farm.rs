@@ -17,8 +17,8 @@ pub mod unbuffered_io_file_windows;
 
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::farm::{
-    Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceReader, PlottedSectors,
-    SectorUpdate,
+    Farm, FarmId, FarmingError, FarmingNotification, HandlerFn, PieceCacheId, PieceReader,
+    PlottedSectors, SectorUpdate,
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
@@ -86,6 +86,7 @@ use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Barrier, Semaphore};
+use tokio::task;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -684,7 +685,7 @@ struct SingleDiskFarmInit {
     metadata_header: PlotMetadataHeader,
     target_sector_count: u16,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
-    piece_cache: SingleDiskPieceCache,
+    piece_cache_capacity: u32,
     plot_cache: DiskPlotCache,
 }
 
@@ -839,9 +840,35 @@ impl SingleDiskFarm {
             metadata_header,
             target_sector_count,
             sectors_metadata,
-            piece_cache,
+            piece_cache_capacity,
             plot_cache,
         } = single_disk_farm_init;
+
+        let piece_cache = {
+            // Convert farm ID into cache ID for single disk farm
+            let FarmId::Ulid(id) = *single_disk_farm_info.id();
+            let id = PieceCacheId::Ulid(id);
+
+            SingleDiskPieceCache::new(
+                id,
+                if piece_cache_capacity == 0 {
+                    None
+                } else {
+                    Some(task::block_in_place(|| {
+                        if let Some(registry) = registry {
+                            DiskPieceCache::open(
+                                &directory,
+                                piece_cache_capacity,
+                                Some(id),
+                                Some(*registry.lock()),
+                            )
+                        } else {
+                            DiskPieceCache::open(&directory, piece_cache_capacity, Some(id), None)
+                        }
+                    })?)
+                },
+            )
+        };
 
         let public_key = *single_disk_farm_info.public_key();
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
@@ -1043,9 +1070,10 @@ impl SingleDiskFarm {
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
+            let metrics = metrics.clone();
 
             async move {
-                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
+                slot_notification_forwarder(&node_client, slot_info_forwarder_sender, metrics)
                     .await
                     .map_err(BackgroundTaskError::Farming)
             }
@@ -1397,7 +1425,7 @@ impl SingleDiskFarm {
             plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
 
         // Remaining space will be used for caching purposes
-        let cache_capacity = if cache_percentage > 0 {
+        let piece_cache_capacity = if cache_percentage > 0 {
             let cache_space = allocated_space
                 - fixed_space_usage
                 - plot_file_size
@@ -1553,14 +1581,6 @@ impl SingleDiskFarm {
 
         let plot_file = Arc::new(plot_file);
 
-        let piece_cache = SingleDiskPieceCache::new(
-            *single_disk_farm_info.id(),
-            if cache_capacity == 0 {
-                None
-            } else {
-                Some(DiskPieceCache::open(directory, cache_capacity)?)
-            },
-        );
         let plot_cache = DiskPlotCache::new(
             &plot_file,
             &sectors_metadata,
@@ -1577,7 +1597,7 @@ impl SingleDiskFarm {
             metadata_header,
             target_sector_count,
             sectors_metadata,
-            piece_cache,
+            piece_cache_capacity,
             plot_cache,
         })
     }

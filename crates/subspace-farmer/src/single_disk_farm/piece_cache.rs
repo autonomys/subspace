@@ -2,7 +2,7 @@
 
 use crate::disk_piece_cache::DiskPieceCache;
 use crate::farm;
-use crate::farm::{FarmError, FarmId, PieceCacheId, PieceCacheOffset};
+use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
 use async_trait::async_trait;
 use futures::{stream, Stream};
 use subspace_core_primitives::{Piece, PieceIndex};
@@ -84,11 +84,7 @@ impl farm::PieceCache for SingleDiskPieceCache {
 }
 
 impl SingleDiskPieceCache {
-    pub(crate) fn new(farm_id: FarmId, maybe_piece_cache: Option<DiskPieceCache>) -> Self {
-        // Convert farm ID into cache ID for single disk farm
-        let FarmId::Ulid(id) = farm_id;
-        let id = PieceCacheId::Ulid(id);
-
+    pub(crate) fn new(id: PieceCacheId, maybe_piece_cache: Option<DiskPieceCache>) -> Self {
         Self {
             id,
             maybe_piece_cache,
