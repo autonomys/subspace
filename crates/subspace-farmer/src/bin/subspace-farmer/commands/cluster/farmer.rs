@@ -173,13 +173,9 @@ where
         None
     };
 
-    let node_client = CachingProxyNodeClient::new(
-        ClusterNodeClient::new(nats_client.clone())
-            .await
-            .map_err(|error| anyhow!("Failed to create cluster node client: {error}"))?,
-    )
-    .await
-    .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
+    let node_client = CachingProxyNodeClient::new(ClusterNodeClient::new(nats_client.clone()))
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
