@@ -8,9 +8,11 @@ use std::sync::atomic::{AtomicI64, AtomicU64};
 /// Metrics for farmer cache
 #[derive(Debug)]
 pub(super) struct FarmerCacheMetrics {
-    pub(super) cache_hit: Counter<u64, AtomicU64>,
-    pub(super) cache_miss: Counter<u64, AtomicU64>,
-    pub(super) cache_error: Counter<u64, AtomicU64>,
+    pub(super) cache_get_hit: Counter<u64, AtomicU64>,
+    pub(super) cache_get_miss: Counter<u64, AtomicU64>,
+    pub(super) cache_get_error: Counter<u64, AtomicU64>,
+    pub(super) cache_find_hit: Counter<u64, AtomicU64>,
+    pub(super) cache_find_miss: Counter<u64, AtomicU64>,
     pub(super) piece_cache_capacity_total: Gauge<i64, AtomicI64>,
     pub(super) piece_cache_capacity_used: Gauge<i64, AtomicI64>,
 }
@@ -20,28 +22,44 @@ impl FarmerCacheMetrics {
     pub(super) fn new(registry: &mut Registry) -> Self {
         let registry = registry.sub_registry_with_prefix("farmer_cache");
 
-        let cache_hit = Counter::default();
+        let cache_get_hit = Counter::default();
         registry.register_with_unit(
-            "cache_hit",
-            "Cache hit",
+            "cache_get_hit",
+            "Cache get hit",
             Unit::Other("Requests".to_string()),
-            cache_hit.clone(),
+            cache_get_hit.clone(),
         );
 
-        let cache_miss = Counter::default();
+        let cache_get_miss = Counter::default();
         registry.register_with_unit(
-            "cache_miss",
-            "Cache miss",
+            "cache_get_miss",
+            "Cache get miss",
             Unit::Other("Requests".to_string()),
-            cache_miss.clone(),
+            cache_get_miss.clone(),
         );
 
-        let cache_error = Counter::default();
+        let cache_get_error = Counter::default();
         registry.register_with_unit(
             "cache_error",
-            "Cache error",
+            "Cache get error",
             Unit::Other("Requests".to_string()),
-            cache_error.clone(),
+            cache_get_error.clone(),
+        );
+
+        let cache_find_hit = Counter::default();
+        registry.register_with_unit(
+            "cache_find_hit",
+            "Cache find hit",
+            Unit::Other("Requests".to_string()),
+            cache_find_hit.clone(),
+        );
+
+        let cache_find_miss = Counter::default();
+        registry.register_with_unit(
+            "cache_find_miss",
+            "Cache find miss",
+            Unit::Other("Requests".to_string()),
+            cache_find_miss.clone(),
         );
 
         let piece_cache_capacity_total = Gauge::default();
@@ -61,9 +79,11 @@ impl FarmerCacheMetrics {
         );
 
         Self {
-            cache_hit,
-            cache_miss,
-            cache_error,
+            cache_get_hit,
+            cache_get_miss,
+            cache_get_error,
+            cache_find_hit,
+            cache_find_miss,
             piece_cache_capacity_total,
             piece_cache_capacity_used,
         }

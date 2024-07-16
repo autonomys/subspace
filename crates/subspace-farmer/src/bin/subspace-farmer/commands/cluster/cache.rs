@@ -115,7 +115,7 @@ pub(super) struct CacheArgs {
 
 pub(super) async fn cache(
     nats_client: NatsClient,
-    _registry: &mut Registry,
+    registry: &mut Registry,
     cache_args: CacheArgs,
 ) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> {
     let CacheArgs {
@@ -157,8 +157,6 @@ pub(super) async fn cache(
         None
     };
 
-    // TODO: Metrics
-
     let caches = disk_caches
         .iter()
         .map(|disk_cache| {
@@ -166,6 +164,8 @@ pub(super) async fn cache(
                 &disk_cache.directory,
                 u32::try_from(disk_cache.allocated_space / DiskPieceCache::element_size() as u64)
                     .unwrap_or(u32::MAX),
+                None,
+                Some(registry),
             )
             .map_err(|error| {
                 anyhow!(

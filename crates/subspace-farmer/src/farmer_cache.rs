@@ -990,13 +990,13 @@ impl FarmerCache {
                     return match maybe_piece {
                         Some((_piece_index, piece)) => {
                             if let Some(metrics) = &self.metrics {
-                                metrics.cache_hit.inc();
+                                metrics.cache_get_hit.inc();
                             }
                             Some(piece)
                         }
                         None => {
                             if let Some(metrics) = &self.metrics {
-                                metrics.cache_miss.inc();
+                                metrics.cache_get_miss.inc();
                             }
                             None
                         }
@@ -1020,7 +1020,7 @@ impl FarmerCache {
                     }
 
                     if let Some(metrics) = &self.metrics {
-                        metrics.cache_error.inc();
+                        metrics.cache_get_error.inc();
                     }
                     return None;
                 }
@@ -1030,14 +1030,14 @@ impl FarmerCache {
         for cache in self.plot_caches.caches.read().await.iter() {
             if let Ok(Some(piece)) = cache.read_piece(&key).await {
                 if let Some(metrics) = &self.metrics {
-                    metrics.cache_hit.inc();
+                    metrics.cache_get_hit.inc();
                 }
                 return Some(piece);
             }
         }
 
         if let Some(metrics) = &self.metrics {
-            metrics.cache_miss.inc();
+            metrics.cache_get_miss.inc();
         }
         None
     }
@@ -1053,9 +1053,15 @@ impl FarmerCache {
             let Some(&offset) = cache.stored_pieces.get(&key) else {
                 continue;
             };
+            if let Some(metrics) = &self.metrics {
+                metrics.cache_find_hit.inc();
+            }
             return Some((*cache.backend.id(), offset));
         }
 
+        if let Some(metrics) = &self.metrics {
+            metrics.cache_find_miss.inc();
+        }
         None
     }
 

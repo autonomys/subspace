@@ -207,8 +207,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
                 ],
                 vec![],
             )
@@ -407,8 +407,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
                 ],
                 vec![],
             )
