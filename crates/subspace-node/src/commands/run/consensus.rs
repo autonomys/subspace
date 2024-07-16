@@ -407,7 +407,7 @@ pub(super) struct ConsensusChainOptions {
     timekeeper_options: TimekeeperOptions,
 
     /// Sync mode
-    #[arg(long, default_value_t = ChainSyncMode::Full)]
+    #[arg(long, default_value_t = ChainSyncMode::Snap)]
     sync: ChainSyncMode,
 }
 
