@@ -146,13 +146,13 @@ pub type SolutionRange = u64;
 pub const fn sectors_to_solution_range(
     sectors: u64,
     slot_probability: (u64, u64),
-    max_pieces_in_sector: u16,
+    pieces_in_sector: u16,
 ) -> SolutionRange {
     let solution_range = SolutionRange::MAX
         // Account for slot probability
         / slot_probability.1 * slot_probability.0
         // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (max_pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+        / (pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
 
     // Take number of sectors into account
     solution_range / sectors
@@ -165,13 +165,13 @@ pub const fn sectors_to_solution_range(
 pub const fn solution_range_to_sectors(
     solution_range: SolutionRange,
     slot_probability: (u64, u64),
-    max_pieces_in_sector: u16,
+    pieces_in_sector: u16,
 ) -> u64 {
     let sectors = SolutionRange::MAX
         // Account for slot probability
         / slot_probability.1 * slot_probability.0
         // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (max_pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+        / (pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
 
     // Take solution range into account
     sectors / solution_range
