@@ -1070,9 +1070,10 @@ impl SingleDiskFarm {
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
+            let metrics = metrics.clone();
 
             async move {
-                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
+                slot_notification_forwarder(&node_client, slot_info_forwarder_sender, metrics)
                     .await
                     .map_err(BackgroundTaskError::Farming)
             }

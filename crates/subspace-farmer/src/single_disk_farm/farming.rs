@@ -37,6 +37,7 @@ const NON_FATAL_ERROR_LIMIT: usize = 10;
 pub(super) async fn slot_notification_forwarder<NC>(
     node_client: &NC,
     mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
+    metrics: Option<Arc<SingleDiskFarmMetrics>>,
 ) -> Result<(), FarmingError>
 where
     NC: NodeClient,
@@ -53,9 +54,12 @@ where
 
         let slot = slot_info.slot_number;
 
-        // Error means farmer is still solving for previous slot, which is too late and
-        // we need to skip this slot
+        // Error means farmer is still solving for previous slot, which is too late, and we need to
+        // skip this slot
         if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+            if let Some(metrics) = &metrics {
+                metrics.skipped_slots.inc();
+            }
             debug!(%slot, "Slow farming, skipping slot");
         }
     }
