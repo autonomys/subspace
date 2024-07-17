@@ -450,7 +450,6 @@ struct InitializedArchiver<Block>
 where
     Block: BlockT,
 {
-    confirmation_depth_k: BlockNumber,
     archiver: Archiver,
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
@@ -541,12 +540,8 @@ where
         .unwrap_or_else(|_| {
             unreachable!("Block number fits into block number; qed");
         });
-    let best_block_hash = client_info.best_hash;
 
-    let confirmation_depth_k = client
-        .runtime_api()
-        .chain_constants(best_block_hash)?
-        .confirmation_depth_k();
+    let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k();
 
     let mut best_block_to_archive = best_block_number.saturating_sub(confirmation_depth_k);
     if (best_block_to_archive..best_block_number)
@@ -696,7 +691,6 @@ where
     }
 
     Ok(InitializedArchiver {
-        confirmation_depth_k,
         archiver,
         best_archived_block: best_archived_block
             .expect("Must always set if there is no logical error; qed"),
@@ -802,6 +796,7 @@ where
         None
     };
 
+    // Subscribing synchronously before returning
     let mut block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
         .subscribe();
@@ -811,9 +806,9 @@ where
             Some(archiver) => archiver,
             None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
         };
+        let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k().into();
 
         let InitializedArchiver {
-            confirmation_depth_k,
             mut archiver,
             best_archived_block,
         } = archiver;
@@ -822,12 +817,11 @@ where
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
 
-        while let Some(ref block_import_notification) =
-            block_importing_notification_stream.next().await
+        while let Some(block_import_notification) = block_importing_notification_stream.next().await
         {
             let block_number_to_archive = match block_import_notification
                 .block_number
-                .checked_sub(&confirmation_depth_k.into())
+                .checked_sub(&confirmation_depth_k)
             {
                 Some(block_number_to_archive) => block_number_to_archive,
                 None => {
@@ -847,7 +841,6 @@ where
             // previously existing blocks
             if best_archived_block_number + One::one() != block_number_to_archive {
                 InitializedArchiver {
-                    confirmation_depth_k: _,
                     archiver,
                     best_archived_block: (best_archived_block_hash, best_archived_block_number),
                 } = initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?;

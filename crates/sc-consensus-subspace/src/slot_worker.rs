@@ -721,7 +721,7 @@ where
     }
 
     fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
-        if let Some(ref strategy) = self.backoff_authoring_blocks {
+        if let Some(strategy) = &self.backoff_authoring_blocks {
             if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot())
             {
                 return strategy.should_backoff(
