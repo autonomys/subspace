@@ -17,7 +17,6 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
-use sp_runtime::Saturating;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
@@ -282,9 +281,7 @@ where
     let mut last_processed_segment_index = SegmentIndex::ZERO;
     // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
-    let mut last_processed_block_number = info
-        .best_number
-        .saturating_sub(chain_constants.confirmation_depth_k().into());
+    let mut last_processed_block_number = info.best_number;
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
     while let Some(reason) = notifications.next().await {
