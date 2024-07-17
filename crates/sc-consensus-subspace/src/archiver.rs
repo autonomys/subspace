@@ -817,18 +817,18 @@ where
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
 
-        while let Some(block_import_notification) = block_importing_notification_stream.next().await
+        while let Some(block_importing_notification) =
+            block_importing_notification_stream.next().await
         {
-            let block_number_to_archive = match block_import_notification
-                .block_number
-                .checked_sub(&confirmation_depth_k)
-            {
-                Some(block_number_to_archive) => block_number_to_archive,
-                None => {
-                    // Too early to archive blocks
-                    continue;
-                }
-            };
+            let importing_block_number = block_importing_notification.block_number;
+            let block_number_to_archive =
+                match importing_block_number.checked_sub(&confirmation_depth_k) {
+                    Some(block_number_to_archive) => block_number_to_archive,
+                    None => {
+                        // Too early to archive blocks
+                        continue;
+                    }
+                };
 
             if best_archived_block_number >= block_number_to_archive {
                 // This block was already archived, skip
@@ -860,9 +860,8 @@ where
                         "There was a gap in blockchain history and the last contiguous series of \
                         blocks starting with doesn't start with archived segment (best archived \
                         block number {best_archived_block_number}, block number to archive \
-                        {block_number_to_archive}), block about to be imported {}), archiver can't \
-                        continue",
-                        block_import_notification.block_number
+                        {block_number_to_archive}), block about to be imported \
+                        {importing_block_number}), archiver can't continue",
                     );
                     return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
                         error.into(),
