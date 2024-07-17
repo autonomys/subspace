@@ -529,30 +529,35 @@ fn record_encoding<PosTable>(
     mut encoded_chunks_used: EncodedChunksUsed<'_>,
     table_generator: &mut PosTable::Generator,
     erasure_coding: &ErasureCoding,
-    chunks_scratch: &mut Vec<Option<Simd<u8, 32>>>,
+    chunks_scratch: &mut Vec<[u8; Scalar::FULL_BYTES]>,
 ) where
     PosTable: Table,
 {
     // Derive PoSpace table
     let pos_table = table_generator.generate_parallel(pos_seed);
 
-    let source_record_chunks = record
-        .iter()
-        .map(|scalar_bytes| {
-            Scalar::try_from(scalar_bytes).expect(
-                "Piece getter must returns valid pieces of history that contain proper \
-                    scalar bytes; qed",
-            )
-        })
-        .collect::<Vec<_>>();
     // Erasure code source record chunks
     let parity_record_chunks = erasure_coding
-        .extend(&source_record_chunks)
-        .expect("Instance was verified to be able to work with this many values earlier; qed");
+        .extend(
+            &record
+                .iter()
+                .map(|scalar_bytes| {
+                    Scalar::try_from(scalar_bytes).expect(
+                        "Piece getter must returns valid pieces of history that contain \
+                        proper scalar bytes; qed",
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("Instance was verified to be able to work with this many values earlier; qed")
+        .into_iter()
+        .map(<[u8; Scalar::FULL_BYTES]>::from)
+        .collect::<Vec<_>>();
+    let source_record_chunks = record.to_vec();
 
     chunks_scratch.clear();
-    // For every erasure coded chunk check if there is quality present, if so then encode
-    // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
+    // For every erasure coded chunk check if there is proof present, if so then encode
+    // with PoSpace proof bytes and set corresponding `encoded_chunks_used` bit to `true`
     (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
         .into_par_iter()
         .map(SBucket::from)
@@ -562,20 +567,27 @@ fn record_encoding<PosTable>(
                 .interleave(&parity_record_chunks),
         )
         .map(|(s_bucket, record_chunk)| {
-            let proof = pos_table.find_proof(s_bucket.into())?;
-
-            Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(proof.hash()))
+            if let Some(proof) = pos_table.find_proof(s_bucket.into()) {
+                (Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array()
+            } else {
+                // We represent missing proof as invalid set of bits of Scalar (Scalar is 254-bit
+                // and must have two bits set to 0)
+                [u8::MAX; Scalar::FULL_BYTES]
+            }
         })
         .collect_into_vec(chunks_scratch);
     let num_successfully_encoded_chunks = chunks_scratch
         .drain(..)
         .zip(encoded_chunks_used.iter_mut())
         .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
-            let encoded_chunk = maybe_encoded_chunk?;
+            // Last byte's bits all set to 1 represents missing proof, see above
+            if maybe_encoded_chunk[31] == u8::MAX {
+                None
+            } else {
+                *encoded_chunk_used = true;
 
-            *encoded_chunk_used = true;
-
-            Some(encoded_chunk)
+                Some(maybe_encoded_chunk)
+            }
         })
         // Make sure above filter function (and corresponding `encoded_chunk_used` update)
         // happen at most as many times as there is number of chunks in the record,
@@ -585,11 +597,11 @@ fn record_encoding<PosTable>(
         .zip(record.iter_mut())
         // Write encoded chunk back so we can reuse original allocation
         .map(|(input_chunk, output_chunk)| {
-            *output_chunk = input_chunk.to_array();
+            *output_chunk = input_chunk;
         })
         .count();
 
-    // In some cases there is not enough PoSpace qualities available, in which case we add
+    // In some cases there is not enough PoSpace proofs available, in which case we add
     // remaining number of unencoded erasure coded record chunks to the end
     source_record_chunks
         .iter()
@@ -608,7 +620,7 @@ fn record_encoding<PosTable>(
         .zip(record.iter_mut().skip(num_successfully_encoded_chunks))
         // Write necessary number of unencoded chunks at the end
         .for_each(|(input_chunk, output_chunk)| {
-            *output_chunk = input_chunk.to_bytes();
+            *output_chunk = *input_chunk;
         });
 }
 

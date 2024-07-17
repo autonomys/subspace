@@ -5,7 +5,6 @@ use crate::utils::multihash::Multihash;
 use crate::utils::HandlerFn;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
-use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
@@ -43,7 +42,7 @@ impl Stream for TopicSubscription {
 
 #[pin_project::pinned_drop]
 impl PinnedDrop for TopicSubscription {
-    fn drop(mut self: std::pin::Pin<&mut Self>) {
+    fn drop(mut self: Pin<&mut Self>) {
         let topic = self
             .topic
             .take()
@@ -70,7 +69,7 @@ impl PinnedDrop for TopicSubscription {
 pub enum GetValueError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -87,7 +86,7 @@ impl From<oneshot::Canceled> for GetValueError {
 pub enum PutValueError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -105,7 +104,7 @@ impl From<oneshot::Canceled> for PutValueError {
 pub enum GetClosestPeersError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -123,7 +122,7 @@ impl From<oneshot::Canceled> for GetClosestPeersError {
 pub enum SubscribeError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -143,7 +142,7 @@ impl From<oneshot::Canceled> for SubscribeError {
 pub enum PublishError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -163,7 +162,7 @@ impl From<oneshot::Canceled> for PublishError {
 pub enum GetProvidersError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -184,7 +183,7 @@ impl From<oneshot::Canceled> for GetProvidersError {
 pub enum SendRequestError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -207,7 +206,7 @@ impl From<oneshot::Canceled> for SendRequestError {
 pub enum ConnectedPeersError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -227,7 +226,7 @@ impl From<oneshot::Canceled> for ConnectedPeersError {
 pub enum BootstrapError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
+    SendCommand(#[from] mpsc::SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
@@ -471,7 +470,7 @@ impl Node {
     }
 
     /// Ban peer with specified peer ID.
-    pub async fn ban_peer(&self, peer_id: PeerId) -> Result<(), SendError> {
+    pub async fn ban_peer(&self, peer_id: PeerId) -> Result<(), mpsc::SendError> {
         self.shared
             .command_sender
             .clone()
@@ -483,7 +482,7 @@ impl Node {
     /// It could be used to test libp2p transports bypassing protocol checks for bootstrap
     /// or listen-on addresses.
     #[doc(hidden)]
-    pub async fn dial(&self, address: Multiaddr) -> Result<(), SendError> {
+    pub async fn dial(&self, address: Multiaddr) -> Result<(), mpsc::SendError> {
         self.shared
             .command_sender
             .clone()
@@ -561,14 +560,14 @@ impl Node {
         Ok(())
     }
 
-    /// Callback is called when a peer is disconnected.
-    pub fn on_disconnected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
-        self.shared.handlers.disconnected_peer.add(callback)
-    }
-
     /// Callback is called when a peer is connected.
     pub fn on_connected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
         self.shared.handlers.connected_peer.add(callback)
+    }
+
+    /// Callback is called when a peer is disconnected.
+    pub fn on_disconnected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
+        self.shared.handlers.disconnected_peer.add(callback)
     }
 
     /// Callback is called when a routable or unraoutable peer is discovered.

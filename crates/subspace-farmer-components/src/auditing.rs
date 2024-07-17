@@ -39,8 +39,6 @@ pub struct AuditResult<'a, Sector> {
     pub sector_index: SectorIndex,
     /// Solution candidates
     pub solution_candidates: SolutionCandidates<'a, Sector>,
-    /// Best solution distance found
-    pub best_solution_distance: SolutionRange,
 }
 
 /// Chunk candidate, contains one or more potentially winning audit chunks (in case chunk itself was
@@ -83,7 +81,7 @@ where
             error,
         })?;
 
-    let Some((winning_chunks, best_solution_distance)) = map_winning_chunks(
+    let Some(winning_chunks) = map_winning_chunks(
         &s_bucket,
         global_challenge,
         &sector_slot_challenge,
@@ -102,7 +100,6 @@ where
             sector_metadata,
             winning_chunks.into(),
         ),
-        best_solution_distance,
     }))
 }
 
@@ -166,7 +163,7 @@ where
                 }));
             }
 
-            let (winning_chunks, best_solution_distance) = map_winning_chunks(
+            let winning_chunks = map_winning_chunks(
                 &s_bucket,
                 global_challenge,
                 &sector_auditing_info.sector_slot_challenge,
@@ -183,7 +180,6 @@ where
                     sector_metadata,
                     winning_chunks.into(),
                 ),
-                best_solution_distance,
             }))
         })
         .collect()
@@ -239,7 +235,7 @@ fn map_winning_chunks(
     global_challenge: &Blake3Hash,
     sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
-) -> Option<(Vec<ChunkCandidate>, SolutionRange)> {
+) -> Option<Vec<ChunkCandidate>> {
     // Map all winning chunks
     let mut chunk_candidates = s_bucket
         .array_chunks::<{ Scalar::FULL_BYTES }>()
@@ -265,10 +261,5 @@ fn map_winning_chunks(
 
     chunk_candidates.sort_by_key(|chunk_candidate| chunk_candidate.solution_distance);
 
-    let best_solution_distance = chunk_candidates
-        .first()
-        .expect("Not empty, checked above; qed")
-        .solution_distance;
-
-    Some((chunk_candidates, best_solution_distance))
+    Some(chunk_candidates)
 }

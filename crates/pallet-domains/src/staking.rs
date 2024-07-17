@@ -1311,8 +1311,9 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlock,
-        NextOperatorId, NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
+        Config, Deposits, DomainRegistry, DomainStakingSummary,
+        LatestConfirmedDomainExecutionReceipt, NextOperatorId, NominatorCount, OperatorIdOwner,
+        Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
@@ -1322,7 +1323,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, Error, ExecutionReceiptOf, NominatorId, SlashedReason,
+        MAX_NOMINATORS_TO_SLASH,
     };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
@@ -1332,8 +1334,8 @@ pub(crate) mod tests {
     use sp_core::crypto::UncheckedFrom;
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
-        ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorId, OperatorPair,
-        OperatorPublicKey, OperatorSignature,
+        BlockFees, DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
+        OperatorSignature, Transfers,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -1889,14 +1891,21 @@ pub(crate) mod tests {
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             let confirmed_domain_block = 100;
-            LatestConfirmedDomainBlock::<Test>::insert(
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                 domain_id,
-                ConfirmedDomainBlock {
-                    block_number: confirmed_domain_block,
-                    block_hash: Default::default(),
-                    parent_block_receipt_hash: Default::default(),
-                    state_root: Default::default(),
-                    extrinsics_root: Default::default(),
+                ExecutionReceiptOf::<Test> {
+                    domain_block_number: confirmed_domain_block,
+                    domain_block_hash: Default::default(),
+                    domain_block_extrinsic_root: Default::default(),
+                    parent_domain_block_receipt_hash: Default::default(),
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    inboxed_bundles: vec![],
+                    final_state_root: Default::default(),
+                    execution_trace: vec![],
+                    execution_trace_root: Default::default(),
+                    block_fees: BlockFees::default(),
+                    transfers: Transfers::default(),
                 },
             );
 
@@ -1957,14 +1966,21 @@ pub(crate) mod tests {
                 // staking withdrawal is 5 blocks
                 // to unlock funds, confirmed block should be atleast 105
                 let confirmed_domain_block = 105;
-                LatestConfirmedDomainBlock::<Test>::insert(
+                LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                     domain_id,
-                    ConfirmedDomainBlock {
-                        block_number: confirmed_domain_block,
-                        block_hash: Default::default(),
-                        parent_block_receipt_hash: Default::default(),
-                        state_root: Default::default(),
-                        extrinsics_root: Default::default(),
+                    ExecutionReceiptOf::<Test> {
+                        domain_block_number: confirmed_domain_block,
+                        domain_block_hash: Default::default(),
+                        domain_block_extrinsic_root: Default::default(),
+                        parent_domain_block_receipt_hash: Default::default(),
+                        consensus_block_number: Default::default(),
+                        consensus_block_hash: Default::default(),
+                        inboxed_bundles: vec![],
+                        final_state_root: Default::default(),
+                        execution_trace: vec![],
+                        execution_trace_root: Default::default(),
+                        block_fees: BlockFees::default(),
+                        transfers: Transfers::default(),
                     },
                 );
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));

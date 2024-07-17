@@ -118,8 +118,8 @@ pub mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        Blake3Hash, HistorySize, PieceOffset, Randomness, SectorIndex, SegmentHeader, SegmentIndex,
-        SolutionRange,
+        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, Randomness, SectorIndex,
+        SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -269,6 +269,13 @@ pub mod pallet {
         pub(super) entropy: Blake3Hash,
     }
 
+    #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo)]
+    pub(super) struct PotSlotIterationsUpdateValue {
+        /// Target slot at which entropy should be injected (when known)
+        pub(super) target_slot: Option<Slot>,
+        pub(super) slot_iterations: NonZeroU32,
+    }
+
     /// When to enable block/vote rewards
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -369,9 +376,17 @@ pub mod pallet {
         SolutionRangeAdjustmentAlreadyEnabled,
         /// Rewards already active.
         RewardsAlreadyEnabled,
+        /// Iterations are not multiple of number of checkpoints times two
+        NotMultipleOfCheckpoints,
+        /// Proof of time slot iterations must increase as hardware improves
+        PotSlotIterationsMustIncrease,
+        /// Proof of time slot iterations update already scheduled
+        PotSlotIterationsUpdateAlreadyScheduled,
     }
 
-    // TODO: Remove genesis slot
+    // TODO: Consider removing genesis slot when breaking compatibility with previous networks since
+    //  slots are no longer measured in timestamp, but rather in proof of time slots, which starts
+    //  with 0.
     /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
@@ -388,11 +403,6 @@ pub mod pallet {
     #[pallet::getter(fn block_slots)]
     pub type BlockSlots<T: Config> =
         StorageValue<_, BoundedBTreeMap<BlockNumberFor<T>, Slot, T::BlockSlotCount>, ValueQuery>;
-
-    // TODO: Clarify when this value is updated (when it is updated, right now it is not)
-    /// Number of iterations for proof of time per slot
-    #[pallet::storage]
-    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -490,6 +500,15 @@ pub mod pallet {
             (T::AccountId, FarmerSignature),
         >,
     >;
+
+    /// Number of iterations for proof of time per slot
+    #[pallet::storage]
+    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
+
+    // TODO: Consider combining with PotSlotIterations when making breaking network changes
+    /// Scheduled proof of time slot iterations update
+    #[pallet::storage]
+    pub(super) type PotSlotIterationsUpdate<T> = StorageValue<_, PotSlotIterationsUpdateValue>;
 
     /// Entropy that needs to be injected into proof of time chain at specific slot associated with
     /// block number it came from.
@@ -619,6 +638,41 @@ pub mod pallet {
             RootPlotPublicKey::<T>::take();
             // Deposit root plot public key update such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::root_plot_public_key_update(None));
+
+            Ok(())
+        }
+
+        /// Update proof of time slot iterations
+        #[pallet::call_index(6)]
+        #[pallet::weight(< T as Config >::WeightInfo::set_pot_slot_iterations())]
+        pub fn set_pot_slot_iterations(
+            origin: OriginFor<T>,
+            slot_iterations: NonZeroU32,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            if slot_iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
+                return Err(Error::<T>::NotMultipleOfCheckpoints.into());
+            }
+
+            if PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed")
+                >= slot_iterations
+            {
+                return Err(Error::<T>::PotSlotIterationsMustIncrease.into());
+            }
+
+            // Can't update if already scheduled since it will cause verification issues
+            if let Some(pot_slot_iterations_update_value) = PotSlotIterationsUpdate::<T>::get()
+                && pot_slot_iterations_update_value.target_slot.is_some()
+            {
+                return Err(Error::<T>::PotSlotIterationsUpdateAlreadyScheduled.into());
+            }
+
+            PotSlotIterationsUpdate::<T>::put(PotSlotIterationsUpdateValue {
+                // Slot will be known later next entropy injection happens place
+                target_slot: None,
+                slot_iterations,
+            });
 
             Ok(())
         }
@@ -784,23 +838,24 @@ impl<T: Config> Pallet<T> {
             .iter()
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
             .expect("Block must always have pre-digest");
+        let current_slot = pre_digest.slot();
 
         // On the first non-zero block (i.e. block #1) we need to adjust internal storage
         // accordingly.
         if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(pre_digest.slot());
+            GenesisSlot::<T>::put(current_slot);
             debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
         }
 
         // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(pre_digest.slot());
+        CurrentSlot::<T>::put(current_slot);
 
         BlockSlots::<T>::mutate(|block_slots| {
             if let Some(to_remove) = block_number.checked_sub(&T::BlockSlotCount::get().into()) {
                 block_slots.remove(&to_remove);
             }
             block_slots
-                .try_insert(block_number, pre_digest.slot())
+                .try_insert(block_number, current_slot)
                 .expect("one entry just removed before inserting; qed");
         });
 
@@ -834,7 +889,7 @@ impl<T: Config> Pallet<T> {
                 pre_digest.solution().sector_index,
                 pre_digest.solution().piece_offset,
                 pre_digest.solution().chunk,
-                pre_digest.slot(),
+                current_slot,
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, _sector_index, _piece_offset, _chunk, slot) = key;
@@ -903,12 +958,29 @@ impl<T: Config> Pallet<T> {
         T::EraChangeTrigger::trigger::<T>(block_number);
 
         {
-            let pot_slot_iterations =
-                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+            let mut maybe_pot_slot_iterations_update = PotSlotIterationsUpdate::<T>::get();
+            // Check PoT slot iterations update and apply it if it is time to do so, while also
+            // removing corresponding storage item
+            let pot_slot_iterations = if let Some(update) = maybe_pot_slot_iterations_update
+                && let Some(target_slot) = update.target_slot
+                && target_slot <= current_slot
+            {
+                debug!(
+                    target: "runtime::subspace",
+                    "Applying PoT slots update, changing to {} at block #{:?}",
+                    update.slot_iterations,
+                    block_number
+                );
+                PotSlotIterationsUpdate::<T>::take();
+                maybe_pot_slot_iterations_update.take();
+                PotSlotIterations::<T>::put(update.slot_iterations);
+                update.slot_iterations
+            } else {
+                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed")
+            };
             let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
             let pot_entropy_injection_delay = T::PotEntropyInjectionDelay::get();
 
-            // TODO: Take adjustment of iterations into account once we have it
             frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
                 pot_slot_iterations,
             ));
@@ -946,6 +1018,18 @@ impl<T: Config> Pallet<T> {
                             "Pot entropy injection will happen at slot {target_slot:?}",
                         );
                         entropy_value.target_slot.replace(target_slot);
+
+                        // Schedule PoT slot iterations update at the same slot as entropy
+                        if let Some(update) = &mut maybe_pot_slot_iterations_update
+                            && update.target_slot.is_none()
+                        {
+                            debug!(
+                                target: "runtime::subspace",
+                                "Scheduling PoT slots update to happen at slot {target_slot:?}"
+                            );
+                            update.target_slot.replace(target_slot);
+                            PotSlotIterationsUpdate::<T>::put(*update);
+                        }
                     }
                 }
 
@@ -963,12 +1047,24 @@ impl<T: Config> Pallet<T> {
                 {
                     let target_slot = target_slot
                         .expect("Target slot is guaranteed to be present due to logic above; qed");
+                    // Check if there was a PoT slot iterations update at the same exact slot
+                    let slot_iterations = if let Some(update) = maybe_pot_slot_iterations_update
+                        && let Some(update_target_slot) = update.target_slot
+                        && update_target_slot == target_slot
+                    {
+                        debug!(
+                            target: "runtime::subspace",
+                            "Applying PoT slots update to the next PoT parameters change"
+                        );
+                        update.slot_iterations
+                    } else {
+                        pot_slot_iterations
+                    };
 
                     frame_system::Pallet::<T>::deposit_log(DigestItem::pot_parameters_change(
                         PotParametersChange {
                             slot: target_slot,
-                            // TODO: Take adjustment of iterations into account once we have it
-                            slot_iterations: pot_slot_iterations,
+                            slot_iterations,
                             entropy,
                         },
                     ));
@@ -978,7 +1074,7 @@ impl<T: Config> Pallet<T> {
             // Clean up old values we'll no longer need
             if let Some(entry) = entropy.first_entry() {
                 if let Some(target_slot) = entry.get().target_slot
-                    && target_slot < pre_digest.slot()
+                    && target_slot < current_slot
                 {
                     entry.remove();
                     PotEntropy::<T>::put(entropy);
@@ -1163,6 +1259,7 @@ impl<T: Config> Pallet<T> {
     /// Proof of time parameters
     pub fn pot_parameters() -> PotParameters {
         let block_number = frame_system::Pallet::<T>::block_number();
+        let maybe_pot_slot_iterations_update = PotSlotIterationsUpdate::<T>::get();
         let pot_slot_iterations =
             PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
         let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
@@ -1187,11 +1284,19 @@ impl<T: Config> Pallet<T> {
                 let target_slot = target_slot.expect(
                     "Always present due to identical check present in block initialization; qed",
                 );
+                // Check if there was a PoT slot iterations update at the same exact slot
+                let slot_iterations = if let Some(update) = maybe_pot_slot_iterations_update
+                    && let Some(update_target_slot) = update.target_slot
+                    && update_target_slot == target_slot
+                {
+                    update.slot_iterations
+                } else {
+                    pot_slot_iterations
+                };
 
                 next_change.replace(PotParametersChange {
                     slot: target_slot,
-                    // TODO: Take adjustment of iterations into account once we have it
-                    slot_iterations: pot_slot_iterations,
+                    slot_iterations,
                     entropy,
                 });
             }

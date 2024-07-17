@@ -122,7 +122,9 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.
@@ -728,8 +730,10 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + 'static,
-    Client::Api:
-        DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
+    Client::Api: DomainCoreApi<Block>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProofProvider<CBlock>

@@ -34,6 +34,7 @@ use frame_support::inherent::InherentData;
 use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use messages::{BlockMessagesWithStorageKey, ChannelId, CrossDomainMessage, MessageId};
 use sp_domains::{ChainId, DomainAllowlistUpdates, DomainId};
+use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
 
@@ -195,14 +196,20 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
-    #[api_version(3)]
-    pub trait MessengerApi {
+    #[api_version(4)]
+    pub trait MessengerApi<CNumber, CHash>
+    where
+        CNumber: Encode + Decode,
+        CHash: Encode + Decode,
+    {
         /// Returns `Some(true)` if valid XDM or `Some(false)` if not
         /// Returns None if this is not an XDM
-        fn is_xdm_valid(
-            extrinsic: Vec<u8>
+        fn is_xdm_mmr_proof_valid(
+            ext: &Block::Extrinsic
         ) -> Option<bool>;
 
+        // Extract the MMR proof from the XDM
+        fn extract_xdm_mmr_proof(ext: &Block::Extrinsic) -> Option<ConsensusChainMmrLeafProof<CNumber, CHash, sp_core::H256>>;
 
         /// Returns the confirmed domain block storage for given domain.
         fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8>;

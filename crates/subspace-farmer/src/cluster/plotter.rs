@@ -410,6 +410,7 @@ impl ClusterPlotter {
                                     break 'outer;
                                 }
                                 ResponseProcessingResult::Continue => {
+                                    trace!("Continue");
                                     // Nothing to do
                                 }
                             }
@@ -849,7 +850,7 @@ async fn process_plot_sector_request<P>(
             return;
         }
 
-        let (mut response_proxy_sender, response_proxy_receiver) = mpsc::channel(0);
+        let (mut response_proxy_sender, response_proxy_receiver) = mpsc::channel(10);
 
         let response_streaming_fut = nats_client
             .stream_response::<ClusterPlotterPlotSectorRequest, _>(

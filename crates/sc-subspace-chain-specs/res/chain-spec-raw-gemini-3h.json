@@ -18,13 +18,13 @@
   "properties": {
     "domainsBootstrapNodes": {
       "0": [
-        "/dns/bootstrap-0.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWBm1PHFHAP9mA6LNd72uFimyPoo6ixjdfgajzizXDYND2"
+        "/dns/bootstrap-0.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWBm1PHFHAP9mA6LNd72uFimyPoo6ixjdfgajzizXDYND2",
+        "/dns/bootstrap-1.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWD3Q8JpAPoXR67ZQ1H1nXfPqCgPHCvWVcGxNKbfFmuPnu",
+        "/dns/bootstrap-2.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWEYs5yikat5NanzN7c2Sb4ngxJoCro9vXMULM2ZYVWW9H"
       ],
       "1": [
-        "/dns/bootstrap-1.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWD3Q8JpAPoXR67ZQ1H1nXfPqCgPHCvWVcGxNKbfFmuPnu"
-      ],
-      "2": [
-        "/dns/bootstrap-2.nova.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWEYs5yikat5NanzN7c2Sb4ngxJoCro9vXMULM2ZYVWW9H"
+        "/dns/bootstrap-0.autoid.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWFoiz2iTkmnnSqiL2oQRhGzaqgtUjYNz2jyWKQqgPXgx9",
+        "/dns/bootstrap-1.autoid.gemini-3h.subspace.network/tcp/30334/p2p/12D3KooWDoPp1RLHUDX7YpKLc3yhymNGykV5f8ZdYWc1sjoBUrCX"
       ]
     },
     "dsnBootstrapNodes": [

@@ -41,8 +41,7 @@ use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::{DomainAllowlistUpdates, DomainId};
 use sp_messenger::messages::{
-    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, Message, MessageId,
-    Nonce,
+    ChainId, Channel, ChannelId, ChannelState, CrossDomainMessage, FeeModel, MessageId, Nonce,
 };
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
@@ -69,10 +68,11 @@ pub(crate) type FungibleHoldId<T> =
 
 /// A validated relay message.
 #[derive(Debug)]
-pub struct ValidatedRelayMessage<Balance> {
-    msg: Message<Balance>,
+pub struct ValidatedRelayMessage {
+    msg_nonce: Nonce,
+    dst_chain_id: ChainId,
+    channel_id: ChannelId,
     next_nonce: Nonce,
-    should_init_channel: bool,
 }
 
 /// Parameter to update chain allow list.
@@ -123,6 +123,7 @@ mod pallet {
     use alloc::collections::BTreeSet;
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
+    use core::cmp::Ordering;
     use frame_support::ensure;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
@@ -377,42 +378,26 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::relay_message { msg: xdm } => {
-                    let ValidatedRelayMessage {
-                        msg,
-                        next_nonce,
-                        should_init_channel,
-                    } = Self::validate_relay_message(xdm)?;
-                    if msg.nonce != next_nonce {
-                        log::error!(
-                            "Unexpected message nonce, channel next nonce {:?}, msg nonce {:?}",
-                            next_nonce,
-                            msg.nonce,
-                        );
-                        return Err(if msg.nonce < next_nonce {
-                            InvalidTransaction::Stale
-                        } else {
-                            InvalidTransaction::Future
-                        }
-                        .into());
-                    }
-                    Self::pre_dispatch_relay_message(msg, should_init_channel)
+                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                    Self::validate_relay_message(xdm, true, consensus_state_root)?;
+
+                    Ok(())
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let (msg, next_nonce) = Self::validate_relay_message_response(xdm)?;
-                    if msg.nonce != next_nonce {
-                        log::error!(
-                            "Unexpected message response nonce, channel next nonce {:?}, msg nonce {:?}",
-                            next_nonce,
-                            msg.nonce,
-                        );
-                        return Err(if msg.nonce < next_nonce {
-                            InvalidTransaction::Stale
-                        } else {
-                            InvalidTransaction::Future
-                        }
-                        .into());
-                    }
-                    Self::pre_dispatch_relay_message_response(msg)
+                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                    Self::validate_relay_message_response(xdm, true, consensus_state_root)?;
+
+                    Ok(())
                 }
                 // always accept inherent extrinsic
                 Call::update_domain_allowlist { .. } => Ok(()),
@@ -424,19 +409,26 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::relay_message { msg: xdm } => {
+                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
                     let ValidatedRelayMessage {
-                        msg,
+                        msg_nonce,
+                        dst_chain_id,
+                        channel_id,
                         next_nonce,
-                        should_init_channel: _,
-                    } = Self::validate_relay_message(xdm)?;
+                    } = Self::validate_relay_message(xdm, false, consensus_state_root)?;
 
                     let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
                     // Only add the requires tag if the msg nonce is in future
-                    if msg.nonce > next_nonce {
+                    if msg_nonce > next_nonce {
                         valid_tx_builder = valid_tx_builder.and_requires((
-                            msg.dst_chain_id,
-                            msg.channel_id,
-                            msg.nonce - Nonce::one(),
+                            dst_chain_id,
+                            channel_id,
+                            msg_nonce - Nonce::one(),
                         ));
                     };
                     valid_tx_builder
@@ -444,21 +436,32 @@ mod pallet {
                         // fraud proof
                         .priority(1)
                         .longevity(TransactionLongevity::MAX)
-                        .and_provides((msg.dst_chain_id, msg.channel_id, msg.nonce))
+                        .and_provides((dst_chain_id, channel_id, msg_nonce))
                         .propagate(true)
                         .build()
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let (msg, next_nonce) = Self::validate_relay_message_response(xdm)?;
+                    let consensus_state_root = T::MmrProofVerifier::verify_proof_and_extract_leaf(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                    let ValidatedRelayMessage {
+                        msg_nonce,
+                        dst_chain_id,
+                        channel_id,
+                        next_nonce,
+                    } = Self::validate_relay_message_response(xdm, false, consensus_state_root)?;
 
                     let mut valid_tx_builder =
                         ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
                     // Only add the requires tag if the msg nonce is in future
-                    if msg.nonce > next_nonce {
+                    if msg_nonce > next_nonce {
                         valid_tx_builder = valid_tx_builder.and_requires((
-                            msg.dst_chain_id,
-                            msg.channel_id,
-                            msg.nonce - Nonce::one(),
+                            dst_chain_id,
+                            channel_id,
+                            msg_nonce - Nonce::one(),
                         ));
                     };
                     valid_tx_builder
@@ -466,7 +469,7 @@ mod pallet {
                         // fraud proof
                         .priority(1)
                         .longevity(TransactionLongevity::MAX)
-                        .and_provides((msg.dst_chain_id, msg.channel_id, msg.nonce))
+                        .and_provides((dst_chain_id, channel_id, msg_nonce))
                         .propagate(true)
                         .build()
                 }
@@ -1033,7 +1036,9 @@ mod pallet {
 
         pub fn validate_relay_message(
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
-        ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
+            pre_dispatch: bool,
+            consensus_state_root: StateRootOf<T>,
+        ) -> Result<ValidatedRelayMessage, TransactionValidityError> {
             let (next_nonce, maybe_channel) =
                 match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
                     None => {
@@ -1066,7 +1071,7 @@ mod pallet {
             );
 
             // verify and decode message
-            let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+            let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
             let is_valid_call = match &msg.payload {
                 VersionedPayload::V0(payload) => match payload {
@@ -1104,11 +1109,26 @@ mod pallet {
                 return Err(InvalidTransaction::Call.into());
             }
 
-            Ok(ValidatedRelayMessage {
-                msg,
+            // Reject stale message and in future message when in `pre_dispatch`
+            match msg.nonce.cmp(&next_nonce) {
+                Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                Ordering::Greater if pre_dispatch => return Err(InvalidTransaction::Future.into()),
+                _ => {}
+            }
+
+            let validated_relay_msg = ValidatedRelayMessage {
+                msg_nonce: msg.nonce,
+                dst_chain_id: msg.dst_chain_id,
+                channel_id: msg.channel_id,
                 next_nonce,
-                should_init_channel: maybe_channel.is_none(),
-            })
+            };
+
+            if pre_dispatch {
+                let should_init_channel = maybe_channel.is_none();
+                Self::pre_dispatch_relay_message(msg, should_init_channel)?;
+            }
+
+            Ok(validated_relay_msg)
         }
 
         pub(crate) fn pre_dispatch_relay_message(
@@ -1151,7 +1171,9 @@ mod pallet {
 
         pub fn validate_relay_message_response(
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
-        ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
+            pre_dispatch: bool,
+            consensus_state_root: StateRootOf<T>,
+        ) -> Result<ValidatedRelayMessage, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce =
                 match Channels::<T>::get(xdm.src_chain_id, xdm.channel_id) {
@@ -1178,9 +1200,27 @@ mod pallet {
             );
 
             // verify, decode, and store the message
-            let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+            let msg = Self::do_verify_xdm(next_nonce, key, consensus_state_root, xdm)?;
 
-            Ok((msg, next_nonce))
+            // Reject stale message and in future message when in `pre_dispatch`
+            match msg.nonce.cmp(&next_nonce) {
+                Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                Ordering::Greater if pre_dispatch => return Err(InvalidTransaction::Future.into()),
+                _ => {}
+            }
+
+            let validated_relay_msg = ValidatedRelayMessage {
+                msg_nonce: msg.nonce,
+                dst_chain_id: msg.dst_chain_id,
+                channel_id: msg.channel_id,
+                next_nonce,
+            };
+
+            if pre_dispatch {
+                Self::pre_dispatch_relay_message_response(msg)?;
+            }
+
+            Ok(validated_relay_msg)
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
@@ -1199,6 +1239,7 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
+            consensus_state_root: StateRootOf<T>,
             xdm: &CrossDomainMessage<BlockNumberFor<T>, T::Hash, T::MmrHash>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for chain.
@@ -1215,11 +1256,6 @@ mod pallet {
                 InvalidTransaction::Custom(crate::verification_errors::INVALID_NONCE)
             );
 
-            let state_root =
-                T::MmrProofVerifier::verify_proof_and_extract_leaf(xdm.proof.consensus_mmr_proof())
-                    .ok_or(InvalidTransaction::BadProof)?
-                    .state_root();
-
             // if the message is from domain, verify domain confirmation proof
             let state_root = if let Some(domain_proof) = xdm.proof.domain_proof().clone()
                 && let Some(domain_id) = xdm.src_chain_id.maybe_domain_chain()
@@ -1229,9 +1265,15 @@ mod pallet {
                         .ok_or(UnknownTransaction::CannotLookup)?;
 
                 StorageProofVerifier::<T::Hashing>::get_decoded_value::<
-                    sp_domains::ConfirmedDomainBlock<BlockNumberFor<T>, T::Hash>,
+                    sp_domains::ExecutionReceipt<
+                        BlockNumberFor<T>,
+                        T::Hash,
+                        BlockNumberFor<T>,
+                        T::Hash,
+                        BalanceOf<T>,
+                    >,
                 >(
-                    &state_root,
+                    &consensus_state_root,
                     domain_proof,
                     StorageKey(confirmed_domain_block_storage_key),
                 )
@@ -1243,9 +1285,9 @@ mod pallet {
                     );
                     TransactionValidityError::Invalid(InvalidTransaction::BadProof)
                 })?
-                .state_root
+                .final_state_root
             } else {
-                state_root
+                consensus_state_root
             };
 
             // verify and decode the message
@@ -1291,6 +1333,36 @@ mod pallet {
 
         pub fn updated_channels() -> BTreeSet<(ChainId, ChannelId)> {
             UpdatedChannels::<T>::get()
+        }
+
+        pub fn pre_dispatch_with_trusted_mmr_proof(
+            call: &Call<T>,
+        ) -> Result<(), TransactionValidityError> {
+            match call {
+                Call::relay_message { msg: xdm } => {
+                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                    Self::validate_relay_message(xdm, true, consensus_state_root)?;
+
+                    Ok(())
+                }
+                Call::relay_message_response { msg: xdm } => {
+                    let consensus_state_root = T::MmrProofVerifier::extract_leaf_without_verifying(
+                        xdm.proof.consensus_mmr_proof(),
+                    )
+                    .ok_or(InvalidTransaction::BadProof)?
+                    .state_root();
+
+                    Self::validate_relay_message_response(xdm, true, consensus_state_root)?;
+
+                    Ok(())
+                }
+                call => <Self as ValidateUnsigned>::pre_dispatch(call),
+            }
         }
     }
 }

@@ -446,6 +446,8 @@ where
             ) {
                 warn!(
                     %slot,
+                    ?pot_input,
+                    ?parent_pot_parameters,
                     "Proof of time is invalid, skipping block authoring at slot"
                 );
                 return None;

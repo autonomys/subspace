@@ -167,11 +167,12 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 mod pallet {
     #![allow(clippy::large_enum_variant)]
 
-    use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, Error as BlockTreeError, ReceiptType,
-    };
     #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::block_tree::{prune_receipt, AcceptedReceiptType};
+    use crate::block_tree::AcceptedReceiptType;
+    use crate::block_tree::{
+        execution_receipt_type, process_execution_receipt, prune_receipt, Error as BlockTreeError,
+        ReceiptType,
+    };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
     use crate::bundle_storage_fund::{charge_bundle_storage_fee, Error as BundleStorageFundError};
@@ -185,13 +186,12 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::staking::do_mark_operators_as_slashed;
-    #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_reward_operators;
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator, do_unlock_funds,
-        do_unlock_nominator, do_withdraw_stake, Deposit, DomainEpoch, Error as StakingError,
-        Operator, OperatorConfig, SharePrice, StakingSummary, Withdrawal,
+        do_deregister_operator, do_mark_operators_as_slashed, do_nominate_operator,
+        do_register_operator, do_unlock_funds, do_unlock_nominator, do_withdraw_stake, Deposit,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
+        Withdrawal,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
@@ -203,8 +203,8 @@ mod pallet {
     use crate::MAX_NOMINATORS_TO_SLASH;
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
-        FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf, ReceiptHashFor, StateRootOf,
-        MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
+        ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        ReceiptHashFor, StateRootOf, MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -223,10 +223,9 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
-        BundleDigest, ConfirmedDomainBlock, DomainBundleSubmitted, DomainId, DomainSudoCall,
-        DomainsTransfersTracker, EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated,
-        OperatorAllowList, OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId,
-        RuntimeObject, RuntimeType,
+        BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
+        EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
+        OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -421,7 +420,7 @@ mod pallet {
         >;
 
         /// Fraud proof storage key provider
-        type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider;
+        type FraudProofStorageKeyProvider: FraudProofStorageKeyProvider<BlockNumberFor<Self>>;
 
         /// Hook to handle chain rewards.
         type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
@@ -662,13 +661,8 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
-    pub(super) type LatestConfirmedDomainBlock<T: Config> = StorageMap<
-        _,
-        Identity,
-        DomainId,
-        ConfirmedDomainBlock<DomainBlockNumberFor<T>, T::DomainHash>,
-        OptionQuery,
-    >;
+    pub(super) type LatestConfirmedDomainExecutionReceipt<T: Config> =
+        StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
     /// has submitted bad ER and is pending to slash.
@@ -713,6 +707,11 @@ mod pallet {
     pub type DomainSudoCalls<T: Config> =
         StorageMap<_, Identity, DomainId, DomainSudoCall, ValueQuery>;
 
+    /// Storage that hold a list of all frozen domains.
+    /// A frozen domain does not accept the bundles but does accept a fraud proof.
+    #[pallet::storage]
+    pub type FrozenDomains<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -727,16 +726,12 @@ mod pallet {
         BadOperator,
         /// Failed to pass the threshold check.
         ThresholdUnsatisfied,
-        /// The Bundle is created too long ago.
-        StaleBundle,
         /// An invalid execution receipt found in the bundle.
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
         BundleTooLarge,
         /// Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
-        /// This bundle duplicated with an already submitted bundle
-        DuplicatedBundle,
         /// Invalid proof of time in the proof of election
         InvalidProofOfTime,
         /// The bundle is built on a slot in the future
@@ -752,6 +747,8 @@ mod pallet {
         SlotSmallerThanPreviousBlockBundle,
         /// Equivocated bundle in current block
         EquivocatedBundle,
+        /// Domain is frozen and cannot accept new bundles
+        DomainFrozen,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -880,6 +877,8 @@ mod pallet {
         DomainSudoCallExists,
         /// Invalid Domain sudo call.
         InvalidDomainSudoCall,
+        /// Domain must be frozen before execution receipt can be pruned.
+        DomainNotFrozen,
     }
 
     /// Reason for slashing an operator
@@ -976,6 +975,16 @@ mod pallet {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
             amount: BalanceOf<T>,
+        },
+        DomainFrozen {
+            domain_id: DomainId,
+        },
+        DomainUnfrozen {
+            domain_id: DomainId,
+        },
+        PrunedExecutionReceipt {
+            domain_id: DomainId,
+            new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
         },
     }
 
@@ -1541,6 +1550,85 @@ mod pallet {
             );
             Ok(())
         }
+
+        /// Freezes a given domain.
+        /// A frozen domain does not accept new bundles but accepts fraud proofs.
+        #[pallet::call_index(17)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(0, 1))]
+        pub fn freeze_domain(origin: OriginFor<T>, domain_id: DomainId) -> DispatchResult {
+            ensure_root(origin)?;
+            FrozenDomains::<T>::mutate(|frozen_domains| frozen_domains.insert(domain_id));
+            Self::deposit_event(Event::DomainFrozen { domain_id });
+            Ok(())
+        }
+
+        /// Unfreezes a frozen domain.
+        #[pallet::call_index(18)]
+        #[pallet::weight(<T as frame_system::Config>::DbWeight::get().reads_writes(0, 1))]
+        pub fn unfreeze_domain(origin: OriginFor<T>, domain_id: DomainId) -> DispatchResult {
+            ensure_root(origin)?;
+            FrozenDomains::<T>::mutate(|frozen_domains| frozen_domains.remove(&domain_id));
+            Self::deposit_event(Event::DomainUnfrozen { domain_id });
+            Ok(())
+        }
+
+        /// Prunes a given execution receipt for given frozen domain.
+        /// This call assumes the execution receipt to be bad and implicitly trusts Sudo
+        /// to do necessary validation of the ER before dispatching this call.
+        #[pallet::call_index(19)]
+        #[pallet::weight(Pallet::<T>::max_prune_domain_execution_receipt())]
+        pub fn prune_domain_execution_receipt(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            bad_receipt_hash: ReceiptHashFor<T>,
+        ) -> DispatchResultWithPostInfo {
+            ensure_root(origin)?;
+            ensure!(
+                FrozenDomains::<T>::get().contains(&domain_id),
+                Error::<T>::DomainNotFrozen
+            );
+
+            let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+            let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
+                .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
+                .execution_receipt
+                .domain_block_number;
+            // The `head_receipt_number` must greater than or equal to any existing receipt, including
+            // the bad receipt.
+            ensure!(
+                head_receipt_number >= bad_receipt_number,
+                Error::<T>::from(FraudProofError::BadReceiptNotFound),
+            );
+
+            let mut actual_weight = T::DbWeight::get().reads(3);
+
+            // prune the bad ER
+            let block_tree_node = prune_receipt::<T>(domain_id, bad_receipt_number)
+                .map_err(Error::<T>::from)?
+                .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
+
+            actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                (block_tree_node.operator_ids.len() as u32).min(MAX_BUNLDE_PER_BLOCK),
+            ));
+
+            do_mark_operators_as_slashed::<T>(
+                block_tree_node.operator_ids.into_iter(),
+                SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+            )
+            .map_err(Error::<T>::from)?;
+
+            // Update the head receipt number to `bad_receipt_number - 1`
+            let new_head_receipt_number = bad_receipt_number.saturating_sub(One::one());
+            HeadReceiptNumber::<T>::insert(domain_id, new_head_receipt_number);
+            actual_weight = actual_weight.saturating_add(T::DbWeight::get().reads_writes(0, 1));
+
+            Self::deposit_event(Event::PrunedExecutionReceipt {
+                domain_id,
+                new_head_receipt_number: Some(new_head_receipt_number),
+            });
+
+            Ok(Some(actual_weight).into())
+        }
     }
 
     #[pallet::genesis_config]
@@ -1710,10 +1798,10 @@ mod pallet {
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
                             | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
                             | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
-                            | BundleError::DuplicatedBundle
                             | BundleError::SlotInThePast
                             | BundleError::SlotInTheFuture
-                            | BundleError::InvalidProofOfTime => {
+                            | BundleError::InvalidProofOfTime
+                            | BundleError::SlotSmallerThanPreviousBlockBundle => {
                                 log::debug!(
                                     target: "runtime::domains",
                                     "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
@@ -1950,15 +2038,21 @@ impl<T: Config> Pallet<T> {
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
         let domain_id = opaque_bundle.domain_id();
+        ensure!(
+            !FrozenDomains::<T>::get().contains(&domain_id),
+            BundleError::DomainFrozen
+        );
+
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
         let slot_number = opaque_bundle.slot_number();
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
+        let operator_status = operator.status::<T>(operator_id);
         ensure!(
-            *operator.status::<T>(operator_id) != OperatorStatus::Slashed
-                && *operator.status::<T>(operator_id) != OperatorStatus::PendingSlash,
+            *operator_status != OperatorStatus::Slashed
+                && *operator_status != OperatorStatus::PendingSlash,
             BundleError::BadOperator
         );
 
@@ -1969,14 +2063,14 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        // Ensure this is not equivocated bundle that reuse `ProofOfElection` from the previous block
+        // Ensure this is no equivocated bundle that reuse `ProofOfElection` from the previous block
         ensure!(
             slot_number
                 > Self::operator_highest_slot_from_previous_block(operator_id, pre_dispatch),
             BundleError::SlotSmallerThanPreviousBlockBundle,
         );
 
-        // Ensure there is not equivocated/duplicated bundle in the same block
+        // Ensure there is no equivocated/duplicated bundle in the same block
         ensure!(
             !OperatorBundleSlot::<T>::get(operator_id).contains(&slot_number),
             BundleError::EquivocatedBundle,
@@ -2207,8 +2301,10 @@ impl<T: Config> Pallet<T> {
                 verify_invalid_bundles_fraud_proof::<
                     T::Block,
                     T::DomainHeader,
+                    T::MmrHash,
                     BalanceOf<T>,
                     T::FraudProofStorageKeyProvider,
+                    T::MmrProofVerifier,
                 >(
                     bad_receipt,
                     bad_receipt_parent,
@@ -2329,16 +2425,16 @@ impl<T: Config> Pallet<T> {
     /// Returns the latest confirmed domain block number for a given domain
     /// Zero block is always a default confirmed block.
     pub fn latest_confirmed_domain_block_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        LatestConfirmedDomainBlock::<T>::get(domain_id)
-            .map(|block| block.block_number)
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| er.domain_block_number)
             .unwrap_or_default()
     }
 
     pub fn latest_confirmed_domain_block(
         domain_id: DomainId,
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
-        LatestConfirmedDomainBlock::<T>::get(domain_id)
-            .map(|block| (block.block_number, block.block_hash))
+        LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
+            .map(|er| (er.domain_block_number, er.domain_block_hash))
     }
 
     /// Returns the domain block limit of the given domain.
@@ -2408,7 +2504,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn confirmed_domain_block_storage_key(domain_id: DomainId) -> Vec<u8> {
-        LatestConfirmedDomainBlock::<T>::hashed_key_for(domain_id)
+        LatestConfirmedDomainExecutionReceipt::<T>::hashed_key_for(domain_id)
     }
 
     pub fn is_bad_er_pending_to_prune(
@@ -2464,6 +2560,11 @@ impl<T: Config> Pallet<T> {
         T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(T::MaxPendingStakingOperation::get()),
         )
+    }
+
+    pub fn max_prune_domain_execution_receipt() -> Weight {
+        T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
+            .saturating_add(T::DbWeight::get().reads_writes(3, 1))
     }
 
     fn actual_epoch_transition_weight(epoch_transition_res: EpochTransitionResult) -> Weight {

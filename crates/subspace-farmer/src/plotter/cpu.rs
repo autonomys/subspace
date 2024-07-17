@@ -1,5 +1,8 @@
 //! CPU plotter
 
+pub mod metrics;
+
+use crate::plotter::cpu::metrics::CpuPlotterMetrics;
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
@@ -9,6 +12,8 @@ use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
+use prometheus_client::registry::Registry;
+use std::any::type_name;
 use std::error::Error;
 use std::fmt;
 use std::future::pending;
@@ -52,6 +57,7 @@ pub struct CpuPlotter<PG, PosTable> {
     tasks_sender: mpsc::Sender<AsyncJoinOnDrop<()>>,
     _background_tasks: AsyncJoinOnDrop<()>,
     abort_early: Arc<AtomicBool>,
+    metrics: Option<Arc<CpuPlotterMetrics>>,
     _phantom: PhantomData<PosTable>,
 }
 
@@ -105,6 +111,7 @@ where
                     public_key,
                     sector_index,
                     handlers: Arc::clone(&self.handlers),
+                    metrics: self.metrics.clone(),
                 };
 
                 progress_updater
@@ -171,6 +178,7 @@ where
     PosTable: Table,
 {
     /// Create new instance
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         piece_getter: PG,
         downloading_semaphore: Arc<Semaphore>,
@@ -179,6 +187,7 @@ where
         global_mutex: Arc<AsyncMutex<()>>,
         kzg: Kzg,
         erasure_coding: ErasureCoding,
+        registry: Option<&mut Registry>,
     ) -> Self {
         let (tasks_sender, mut tasks_receiver) = mpsc::channel(1);
 
@@ -209,6 +218,13 @@ where
         );
 
         let abort_early = Arc::new(AtomicBool::new(false));
+        let metrics = registry.map(|registry| {
+            Arc::new(CpuPlotterMetrics::new(
+                registry,
+                type_name::<PosTable>(),
+                plotting_thread_pool_manager.thread_pool_pairs(),
+            ))
+        });
 
         Self {
             piece_getter,
@@ -222,6 +238,7 @@ where
             tasks_sender,
             _background_tasks: background_tasks,
             abort_early,
+            metrics,
             _phantom: PhantomData,
         }
     }
@@ -249,10 +266,15 @@ where
         PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
         PS::Error: Error,
     {
+        if let Some(metrics) = &self.metrics {
+            metrics.sector_plotting.inc();
+        }
+
         let progress_updater = ProgressUpdater {
             public_key,
             sector_index,
             handlers: Arc::clone(&self.handlers),
+            metrics: self.metrics.clone(),
         };
 
         let plotting_fut = {
@@ -263,6 +285,7 @@ where
             let kzg = self.kzg.clone();
             let erasure_coding = self.erasure_coding.clone();
             let abort_early = Arc::clone(&self.abort_early);
+            let metrics = self.metrics.clone();
 
             async move {
                 // Downloading
@@ -325,6 +348,9 @@ where
                 // Plotting
                 let (sector, plotted_sector) = {
                     let thread_pools = plotting_thread_pool_manager.get_thread_pools().await;
+                    if let Some(metrics) = &metrics {
+                        metrics.plotting_capacity_used.inc();
+                    }
 
                     let plotting_fn = || {
                         let mut sector = Vec::new();
@@ -363,6 +389,9 @@ where
                         )
                         .await
                     {
+                        if let Some(metrics) = &metrics {
+                            metrics.plotting_capacity_used.dec();
+                        }
                         return;
                     }
 
@@ -370,6 +399,10 @@ where
 
                     let plotting_result =
                         tokio::task::block_in_place(|| thread_pool.install(plotting_fn));
+                    drop(thread_pools);
+                    if let Some(metrics) = &metrics {
+                        metrics.plotting_capacity_used.dec();
+                    }
 
                     match plotting_result {
                         Ok(plotting_result) => {
@@ -439,6 +472,7 @@ struct ProgressUpdater {
     public_key: PublicKey,
     sector_index: SectorIndex,
     handlers: Arc<Handlers>,
+    metrics: Option<Arc<CpuPlotterMetrics>>,
 }
 
 impl ProgressUpdater {
@@ -452,6 +486,31 @@ impl ProgressUpdater {
         PS: Sink<SectorPlottingProgress> + Unpin,
         PS::Error: Error,
     {
+        if let Some(metrics) = &self.metrics {
+            match &progress {
+                SectorPlottingProgress::Downloading => {
+                    metrics.sector_downloading.inc();
+                }
+                SectorPlottingProgress::Downloaded(time) => {
+                    metrics.sector_downloading_time.observe(time.as_secs_f64());
+                    metrics.sector_downloaded.inc();
+                }
+                SectorPlottingProgress::Encoding => {
+                    metrics.sector_encoding.inc();
+                }
+                SectorPlottingProgress::Encoded(time) => {
+                    metrics.sector_encoding_time.observe(time.as_secs_f64());
+                    metrics.sector_encoded.inc();
+                }
+                SectorPlottingProgress::Finished { time, .. } => {
+                    metrics.sector_plotting_time.observe(time.as_secs_f64());
+                    metrics.sector_plotted.inc();
+                }
+                SectorPlottingProgress::Error { .. } => {
+                    metrics.sector_plotting_error.inc();
+                }
+            }
+        }
         self.handlers.plotting_progress.call_simple(
             &self.public_key,
             &self.sector_index,

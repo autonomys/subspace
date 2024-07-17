@@ -6,12 +6,12 @@ use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::ChannelStorage;
-use domain_runtime_primitives::{AccountIdConverter, Hash};
+use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
-use domain_test_service::{construct_extrinsic_generic, GENESIS_DOMAIN_ID};
+use domain_test_service::{construct_extrinsic_generic, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use futures::StreamExt;
 use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
@@ -21,10 +21,11 @@ use sc_service::{BasePath, Role};
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_consensus::SyncOracle;
 use sp_core::storage::StateVersion;
-use sp_core::traits::FetchRuntimeCode;
+use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
 use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::core_api::DomainCoreApi;
@@ -40,17 +41,21 @@ use sp_domains_fraud_proof::fraud_proof::{
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_messenger::messages::{CrossDomainMessage, Proof};
+use sp_messenger::MessengerApi;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, Hash as HashT, Header as HeaderT, Zero,
 };
-use sp_runtime::transaction_validity::InvalidTransaction;
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidityError,
+};
 use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::backend::AsTrieBackend;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -88,17 +93,16 @@ async fn test_domain_instance_bootstrapper() {
     let expected_genesis_state_root = ferdie
         .client
         .runtime_api()
-        .genesis_state_root(ferdie.client.info().best_hash, GENESIS_DOMAIN_ID)
+        .genesis_state_root(ferdie.client.info().best_hash, EVM_DOMAIN_ID)
         .unwrap()
         .unwrap();
 
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let genesis_state_root = *alice
@@ -135,10 +139,9 @@ async fn test_domain_chain_fork_choice() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -209,10 +212,9 @@ async fn test_domain_block_production() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     for i in 0..50 {
@@ -316,10 +318,9 @@ async fn test_processing_empty_consensus_block() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let domain_block_processor = DomainBlockProcessor {
@@ -403,10 +404,9 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -477,10 +477,9 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut consensus_node)
+    .build_evm_node(Role::Authority, Alice, &mut consensus_node)
     .await;
 
     produce_blocks!(consensus_node, alice, 3)
@@ -649,20 +648,18 @@ async fn test_domain_tx_propagate() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
     let mut bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
-        Bob,
         BasePath::new(directory.path().join("bob")),
     )
     .connect_to_domain_node(alice.addr.clone())
-    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Full, Bob, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
@@ -723,19 +720,17 @@ async fn test_executor_full_node_catching_up() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
-        Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Full, Bob, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.
@@ -775,19 +770,17 @@ async fn test_executor_inherent_timestamp_is_set() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run Bob who runs the authority node for core domain
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Bob, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
@@ -830,10 +823,9 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let fraud_proof_generator = FraudProofGenerator::new(
@@ -923,7 +915,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             let mut fraud_proof = fraud_proof_generator
                 .generate_invalid_state_transition_proof(
-                    GENESIS_DOMAIN_ID,
+                    EVM_DOMAIN_ID,
                     execution_phase,
                     &valid_receipt,
                     dummy_execution_trace.len(),
@@ -1091,10 +1083,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1267,10 +1258,9 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1411,10 +1401,9 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1524,10 +1513,9 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1553,12 +1541,12 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
             pallet_messenger::Call::relay_message {
                 msg: CrossDomainMessage {
                     src_chain_id: ChainId::Consensus,
-                    dst_chain_id: ChainId::Domain(GENESIS_DOMAIN_ID),
+                    dst_chain_id: ChainId::Domain(EVM_DOMAIN_ID),
                     channel_id: Default::default(),
                     nonce: Default::default(),
                     proof: Proof::Domain {
                         consensus_chain_mmr_proof: ConsensusChainMmrLeafProof {
-                            consensus_block_number: Default::default(),
+                            consensus_block_number: 1,
                             consensus_block_hash: Default::default(),
                             opaque_mmr_leaf: EncodableOpaqueLeaf(vec![0, 1, 2]),
                             proof: MmrProof {
@@ -1627,7 +1615,7 @@ async fn test_true_invalid_bundles_illegal_xdm_proof_creation_and_verification()
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 0);
                 return true;
@@ -1679,10 +1667,9 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1843,10 +1830,9 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -1976,10 +1962,9 @@ async fn test_true_invalid_bundle_weight_proof_creation_and_verification() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2096,10 +2081,9 @@ async fn test_false_invalid_bundle_weight_proof_creation_and_verification() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2207,10 +2191,9 @@ async fn test_false_invalid_bundles_non_exist_extrinsic_proof_creation_and_verif
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2319,10 +2302,9 @@ async fn test_invalid_block_fees_proof_creation() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2401,10 +2383,9 @@ async fn test_invalid_transfers_fraud_proof() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2503,10 +2484,9 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2600,10 +2580,9 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -2697,10 +2676,9 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
@@ -2781,10 +2759,9 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
@@ -2886,10 +2863,9 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     for i in 0..3 {
@@ -3040,10 +3016,9 @@ async fn set_new_code_should_work() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
@@ -3111,19 +3086,17 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
     let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
-        Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Full, Bob, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
@@ -3208,10 +3181,9 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 10).await.unwrap();
@@ -3228,7 +3200,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
     let operator_id = 0;
     let mut bundle_producer = {
         let domain_bundle_proposer = DomainBundleProposer::new(
-            GENESIS_DOMAIN_ID,
+            EVM_DOMAIN_ID,
             alice.client.clone(),
             ferdie.client.clone(),
             alice.operator.transaction_pool.clone(),
@@ -3236,7 +3208,7 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
         DomainBundleProducer::new(
-            GENESIS_DOMAIN_ID,
+            EVM_DOMAIN_ID,
             ferdie.client.clone(),
             alice.client.clone(),
             domain_bundle_proposer,
@@ -3371,10 +3343,9 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -3431,10 +3402,9 @@ async fn test_domain_sudo_calls() {
     // Run Alice (an evm domain)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run the cross domain gossip message worker
@@ -3447,7 +3417,7 @@ async fn test_domain_sudo_calls() {
         .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
             call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
                 pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
                 },
             )),
         })
@@ -3461,7 +3431,7 @@ async fn test_domain_sudo_calls() {
     ferdie
         .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: GENESIS_DOMAIN_ID,
+                domain_id: EVM_DOMAIN_ID,
                 update: ChainAllowlistUpdate::Add(ChainId::Consensus),
             },
         ))
@@ -3515,7 +3485,7 @@ async fn test_domain_sudo_calls() {
         .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
             call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
                 pallet_domains::Call::send_domain_sudo_call {
-                    domain_id: GENESIS_DOMAIN_ID,
+                    domain_id: EVM_DOMAIN_ID,
                     call: sudo_unsigned_extrinsic,
                 },
             )),
@@ -3537,7 +3507,7 @@ async fn test_domain_sudo_calls() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_cross_domains_messages_should_work() {
+async fn test_xdm_between_consensus_and_domain_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -3556,10 +3526,9 @@ async fn test_cross_domains_messages_should_work() {
     // Run Alice (an evm domain)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // Run the cross domain gossip message worker
@@ -3572,7 +3541,7 @@ async fn test_cross_domains_messages_should_work() {
         .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
             call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
                 pallet_messenger::Call::update_consensus_chain_allowlist {
-                    update: ChainAllowlistUpdate::Add(ChainId::Domain(GENESIS_DOMAIN_ID)),
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
                 },
             )),
         })
@@ -3586,7 +3555,7 @@ async fn test_cross_domains_messages_should_work() {
     ferdie
         .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_domain_update_chain_allowlist {
-                domain_id: GENESIS_DOMAIN_ID,
+                domain_id: EVM_DOMAIN_ID,
                 update: ChainAllowlistUpdate::Add(ChainId::Consensus),
             },
         ))
@@ -3599,11 +3568,11 @@ async fn test_cross_domains_messages_should_work() {
     // there should be zero channel updates on both consensus and domain chain
     let consensus_channel_storage = ChannelStorage::new(ChainId::Consensus);
     assert!(consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
         .unwrap()
         .is_none());
 
-    let domain_channel_storage = ChannelStorage::new(GENESIS_DOMAIN_ID.into());
+    let domain_channel_storage = ChannelStorage::new(EVM_DOMAIN_ID.into());
     assert!(domain_channel_storage
         .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero(),)
         .unwrap()
@@ -3636,7 +3605,7 @@ async fn test_cross_domains_messages_should_work() {
 
     // consensus channel update
     let channel_update = consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
         .unwrap()
         .unwrap();
 
@@ -3688,7 +3657,7 @@ async fn test_cross_domains_messages_should_work() {
 
     // consensus channel update
     let channel_update = consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, GENESIS_DOMAIN_ID.into(), ChannelId::zero())
+        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
         .unwrap()
         .unwrap();
 
@@ -3704,7 +3673,7 @@ async fn test_cross_domains_messages_should_work() {
         .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
             call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
                 pallet_messenger::Call::close_channel {
-                    chain_id: ChainId::Domain(GENESIS_DOMAIN_ID),
+                    chain_id: ChainId::Domain(EVM_DOMAIN_ID),
                     channel_id,
                 },
             )),
@@ -3741,384 +3710,275 @@ async fn test_cross_domains_messages_should_work() {
     );
 }
 
-// TODO: Unlock test when multiple domains are supported in DecEx v2.
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_cross_domains_message_should_work() {
-//     let directory = TempDir::new().expect("Must be able to create temporary directory");
-//
-//     let mut builder = sc_cli::LoggerBuilder::new("");
-//     builder.with_colors(false);
-//     let _ = builder.init();
-//
-//     let tokio_handle = tokio::runtime::Handle::current();
-//
-//     // Start Ferdie
-//     let mut ferdie = MockConsensusNode::run(
-//         tokio_handle.clone(),
-//         Ferdie,
-//         BasePath::new(directory.path().join("ferdie")),
-//     );
-//
-//     // Run Alice (a system domain authority node)
-//     let mut alice = domain_test_service::DomainNodeBuilder::new(
-//         tokio_handle.clone(),
-//         Alice,
-//         BasePath::new(directory.path().join("alice")),
-//     )
-//     .run_relayer()
-//     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-//     .await;
-//
-//     // Run Bob (a core payments domain authority node)
-//     let mut bob = domain_test_service::DomainNodeBuilder::new(
-//         tokio_handle.clone(),
-//         Bob,
-//         BasePath::new(directory.path().join("bob")),
-//     )
-//     .run_relayer()
-//     .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
-//     .await;
-//
-//     // Run Charlie (a core eth relay domain authority node)
-//     let mut charlie = domain_test_service::DomainNodeBuilder::new(
-//         tokio_handle.clone(),
-//         Charlie,
-//         BasePath::new(directory.path().join("charlie")),
-//     )
-//     .run_relayer()
-//     .build_core_eth_relay_node(Role::Authority, &mut ferdie, &alice)
-//     .await;
-//
-//     // Run the cross domain gossip message worker
-//     ferdie.start_cross_domain_gossip_message_worker();
-//
-//     produce_blocks!(ferdie, alice, bob, charlie, 3)
-//         .await
-//         .unwrap();
-//
-//     // Open channel between the system domain and the core payments domain
-//     let fee_model = FeeModel {
-//         outbox_fee: ExecutionFee {
-//             relayer_pool_fee: 2,
-//             compute_fee: 0,
-//         },
-//         inbox_fee: ExecutionFee {
-//             relayer_pool_fee: 0,
-//             compute_fee: 5,
-//         },
-//     };
-//     bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
-//         call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
-//             pallet_messenger::Call::initiate_channel {
-//                 dst_domain_id: DomainId::SYSTEM,
-//                 params: InitiateChannelParams {
-//                     max_outgoing_messages: 100,
-//                     fee_model,
-//                 },
-//             },
-//         )),
-//     })
-//     .await
-//     .expect("Failed to construct and send extrinsic");
-//     // Wait until channel open
-//     produce_blocks_until!(ferdie, alice, bob, {
-//         alice
-//             .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
-//             .is_some()
-//             && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
-//     })
-//     .await
-//     .unwrap();
-//
-//     // Transfer balance cross the system domain and the core payments domain
-//     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-//     let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-//     let transfer_amount = 10;
-//     alice
-//         .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
-//             dst_location: pallet_transporter::Location {
-//                 domain_id: DomainId::CORE_PAYMENTS,
-//                 account_id: AccountIdConverter::convert(Bob.into()),
-//             },
-//             amount: transfer_amount,
-//         })
-//         .await
-//         .expect("Failed to construct and send extrinsic");
-//     // Wait until transfer succeed
-//     produce_blocks_until!(ferdie, alice, bob, charlie, {
-//         let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-//         let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-//
-//         post_alice_free_balance
-//             == pre_alice_free_balance
-//                 - transfer_amount
-//                 - fee_model.outbox_fee().unwrap()
-//                 - fee_model.inbox_fee().unwrap()
-//             && post_bob_free_balance == pre_bob_free_balance + transfer_amount
-//     })
-//     .await
-//     .unwrap();
-//
-//     // Open channel between the core payments domain and the core eth relay domain
-//     let fee_model = FeeModel {
-//         outbox_fee: ExecutionFee {
-//             relayer_pool_fee: 1,
-//             compute_fee: 5,
-//         },
-//         inbox_fee: ExecutionFee {
-//             relayer_pool_fee: 2,
-//             compute_fee: 3,
-//         },
-//     };
-//     charlie
-//         .construct_and_send_extrinsic(pallet_sudo::Call::sudo {
-//             call: Box::new(core_eth_relay_domain_test_runtime::RuntimeCall::Messenger(
-//                 pallet_messenger::Call::initiate_channel {
-//                     dst_domain_id: DomainId::CORE_PAYMENTS,
-//                     params: InitiateChannelParams {
-//                         max_outgoing_messages: 100,
-//                         fee_model,
-//                     },
-//                 },
-//             )),
-//         })
-//         .await
-//         .expect("Failed to construct and send extrinsic");
-//     // Wait until channel open
-//     produce_blocks_until!(ferdie, alice, bob, charlie, {
-//         bob.get_open_channel_for_domain(DomainId::CORE_ETH_RELAY)
-//             .is_some()
-//             && charlie
-//                 .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
-//                 .is_some()
-//     })
-//     .await
-//     .unwrap();
-//
-//     // Transfer balance cross the core payments domain and the core eth relay domain
-//     let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-//     let pre_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
-//     let transfer_amount = 10;
-//     bob.construct_and_send_extrinsic(pallet_transporter::Call::transfer {
-//         dst_location: pallet_transporter::Location {
-//             domain_id: DomainId::CORE_ETH_RELAY,
-//             account_id: AccountIdConverter::convert(Charlie.into()),
-//         },
-//         amount: transfer_amount,
-//     })
-//     .await
-//     .expect("Failed to construct and send extrinsic");
-//     // Wait until transfer succeed
-//     produce_blocks_until!(ferdie, alice, bob, charlie, {
-//         let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-//         let post_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
-//
-//         post_bob_free_balance
-//             == pre_bob_free_balance
-//                 - transfer_amount
-//                 - fee_model.outbox_fee().unwrap()
-//                 - fee_model.inbox_fee().unwrap()
-//             && post_charlie_free_balance == pre_charlie_free_balance + transfer_amount
-//     })
-//     .await
-//     .unwrap();
-// }
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_between_domains_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-// TODO: Unlock test when multiple domains are supported in DecEx v2.
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_unordered_cross_domains_message_should_work() {
-// let directory = TempDir::new().expect("Must be able to create temporary directory");
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
 
-// let mut builder = sc_cli::LoggerBuilder::new("");
-// builder.with_colors(false);
-// let _ = builder.init();
+    let tokio_handle = tokio::runtime::Handle::current();
 
-// let tokio_handle = tokio::runtime::Handle::current();
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
 
-// // Start Ferdie
-// let mut ferdie = MockConsensusNode::run(
-// tokio_handle.clone(),
-// Ferdie,
-// BasePath::new(directory.path().join("ferdie")),
-// );
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
 
-// // Run Alice (a system domain authority node)
-// let mut alice = domain_test_service::DomainNodeBuilder::new(
-// tokio_handle.clone(),
-// Alice,
-// BasePath::new(directory.path().join("alice")),
-// )
-// .run_relayer()
-// .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-// .await;
+    // Run Bob (a auto-id domain authority node)
+    let mut bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .build_auto_id_node(Role::Authority, Sr25519Keyring::Bob, &mut ferdie)
+    .await;
 
-// // Run Bob (a core payments domain authority node)
-// let mut bob = domain_test_service::DomainNodeBuilder::new(
-// tokio_handle.clone(),
-// Bob,
-// BasePath::new(directory.path().join("bob")),
-// )
-// .run_relayer()
-// .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
-// .await;
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
 
-// // Run Charlie (a core eth relay domain full node) and don't its relayer worker
-// let charlie = domain_test_service::DomainNodeBuilder::new(
-// tokio_handle.clone(),
-// Charlie,
-// BasePath::new(directory.path().join("charlie")),
-// )
-// .build_core_payments_node(Role::Full, &mut ferdie, &alice)
-// .await;
-// let gossip_msg_sink = ferdie.xdm_gossip_worker_builder().gossip_msg_sink();
+    produce_blocks!(ferdie, alice, 3, bob).await.unwrap();
 
-// // Run the cross domain gossip message worker
-// ferdie.start_cross_domain_gossip_message_worker();
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Domain(AUTO_ID_DOMAIN_ID)),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
 
-// produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
-// // Open channel between the system domain and the core payments domain
-// let fee_model = FeeModel {
-// outbox_fee: ExecutionFee {
-// relayer_pool_fee: 2,
-// compute_fee: 0,
-// },
-// inbox_fee: ExecutionFee {
-// relayer_pool_fee: 0,
-// compute_fee: 5,
-// },
-// };
-// bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
-// call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
-// pallet_messenger::Call::initiate_channel {
-// dst_domain_id: DomainId::SYSTEM,
-// params: InitiateChannelParams {
-// max_outgoing_messages: 1000,
-// fee_model,
-// },
-// },
-// )),
-// })
-// .await
-// .expect("Failed to construct and send extrinsic");
-// // Wait until channel open
-// produce_blocks_until!(ferdie, alice, bob, charlie, {
-// alice
-// .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
-// .is_some()
-// && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
-// })
-// .await
-// .unwrap();
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: AUTO_ID_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
 
-// // Register `charlie` as relayer such that message will assign to it, but as its relayer
-// // is not started these massage won't be relayed.
-// bob.construct_and_send_extrinsic(pallet_messenger::Call::join_relayer_set {
-// relayer_id: Charlie.into(),
-// })
-// .await
-// .expect("Failed to construct and send extrinsic");
-// produce_blocks!(ferdie, alice, bob, charlie, 3)
-// .await
-// .unwrap();
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
-// // Create cross domain message, only message assigned to `alice` and `bob` will be relayed
-// // and send to tx pool, and these message is unordered because the message assigned to `charlie`
-// // is not relayed.
-// let relayer_id: AccountId = Charlie.into();
-// let alice_transfer_amount = 1;
-// let bob_transfer_amount = 2;
-// let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-// let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-// let mut alice_account_nonce = alice.account_nonce();
-// let mut bob_account_nonce = bob.account_nonce();
-// // Assigne `inbox_response` message to `charlie`
-// for _ in 0..10 {
-// let tx = alice.construct_extrinsic(
-// alice_account_nonce,
-// pallet_transporter::Call::transfer {
-// dst_location: pallet_transporter::Location {
-// domain_id: DomainId::CORE_PAYMENTS,
-// account_id: AccountIdConverter::convert(Bob.into()),
-// },
-// amount: alice_transfer_amount,
-// },
-// );
-// alice
-// .send_extrinsic(tx)
-// .await
-// .expect("Failed to send extrinsic");
-// alice_account_nonce += 1;
+    // Open channel between the evm domain and the auto-id domain
+    bob.construct_and_send_extrinsic(auto_id_domain_test_runtime::RuntimeCall::Messenger(
+        pallet_messenger::Call::initiate_channel {
+            dst_chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+            params: pallet_messenger::InitiateChannelParams {
+                max_outgoing_messages: 100,
+            },
+        },
+    ))
+    .await
+    .expect("Failed to construct and send extrinsic");
 
-// produce_blocks!(ferdie, alice, bob, charlie, 1)
-// .await
-// .unwrap();
-// }
-// // Assigne `outbox` message to `charlie`
-// for _ in 0..10 {
-// let tx = bob.construct_extrinsic(
-// bob_account_nonce,
-// pallet_transporter::Call::transfer {
-// dst_location: pallet_transporter::Location {
-// domain_id: DomainId::SYSTEM,
-// account_id: AccountIdConverter::convert(Alice.into()),
-// },
-// amount: bob_transfer_amount,
-// },
-// );
-// bob.send_extrinsic(tx)
-// .await
-// .expect("Failed to send extrinsic");
-// bob_account_nonce += 1;
+    // Wait until channel open
+    produce_blocks_until!(
+        ferdie,
+        alice,
+        {
+            alice
+                .get_open_channel_for_chain(ChainId::Domain(AUTO_ID_DOMAIN_ID))
+                .is_some()
+                && bob
+                    .get_open_channel_for_chain(ChainId::Domain(EVM_DOMAIN_ID))
+                    .is_some()
+        },
+        bob
+    )
+    .await
+    .unwrap();
 
-// produce_blocks!(ferdie, alice, bob, charlie, 1)
-// .await
-// .unwrap();
-// }
+    // Transfer balance cross the system domain and the core payments domain
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let transfer_amount = 10;
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(AUTO_ID_DOMAIN_ID),
+                account_id: AccountIdConverter::convert(Sr25519Keyring::Bob.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(
+        ferdie,
+        alice,
+        {
+            let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+            let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
 
-// // Run charlie's relayer worker, the message assigned to `charlie` will be relayed
-// // and send to tx pool now
-// let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
-// _,
-// _,
-// PBlock,
-// _,
-// _,
-// _,
-// _,
-// _,
-// >(
-// relayer_id,
-// charlie.client.clone(),
-// alice.client.clone(),
-// alice.sync_service.clone(),
-// charlie.sync_service.clone(),
-// gossip_msg_sink,
-// );
-// bob.task_manager
-// .spawn_essential_handle()
-// .spawn_essential_blocking(
-// "core-domain-relayer-charlie",
-// None,
-// Box::pin(relayer_worker),
-// );
+            post_alice_free_balance <= pre_alice_free_balance - transfer_amount
+                && post_bob_free_balance == pre_bob_free_balance + transfer_amount
+        },
+        bob
+    )
+    .await
+    .unwrap();
+}
 
-// // Wait until all message are relayed and handled
-// let fee = fee_model.outbox_fee().unwrap() + fee_model.inbox_fee().unwrap();
-// produce_blocks_until!(ferdie, alice, bob, {
-// let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-// let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+#[tokio::test(flavor = "multi_thread")]
+async fn test_unordered_cross_domains_message_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-// post_alice_free_balance
-// == pre_alice_free_balance - alice_transfer_amount * 10 + bob_transfer_amount * 10
-// - fee * 10
-// && post_bob_free_balance
-// == pre_bob_free_balance - bob_transfer_amount * 10 + alice_transfer_amount * 10
-// - fee * 10
-// })
-// .await
-// .unwrap();
-// }
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let evm_domain_tx_pool_sink = ferdie
+        .xdm_gossip_worker_builder()
+        .remove_chain_sink(&ChainId::Domain(EVM_DOMAIN_ID))
+        .unwrap();
+    let (reorder_xdm_sink, mut reorder_xdm_receiver) = tracing_unbounded("reorder_xdm", 100);
+    ferdie
+        .xdm_gossip_worker_builder()
+        .push_chain_sink(ChainId::Domain(EVM_DOMAIN_ID), reorder_xdm_sink);
+
+    alice
+        .task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "reordering-xdm",
+            None,
+            Box::pin(async move {
+                let mut i = 0;
+                let mut msg_buffer = VecDeque::new();
+                while let Some(xdm) = reorder_xdm_receiver.next().await {
+                    if i % 3 == 0 {
+                        msg_buffer.push_back(xdm);
+                        if let Some(xdm) = msg_buffer.pop_front() {
+                            if i % 2 == 0 {
+                                evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
+                            }
+                        }
+                    } else {
+                        evm_domain_tx_pool_sink.unbounded_send(xdm).unwrap();
+                    }
+                    i += 1;
+                }
+            }),
+        );
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the evm domain and the auto-id domain
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance cross the system domain and the core payments domain
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+    let transfer_amount = 10;
+    for _ in 0..20 {
+        ferdie
+            .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+                dst_location: pallet_transporter::Location {
+                    chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                    account_id: AccountId20Converter::convert(Alice.to_account_id()),
+                },
+                amount: transfer_amount,
+            })
+            .await
+            .expect("Failed to construct and send extrinsic");
+        produce_blocks!(ferdie, alice, 1).await.unwrap();
+    }
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_ferdie_free_balance = ferdie.free_balance(ferdie.key.to_account_id());
+
+        post_alice_free_balance == pre_alice_free_balance + transfer_amount * 20
+            && post_ferdie_free_balance <= pre_ferdie_free_balance - transfer_amount * 20
+    })
+    .await
+    .unwrap();
+}
 
 #[tokio::test(flavor = "multi_thread")]
 // TODO: https://github.com/subspace/subspace/pull/1954 broke this on Windows, we suspect the test
@@ -4144,10 +4004,9 @@ async fn test_restart_domain_operator() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 5).await.unwrap();
@@ -4160,7 +4019,7 @@ async fn test_restart_domain_operator() {
     std::fs::remove_file(
         directory
             .path()
-            .join(format!("alice/domain-{GENESIS_DOMAIN_ID:?}"))
+            .join(format!("alice/domain-{EVM_DOMAIN_ID:?}"))
             .as_path()
             .join("paritydb/lock"),
     )
@@ -4177,10 +4036,9 @@ async fn test_restart_domain_operator() {
     // Restart Alice
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 5).await.unwrap();
@@ -4210,10 +4068,9 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -4286,10 +4143,9 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -4425,16 +4281,15 @@ async fn test_skip_empty_bundle_production() {
     // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
     .skip_empty_bundle()
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
-    // Wait for `BlockTreePruningDepth + 1` blocks which is 16 + 1 in test
+    // Wait for `BlockTreePruningDepth + 1` blocks which is 10 + 1 in test
     // to enure the genesis ER is confirmed
-    produce_blocks!(ferdie, alice, 17).await.unwrap();
+    produce_blocks!(ferdie, alice, 11).await.unwrap();
     let consensus_block_number = ferdie.client.info().best_number;
     let domain_block_number = alice.client.info().best_number;
 
@@ -4477,10 +4332,9 @@ async fn test_bad_receipt_chain() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -4492,7 +4346,7 @@ async fn test_bad_receipt_chain() {
 
     let mut bundle_producer = {
         let domain_bundle_proposer = DomainBundleProposer::new(
-            GENESIS_DOMAIN_ID,
+            EVM_DOMAIN_ID,
             alice.client.clone(),
             ferdie.client.clone(),
             alice.operator.transaction_pool.clone(),
@@ -4500,7 +4354,7 @@ async fn test_bad_receipt_chain() {
         let (bundle_sender, _bundle_receiver) =
             sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
         DomainBundleProducer::new(
-            GENESIS_DOMAIN_ID,
+            EVM_DOMAIN_ID,
             ferdie.client.clone(),
             alice.client.clone(),
             domain_bundle_proposer,
@@ -4556,7 +4410,7 @@ async fn test_bad_receipt_chain() {
     // Produce more bundle with bad ER that use previous bad ER as parent
     let mut parent_bad_receipt_hash = bad_receipt_hash;
     let mut bad_receipt_descendants = vec![];
-    for _ in 0..10 {
+    for _ in 0..7 {
         let slot = ferdie.produce_slot();
         let bundle = bundle_producer
             .produce_bundle(
@@ -4612,7 +4466,7 @@ async fn test_bad_receipt_chain() {
     for receipt_hash in bad_receipt_descendants {
         assert!(ferdie.does_receipt_exist(receipt_hash).unwrap());
         assert!(runtime_api
-            .is_bad_er_pending_to_prune(ferdie_best_hash, GENESIS_DOMAIN_ID, receipt_hash)
+            .is_bad_er_pending_to_prune(ferdie_best_hash, EVM_DOMAIN_ID, receipt_hash)
             .unwrap());
     }
 }
@@ -4637,10 +4491,9 @@ async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_ch
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     // The domain transaction byte is non-zero on the consensus chain genesis but
@@ -4695,10 +4548,9 @@ async fn test_skip_duplicated_tx_in_previous_bundle() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let bob_pre_balance = alice.free_balance(Bob.to_account_id());
@@ -4771,10 +4623,9 @@ async fn test_handle_duplicated_tx_with_diff_nonce_in_previous_bundle() {
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     let nonce = alice.account_nonce();
@@ -4856,10 +4707,9 @@ async fn test_verify_mmr_proof_stateless() {
     // Run Alice (an evm domain)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -4933,10 +4783,9 @@ async fn test_equivocated_bundle_check() {
     // Run Alice (an evm domain)
     let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
-        Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -4991,7 +4840,7 @@ async fn test_equivocated_bundle_check() {
     let bundles = ferdie
         .client
         .runtime_api()
-        .extract_successful_bundles(block_hash, GENESIS_DOMAIN_ID, block_body)
+        .extract_successful_bundles(block_hash, EVM_DOMAIN_ID, block_body)
         .unwrap();
     assert_eq!(bundles, vec![opaque_bundle]);
 
@@ -5010,7 +4859,7 @@ async fn test_equivocated_bundle_check() {
     let bundles = ferdie
         .client
         .runtime_api()
-        .extract_successful_bundles(block_hash, GENESIS_DOMAIN_ID, block_body)
+        .extract_successful_bundles(block_hash, EVM_DOMAIN_ID, block_body)
         .unwrap();
     assert_eq!(bundles, vec![opaque_bundle]);
 
@@ -5044,4 +4893,440 @@ async fn test_equivocated_bundle_check() {
         .unwrap();
     assert_eq!(ferdie.client.info().best_number, pre_ferdie_best_number + 1);
     assert_eq!(alice.client.info().best_number, pre_alice_best_number);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_xdm_false_invalid_fraud_proof() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance through XDM
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: 10,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until a bundle that cantains the XDM
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+
+    // Produce a block that contains the XDM
+    let opaque_bundle = maybe_opaque_bundle.unwrap();
+    let bundle_extrinsic_root = opaque_bundle.extrinsics_root();
+    let slot = ferdie.produce_slot();
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bundle_to_tx(opaque_bundle)])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // produce another bundle that marks the XDM as invalid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::InvalidXDM(0),
+            bundle_extrinsic_root,
+        )];
+
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+                assert!(!proof.is_true_invalid_fraud_proof);
+                assert_eq!(extrinsic_index, 0);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    // Produce a block that contains the `bad_submit_bundle_tx`
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+}
+
+// TODO: this test is flaky and sometime hang forever in CI thus disable it temporary,
+// do investigate and fix it
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn test_stale_fork_xdm_true_invalid_fraud_proof() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie with Alice Key since that is the sudo key
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Sr25519Alice,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (an evm domain)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, Alice, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // add domain to consensus chain allowlist
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::update_consensus_chain_allowlist {
+                    update: ChainAllowlistUpdate::Add(ChainId::Domain(EVM_DOMAIN_ID)),
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send consensus chain allowlist update");
+
+    // produce another block so allowlist on consensus is updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // add consensus chain to domain chain allow list
+    ferdie
+        .construct_and_send_extrinsic_with(subspace_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_domain_update_chain_allowlist {
+                domain_id: EVM_DOMAIN_ID,
+                update: ChainAllowlistUpdate::Add(ChainId::Consensus),
+            },
+        ))
+        .await
+        .expect("Failed to construct and send domain chain allowlist update");
+
+    // produce another block so allowlist on  domain are updated
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // Open channel between the Consensus chain and EVM domains
+    alice
+        .construct_and_send_extrinsic(evm_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_chain_id: ChainId::Consensus,
+                params: pallet_messenger::InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                },
+            },
+        ))
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, {
+        alice
+            .get_open_channel_for_chain(ChainId::Consensus)
+            .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance through XDM
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                chain_id: ChainId::Domain(EVM_DOMAIN_ID),
+                account_id: AccountId20Converter::convert(Alice.to_account_id()),
+            },
+            amount: 10,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+
+    // Wait until a bundle that cantains the XDM
+    let mut maybe_opaque_bundle = None;
+    produce_blocks_until!(ferdie, alice, {
+        let alice_best_hash = alice.client.info().best_hash;
+        let (_, opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        for tx in opaque_bundle.extrinsics.iter() {
+            if alice
+                .client
+                .runtime_api()
+                .extract_xdm_mmr_proof(alice_best_hash, tx)
+                .unwrap()
+                .is_some()
+            {
+                maybe_opaque_bundle.replace(opaque_bundle);
+                break;
+            }
+        }
+        maybe_opaque_bundle.is_some()
+    })
+    .await
+    .unwrap();
+
+    let xdm = maybe_opaque_bundle.unwrap().extrinsics[0].clone();
+    let mmr_proof_constructed_at_number = alice
+        .client
+        .runtime_api()
+        .extract_xdm_mmr_proof(alice.client.info().best_hash, &xdm)
+        .unwrap()
+        .unwrap()
+        .consensus_block_number;
+
+    // Construct a fork and make it the best fork so the XDM mmr proof is in the stale fork
+    let best_number = ferdie.client.info().best_number;
+    let mut fork_block_hash = ferdie
+        .client
+        .hash(mmr_proof_constructed_at_number - 2)
+        .unwrap()
+        .unwrap();
+    for _ in 0..(best_number - mmr_proof_constructed_at_number) + 5 {
+        let slot = ferdie.produce_slot();
+        fork_block_hash = ferdie
+            .produce_block_with_slot_at(slot, fork_block_hash, Some(vec![]))
+            .await
+            .unwrap();
+    }
+    // The XDM should be rejected as its mmr proof is in the stale fork
+    let alice_best_hash = alice.client.info().best_hash;
+    let res = alice
+        .client
+        .runtime_api()
+        .validate_transaction(
+            alice_best_hash,
+            TransactionSource::External,
+            xdm.clone(),
+            alice_best_hash,
+        )
+        .unwrap();
+    assert_eq!(
+        res,
+        Err(TransactionValidityError::Invalid(
+            InvalidTransaction::BadProof
+        ))
+    );
+
+    // Construct an bundle that contain the invalid xdm and submit the bundle
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bundle_extrinsic_root, bad_submit_bundle_tx) = {
+        opaque_bundle.extrinsics.push(xdm);
+        let extrinsics = opaque_bundle
+            .extrinsics
+            .iter()
+            .map(|ext| ext.encode())
+            .collect();
+        opaque_bundle.sealed_header.header.bundle_extrinsics_root =
+            BlakeTwo256::ordered_trie_root(extrinsics, StateVersion::V1);
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (opaque_bundle.extrinsics_root(), bundle_to_tx(opaque_bundle))
+    };
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+
+    // produce another bundle that marks the invalid xdm as valid.
+    let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        assert!(bad_receipt.inboxed_bundles[0].is_invalid());
+        bad_receipt.inboxed_bundles =
+            vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Wait for the fraud proof that target the bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        if let FraudProofVariant::InvalidBundles(proof) = &fp.proof {
+            if let InvalidBundleType::InvalidXDM(extrinsic_index) = proof.invalid_bundle_type {
+                assert!(proof.is_true_invalid_fraud_proof);
+                assert_eq!(extrinsic_index, 0);
+                return true;
+            }
+        }
+        false
+    });
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    // Produce a block that contains the `bad_submit_bundle_tx`
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(
+            slot,
+            ferdie.client.info().best_hash,
+            Some(vec![bad_submit_bundle_tx])
+        ),
+        alice
+    )
+    .await
+    .unwrap();
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
+
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
+    ferdie.produce_blocks(1).await.unwrap();
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }

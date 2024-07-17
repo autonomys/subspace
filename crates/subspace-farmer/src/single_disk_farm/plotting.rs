@@ -1,6 +1,7 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
+use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
@@ -100,6 +101,7 @@ pub(super) struct SectorPlottingOptions<'a, NC> {
     pub(super) handlers: &'a Handlers,
     pub(super) global_mutex: &'a AsyncMutex<()>,
     pub(super) plotter: Arc<dyn Plotter>,
+    pub(super) metrics: Option<Arc<SingleDiskFarmMetrics>>,
 }
 
 pub(super) struct PlottingOptions<'a, NC> {
@@ -292,6 +294,7 @@ where
         handlers,
         global_mutex,
         plotter,
+        metrics,
     } = sector_plotting_options;
 
     let SectorToPlot {
@@ -309,6 +312,9 @@ where
         .cloned();
     let replotting = maybe_old_sector_metadata.is_some();
 
+    if let Some(metrics) = metrics {
+        metrics.sector_plotting.inc();
+    }
     let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Starting {
         progress,
         replotting,
@@ -361,7 +367,7 @@ where
         break farmer_app_info;
     };
 
-    let (progress_sender, mut progress_receiver) = mpsc::channel(0);
+    let (progress_sender, mut progress_receiver) = mpsc::channel(10);
 
     // Initiate plotting
     plotter
@@ -392,6 +398,7 @@ where
                 sectors_being_modified,
                 global_mutex,
                 progress_receiver,
+                metrics,
             )
             .await?
             {
@@ -408,7 +415,7 @@ where
                 }
             }
 
-            let (retry_progress_sender, retry_progress_receiver) = mpsc::channel(0);
+            let (retry_progress_sender, retry_progress_receiver) = mpsc::channel(10);
             progress_receiver = retry_progress_receiver;
 
             // Initiate plotting
@@ -464,10 +471,16 @@ where
 
         let sector_metadata = plotted_sector.sector_metadata.clone();
 
+        let time = start.elapsed();
+        if let Some(metrics) = metrics {
+            metrics.sector_plotting_time.observe(time.as_secs_f64());
+            metrics.sector_plotted.inc();
+            metrics.update_sector_state(SectorState::Plotted);
+        }
         let sector_state = SectorUpdate::Plotting(SectorPlottingDetails::Finished {
             plotted_sector,
             old_plotted_sector: maybe_old_plotted_sector,
-            time: start.elapsed(),
+            time,
         });
         handlers
             .sector_update
@@ -496,30 +509,45 @@ async fn plot_single_sector_internal(
     sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     global_mutex: &AsyncMutex<()>,
     mut progress_receiver: mpsc::Receiver<SectorPlottingProgress>,
+    metrics: &Option<Arc<SingleDiskFarmMetrics>>,
 ) -> Result<Result<PlottedSector, PlottingError>, PlottingError> {
     // Process plotting progress notifications
     let progress_processor_fut = async {
         while let Some(progress) = progress_receiver.next().await {
             match progress {
                 SectorPlottingProgress::Downloading => {
+                    if let Some(metrics) = metrics {
+                        metrics.sector_downloading.inc();
+                    }
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Downloading),
                     ));
                 }
                 SectorPlottingProgress::Downloaded(time) => {
+                    if let Some(metrics) = metrics {
+                        metrics.sector_downloading_time.observe(time.as_secs_f64());
+                        metrics.sector_downloaded.inc();
+                    }
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Downloaded(time)),
                     ));
                 }
                 SectorPlottingProgress::Encoding => {
+                    if let Some(metrics) = metrics {
+                        metrics.sector_encoding.inc();
+                    }
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Encoding),
                     ));
                 }
                 SectorPlottingProgress::Encoded(time) => {
+                    if let Some(metrics) = metrics {
+                        metrics.sector_encoding_time.observe(time.as_secs_f64());
+                        metrics.sector_encoded.inc();
+                    }
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Encoded(time)),
@@ -533,6 +561,9 @@ async fn plot_single_sector_internal(
                     return Ok((plotted_sector, sector));
                 }
                 SectorPlottingProgress::Error { error } => {
+                    if let Some(metrics) = metrics {
+                        metrics.sector_plotting_error.inc();
+                    }
                     handlers.sector_update.call_simple(&(
                         sector_index,
                         SectorUpdate::Plotting(SectorPlottingDetails::Error(error.clone())),
@@ -559,6 +590,9 @@ async fn plot_single_sector_internal(
         // Take mutex briefly to make sure writing is allowed right now
         global_mutex.lock().await;
 
+        if let Some(metrics) = metrics {
+            metrics.sector_writing.inc();
+        }
         handlers.sector_update.call_simple(&(
             sector_index,
             SectorUpdate::Plotting(SectorPlottingDetails::Writing),
@@ -568,6 +602,7 @@ async fn plot_single_sector_internal(
 
         {
             let sector_write_base_offset = u64::from(sector_index) * sector_size as u64;
+            let mut total_received = 0;
             let mut sector_write_offset = sector_write_base_offset;
             while let Some(maybe_sector_chunk) = sector.next().await {
                 let sector_chunk = match maybe_sector_chunk {
@@ -578,8 +613,19 @@ async fn plot_single_sector_internal(
                         ))));
                     }
                 };
+
+                total_received += sector_chunk.len();
+
+                if total_received > sector_size {
+                    return Ok(Err(PlottingError::LowLevel(format!(
+                        "Received too many bytes {total_received} instead of expected \
+                        {sector_size} bytes"
+                    ))));
+                }
+
                 let sector_chunk_size = sector_chunk.len() as u64;
 
+                trace!(sector_chunk_size, "Writing sector chunk to disk");
                 let write_fut = task::spawn_blocking({
                     let plot_file = Arc::clone(plot_file);
 
@@ -593,9 +639,9 @@ async fn plot_single_sector_internal(
             }
             drop(sector);
 
-            if (sector_write_offset - sector_write_base_offset) != sector_size as u64 {
+            if total_received != sector_size {
                 return Ok(Err(PlottingError::LowLevel(format!(
-                    "Received only {sector_write_offset} sector bytes out of {sector_size} \
+                    "Received only {total_received} sector bytes out of {sector_size} \
                     expected bytes"
                 ))));
             }
@@ -618,9 +664,14 @@ async fn plot_single_sector_internal(
             })??;
         }
 
+        let time = start.elapsed();
+        if let Some(metrics) = metrics {
+            metrics.sector_writing_time.observe(time.as_secs_f64());
+            metrics.sector_written.inc();
+        }
         handlers.sector_update.call_simple(&(
             sector_index,
-            SectorUpdate::Plotting(SectorPlottingDetails::Written(start.elapsed())),
+            SectorUpdate::Plotting(SectorPlottingDetails::Written(time)),
         ));
     }
 
@@ -640,6 +691,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     // Delay between segment header being acknowledged by farmer and potentially triggering
     // replotting
     pub(super) new_segment_processing_delay: Duration,
+    pub(super) metrics: Option<Arc<SingleDiskFarmMetrics>>,
 }
 
 pub(super) async fn plotting_scheduler<NC>(
@@ -659,6 +711,7 @@ where
         sectors_metadata,
         sectors_to_plot_sender,
         new_segment_processing_delay,
+        metrics,
     } = plotting_scheduler_options;
 
     // Create a proxy channel with atomically updatable last archived segment that
@@ -694,6 +747,7 @@ where
         sectors_metadata,
         archived_segments_receiver,
         sectors_to_plot_sender,
+        &metrics,
     );
 
     select! {
@@ -758,6 +812,7 @@ async fn send_plotting_notifications<NC>(
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     mut archived_segments_receiver: watch::Receiver<SegmentHeader>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    metrics: &Option<Arc<SingleDiskFarmMetrics>>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
@@ -816,14 +871,20 @@ where
                         "Sector expires soon #1, scheduling replotting"
                     );
 
-                    handlers.sector_update.call_simple(&(
-                        sector_index,
-                        SectorUpdate::Expiration(if expires_at <= segment_index {
-                            SectorExpirationDetails::Expired
-                        } else {
-                            SectorExpirationDetails::AboutToExpire
-                        }),
-                    ));
+                    let expiration_details = if expires_at <= segment_index {
+                        if let Some(metrics) = metrics {
+                            metrics.update_sector_state(SectorState::Expired);
+                        }
+                        SectorExpirationDetails::Expired
+                    } else {
+                        if let Some(metrics) = metrics {
+                            metrics.update_sector_state(SectorState::AboutToExpire);
+                        }
+                        SectorExpirationDetails::AboutToExpire
+                    };
+                    handlers
+                        .sector_update
+                        .call_simple(&(sector_index, SectorUpdate::Expiration(expiration_details)));
 
                     // Time to replot
                     sectors_to_replot.push(SectorToReplot {
@@ -886,13 +947,20 @@ where
                             "Sector expires soon #2, scheduling replotting"
                         );
 
+                        let expiration_details = if expires_at <= segment_index {
+                            if let Some(metrics) = metrics {
+                                metrics.update_sector_state(SectorState::Expired);
+                            }
+                            SectorExpirationDetails::Expired
+                        } else {
+                            if let Some(metrics) = metrics {
+                                metrics.update_sector_state(SectorState::AboutToExpire);
+                            }
+                            SectorExpirationDetails::AboutToExpire
+                        };
                         handlers.sector_update.call_simple(&(
                             sector_index,
-                            SectorUpdate::Expiration(if expires_at <= segment_index {
-                                SectorExpirationDetails::Expired
-                            } else {
-                                SectorExpirationDetails::AboutToExpire
-                            }),
+                            SectorUpdate::Expiration(expiration_details),
                         ));
 
                         // Time to replot

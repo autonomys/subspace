@@ -160,7 +160,7 @@ pub struct PotNextSlotInput {
 impl PotNextSlotInput {
     /// Derive next slot input while taking parameters change into account.
     ///
-    /// NOTE: base slot iterations doesn't have to be parent block, just something that is after
+    /// NOTE: `base_slot_iterations` doesn't have to be parent block, just something that is after
     /// prior parameters change (if any) took effect, in most cases this value corresponds to parent
     /// block's slot.
     pub fn derive(

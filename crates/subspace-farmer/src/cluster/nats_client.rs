@@ -385,6 +385,7 @@ struct Inner {
     client: Client,
     request_retry_backoff_policy: ExponentialBackoff,
     approximate_max_message_size: usize,
+    max_message_size: usize,
 }
 
 /// NATS client wrapper that can be used to interact with other Subspace-specific clients
@@ -438,6 +439,8 @@ impl NatsClient {
             request_retry_backoff_policy,
             // Allow up to 90%, the rest will be wrapper data structures, etc.
             approximate_max_message_size: max_payload * 9 / 10,
+            // Allow up to 90%, the rest will be wrapper data structures, etc.
+            max_message_size: max_payload,
         };
 
         Ok(Self {
@@ -607,8 +610,13 @@ impl NatsClient {
             return;
         };
 
+        let message_payload_size = message.payload.len();
         let request = match Request::decode(&mut message.payload.as_ref()) {
-            Ok(request) => request,
+            Ok(request) => {
+                // Free allocation early
+                drop(message.payload);
+                request
+            }
             Err(error) => {
                 warn!(
                     request_type = %type_name::<Request>(),
@@ -620,12 +628,22 @@ impl NatsClient {
             }
         };
 
-        trace!(
-            request_type = %type_name::<Request>(),
-            ?request,
-            %reply_subject,
-            "Processing request"
-        );
+        // Avoid printing large messages in logs
+        if message_payload_size > 1024 {
+            trace!(
+                request_type = %type_name::<Request>(),
+                %reply_subject,
+                "Processing request"
+            );
+        } else {
+            trace!(
+                request_type = %type_name::<Request>(),
+                ?request,
+                %reply_subject,
+                "Processing request"
+            );
+        }
+
         if let Some(response) = process(request).await
             && let Err(error) = self.publish(reply_subject, response.encode().into()).await
         {
@@ -713,8 +731,9 @@ impl NatsClient {
                 return;
             }
         };
-        let approximate_max_message_size = self.approximate_max_message_size();
-        let max_responses_per_message = approximate_max_message_size / first_element.encoded_size();
+        let max_message_size = self.inner.max_message_size;
+        let max_responses_per_message =
+            self.approximate_max_message_size() / first_element.encoded_size();
 
         let ack_subject = format!("stream-response-ack.{}", Ulid::new());
         let mut ack_subscription = match self.subscribe(ack_subject.clone()).await {
@@ -757,7 +776,7 @@ impl NatsClient {
                 buffer.push_back(element);
             }
 
-            while !buffer.is_empty() {
+            loop {
                 let is_done = response_stream.is_done() && overflow_buffer.is_empty();
                 let num_messages = buffer.len();
                 let response = if is_done {
@@ -773,11 +792,21 @@ impl NatsClient {
                     }
                 };
                 let encoded_response = response.encode();
+                let encoded_response_len = encoded_response.len();
                 // When encoded response is too large, remove one of the responses from it and try
                 // again
-                if encoded_response.len() > approximate_max_message_size {
+                if encoded_response_len > max_message_size {
                     buffer = response.into();
                     if let Some(element) = buffer.pop_back() {
+                        if buffer.is_empty() {
+                            error!(
+                                ?element,
+                                encoded_response_len,
+                                max_message_size,
+                                "Element was too large to fit into NATS message, this is an \
+                                implementation bug"
+                            );
+                        }
                         overflow_buffer.push_front(element);
                         continue;
                     } else {
@@ -895,6 +924,11 @@ impl NatsClient {
                 }
 
                 index += 1;
+
+                // Unless `overflow_buffer` wasn't empty abort inner loop
+                if buffer.is_empty() {
+                    break;
+                }
             }
         }
     }

@@ -395,7 +395,7 @@ where
     let storage_key = match storage_key_cache.get(&(runtime_hash, self_chain_id, channel_id)) {
         None => {
             let domain_stateless_runtime =
-                StatelessRuntime::<Block, _>::new(executor.clone(), domain_runtime.into());
+                StatelessRuntime::<CBlock, Block, _>::new(executor.clone(), domain_runtime.into());
             let storage_key = StorageKey(
                 domain_stateless_runtime.channel_storage_key(self_chain_id, channel_id)?,
             );

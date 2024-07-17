@@ -238,6 +238,7 @@ struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     backend: Arc<FullBackend>,
     pot_verifier: PotVerifier,
     domains_executor: Arc<sc_domains::RuntimeExecutor>,
+    confirmation_depth_k: BlockNumber,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
@@ -259,13 +260,14 @@ where
         + DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, Block::Hash>,
 {
     fn extensions_for(
         &self,
         _block_hash: Block::Hash,
         _block_number: NumberFor<Block>,
     ) -> Extensions {
+        let confirmation_depth_k = self.confirmation_depth_k;
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
         exts.register(PosExtension::new::<PosTable>());
@@ -391,16 +393,23 @@ where
             FraudProofHostFunctionsImpl::<_, _, DomainBlock, _, _>::new(
                 self.client.clone(),
                 self.domains_executor.clone(),
-                |client, executor| {
+                move |client, executor| {
                     let extension_factory =
-                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(client, executor);
+                        DomainsExtensionFactory::<_, Block, DomainBlock, _>::new(
+                            client,
+                            executor,
+                            confirmation_depth_k,
+                        );
                     Box::new(extension_factory) as Box<dyn ExtensionsFactory<DomainBlock>>
                 },
             ),
         )));
 
         exts.register(SubspaceMmrExtension::new(Arc::new(
-            SubspaceMmrHostFunctionsImpl::<Block, _>::new(self.client.clone()),
+            SubspaceMmrHostFunctionsImpl::<Block, _>::new(
+                self.client.clone(),
+                confirmation_depth_k,
+            ),
         )));
 
         exts.register(MessengerExtension::new(Arc::new(
@@ -470,7 +479,7 @@ where
         + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -497,6 +506,10 @@ where
 
     let client = Arc::new(client);
     let client_info = client.info();
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client_info.best_hash)
+        .map_err(|error| ServiceError::Application(error.into()))?;
 
     let pot_verifier = PotVerifier::new(
         PotSeed::from_genesis(client_info.genesis_hash.as_ref(), pot_external_entropy),
@@ -511,6 +524,7 @@ where
             pot_verifier: pot_verifier.clone(),
             domains_executor: Arc::new(domains_executor),
             backend: backend.clone(),
+            confirmation_depth_k: chain_constants.confirmation_depth_k(),
             _pos_table: PhantomData,
         });
 
@@ -522,11 +536,6 @@ where
     });
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
-
-    let chain_constants = client
-        .runtime_api()
-        .chain_constants(client_info.best_hash)
-        .map_err(|error| ServiceError::Application(error.into()))?;
 
     let segment_headers_store = tokio::task::block_in_place(|| {
         SegmentHeadersStore::new(client.clone(), chain_constants.confirmation_depth_k())
@@ -638,7 +647,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + SubspaceApi<Block, FarmerPublicKey>
         + MmrApi<Block, H256, NumberFor<Block>>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -701,7 +710,7 @@ where
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>
         + MmrApi<Block, Hash, BlockNumber>
-        + MessengerApi<Block>,
+        + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
     let PartialComponents {
         client,

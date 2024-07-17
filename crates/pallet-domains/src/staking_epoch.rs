@@ -526,8 +526,9 @@ pub(crate) fn do_slash_operator<T: Config>(
 mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
-        Deposits, DomainStakingSummary, LastEpochStakingDistribution, LatestConfirmedDomainBlock,
-        NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, Withdrawals,
+        Deposits, DomainStakingSummary, LastEpochStakingDistribution,
+        LatestConfirmedDomainExecutionReceipt, NominatorCount, OperatorIdOwner, OperatorSigningKey,
+        Operators, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -538,13 +539,13 @@ mod tests {
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, Test};
-    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
+    use crate::{BalanceOf, Config, ExecutionReceiptOf, HoldIdentifier, NominatorId};
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
     use sp_core::{Pair, U256};
     use sp_domains::{
-        ConfirmedDomainBlock, DomainId, OperatorPair, OperatorSigningKeyProofOfOwnershipData,
+        BlockFees, DomainId, OperatorPair, OperatorSigningKeyProofOfOwnershipData, Transfers,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
@@ -618,14 +619,21 @@ mod tests {
 
             // de-register operator
             let domain_block_number = 100;
-            LatestConfirmedDomainBlock::<Test>::insert(
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                 domain_id,
-                ConfirmedDomainBlock {
-                    block_number: domain_block_number,
-                    block_hash: Default::default(),
-                    parent_block_receipt_hash: Default::default(),
-                    state_root: Default::default(),
-                    extrinsics_root: Default::default(),
+                ExecutionReceiptOf::<Test> {
+                    domain_block_number,
+                    domain_block_hash: Default::default(),
+                    domain_block_extrinsic_root: Default::default(),
+                    parent_domain_block_receipt_hash: Default::default(),
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    inboxed_bundles: vec![],
+                    final_state_root: Default::default(),
+                    execution_trace: vec![],
+                    execution_trace_root: Default::default(),
+                    block_fees: BlockFees::default(),
+                    transfers: Transfers::default(),
                 },
             );
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
@@ -636,14 +644,21 @@ mod tests {
             // staking withdrawal is 5 blocks,
             // to unlock funds, confirmed block should be atleast 105
             let domain_block_number = 105;
-            LatestConfirmedDomainBlock::<Test>::insert(
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                 domain_id,
-                ConfirmedDomainBlock {
-                    block_number: domain_block_number,
-                    block_hash: Default::default(),
-                    parent_block_receipt_hash: Default::default(),
-                    state_root: Default::default(),
-                    extrinsics_root: Default::default(),
+                ExecutionReceiptOf::<Test> {
+                    domain_block_number,
+                    domain_block_hash: Default::default(),
+                    domain_block_extrinsic_root: Default::default(),
+                    parent_domain_block_receipt_hash: Default::default(),
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    inboxed_bundles: vec![],
+                    final_state_root: Default::default(),
+                    execution_trace: vec![],
+                    execution_trace_root: Default::default(),
+                    block_fees: BlockFees::default(),
+                    transfers: Transfers::default(),
                 },
             );
 

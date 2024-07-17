@@ -22,10 +22,11 @@ use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, DomainRuntimeCodeAt, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
     FraudProofVariant, InvalidBlockFeesProof, InvalidBundlesProof, InvalidBundlesProofData,
     InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTransfersProof, ValidBundleDigest, ValidBundleProof,
+    InvalidTransfersProof, MmrRootProof, ValidBundleDigest, ValidBundleProof,
 };
 use sp_domains_fraud_proof::storage_proof::{self, *};
 use sp_domains_fraud_proof::FraudProofApi;
+use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
@@ -118,8 +119,10 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api:
-        sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block> + DomainCoreApi<Block>,
+    Client::Api: sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<Block>
+        + DomainCoreApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
@@ -703,6 +706,92 @@ where
                     .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
 
                     InvalidBundlesProofData::Extrinsic(extrinsic_proof)
+                }
+                InvalidBundleType::InvalidXDM(extrinsic_index) => {
+                    let messenger_api_version = self
+                        .client
+                        .runtime_api()
+                        .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(
+                            local_receipt.domain_block_hash,
+                        )?
+                        .ok_or_else(|| {
+                            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                                format!(
+                                    "MessengerApi not found at: {:?}",
+                                    local_receipt.domain_block_hash
+                                )
+                                .into(),
+                            ))
+                        })?;
+
+                    let encoded_extrinsic = bundle.extrinsics[extrinsic_index as usize].encode();
+                    let extrinsic =
+                        <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                            .map_err(|decoding_error| {
+                                FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
+                                    extrinsic_index: extrinsic_index as usize,
+                                    decoding_error,
+                                }
+                            })?;
+
+                    let maybe_xdm_mmr_proof = if messenger_api_version >= 4 {
+                        self.client
+                            .runtime_api()
+                            .extract_xdm_mmr_proof(local_receipt.domain_block_hash, &extrinsic)?
+                    } else {
+                        None
+                    };
+
+                    let mmr_root_proof = match maybe_xdm_mmr_proof {
+                        // `None` this is not an XDM so not need to generate mmr root proof
+                        None => None,
+                        Some(xdm_mmr_proof) => {
+                            let xdm_mmr_proof_constructed_at_number =
+                                xdm_mmr_proof.consensus_block_number;
+
+                            // The MMR leaf is added to the state at the next block
+                            let mmr_root_state_added_at_number =
+                                xdm_mmr_proof_constructed_at_number + One::one();
+                            let mmr_root_state_added_at_hash = self.consensus_client.hash(mmr_root_state_added_at_number)?.ok_or_else(|| {
+                                sp_blockchain::Error::Backend(format!(
+                                    "Consensus block hash for #{mmr_root_state_added_at_number:?} not found",
+                                ))
+                            })?;
+
+                            let mmr_proof = sc_domains::generate_mmr_proof(
+                                &self.consensus_client,
+                                mmr_root_state_added_at_number,
+                            )?;
+                            let mmr_root_storage_proof = MmrRootStorageProof::generate(
+                                self.consensus_client.as_ref(),
+                                mmr_root_state_added_at_hash,
+                                xdm_mmr_proof_constructed_at_number,
+                                &self.storage_key_provider,
+                            )?;
+                            Some(MmrRootProof {
+                                mmr_proof,
+                                mmr_root_storage_proof,
+                            })
+                        }
+                    };
+
+                    let extrinsic_proof = {
+                        let encoded_extrinsics: Vec<_> =
+                            bundle.extrinsics.iter().map(Encode::encode).collect();
+
+                        StorageProofProvider::<
+                            LayoutV1<HeaderHashingFor<Block::Header>>,
+                        >::generate_enumerated_proof_of_inclusion(
+                            encoded_extrinsics.as_slice(),
+                            extrinsic_index,
+                        )
+                        .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?
+                    };
+
+                    InvalidBundlesProofData::InvalidXDMProofData {
+                        extrinsic_proof,
+                        mmr_root_proof,
+                    }
                 }
             }
         };

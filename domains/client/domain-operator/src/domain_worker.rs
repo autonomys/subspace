@@ -79,7 +79,7 @@ pub(super) async fn start_worker<
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + MessengerApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block>
         + TaggedTransactionQueue<Block>,
@@ -91,7 +91,7 @@ pub(super) async fn start_worker<
         + BlockchainEvents<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
-        + MessengerApi<CBlock>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,

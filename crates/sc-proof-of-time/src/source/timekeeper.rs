@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use subspace_proof_of_time::PotError;
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// Proof of time slot information
 pub(super) struct TimekeeperProof {
@@ -32,6 +32,11 @@ pub(super) fn run_timekeeper(
     let mut next_slot_input = state.next_slot_input(Ordering::Acquire);
 
     loop {
+        trace!(
+            "Proving for slot {} with {} iterations",
+            next_slot_input.slot,
+            next_slot_input.slot_iterations
+        );
         let checkpoints =
             subspace_proof_of_time::prove(next_slot_input.seed, next_slot_input.slot_iterations)?;
 

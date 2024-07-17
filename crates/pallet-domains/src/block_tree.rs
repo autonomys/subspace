@@ -7,7 +7,7 @@ use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords, ExecutionInbox,
     ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor,
-    LatestConfirmedDomainBlock, LatestSubmittedER, Pallet, ReceiptHashFor,
+    LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, Pallet, ReceiptHashFor,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -18,8 +18,8 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    ChainId, ConfirmedDomainBlock, DomainId, DomainsTransfersTracker, ExecutionReceipt,
-    OnChainRewards, OperatorId, Transfers,
+    ChainId, DomainId, DomainsTransfersTracker, ExecutionReceipt, OnChainRewards, OperatorId,
+    Transfers,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
@@ -371,6 +371,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // its receipt's `extrinsics_root` anymore.
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
 
+                LatestConfirmedDomainExecutionReceipt::<T>::insert(
+                    domain_id,
+                    execution_receipt.clone(),
+                );
+
                 ConsensusBlockHash::<T>::remove(
                     domain_id,
                     execution_receipt.consensus_block_number,
@@ -404,18 +409,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     .for_each(|(chain_id, reward)| {
                         T::OnChainRewards::on_chain_rewards(chain_id, reward)
                     });
-
-                LatestConfirmedDomainBlock::<T>::insert(
-                    domain_id,
-                    ConfirmedDomainBlock {
-                        block_number: to_prune,
-                        block_hash: execution_receipt.domain_block_hash,
-                        parent_block_receipt_hash: execution_receipt
-                            .parent_domain_block_receipt_hash,
-                        state_root: execution_receipt.final_state_root,
-                        extrinsics_root: execution_receipt.domain_block_extrinsic_root,
-                    },
-                );
 
                 return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
@@ -559,16 +552,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     let er_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = genesis_receipt.domain_block_number;
 
-    LatestConfirmedDomainBlock::<T>::insert(
-        domain_id,
-        ConfirmedDomainBlock {
-            block_number: domain_block_number,
-            block_hash: genesis_receipt.domain_block_hash,
-            parent_block_receipt_hash: Default::default(),
-            state_root: genesis_receipt.final_state_root,
-            extrinsics_root: genesis_receipt.domain_block_extrinsic_root,
-        },
-    );
+    LatestConfirmedDomainExecutionReceipt::<T>::insert(domain_id, genesis_receipt.clone());
 
     let block_tree_node = BlockTreeNode {
         execution_receipt: genesis_receipt,
@@ -616,10 +600,12 @@ mod tests {
     use crate::tests::{
         create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
         extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
-        register_genesis_domain, run_to_block, BlockTreePruningDepth, Test,
+        register_genesis_domain, run_to_block, BlockTreePruningDepth, Domains, Test,
     };
+    use crate::FrozenDomains;
     use frame_support::dispatch::RawOrigin;
     use frame_support::{assert_err, assert_ok};
+    use frame_system::Origin;
     use sp_core::H256;
     use sp_domains::{BundleDigest, InboxedBundle, InvalidBundleType};
 
@@ -969,6 +955,40 @@ mod tests {
             assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
             assert!(BlockTreeNodes::<Test>::get(new_branch_receipt_hash).is_none());
         });
+    }
+
+    #[test]
+    fn test_prune_domain_execution_receipt() {
+        let creator = 0u128;
+        let operator_id = 1u64;
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            let _next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+
+            // freeze domain
+            assert!(!FrozenDomains::<Test>::get().contains(&domain_id));
+            Domains::freeze_domain(Origin::<Test>::Root.into(), domain_id).unwrap();
+            assert!(FrozenDomains::<Test>::get().contains(&domain_id));
+
+            // prune execution recept
+            let head_receipt_hash = BlockTree::<Test>::get(domain_id, head_receipt_number).unwrap();
+            Domains::prune_domain_execution_receipt(
+                Origin::<Test>::Root.into(),
+                domain_id,
+                head_receipt_hash,
+            )
+            .unwrap();
+            assert_eq!(
+                HeadReceiptNumber::<Test>::get(domain_id),
+                head_receipt_number - 1
+            );
+
+            // unfreeze domain
+            Domains::unfreeze_domain(Origin::<Test>::Root.into(), domain_id).unwrap();
+            assert!(!FrozenDomains::<Test>::get().contains(&domain_id));
+        })
     }
 
     #[test]

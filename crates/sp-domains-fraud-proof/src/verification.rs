@@ -3,7 +3,7 @@ extern crate alloc;
 
 use crate::fraud_proof::{
     InvalidBundlesProof, InvalidBundlesProofData, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, ValidBundleProof, VerificationError,
+    InvalidStateTransitionProof, MmrRootProof, ValidBundleProof, VerificationError,
 };
 use crate::storage_proof::{self, *};
 use crate::{
@@ -30,6 +30,7 @@ use sp_runtime::traits::{
     Block as BlockT, Hash, Header as HeaderT, NumberFor, UniqueSaturatedInto,
 };
 use sp_runtime::{OpaqueExtrinsic, SaturatedConversion};
+use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::{Randomness, U256};
 use trie_db::node::Value;
@@ -60,7 +61,7 @@ where
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
     Hashing: Hasher<Out = CBlock::Hash>,
-    SKP: FraudProofStorageKeyProvider,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -198,7 +199,7 @@ where
     CBlock::Hash: Into<H256>,
     DomainHeader: HeaderT,
     DomainHeader::Hash: Into<H256> + PartialEq + Copy,
-    SKP: FraudProofStorageKeyProvider,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
 {
     let ValidBundleProof {
         bundle_with_proof, ..
@@ -514,7 +515,7 @@ fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
     })
 }
 
-pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
+pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, MmrHash, Balance, SKP, MPV>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
@@ -532,6 +533,7 @@ pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance, SKP>(
     invalid_bundles_fraud_proof: &InvalidBundlesProof<
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
+        MmrHash,
         DomainHeader,
     >,
     domain_id: DomainId,
@@ -543,7 +545,9 @@ where
     DomainHeader: HeaderT,
     CBlock::Hash: Into<H256>,
     DomainHeader::Hash: Into<H256>,
-    SKP: FraudProofStorageKeyProvider,
+    MmrHash: Decode + Clone,
+    SKP: FraudProofStorageKeyProvider<NumberFor<CBlock>>,
+    MPV: MmrProofVerifier<MmrHash, NumberFor<CBlock>, CBlock::Hash>,
 {
     let InvalidBundlesProof {
         bundle_index,
@@ -574,6 +578,7 @@ where
             bundle_with_proof.verify::<CBlock, SKP>(domain_id, &state_root)?;
         }
         InvalidBundlesProofData::Extrinsic(_) => {}
+        InvalidBundlesProofData::InvalidXDMProofData { .. } => {}
     }
 
     // Fast path to check if the fraud proof is targetting a bad receipt that claim a non-exist extrinsic
@@ -730,6 +735,75 @@ where
             let is_bundle_weight_correct = estimated_bundle_weight == bundle_header_weight;
 
             if is_bundle_weight_correct == is_true_invalid_fraud_proof {
+                return Err(VerificationError::InvalidProof);
+            }
+            Ok(())
+        }
+        InvalidBundleType::InvalidXDM(extrinsic_index) => {
+            let (extrinsic_proof, maybe_mmr_root_proof) = match proof_data {
+                InvalidBundlesProofData::InvalidXDMProofData {
+                    extrinsic_proof,
+                    mmr_root_proof,
+                } => (extrinsic_proof.clone(), mmr_root_proof.clone()),
+                _ => return Err(VerificationError::UnexpectedInvalidBundleProofData),
+            };
+
+            let opaque_extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                bundle_extrinsic_root,
+                extrinsic_proof,
+            )?;
+
+            let maybe_xdm_mmr_proof = fraud_proof_runtime_interface::extract_xdm_mmr_proof(
+                domain_runtime_code,
+                opaque_extrinsic.encode(),
+            )
+            .ok_or(VerificationError::FailedToGetExtractXdmMmrProof)?;
+
+            let (mmr_root_proof, consensus_chain_mmr_leaf_proof) = match maybe_xdm_mmr_proof {
+                Some(encoded_xdm_mmr_proof) => {
+                    let consensus_chain_mmr_leaf_proof: ConsensusChainMmrLeafProof<
+                        NumberFor<CBlock>,
+                        CBlock::Hash,
+                        MmrHash,
+                    > = Decode::decode(&mut encoded_xdm_mmr_proof.as_ref())
+                        .map_err(|_| VerificationError::FailedToDecodeXdmMmrProof)?;
+                    let mmr_root_proof = maybe_mmr_root_proof
+                        .ok_or(VerificationError::UnexpectedInvalidBundleProofData)?;
+                    (mmr_root_proof, consensus_chain_mmr_leaf_proof)
+                }
+                None => {
+                    // `None` means this is not an XDM so this fraud proof has to be a fasle invalid fraud proof
+                    // to be valid, also in this case the `maybe_mmr_root_proof` should `None` else it is also invalid
+                    return if is_true_invalid_fraud_proof || maybe_mmr_root_proof.is_some() {
+                        Err(VerificationError::InvalidProof)
+                    } else {
+                        Ok(())
+                    };
+                }
+            };
+
+            let mmr_root = {
+                let MmrRootProof {
+                    mmr_proof,
+                    mmr_root_storage_proof,
+                } = mmr_root_proof;
+
+                let leaf_data = MPV::verify_proof_and_extract_leaf(mmr_proof)
+                    .ok_or(VerificationError::BadMmrProof)?;
+
+                <MmrRootStorageProof<MmrHash> as BasicStorageProof<CBlock>>::verify::<SKP>(
+                    mmr_root_storage_proof,
+                    consensus_chain_mmr_leaf_proof.consensus_block_number,
+                    &leaf_data.state_root(),
+                )?
+            };
+
+            // Verify the original XDM mmr proof stateless to get the original result
+            let is_valid_mmr_proof =
+                MPV::verify_proof_stateless(mmr_root, consensus_chain_mmr_leaf_proof).is_some();
+
+            if is_valid_mmr_proof == is_true_invalid_fraud_proof {
                 return Err(VerificationError::InvalidProof);
             }
             Ok(())

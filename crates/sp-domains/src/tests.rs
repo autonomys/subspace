@@ -230,6 +230,7 @@ fn test_invalid_bundle_type_checking_order() {
             1 => InvalidBundleType::UndecodableTx(extrinsic_index),
             2 => InvalidBundleType::OutOfRangeTx(extrinsic_index),
             3 => InvalidBundleType::InherentExtrinsic(extrinsic_index),
+            4 => InvalidBundleType::InvalidXDM(extrinsic_index),
             5 => InvalidBundleType::IllegalTx(extrinsic_index),
             6 => InvalidBundleType::InvalidBundleWeight,
             _ => unreachable!(),

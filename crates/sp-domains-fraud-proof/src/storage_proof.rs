@@ -13,6 +13,7 @@ use sp_domains::{
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
@@ -48,10 +49,11 @@ pub enum VerificationError {
     TransfersStorageProof(StorageProofVerificationError),
     ExtrinsicStorageProof(StorageProofVerificationError),
     DomainSudoCallStorageProof(StorageProofVerificationError),
+    MmrRootStorageProof(StorageProofVerificationError),
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub enum FraudProofStorageKeyRequest {
+pub enum FraudProofStorageKeyRequest<Number> {
     BlockRandomness,
     Timestamp,
     SuccessfulBundles(DomainId),
@@ -61,9 +63,10 @@ pub enum FraudProofStorageKeyRequest {
     RuntimeRegistry(RuntimeId),
     DynamicCostOfStorage,
     DomainSudoCall(DomainId),
+    MmrRoot(Number),
 }
 
-impl FraudProofStorageKeyRequest {
+impl<Number> FraudProofStorageKeyRequest<Number> {
     fn into_error(self, err: StorageProofVerificationError) -> VerificationError {
         match self {
             Self::BlockRandomness => VerificationError::BlockRandomnessStorageProof(err),
@@ -79,24 +82,25 @@ impl FraudProofStorageKeyRequest {
             FraudProofStorageKeyRequest::DomainSudoCall(_) => {
                 VerificationError::DomainSudoCallStorageProof(err)
             }
+            Self::MmrRoot(_) => VerificationError::MmrRootStorageProof(err),
         }
     }
 }
 
 /// Trait to get storage keys in the runtime i.e. when verifying the storage proof
-pub trait FraudProofStorageKeyProvider {
-    fn storage_key(req: FraudProofStorageKeyRequest) -> Vec<u8>;
+pub trait FraudProofStorageKeyProvider<Number> {
+    fn storage_key(req: FraudProofStorageKeyRequest<Number>) -> Vec<u8>;
 }
 
-impl FraudProofStorageKeyProvider for () {
-    fn storage_key(_req: FraudProofStorageKeyRequest) -> Vec<u8> {
+impl<Number> FraudProofStorageKeyProvider<Number> for () {
+    fn storage_key(_req: FraudProofStorageKeyRequest<Number>) -> Vec<u8> {
         Default::default()
     }
 }
 
 /// Trait to get storage keys in the client i.e. when generating the storage proof
-pub trait FraudProofStorageKeyProviderInstance {
-    fn storage_key(&self, req: FraudProofStorageKeyRequest) -> Option<Vec<u8>>;
+pub trait FraudProofStorageKeyProviderInstance<Number> {
+    fn storage_key(&self, req: FraudProofStorageKeyRequest<Number>) -> Option<Vec<u8>>;
 }
 
 macro_rules! impl_storage_proof {
@@ -120,10 +124,13 @@ pub trait BasicStorageProof<Block: BlockT>:
     type StorageValue: Decode;
     type Key = ();
 
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>>;
 
     #[cfg(feature = "std")]
-    fn generate<PP: ProofProvider<Block>, SKPI: FraudProofStorageKeyProviderInstance>(
+    fn generate<
+        PP: ProofProvider<Block>,
+        SKPI: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
+    >(
         proof_provider: &PP,
         block_hash: Block::Hash,
         key: Self::Key,
@@ -138,7 +145,7 @@ pub trait BasicStorageProof<Block: BlockT>:
         Ok(storage_proof.into())
     }
 
-    fn verify<SKP: FraudProofStorageKeyProvider>(
+    fn verify<SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
         self,
         key: Self::Key,
         state_root: &Block::Hash,
@@ -161,7 +168,7 @@ impl_storage_proof!(SuccessfulBundlesProof);
 impl<Block: BlockT> BasicStorageProof<Block> for SuccessfulBundlesProof {
     type StorageValue = Vec<H256>;
     type Key = DomainId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::SuccessfulBundles(key)
     }
 }
@@ -172,7 +179,7 @@ pub struct BlockRandomnessProof(StorageProof);
 impl_storage_proof!(BlockRandomnessProof);
 impl<Block: BlockT> BasicStorageProof<Block> for BlockRandomnessProof {
     type StorageValue = Randomness;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::BlockRandomness
     }
 }
@@ -184,7 +191,7 @@ impl_storage_proof!(DomainChainsAllowlistUpdateStorageProof);
 impl<Block: BlockT> BasicStorageProof<Block> for DomainChainsAllowlistUpdateStorageProof {
     type StorageValue = DomainAllowlistUpdates;
     type Key = DomainId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::DomainAllowlistUpdates(key)
     }
 }
@@ -195,7 +202,7 @@ pub struct TimestampStorageProof(StorageProof);
 impl_storage_proof!(TimestampStorageProof);
 impl<Block: BlockT> BasicStorageProof<Block> for TimestampStorageProof {
     type StorageValue = Moment;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::Timestamp
     }
 }
@@ -206,7 +213,7 @@ pub struct DynamicCostOfStorageProof(StorageProof);
 impl_storage_proof!(DynamicCostOfStorageProof);
 impl<Block: BlockT> BasicStorageProof<Block> for DynamicCostOfStorageProof {
     type StorageValue = bool;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::DynamicCostOfStorage
     }
 }
@@ -217,7 +224,7 @@ pub struct ConsensusTransactionByteFeeProof(StorageProof);
 impl_storage_proof!(ConsensusTransactionByteFeeProof);
 impl<Block: BlockT> BasicStorageProof<Block> for ConsensusTransactionByteFeeProof {
     type StorageValue = BlockTransactionByteFee<Balance>;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::TransactionByteFee
     }
 }
@@ -228,7 +235,7 @@ pub struct BlockDigestProof(StorageProof);
 impl_storage_proof!(BlockDigestProof);
 impl<Block: BlockT> BasicStorageProof<Block> for BlockDigestProof {
     type StorageValue = Digest;
-    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(_key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::BlockDigest
     }
 }
@@ -240,7 +247,7 @@ impl_storage_proof!(DomainSudoCallStorageProof);
 impl<Block: BlockT> BasicStorageProof<Block> for DomainSudoCallStorageProof {
     type StorageValue = DomainSudoCall;
     type Key = DomainId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::DomainSudoCall(key)
     }
 }
@@ -260,7 +267,7 @@ impl_storage_proof!(DomainRuntimeCodeProof);
 impl<Block: BlockT> BasicStorageProof<Block> for DomainRuntimeCodeProof {
     type StorageValue = RuntimeObject<NumberFor<Block>, Block::Hash>;
     type Key = RuntimeId;
-    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest {
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::RuntimeRegistry(key)
     }
 }
@@ -284,7 +291,7 @@ where
     pub fn generate<
         Block: BlockT,
         PP: ProofProvider<Block>,
-        SKP: FraudProofStorageKeyProviderInstance,
+        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
     >(
         storage_key_provider: &SKP,
         proof_provider: &PP,
@@ -308,7 +315,7 @@ where
     }
 
     /// Verify if the `bundle` does commit to the given `state_root`
-    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider>(
+    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
         &self,
         domain_id: DomainId,
         state_root: &Block::Hash,
@@ -343,7 +350,7 @@ impl MaybeDomainRuntimeUpgradedProof {
     pub fn generate<
         Block: BlockT,
         PP: ProofProvider<Block>,
-        SKP: FraudProofStorageKeyProviderInstance,
+        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
     >(
         storage_key_provider: &SKP,
         proof_provider: &PP,
@@ -368,7 +375,7 @@ impl MaybeDomainRuntimeUpgradedProof {
         })
     }
 
-    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider>(
+    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
         &self,
         runtime_id: RuntimeId,
         state_root: &Block::Hash,
@@ -422,7 +429,7 @@ impl DomainInherentExtrinsicDataProof {
     pub fn generate<
         Block: BlockT,
         PP: ProofProvider<Block>,
-        SKP: FraudProofStorageKeyProviderInstance,
+        SKP: FraudProofStorageKeyProviderInstance<NumberFor<Block>>,
     >(
         storage_key_provider: &SKP,
         proof_provider: &PP,
@@ -483,7 +490,7 @@ impl DomainInherentExtrinsicDataProof {
         })
     }
 
-    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider>(
+    pub fn verify<Block: BlockT, SKP: FraudProofStorageKeyProvider<NumberFor<Block>>>(
         &self,
         domain_id: DomainId,
         runtime_id: RuntimeId,
@@ -546,5 +553,36 @@ impl DomainInherentExtrinsicDataProof {
             maybe_sudo_runtime_call: domain_sudo_call
                 .and_then(|domain_sudo_call| domain_sudo_call.maybe_call),
         })
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct MmrRootStorageProof<MmrHash> {
+    storage_proof: StorageProof,
+    _phantom_data: PhantomData<MmrHash>,
+}
+
+impl<MmrHash> From<StorageProof> for MmrRootStorageProof<MmrHash> {
+    fn from(storage_proof: StorageProof) -> Self {
+        MmrRootStorageProof {
+            storage_proof,
+            _phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<MmrHash> From<MmrRootStorageProof<MmrHash>> for StorageProof {
+    fn from(p: MmrRootStorageProof<MmrHash>) -> StorageProof {
+        p.storage_proof
+    }
+}
+
+impl<Block: BlockT, MmrHash: Decode + Clone> BasicStorageProof<Block>
+    for MmrRootStorageProof<MmrHash>
+{
+    type StorageValue = MmrHash;
+    type Key = NumberFor<Block>;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::MmrRoot(key)
     }
 }
