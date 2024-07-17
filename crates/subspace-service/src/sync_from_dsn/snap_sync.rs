@@ -125,7 +125,7 @@ where
                     "Can't get segment header from the store: {last_segment_index}"
                 ))?;
 
-            if segment_header.last_archived_block().number < target_block {
+            if target_block > segment_header.last_archived_block().number {
                 return Err(format!(
                     "Target block is greater than the last archived block. \
                     Last segment index = {last_segment_index}, target block = {target_block}, \
@@ -139,13 +139,13 @@ where
             let mut current_segment_index = last_segment_index;
 
             loop {
-                if segment_header.last_archived_block().number == target_block
+                if target_block == segment_header.last_archived_block().number
                     || current_segment_index <= SegmentIndex::ONE
                 {
                     break;
                 }
 
-                if segment_header.last_archived_block().number < target_block {
+                if target_block > segment_header.last_archived_block().number {
                     current_segment_index += SegmentIndex::ONE;
                     break;
                 }
