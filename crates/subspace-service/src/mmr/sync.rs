@@ -9,10 +9,10 @@ use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::{DbExternalities, OffchainStorage, StorageKind};
+use sp_mmr_primitives::utils::NodesUtils;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::BlockNumber;
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
@@ -37,29 +37,29 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
 
     let mut offchain_db = OffchainDb::new(offchain_storage);
 
-    // Look for existing local MMR-entries
-    let mut starting_block = {
-        let mut starting_block: Option<BlockNumber> = None;
-        for block_number in 0..=BlockNumber::MAX {
-            let canon_key = get_offchain_key(block_number.into());
+    // Look for existing local MMR-nodes
+    let mut starting_position = {
+        let mut starting_position: Option<u32> = None;
+        for position in 0..=u32::MAX {
+            let canon_key = get_offchain_key(position.into());
             if offchain_db
                 .local_storage_get(StorageKind::PERSISTENT, &canon_key)
                 .is_none()
             {
-                starting_block = Some(block_number);
+                starting_position = Some(position);
                 break;
             }
         }
 
-        match starting_block {
+        match starting_position {
             None => {
-                error!("Can't get starting MMR block - MMR storage is corrupted.");
+                error!("Can't get starting MMR position - MMR storage is corrupted.");
                 return;
             }
-            Some(last_processed_block) => {
-                debug!("MMR-sync last processed block: {last_processed_block}");
+            Some(last_processed_position) => {
+                debug!("MMR-sync last processed position: {last_processed_position}");
 
-                last_processed_block
+                last_processed_position
             }
         }
     };
@@ -87,14 +87,25 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
 
             // Request MMR until target block reached.
             loop {
-                let target_block_number = {
+                let target_position = {
                     let best_block = sync_service.best_seen_block().await;
 
                     match best_block {
                         Ok(Some(block)) => {
-                            debug!("MMR-sync. Best seen block={block}");
+                            let block_number: u32 = block
+                                .try_into()
+                                .map_err(|_| "Can't convert block number to u32")
+                                .expect("We convert BlockNumber which is defined as u32.");
+                            let nodes = NodesUtils::new(block_number.into());
 
-                            block
+                            let target_position = nodes.size().saturating_sub(1);
+
+                            debug!(
+                                "MMR-sync. Best seen block={}, Node target position={}",
+                                block_number, target_position
+                            );
+
+                            target_position
                         }
                         Ok(None) => {
                             debug!("Can't obtain best sync block for MMR-sync.");
@@ -108,7 +119,7 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
                 };
 
                 let request = MmrRequest {
-                    starting_block,
+                    starting_position,
                     limit: MAX_MMR_ITEMS,
                 };
                 let response =
@@ -124,22 +135,20 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
                             break;
                         }
 
-                        // Save the MMR-items from response to the local storage
-                        'data: for (block_number, data) in response.mmr_data.iter() {
+                        // Save the MMR-nodes from response to the local storage
+                        'data: for (position, data) in response.mmr_data.iter() {
                             // Ensure continuous sync
-                            if *block_number == starting_block {
-                                let canon_key = get_offchain_key((*block_number).into());
+                            if *position == starting_position {
+                                let canon_key = get_offchain_key((*position).into());
                                 offchain_db.local_storage_set(
                                     StorageKind::PERSISTENT,
                                     &canon_key,
                                     data,
                                 );
 
-                                starting_block += 1;
+                                starting_position += 1;
                             } else {
-                                debug!(
-                                    "MMR-sync gap detected={peer_id}, block_number={block_number}",
-                                );
+                                debug!("MMR-sync gap detected={peer_id}, position={position}",);
                                 break 'data; // We don't support gaps in MMR data
                             }
                         }
@@ -151,15 +160,15 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
                     }
                 }
 
-                // Actual MMR-items may exceed this number, however, we will catch up with the rest
+                // Actual MMR-nodes may exceed this number, however, we will catch up with the rest
                 // when we sync the remaining data (consensus and domain chains).
-                if target_block_number <= starting_block.into() {
-                    debug!("Target block number reached: {target_block_number}");
+                if target_position <= starting_position.into() {
+                    debug!("Target position reached: {target_position}");
                     break 'outer;
                 }
             }
         }
-        debug!("No synced peers to handle the MMR-sync. Pausing...",);
+        debug!(%starting_position, "No synced peers to handle the MMR-sync. Pausing...",);
         sleep(SYNC_PAUSE).await;
     }
 

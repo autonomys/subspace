@@ -32,7 +32,6 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::BlockNumber;
 use tracing::{debug, error, trace};
 
 const MAX_NUMBER_OF_SAME_REQUESTS_PER_PEER: usize = 2;
@@ -90,14 +89,14 @@ pub fn generate_protocol_name<Hash: AsRef<[u8]>>(
 #[derive(Eq, PartialEq, Clone)]
 struct SeenRequestsKey {
     peer: PeerId,
-    block_number: BlockNumber,
+    starting_position: u32,
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for SeenRequestsKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.peer.hash(state);
-        self.block_number.hash(state);
+        self.starting_position.hash(state);
     }
 }
 
@@ -105,17 +104,17 @@ impl Hash for SeenRequestsKey {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct MmrRequest {
-    /// Starting block for MMR
-    pub starting_block: BlockNumber,
-    /// Max returned data items
-    pub limit: BlockNumber,
+    /// Starting position for MMR node.
+    pub starting_position: u32,
+    /// Max returned nodes.
+    pub limit: u32,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct MmrResponse {
-    /// MMR-leafs related to block number
-    pub mmr_data: BTreeMap<BlockNumber, Vec<u8>>,
+    /// MMR-nodes related to node position
+    pub mmr_data: BTreeMap<u32, Vec<u8>>,
 }
 
 /// The value of [`StateRequestHandler::seen_requests`].
@@ -213,7 +212,7 @@ where
 
         let key = SeenRequestsKey {
             peer: *peer,
-            block_number: request.starting_block,
+            starting_position: request.starting_position,
         };
 
         let mut reputation_changes = Vec::new();
@@ -244,7 +243,9 @@ where
             Err(())
         } else {
             let mut mmr_data = BTreeMap::new();
-            for block_number in request.starting_block..(request.starting_block + request.limit) {
+            for block_number in
+                request.starting_position..(request.starting_position + request.limit)
+            {
                 let canon_key = get_offchain_key(block_number.into());
                 let storage_value = self
                     .offchain_db
@@ -282,7 +283,7 @@ where
 
 #[derive(Debug, thiserror::Error)]
 enum HandleRequestError {
-    #[error("Invalid request: max MMR items limit exceeded.")]
+    #[error("Invalid request: max MMR nodes limit exceeded.")]
     MaxItemsLimitExceeded,
 
     #[error(transparent)]
