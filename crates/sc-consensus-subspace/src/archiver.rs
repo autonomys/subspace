@@ -851,9 +851,11 @@ where
                     // Special sync mode where verified blocks were inserted into blockchain
                     // directly, archiving of this block will naturally happen later
                     continue;
-                } else if best_archived_block_number.is_zero() {
-                    // We may have imported some block using special sync mode right after genesis,
-                    // in which case archiver will be stuck at genesis block
+                } else if client.hash(importing_block_number - One::one())?.is_none() {
+                    // We may have imported some block using special sync mode and block we're about
+                    // to import is the first one after the gap at which archiver is supposed to be
+                    // initialized, but we are only about to import it, so wait for the next block
+                    // for now
                     continue;
                 } else {
                     let error = format!(
