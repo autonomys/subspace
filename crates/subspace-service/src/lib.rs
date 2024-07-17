@@ -943,21 +943,6 @@ where
         sync_service.clone(),
     );
 
-    // TODO: enable after the domain-sync implementation
-    // if let Some(offchain_storage) = backend.offchain_storage() {
-    //     let mmr_sync_task = mmr_sync(
-    //         fork_id,
-    //         Arc::clone(&client),
-    //         Arc::clone(&network_service),
-    //         sync_service.clone(),
-    //         offchain_storage,
-    //     );
-    //
-    //     task_manager
-    //         .spawn_handle()
-    //         .spawn("mmr-sync", Some("mmr-sync"), mmr_sync_task);
-    // }
-
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
         segment_headers_store.clone(),
         Arc::clone(&network_service),
