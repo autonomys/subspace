@@ -79,7 +79,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
@@ -830,8 +830,31 @@ where
                     }
                 };
 
-            if best_archived_block_number >= block_number_to_archive {
+            let last_archived_block_number = NumberFor::<Block>::from(
+                segment_headers_store
+                    .last_segment_header()
+                    .expect("Exists after archiver initialization; qed")
+                    .last_archived_block()
+                    .number,
+            );
+            trace!(
+                %importing_block_number,
+                %block_number_to_archive,
+                %best_archived_block_number,
+                %last_archived_block_number,
+                "Checking if block needs to be skipped"
+            );
+            if best_archived_block_number >= block_number_to_archive
+                || last_archived_block_number > block_number_to_archive
+            {
                 // This block was already archived, skip
+                debug!(
+                    %importing_block_number,
+                    %block_number_to_archive,
+                    %best_archived_block_number,
+                    %last_archived_block_number,
+                    "Skipping already archived block",
+                );
                 continue;
             }
 
