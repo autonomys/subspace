@@ -70,7 +70,7 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
             &network_request,
             &sync_service,
             None,
-            true,
+            false,
         );
 
         match snap_sync_fut.await {
@@ -139,9 +139,7 @@ where
             let mut current_segment_index = last_segment_index;
 
             loop {
-                if target_block == segment_header.last_archived_block().number
-                    || current_segment_index <= SegmentIndex::ONE
-                {
+                if current_segment_index <= SegmentIndex::ONE {
                     break;
                 }
 
@@ -241,6 +239,12 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Synchronize the blockchain to the target_block (approximate value based on the containing
+/// segment) or to the last archived block.
+///
+/// Note: setting import_state_block_only will import only the block related to the state (a block
+/// number equal or less than target_block or the first block of the last archived segment) and
+/// disable importing the remaining blocks of the downloaded segment.
 async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -251,7 +255,7 @@ async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     network_request: &NR,
     sync_service: &SyncingService<Block>,
     target_block: Option<BlockNumber>,
-    import_blocks_from_downloaded_segment: bool,
+    import_state_block_only: bool,
 ) -> Result<(), Error>
 where
     B: sc_client_api::Backend<Block>,
@@ -336,7 +340,7 @@ where
         });
     }
 
-    if import_blocks_from_downloaded_segment {
+    if !import_state_block_only {
         debug!(
             blocks_count = %blocks.len(),
             "Queuing importing remaining blocks from target segment"
