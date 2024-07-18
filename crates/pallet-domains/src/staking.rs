@@ -592,6 +592,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
             .map_err(Error::BundleStorageFund)?;
 
         hold_deposit::<T>(&nominator_id, operator_id, new_deposit.staking)?;
+        Pallet::<T>::deposit_event(Event::OperatorNominated {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            amount: new_deposit.staking,
+        });
 
         // increment total deposit for operator pool within this epoch
         operator.deposits_in_epoch = operator
@@ -910,7 +915,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-) -> Result<BalanceOf<T>, Error> {
+) -> Result<(), Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
     ensure!(
         *operator.status::<T>(operator_id) == OperatorStatus::Registered,
@@ -966,6 +971,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
         )
         .map_err(|_| Error::RemoveLock)?;
 
+        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            unlocked_amount: amount_to_unlock,
+        });
+
         // Release storage fund
         let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         T::Currency::release(
@@ -975,6 +986,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
+
+        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            storage_fee: storage_fee_refund,
+        });
 
         // if there are no withdrawals, then delete the storage as well
         if withdrawal.withdrawals.is_empty() && withdrawal.withdrawal_in_shares.is_none() {
@@ -990,7 +1007,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             });
         }
 
-        Ok(amount_to_unlock)
+        Ok(())
     })
 }
 
@@ -1101,6 +1118,12 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         )
         .map_err(|_| Error::RemoveLock)?;
 
+        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            unlocked_amount: total_amount_to_unlock,
+        });
+
         total_stake = total_stake.saturating_sub(nominator_staked_amount);
         total_shares = total_shares.saturating_sub(nominator_shares);
 
@@ -1120,8 +1143,15 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         .map_err(Error::BundleStorageFund)?;
 
         // Release all storage fee that of the nominator.
-        T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
-            .map_err(|_| Error::RemoveLock)?;
+        let storage_fee_refund =
+            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
+                .map_err(|_| Error::RemoveLock)?;
+
+        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            storage_fee: storage_fee_refund,
+        });
 
         // reduce total storage fee deposit with nominator total fee deposit
         total_storage_fee_deposit =

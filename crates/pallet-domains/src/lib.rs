@@ -914,9 +914,20 @@ mod pallet {
             operator_id: OperatorId,
             domain_id: DomainId,
         },
+        NominatedStakedUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            unlocked_amount: BalanceOf<T>,
+        },
+        StorageFeeUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            storage_fee: BalanceOf<T>,
+        },
         OperatorNominated {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
+            amount: BalanceOf<T>,
         },
         DomainInstantiated {
             domain_id: DomainId,
@@ -928,17 +939,13 @@ mod pallet {
         OperatorDeregistered {
             operator_id: OperatorId,
         },
-        OperatorUnlocked {
+        NominatorUnlocked {
             operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
         },
         WithdrewStake {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
-        },
-        FundsUnlocked {
-            operator_id: OperatorId,
-            nominator_id: NominatorId<T>,
-            amount: BalanceOf<T>,
         },
         PreferredOperator {
             operator_id: OperatorId,
@@ -1361,11 +1368,6 @@ mod pallet {
             do_nominate_operator::<T>(operator_id, nominator_id.clone(), amount)
                 .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::OperatorNominated {
-                operator_id,
-                nominator_id,
-            });
-
             Ok(())
         }
 
@@ -1434,13 +1436,8 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::unlock_funds())]
         pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator_id = ensure_signed(origin)?;
-            let unlocked_funds = do_unlock_funds::<T>(operator_id, nominator_id.clone())
+            do_unlock_funds::<T>(operator_id, nominator_id.clone())
                 .map_err(crate::pallet::Error::<T>::from)?;
-            Self::deposit_event(Event::FundsUnlocked {
-                operator_id,
-                nominator_id,
-                amount: unlocked_funds,
-            });
             Ok(())
         }
 
@@ -1451,10 +1448,13 @@ mod pallet {
         pub fn unlock_nominator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator = ensure_signed(origin)?;
 
-            do_unlock_nominator::<T>(operator_id, nominator)
+            do_unlock_nominator::<T>(operator_id, nominator.clone())
                 .map_err(crate::pallet::Error::<T>::from)?;
 
-            Self::deposit_event(Event::OperatorUnlocked { operator_id });
+            Self::deposit_event(Event::NominatorUnlocked {
+                operator_id,
+                nominator_id: nominator,
+            });
 
             Ok(())
         }
