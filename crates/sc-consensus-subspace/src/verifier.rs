@@ -484,7 +484,9 @@ where
         );
 
         let best_number = self.client.info().best_number;
+        // Reject block below archiving point, but only if we received it from the network
         if *block.header.number() + self.chain_constants.confirmation_depth_k().into() < best_number
+            && matches!(block.origin, BlockOrigin::NetworkBroadcast)
         {
             debug!(
                 header = ?block.header,
@@ -579,7 +581,8 @@ where
         } = checked_header;
 
         let slot = pre_digest.slot();
-        // Estimate what the "current" slot is according to sync target since we don't have other way to know it
+        // Estimate what the "current" slot is according to sync target since we don't have other
+        // way to know it
         let diff_in_blocks = self
             .sync_target_block_number
             .load(Ordering::Relaxed)
