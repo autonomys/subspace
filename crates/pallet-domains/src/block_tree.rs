@@ -158,9 +158,11 @@ pub(crate) fn execution_receipt_type<T: Config>(
             }
 
             // Add confirm to the head receipt that added in the current block or it is
-            // the genesis receipt
+            // the first genesis receipt
+            let is_first_genesis_receipt =
+                receipt_number.is_zero() && HeadDomainNumber::<T>::get(domain_id).is_zero();
             if receipt_number == head_receipt_number
-                && (head_receipt_extended || receipt_number.is_zero())
+                && (head_receipt_extended || is_first_genesis_receipt)
             {
                 return ReceiptType::Accepted(AcceptedReceiptType::CurrentHead);
             }
