@@ -1193,7 +1193,7 @@ mod pallet {
                     do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
                         .map_err(Error::<T>::from)?;
                 actual_weight = actual_weight
-                    .saturating_add(Self::actual_slash_operator_weight(slashed_nominator_count));
+                    .saturating_add(T::WeightInfo::slash_operator(slashed_nominator_count));
             }
 
             Self::deposit_event(Event::BundleStored {
@@ -1643,9 +1643,8 @@ mod pallet {
             Ok(Some(actual_weight).into())
         }
 
-        // FIXME: recorrect weight
         #[pallet::call_index(20)]
-        #[pallet::weight(Pallet::<T>::max_submit_bundle_weight())]
+        #[pallet::weight(Pallet::<T>::max_submit_receipt_weight())]
         pub fn submit_receipt(
             origin: OriginFor<T>,
             singleton_receipt: SingletonReceiptOf<T>,
@@ -1723,7 +1722,7 @@ mod pallet {
             }
 
             // Ensure the returned weight not exceed the maximum weight in the `pallet::weight`
-            Ok(Some(actual_weight.min(Self::max_submit_bundle_weight())).into())
+            Ok(Some(actual_weight.min(Self::max_submit_receipt_weight())).into())
         }
     }
 
@@ -2743,6 +2742,17 @@ impl<T: Config> Pallet<T> {
             .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
     }
 
+    pub fn max_submit_receipt_weight() -> Weight {
+        T::WeightInfo::submit_bundle()
+            .saturating_add(
+                // We use `MAX_BUNLDE_PER_BLOCK` number to assume the number of slashed operators.
+                // We do not expect so many operators to be slashed but nontheless, if it did happen
+                // we will limit the weight to 100 operators.
+                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK),
+            )
+            .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
+    }
+
     pub fn max_staking_epoch_transition() -> Weight {
         T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(T::MaxPendingStakingOperation::get()),
@@ -2776,11 +2786,6 @@ impl<T: Config> Pallet<T> {
                 .collect::<Vec<OperatorId>>();
             let _ = do_reward_operators::<T>(domain_id, operators.into_iter(), rewards);
         }
-    }
-
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    fn actual_slash_operator_weight(slashed_nominators: u32) -> Weight {
-        T::WeightInfo::slash_operator(slashed_nominators)
     }
 
     pub fn storage_fund_account_balance(operator_id: OperatorId) -> BalanceOf<T> {
