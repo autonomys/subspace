@@ -6,8 +6,9 @@ extern crate alloc;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodeFor, BlockTreeNodes, Config, ConsensusBlockHash,
     DomainBlockNumberFor, DomainHashingFor, DomainRuntimeUpgradeRecords, ExecutionInbox,
-    ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber, InboxedBundleAuthor,
-    LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, Pallet, ReceiptHashFor,
+    ExecutionReceiptOf, HeadDomainNumber, HeadReceiptNumber, InboxedBundleAuthor,
+    LatestConfirmedDomainExecutionReceipt, LatestSubmittedER, NewAddedHeadReceipt, Pallet,
+    ReceiptHashFor,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -49,6 +50,7 @@ pub enum Error {
     OverwritingER,
     RuntimeNotFound,
     LastBlockNotFound,
+    UnmatchedNewHeadReceipt,
     UnexpectedConfirmedDomainBlock,
 }
 
@@ -122,7 +124,7 @@ pub(crate) fn execution_receipt_type<T: Config>(
 ) -> ReceiptType {
     let receipt_number = execution_receipt.domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
-    let head_receipt_extended = HeadReceiptExtended::<T>::get(domain_id);
+    let head_receipt_extended = NewAddedHeadReceipt::<T>::get(domain_id).is_some();
     let next_receipt_number = head_receipt_number.saturating_add(One::one());
     let latest_confirmed_domain_block_number =
         Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
@@ -195,6 +197,19 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         execution_receipt_type::<T>(domain_id, execution_receipt)
     {
         return Err(rejected_receipt_type.into());
+    }
+
+    // If there is new head receipt added in the current block, as long as the incoming
+    // receipt is the same as the new head receipt we can safely skip the following checks,
+    // if they are not the same, we just reject the incoming receipt and expecting a fraud
+    // proof will be submit if the new head receipt is fraudulent and then the incoming
+    // receipt will be re-submit.
+    if let Some(new_added_head_receipt) = NewAddedHeadReceipt::<T>::get(domain_id) {
+        ensure!(
+            new_added_head_receipt == execution_receipt.hash::<DomainHashingFor<T>>(),
+            Error::UnmatchedNewHeadReceipt,
+        );
+        return Ok(());
     }
 
     // The genesis receipt is generated and added to the block tree by the runtime upon domain
@@ -324,6 +339,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
+    let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
     let receipt_block_number = execution_receipt.domain_block_number;
     match receipt_type {
         AcceptedReceiptType::NewHead => {
@@ -331,7 +347,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
             // Update the head receipt number
             HeadReceiptNumber::<T>::insert(domain_id, receipt_block_number);
-            HeadReceiptExtended::<T>::insert(domain_id, true);
+            NewAddedHeadReceipt::<T>::insert(domain_id, er_hash);
 
             // Prune expired domain block
             if let Some(to_prune) =
@@ -425,7 +441,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
         AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
-            let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
             BlockTreeNodes::<T>::mutate(er_hash, |maybe_node| {
                 let node = maybe_node.as_mut().expect(
                     "The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed"
@@ -883,7 +898,7 @@ mod tests {
             extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // No new receipt submitted in current block
-            assert!(!HeadReceiptExtended::<Test>::get(domain_id));
+            assert!(NewAddedHeadReceipt::<Test>::get(domain_id).is_none());
 
             // Receipt that confirm a head receipt of the previous block is stale receipt
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -1093,8 +1108,8 @@ mod tests {
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
 
             // reject extending receipt if the HeadReceiptNumber is already extended
-            assert!(!HeadReceiptExtended::<Test>::get(domain_id));
-            HeadReceiptExtended::<Test>::set(domain_id, true);
+            assert!(NewAddedHeadReceipt::<Test>::get(domain_id).is_none());
+            NewAddedHeadReceipt::<Test>::set(domain_id, Some(H256::random()));
 
             // Construct a future receipt
             let mut future_receipt = next_receipt.clone();

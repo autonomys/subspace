@@ -606,12 +606,12 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
-    /// Whether the head receipt have extended in the current consensus block
+    /// The hash of the new head receipt added in the current consensus block
     ///
     /// Temporary storage only exist during block execution
     #[pallet::storage]
-    pub(super) type HeadReceiptExtended<T: Config> =
-        StorageMap<_, Identity, DomainId, bool, ValueQuery>;
+    pub(super) type NewAddedHeadReceipt<T: Config> =
+        StorageMap<_, Identity, DomainId, T::DomainHash, OptionQuery>;
 
     /// The consensus block hash used to verify ER,
     /// only store the consensus block hash for a domain
@@ -1856,7 +1856,7 @@ mod pallet {
 
         fn on_finalize(_: BlockNumberFor<T>) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
-            let _ = HeadReceiptExtended::<T>::clear(u32::MAX, None);
+            let _ = NewAddedHeadReceipt::<T>::clear(u32::MAX, None);
         }
     }
 
