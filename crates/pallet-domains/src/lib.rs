@@ -1120,23 +1120,6 @@ mod pallet {
                             SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
                         )
                         .map_err(Error::<T>::from)?;
-
-                        if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
-                            == Zero::zero()
-                        {
-                            let epoch_transition_res =
-                                do_finalize_domain_current_epoch::<T>(domain_id)
-                                    .map_err(Error::<T>::from)?;
-
-                            Self::deposit_event(Event::DomainEpochCompleted {
-                                domain_id,
-                                completed_epoch_index: epoch_transition_res.completed_epoch_index,
-                            });
-
-                            actual_weight = actual_weight.saturating_add(
-                                Self::actual_epoch_transition_weight(epoch_transition_res),
-                            );
-                        }
                     }
                 }
             }
@@ -1159,6 +1142,22 @@ mod pallet {
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?
                     .checked_add(&missed_upgrade.into())
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
+
+                // Trigger epoch transition if any at the first bundle in the block
+                #[cfg(not(feature = "runtime-benchmarks"))]
+                if next_number % T::StakeEpochDuration::get() == Zero::zero() {
+                    let epoch_transition_res = do_finalize_domain_current_epoch::<T>(domain_id)
+                        .map_err(Error::<T>::from)?;
+
+                    Self::deposit_event(Event::DomainEpochCompleted {
+                        domain_id,
+                        completed_epoch_index: epoch_transition_res.completed_epoch_index,
+                    });
+
+                    actual_weight = actual_weight
+                        .saturating_add(Self::actual_epoch_transition_weight(epoch_transition_res));
+                }
+
                 HeadDomainNumber::<T>::set(domain_id, next_number);
             }
 
