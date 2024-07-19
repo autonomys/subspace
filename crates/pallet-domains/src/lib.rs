@@ -36,8 +36,8 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::{verify_execution_receipt, Error as BlockTreeError};
-use crate::bundle_storage_fund::storage_fund_account;
-use crate::domain_registry::Error as DomainRegistryError;
+use crate::bundle_storage_fund::{charge_bundle_storage_fee, storage_fund_account};
+use crate::domain_registry::{DomainConfig, Error as DomainRegistryError};
 use crate::runtime_registry::into_complete_raw_genesis;
 #[cfg(feature = "runtime-benchmarks")]
 pub use crate::staking::do_register_operator;
@@ -175,7 +175,7 @@ mod pallet {
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::bundle_storage_fund::refund_storage_fee;
-    use crate::bundle_storage_fund::{charge_bundle_storage_fee, Error as BundleStorageFundError};
+    use crate::bundle_storage_fund::Error as BundleStorageFundError;
     use crate::domain_registry::{
         do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
         Error as DomainRegistryError,
@@ -749,6 +749,8 @@ mod pallet {
         EquivocatedBundle,
         /// Domain is frozen and cannot accept new bundles
         DomainFrozen,
+        /// The operator's bundle storage fund unable to pay the storage fee
+        UnableToPayBundleStorageFee,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1770,15 +1772,10 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle, true)
-                    .map_err(|_| InvalidTransaction::Call.into())
-                    .and_then(|_| {
-                        charge_bundle_storage_fee::<T>(
-                            opaque_bundle.operator_id(),
-                            opaque_bundle.size(),
-                        )
+                Call::submit_bundle { opaque_bundle } => {
+                    Self::validate_submit_bundle(opaque_bundle, true)
                         .map_err(|_| InvalidTransaction::Call.into())
-                    }),
+                }
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map(|_| ())
                     .map_err(|_| InvalidTransaction::Call.into()),
@@ -1789,54 +1786,21 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
-                    if let Err(e) = Self::validate_bundle(opaque_bundle, false) {
-                        match e {
-                            // These errors are common due to networking delay or chain re-org,
-                            // using a lower log level to avoid the noise.
-                            BundleError::Receipt(BlockTreeError::InFutureReceipt)
-                            | BundleError::Receipt(BlockTreeError::StaleReceipt)
-                            | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
-                            | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
-                            | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
-                            | BundleError::SlotInThePast
-                            | BundleError::SlotInTheFuture
-                            | BundleError::InvalidProofOfTime
-                            | BundleError::SlotSmallerThanPreviousBlockBundle => {
-                                log::debug!(
-                                    target: "runtime::domains",
-                                    "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
-                                );
-                            }
-                            _ => {
-                                log::warn!(
-                                    target: "runtime::domains",
-                                    "Bad bundle {:?}, operator {}, error: {e:?}",
-                                    opaque_bundle.domain_id(),
-                                    opaque_bundle.operator_id(),
-                                );
-                            }
-                        }
-                        if let BundleError::Receipt(_) = e {
+                    let domain_id = opaque_bundle.domain_id();
+                    let operator_id = opaque_bundle.operator_id();
+                    let slot_number = opaque_bundle.slot_number();
+
+                    if let Err(e) = Self::validate_submit_bundle(opaque_bundle, false) {
+                        Self::log_bundle_error(&e, domain_id, operator_id);
+                        if BundleError::UnableToPayBundleStorageFee == e {
+                            return InvalidTransactionCode::BundleStorageFeePayment.into();
+                        } else if let BundleError::Receipt(_) = e {
                             return InvalidTransactionCode::ExecutionReceipt.into();
                         } else {
                             return InvalidTransactionCode::Bundle.into();
                         }
                     }
 
-                    if let Err(e) = charge_bundle_storage_fee::<T>(
-                        opaque_bundle.operator_id(),
-                        opaque_bundle.size(),
-                    ) {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Operator {} unable to pay for the bundle storage fee, domain id {:?}, error: {e:?}",
-                            opaque_bundle.operator_id(),
-                            opaque_bundle.domain_id(),
-                        );
-                        return InvalidTransactionCode::BundleStorageFeePayment.into();
-                    }
-
-                    let tag = (opaque_bundle.operator_id(), opaque_bundle.slot_number());
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         // Bundle have a bit higher priority than normal extrinsic but must less than
                         // fraud proof
@@ -1844,7 +1808,7 @@ mod pallet {
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
-                        .and_provides(tag)
+                        .and_provides((operator_id, slot_number))
                         .propagate(true)
                         .build()
                 }
@@ -1876,6 +1840,33 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    fn log_bundle_error(err: &BundleError, domain_id: DomainId, operator_id: OperatorId) {
+        match err {
+            // These errors are common due to networking delay or chain re-org,
+            // using a lower log level to avoid the noise.
+            BundleError::Receipt(BlockTreeError::InFutureReceipt)
+            | BundleError::Receipt(BlockTreeError::StaleReceipt)
+            | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
+            | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
+            | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock)
+            | BundleError::SlotInThePast
+            | BundleError::SlotInTheFuture
+            | BundleError::InvalidProofOfTime
+            | BundleError::SlotSmallerThanPreviousBlockBundle => {
+                log::debug!(
+                    target: "runtime::domains",
+                    "Bad bundle, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
+                );
+            }
+            _ => {
+                log::warn!(
+                    target: "runtime::domains",
+                    "Bad bundle, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
+                );
+            }
+        }
+    }
+
     pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
         SuccessfulBundles::<T>::get(domain_id)
     }
@@ -2031,55 +2022,10 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    // TODO: as bundle equivocation fraud proof is removed, add check to rejected bundle with the
-    // same `(operator_id, slot)`
     fn validate_bundle(
         opaque_bundle: &OpaqueBundleOf<T>,
-        pre_dispatch: bool,
+        domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
     ) -> Result<(), BundleError> {
-        let domain_id = opaque_bundle.domain_id();
-        ensure!(
-            !FrozenDomains::<T>::get().contains(&domain_id),
-            BundleError::DomainFrozen
-        );
-
-        let operator_id = opaque_bundle.operator_id();
-        let sealed_header = &opaque_bundle.sealed_header;
-        let slot_number = opaque_bundle.slot_number();
-
-        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
-
-        let operator_status = operator.status::<T>(operator_id);
-        ensure!(
-            *operator_status != OperatorStatus::Slashed
-                && *operator_status != OperatorStatus::PendingSlash,
-            BundleError::BadOperator
-        );
-
-        if !operator
-            .signing_key
-            .verify(&sealed_header.pre_hash(), &sealed_header.signature)
-        {
-            return Err(BundleError::BadBundleSignature);
-        }
-
-        // Ensure this is no equivocated bundle that reuse `ProofOfElection` from the previous block
-        ensure!(
-            slot_number
-                > Self::operator_highest_slot_from_previous_block(operator_id, pre_dispatch),
-            BundleError::SlotSmallerThanPreviousBlockBundle,
-        );
-
-        // Ensure there is no equivocated/duplicated bundle in the same block
-        ensure!(
-            !OperatorBundleSlot::<T>::get(operator_id).contains(&slot_number),
-            BundleError::EquivocatedBundle,
-        );
-
-        let domain_config = DomainRegistry::<T>::get(domain_id)
-            .ok_or(BundleError::InvalidDomainId)?
-            .domain_config;
-
         let domain_bundle_limit = domain_config
             .calculate_bundle_limit::<T>()
             .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
@@ -2098,12 +2044,56 @@ impl<T: Config> Pallet<T> {
 
         Self::check_extrinsics_root(opaque_bundle)?;
 
-        let proof_of_election = &sealed_header.header.proof_of_election;
+        Ok(())
+    }
+
+    fn validate_eligibility(
+        to_sign: &[u8],
+        signature: &OperatorSignature,
+        proof_of_election: &ProofOfElection<T::Hash>,
+        domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
+        let domain_id = proof_of_election.domain_id;
+        let operator_id = proof_of_election.operator_id;
+        let slot_number = proof_of_election.slot_number;
+
+        ensure!(
+            !FrozenDomains::<T>::get().contains(&domain_id),
+            BundleError::DomainFrozen
+        );
+
+        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        let operator_status = operator.status::<T>(operator_id);
+        ensure!(
+            *operator_status != OperatorStatus::Slashed
+                && *operator_status != OperatorStatus::PendingSlash,
+            BundleError::BadOperator
+        );
+
+        if !operator.signing_key.verify(&to_sign, signature) {
+            return Err(BundleError::BadBundleSignature);
+        }
+
+        // Ensure this is no equivocated bundle that reuse `ProofOfElection` from the previous block
+        ensure!(
+            slot_number
+                > Self::operator_highest_slot_from_previous_block(operator_id, pre_dispatch),
+            BundleError::SlotSmallerThanPreviousBlockBundle,
+        );
+
+        // Ensure there is no equivocated/duplicated bundle in the same block
+        ensure!(
+            !OperatorBundleSlot::<T>::get(operator_id).contains(&slot_number),
+            BundleError::EquivocatedBundle,
+        );
+
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
         Self::check_slot_and_proof_of_time(
-            proof_of_election.slot_number,
+            slot_number,
             proof_of_election.proof_of_time,
             pre_dispatch,
         )?;
@@ -2116,8 +2106,36 @@ impl<T: Config> Pallet<T> {
             total_domain_stake.saturated_into(),
         )?;
 
-        let receipt = &sealed_header.header.receipt;
-        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
+        Ok(())
+    }
+
+    fn validate_submit_bundle(
+        opaque_bundle: &OpaqueBundleOf<T>,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
+        let domain_id = opaque_bundle.domain_id();
+        let operator_id = opaque_bundle.operator_id();
+        let sealed_header = &opaque_bundle.sealed_header;
+
+        let domain_config = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config;
+
+        Self::validate_bundle(opaque_bundle, &domain_config)?;
+
+        Self::validate_eligibility(
+            sealed_header.pre_hash().as_ref(),
+            &sealed_header.signature,
+            &sealed_header.header.proof_of_election,
+            &domain_config,
+            pre_dispatch,
+        )?;
+
+        verify_execution_receipt::<T>(domain_id, &sealed_header.header.receipt)
+            .map_err(BundleError::Receipt)?;
+
+        charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
+            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
 
         Ok(())
     }

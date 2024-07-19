@@ -76,14 +76,20 @@ pub fn charge_bundle_storage_fee<T: Config>(
     let storage_fund_acc = storage_fund_account::<T>(operator_id);
     let storage_fee = T::StorageFee::transaction_byte_fee() * bundle_size.into();
 
-    T::Currency::burn_from(
+    if let Err(err) = T::Currency::burn_from(
         &storage_fund_acc,
         storage_fee,
         Preservation::Expendable,
         Precision::Exact,
         Fortitude::Polite,
-    )
-    .map_err(|_| Error::BundleStorageFeePayment)?;
+    ) {
+        let total_balance = total_balance::<T>(operator_id);
+        log::debug!(
+            target: "runtime::domains",
+            "Operator {operator_id:?} unable to pay for the bundle storage fee {storage_fee:?}, storage fund total balance {total_balance:?}, err {err:?}",
+        );
+        return Err(Error::BundleStorageFeePayment);
+    }
 
     // Note the storage fee, it will go to the consensus block author
     T::StorageFee::note_storage_fees(storage_fee);
