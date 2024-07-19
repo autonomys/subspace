@@ -4,19 +4,19 @@ use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
-    OperatorSignature, SealedBundleHeader,
+    OperatorSignature, SealedBundleHeader, SealedSingletonReceipt, SingletonReceipt,
 };
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
-use sp_runtime::RuntimeAppPublic;
+use sp_runtime::{RuntimeAppPublic, Saturating};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
@@ -28,6 +28,27 @@ type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     <Block as BlockT>::Header,
     Balance,
 >;
+
+type SealedSingletonReceiptFor<Block, CBlock> = SealedSingletonReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    <Block as BlockT>::Header,
+    Balance,
+>;
+
+pub enum DomainProposal<Block: BlockT, CBlock: BlockT> {
+    Bundle(OpaqueBundle<Block, CBlock>),
+    Receipt(SealedSingletonReceiptFor<Block, CBlock>),
+}
+
+impl<Block: BlockT, CBlock: BlockT> DomainProposal<Block, CBlock> {
+    pub fn into_opaque_bundle(self) -> Option<OpaqueBundle<Block, CBlock>> {
+        match self {
+            DomainProposal::Bundle(b) => Some(b),
+            DomainProposal::Receipt(_) => None,
+        }
+    }
+}
 
 pub struct DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
 where
@@ -124,11 +145,37 @@ where
         }
     }
 
+    fn sign(
+        &self,
+        operator_signing_key: &OperatorPublicKey,
+        msg: &[u8],
+    ) -> sp_blockchain::Result<OperatorSignature> {
+        let signature = self
+            .keystore
+            .sr25519_sign(OperatorPublicKey::ID, operator_signing_key.as_ref(), msg)
+            .map_err(|error| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Error occurred when signing the bundle: {error}"
+                )))
+            })?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(Box::from(
+                    "This should not happen as the existence of key was just checked",
+                ))
+            })?;
+
+        OperatorSignature::decode(&mut signature.as_ref()).map_err(|err| {
+            sp_blockchain::Error::Application(Box::from(format!(
+                "Failed to decode the signature of bundle: {err}"
+            )))
+        })
+    }
+
     pub async fn produce_bundle(
         &mut self,
         operator_id: OperatorId,
         slot_info: OperatorSlotInfo,
-    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
+    ) -> sp_blockchain::Result<Option<DomainProposal<Block, CBlock>>> {
         let OperatorSlotInfo {
             slot,
             proof_of_time,
@@ -136,12 +183,25 @@ where
 
         let domain_best_number = self.client.info().best_number;
         let consensus_chain_best_hash = self.consensus_client.info().best_hash;
-        let should_skip_slot = {
-            let head_receipt_number = self
-                .consensus_client
-                .runtime_api()
-                .head_receipt_number(consensus_chain_best_hash, self.domain_id)?;
+        let head_domain_number = self
+            .consensus_client
+            .runtime_api()
+            .domain_best_number(consensus_chain_best_hash, self.domain_id)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    format!(
+                        "Failed to get the head domain number for domain {:?} at {:?}",
+                        self.domain_id, consensus_chain_best_hash
+                    )
+                    .into(),
+                )
+            })?;
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_chain_best_hash, self.domain_id)?;
 
+        let should_skip_slot = {
             // Operator is lagging behind the receipt chain on its parent chain as another operator
             // already processed a block higher than the local best and submitted the receipt to
             // the parent chain, we ought to catch up with the consensus block processing before
@@ -175,7 +235,53 @@ where
                 proof_of_time,
             )?
         {
-            tracing::info!("📦 Claimed bundle at slot {slot}");
+            tracing::info!("📦 Claimed slot {slot}");
+
+            let receipt = self
+                .domain_bundle_proposer
+                .load_next_receipt(head_domain_number, head_receipt_number)?;
+
+            let api_version = self
+                .consensus_client
+                .runtime_api()
+                .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_chain_best_hash)
+                .map_err(sp_blockchain::Error::RuntimeApiError)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::RuntimeApiError(ApiError::Application(
+                        format!("DomainsApi not found at: {:?}", consensus_chain_best_hash).into(),
+                    ))
+                })?;
+
+            // When the receipt gap is greater than one the operator need to produce receipt
+            // instead of bundle
+            // TODO: remove api runtime version check before next network
+            if api_version >= 5
+                && head_domain_number.saturating_sub(head_receipt_number) > 1u32.into()
+            {
+                info!(
+                    ?head_domain_number,
+                    ?head_receipt_number,
+                    "🔖 Producing singleton receipt at slot {:?}",
+                    slot_info.slot
+                );
+
+                let singleton_receipt = SingletonReceipt {
+                    proof_of_election,
+                    receipt,
+                };
+
+                let signature = {
+                    let to_sign: <Block as BlockT>::Hash = singleton_receipt.hash();
+                    self.sign(&operator_signing_key, to_sign.as_ref())?
+                };
+
+                let sealed_singleton_receipt: SealedSingletonReceiptFor<Block, CBlock> =
+                    SealedSingletonReceipt {
+                        singleton_receipt,
+                        signature,
+                    };
+                return Ok(Some(DomainProposal::Receipt(sealed_singleton_receipt)));
+            }
 
             let tx_range = self
                 .consensus_client
@@ -188,7 +294,7 @@ where
                 })?;
             let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
-                .propose_bundle_at(proof_of_election, tx_range, operator_id)
+                .propose_bundle_at(proof_of_election, tx_range, operator_id, receipt)
                 .await?;
 
             // if there are no extrinsics and no receipts to confirm, skip the bundle
@@ -210,31 +316,10 @@ where
 
             info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
 
-            let to_sign = bundle_header.hash();
-
-            let signature = self
-                .keystore
-                .sr25519_sign(
-                    OperatorPublicKey::ID,
-                    operator_signing_key.as_ref(),
-                    to_sign.as_ref(),
-                )
-                .map_err(|error| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Error occurred when signing the bundle: {error}"
-                    )))
-                })?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Application(Box::from(
-                        "This should not happen as the existence of key was just checked",
-                    ))
-                })?;
-
-            let signature = OperatorSignature::decode(&mut signature.as_ref()).map_err(|err| {
-                sp_blockchain::Error::Application(Box::from(format!(
-                    "Failed to decode the signature of bundle: {err}"
-                )))
-            })?;
+            let signature = {
+                let to_sign = bundle_header.hash();
+                self.sign(&operator_signing_key, to_sign.as_ref())?
+            };
 
             let bundle = Bundle {
                 sealed_header: SealedBundleHeader::new(bundle_header, signature),
@@ -246,7 +331,7 @@ where
             // tracing::error!(error = ?e, "Failed to send transaction bundle");
             // }
 
-            Ok(Some(bundle.into_opaque_bundle()))
+            Ok(Some(DomainProposal::Bundle(bundle.into_opaque_bundle())))
         } else {
             Ok(None)
         }

@@ -183,6 +183,7 @@ where
                 None
             })
             .await
+            .and_then(|res| res.into_opaque_bundle())
     }
 
     pub async fn start<NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static>(

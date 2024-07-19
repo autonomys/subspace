@@ -3273,16 +3273,19 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         .produce_bundle(operator_id, slot_info(valid_slot, valid_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     let bundle_with_unknow_pot = bundle_producer
         .produce_bundle(operator_id, slot_info(valid_slot, unknow_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     let bundle_with_slot_in_future = bundle_producer
         .produce_bundle(operator_id, slot_info(slot_in_future, valid_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     for bundle in [
         bundle_with_unknow_pot.clone(),
