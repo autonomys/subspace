@@ -1511,6 +1511,9 @@ sp_api::decl_runtime_apis! {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
+        // Submit singleton receipt via an unsigned extrinsic.
+        fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
+
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
             domain_id: DomainId,

@@ -49,6 +49,7 @@ pub enum Error {
     OverwritingER,
     RuntimeNotFound,
     LastBlockNotFound,
+    UnexpectedConfirmedDomainBlock,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

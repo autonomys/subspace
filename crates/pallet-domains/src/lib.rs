@@ -66,8 +66,8 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
-    OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
-    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    OpaqueBundle, OperatorId, OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId,
+    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -120,6 +120,13 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
 >;
 
 pub type OpaqueBundleOf<T> = OpaqueBundle<
+    BlockNumberFor<T>,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainHeader,
+    BalanceOf<T>,
+>;
+
+pub type SingletonReceiptOf<T> = SealedSingletonReceipt<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainHeader,
@@ -204,7 +211,7 @@ mod pallet {
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
-        ReceiptHashFor, StateRootOf, MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
+        ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -751,6 +758,10 @@ mod pallet {
         DomainFrozen,
         /// The operator's bundle storage fund unable to pay the storage fee
         UnableToPayBundleStorageFee,
+        /// Unexpected receipt gap when validating `submit_bundle`
+        UnexpectedReceiptGap,
+        /// Expecting receipt gap when validating `submit_receipt`
+        ExpectingReceiptGap,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1631,6 +1642,89 @@ mod pallet {
 
             Ok(Some(actual_weight).into())
         }
+
+        // FIXME: recorrect weight
+        #[pallet::call_index(20)]
+        #[pallet::weight(Pallet::<T>::max_submit_bundle_weight())]
+        pub fn submit_receipt(
+            origin: OriginFor<T>,
+            singleton_receipt: SingletonReceiptOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            ensure_none(origin)?;
+
+            let domain_id = singleton_receipt.domain_id();
+            let operator_id = singleton_receipt.operator_id();
+            let receipt = singleton_receipt.into_receipt();
+
+            #[cfg(not(feature = "runtime-benchmarks"))]
+            let mut actual_weight = T::WeightInfo::submit_receipt();
+            #[cfg(feature = "runtime-benchmarks")]
+            let actual_weight = T::WeightInfo::submit_receipt();
+
+            match execution_receipt_type::<T>(domain_id, &receipt) {
+                ReceiptType::Rejected(rejected_receipt_type) => {
+                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
+                }
+                // Add the exeuctione receipt to the block tree
+                ReceiptType::Accepted(accepted_receipt_type) => {
+                    // Before adding the new head receipt to the block tree, try to prune any previous
+                    // bad ER at the same domain block and slash the submitter.
+                    //
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_receipt` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
+                    if accepted_receipt_type == AcceptedReceiptType::NewHead {
+                        if let Some(block_tree_node) =
+                            prune_receipt::<T>(domain_id, receipt.domain_block_number)
+                                .map_err(Error::<T>::from)?
+                        {
+                            actual_weight =
+                                actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
+                                    block_tree_node.operator_ids.len() as u32,
+                                ));
+
+                            let bad_receipt_hash = block_tree_node
+                                .execution_receipt
+                                .hash::<DomainHashingFor<T>>();
+                            do_mark_operators_as_slashed::<T>(
+                                block_tree_node.operator_ids.into_iter(),
+                                SlashedReason::BadExecutionReceipt(bad_receipt_hash),
+                            )
+                            .map_err(Error::<T>::from)?;
+                        }
+                    }
+
+                    #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
+                    let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
+                        domain_id,
+                        operator_id,
+                        receipt,
+                        accepted_receipt_type,
+                    )
+                    .map_err(Error::<T>::from)?;
+
+                    // Singleton receipt are used to fill up the receipt gap and there should be no
+                    // new domain block being confirmed before the gap is fill up
+                    ensure!(
+                        maybe_confirmed_domain_block_info.is_none(),
+                        Error::<T>::BlockTree(BlockTreeError::UnexpectedConfirmedDomainBlock),
+                    );
+                }
+            }
+
+            // slash operator who are in pending slash
+            #[cfg(not(feature = "runtime-benchmarks"))]
+            {
+                let slashed_nominator_count =
+                    do_slash_operator::<T>(domain_id, MAX_NOMINATORS_TO_SLASH)
+                        .map_err(Error::<T>::from)?;
+                actual_weight = actual_weight
+                    .saturating_add(T::WeightInfo::slash_operator(slashed_nominator_count));
+            }
+
+            // Ensure the returned weight not exceed the maximum weight in the `pallet::weight`
+            Ok(Some(actual_weight.min(Self::max_submit_bundle_weight())).into())
+        }
     }
 
     #[pallet::genesis_config]
@@ -1779,6 +1873,10 @@ mod pallet {
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map(|_| ())
                     .map_err(|_| InvalidTransaction::Call.into()),
+                Call::submit_receipt { singleton_receipt } => {
+                    Self::validate_singleton_receipt(singleton_receipt, true)
+                        .map_err(|_| InvalidTransaction::Call.into())
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1832,6 +1930,33 @@ mod pallet {
                         .propagate(true)
                         .build()
                 }
+                Call::submit_receipt { singleton_receipt } => {
+                    let domain_id = singleton_receipt.domain_id();
+                    let operator_id = singleton_receipt.operator_id();
+                    let slot_number = singleton_receipt.slot_number();
+
+                    if let Err(e) = Self::validate_singleton_receipt(singleton_receipt, false) {
+                        Self::log_bundle_error(&e, domain_id, operator_id);
+                        if BundleError::UnableToPayBundleStorageFee == e {
+                            return InvalidTransactionCode::BundleStorageFeePayment.into();
+                        } else if let BundleError::Receipt(_) = e {
+                            return InvalidTransactionCode::ExecutionReceipt.into();
+                        } else {
+                            return InvalidTransactionCode::Bundle.into();
+                        }
+                    }
+
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitReceipt")
+                        // Receipt have a bit higher priority than normal extrinsic but must less than
+                        // fraud proof
+                        .priority(1)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
+                        .and_provides((operator_id, slot_number))
+                        .propagate(true)
+                        .build()
+                }
 
                 _ => InvalidTransaction::Call.into(),
             }
@@ -1855,13 +1980,13 @@ impl<T: Config> Pallet<T> {
             | BundleError::SlotSmallerThanPreviousBlockBundle => {
                 log::debug!(
                     target: "runtime::domains",
-                    "Bad bundle, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
+                    "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
                 );
             }
             _ => {
                 log::warn!(
                     target: "runtime::domains",
-                    "Bad bundle, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
+                    "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
                 );
             }
         }
@@ -2117,6 +2242,14 @@ impl<T: Config> Pallet<T> {
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
 
+        // Ensure the receipt gap is <= 1 so that the bundle will only be acceptted if its receipt is
+        // derived from the latest domain block, and the stale bundle (that verified against an old
+        // domain block) produced by a lagging honest operator will be rejected.
+        ensure!(
+            Self::receipt_gap(domain_id) <= One::one(),
+            BundleError::UnexpectedReceiptGap,
+        );
+
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config;
@@ -2135,6 +2268,42 @@ impl<T: Config> Pallet<T> {
             .map_err(BundleError::Receipt)?;
 
         charge_bundle_storage_fee::<T>(operator_id, opaque_bundle.size())
+            .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
+
+        Ok(())
+    }
+
+    fn validate_singleton_receipt(
+        sealed_singleton_receipt: &SingletonReceiptOf<T>,
+        pre_dispatch: bool,
+    ) -> Result<(), BundleError> {
+        let domain_id = sealed_singleton_receipt.domain_id();
+        let operator_id = sealed_singleton_receipt.operator_id();
+
+        // Singleton receipt is only allowed when there is a receipt gap
+        ensure!(
+            Self::receipt_gap(domain_id) > One::one(),
+            BundleError::ExpectingReceiptGap,
+        );
+
+        let domain_config = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config;
+        Self::validate_eligibility(
+            sealed_singleton_receipt.pre_hash().as_ref(),
+            &sealed_singleton_receipt.signature,
+            &sealed_singleton_receipt.singleton_receipt.proof_of_election,
+            &domain_config,
+            pre_dispatch,
+        )?;
+
+        verify_execution_receipt::<T>(
+            domain_id,
+            &sealed_singleton_receipt.singleton_receipt.receipt,
+        )
+        .map_err(BundleError::Receipt)?;
+
+        charge_bundle_storage_fee::<T>(operator_id, sealed_singleton_receipt.size())
             .map_err(|_| BundleError::UnableToPayBundleStorageFee)?;
 
         Ok(())
@@ -2747,6 +2916,15 @@ impl<T: Config> Pallet<T> {
     pub fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>> {
         DomainSudoCalls::<T>::get(domain_id).maybe_call
     }
+
+    // The gap between `HeadDomainNumber` and `HeadReceiptNumber` represent the number
+    // of receipt to be submitted
+    pub fn receipt_gap(domain_id: DomainId) -> DomainBlockNumberFor<T> {
+        let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+        let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+
+        head_domain_number.saturating_sub(head_receipt_number)
+    }
 }
 
 impl<T: Config> sp_domains::DomainOwner<T::AccountId> for Pallet<T> {
@@ -2779,6 +2957,25 @@ where
             }
             Err(()) => {
                 log::error!(target: "runtime::domains", "Error submitting bundle");
+            }
+        }
+    }
+
+    /// Submits an unsigned extrinsic [`Call::submit_receipt`].
+    pub fn submit_receipt_unsigned(singleton_receipt: SingletonReceiptOf<T>) {
+        let slot = singleton_receipt.slot_number();
+        let domain_block_number = singleton_receipt.receipt().domain_block_number;
+
+        let call = Call::submit_receipt { singleton_receipt };
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(
+                    target: "runtime::domains",
+                    "Submitted singleton receipt from slot {slot}, domain_block_number: {domain_block_number:?}",
+                );
+            }
+            Err(()) => {
+                log::error!(target: "runtime::domains", "Error submitting singleton receipt");
             }
         }
     }
