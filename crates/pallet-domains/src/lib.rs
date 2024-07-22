@@ -166,7 +166,7 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 /// and based on the consensus chain slot probability and domain bundle slot probability, usually
 /// the value is 6 on average, smaller/bigger value with less probability, we hypocritically use
 /// 100 as the maximum number of bundle per block for benchmarking.
-const MAX_BUNLDE_PER_BLOCK: u32 = 100;
+const MAX_BUNDLE_PER_BLOCK: u32 = 100;
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
@@ -211,7 +211,7 @@ mod pallet {
     use crate::{
         BalanceOf, BlockSlot, BlockTreeNodeFor, DomainBlockNumberFor, ElectionVerificationParams,
         ExecutionReceiptOf, FraudProofFor, HoldIdentifier, NominatorId, OpaqueBundleOf,
-        ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNLDE_PER_BLOCK, STORAGE_VERSION,
+        ReceiptHashFor, SingletonReceiptOf, StateRootOf, MAX_BUNDLE_PER_BLOCK, STORAGE_VERSION,
     };
     #[cfg(not(feature = "std"))]
     use alloc::string::String;
@@ -927,9 +927,20 @@ mod pallet {
             operator_id: OperatorId,
             domain_id: DomainId,
         },
+        NominatedStakedUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            unlocked_amount: BalanceOf<T>,
+        },
+        StorageFeeUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            storage_fee: BalanceOf<T>,
+        },
         OperatorNominated {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
+            amount: BalanceOf<T>,
         },
         DomainInstantiated {
             domain_id: DomainId,
@@ -941,17 +952,13 @@ mod pallet {
         OperatorDeregistered {
             operator_id: OperatorId,
         },
-        OperatorUnlocked {
+        NominatorUnlocked {
             operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
         },
         WithdrewStake {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
-        },
-        FundsUnlocked {
-            operator_id: OperatorId,
-            nominator_id: NominatorId<T>,
-            amount: BalanceOf<T>,
         },
         PreferredOperator {
             operator_id: OperatorId,
@@ -1209,7 +1216,7 @@ mod pallet {
         #[pallet::call_index(15)]
         #[pallet::weight((
             T::WeightInfo::submit_fraud_proof().saturating_add(
-                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
+                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK)
             ),
             DispatchClass::Operational
         ))]
@@ -1254,7 +1261,7 @@ mod pallet {
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                 actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                    (block_tree_node.operator_ids.len() as u32).min(MAX_BUNLDE_PER_BLOCK),
+                    (block_tree_node.operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
                 ));
 
                 do_mark_operators_as_slashed::<T>(
@@ -1374,11 +1381,6 @@ mod pallet {
             do_nominate_operator::<T>(operator_id, nominator_id.clone(), amount)
                 .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::OperatorNominated {
-                operator_id,
-                nominator_id,
-            });
-
             Ok(())
         }
 
@@ -1447,13 +1449,8 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::unlock_funds())]
         pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator_id = ensure_signed(origin)?;
-            let unlocked_funds = do_unlock_funds::<T>(operator_id, nominator_id.clone())
+            do_unlock_funds::<T>(operator_id, nominator_id.clone())
                 .map_err(crate::pallet::Error::<T>::from)?;
-            Self::deposit_event(Event::FundsUnlocked {
-                operator_id,
-                nominator_id,
-                amount: unlocked_funds,
-            });
             Ok(())
         }
 
@@ -1464,10 +1461,13 @@ mod pallet {
         pub fn unlock_nominator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
             let nominator = ensure_signed(origin)?;
 
-            do_unlock_nominator::<T>(operator_id, nominator)
+            do_unlock_nominator::<T>(operator_id, nominator.clone())
                 .map_err(crate::pallet::Error::<T>::from)?;
 
-            Self::deposit_event(Event::OperatorUnlocked { operator_id });
+            Self::deposit_event(Event::NominatorUnlocked {
+                operator_id,
+                nominator_id: nominator,
+            });
 
             Ok(())
         }
@@ -1621,7 +1621,7 @@ mod pallet {
                 .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
             actual_weight = actual_weight.saturating_add(T::WeightInfo::handle_bad_receipt(
-                (block_tree_node.operator_ids.len() as u32).min(MAX_BUNLDE_PER_BLOCK),
+                (block_tree_node.operator_ids.len() as u32).min(MAX_BUNDLE_PER_BLOCK),
             ));
 
             do_mark_operators_as_slashed::<T>(
@@ -2731,11 +2731,11 @@ impl<T: Config> Pallet<T> {
                 // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
                 // `confirm_domain_block` can happen, thus we use the `max` of them
 
-                // We use `MAX_BUNLDE_PER_BLOCK` number to assume the number of slashed operators.
+                // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
-                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK).max(
-                    T::WeightInfo::confirm_domain_block(MAX_BUNLDE_PER_BLOCK, MAX_BUNLDE_PER_BLOCK),
+                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK).max(
+                    T::WeightInfo::confirm_domain_block(MAX_BUNDLE_PER_BLOCK, MAX_BUNDLE_PER_BLOCK),
                 ),
             )
             .saturating_add(Self::max_staking_epoch_transition())
@@ -2745,22 +2745,22 @@ impl<T: Config> Pallet<T> {
     pub fn max_submit_receipt_weight() -> Weight {
         T::WeightInfo::submit_bundle()
             .saturating_add(
-                // We use `MAX_BUNLDE_PER_BLOCK` number to assume the number of slashed operators.
+                // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
-                T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK),
+                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK),
             )
             .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
     }
 
     pub fn max_staking_epoch_transition() -> Weight {
-        T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNLDE_PER_BLOCK).saturating_add(
+        T::WeightInfo::operator_reward_tax_and_restake(MAX_BUNDLE_PER_BLOCK).saturating_add(
             T::WeightInfo::finalize_domain_epoch_staking(T::MaxPendingStakingOperation::get()),
         )
     }
 
     pub fn max_prune_domain_execution_receipt() -> Weight {
-        T::WeightInfo::handle_bad_receipt(MAX_BUNLDE_PER_BLOCK)
+        T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK)
             .saturating_add(T::DbWeight::get().reads_writes(3, 1))
     }
 

@@ -229,7 +229,8 @@ where
                 import_queue_service
                     .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
                 // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
-                import_queue_service.import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block]);
+                import_queue_service
+                    .import_blocks(BlockOrigin::ConsensusBroadcast, vec![last_block]);
             } else {
                 import_queue_service
                     .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
