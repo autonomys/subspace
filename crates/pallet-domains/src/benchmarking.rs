@@ -189,7 +189,7 @@ mod benchmarks {
 
     /// Benchmark prune bad ER and slash the submitter based on the number of submitter
     #[benchmark]
-    fn handle_bad_receipt(n: Linear<1, MAX_BUNLDE_PER_BLOCK>) {
+    fn handle_bad_receipt(n: Linear<1, MAX_BUNDLE_PER_BLOCK>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
         let domain_id = register_domain::<T>();
         let mut operator_ids = Vec::new();
@@ -246,8 +246,8 @@ mod benchmarks {
     /// in this block
     #[benchmark]
     fn confirm_domain_block(
-        n: Linear<1, MAX_BUNLDE_PER_BLOCK>,
-        s: Linear<0, MAX_BUNLDE_PER_BLOCK>,
+        n: Linear<1, MAX_BUNDLE_PER_BLOCK>,
+        s: Linear<0, MAX_BUNDLE_PER_BLOCK>,
     ) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
         let operator_rewards =
@@ -314,7 +314,7 @@ mod benchmarks {
     /// Benchmark `operator_take_reward_tax_and_stake` based on the number of operator who has reward
     /// in the current epoch
     #[benchmark]
-    fn operator_reward_tax_and_restake(n: Linear<1, MAX_BUNLDE_PER_BLOCK>) {
+    fn operator_reward_tax_and_restake(n: Linear<1, MAX_BUNDLE_PER_BLOCK>) {
         let minimum_nominator_stake = T::MinNominatorStake::get();
         let operator_rewards =
             T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(1000u32));

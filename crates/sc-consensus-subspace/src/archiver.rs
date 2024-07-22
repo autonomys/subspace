@@ -79,7 +79,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
 /// instances
@@ -450,9 +450,7 @@ struct InitializedArchiver<Block>
 where
     Block: BlockT,
 {
-    confirmation_depth_k: BlockNumber,
     archiver: Archiver,
-    older_archived_segments: Vec<NewArchivedSegment>,
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
@@ -542,12 +540,8 @@ where
         .unwrap_or_else(|_| {
             unreachable!("Block number fits into block number; qed");
         });
-    let best_block_hash = client_info.best_hash;
 
-    let confirmation_depth_k = client
-        .runtime_api()
-        .chain_constants(best_block_hash)?
-        .confirmation_depth_k();
+    let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k();
 
     let mut best_block_to_archive = best_block_number.saturating_sub(confirmation_depth_k);
     if (best_block_to_archive..best_block_number)
@@ -599,8 +593,6 @@ where
 
             Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
-
-    let mut older_archived_segments = Vec::new();
 
     // Process blocks since last fully archived block up to the current head minus K
     {
@@ -691,8 +683,6 @@ where
                     .map(|archived_segment| archived_segment.segment_header)
                     .collect();
 
-                older_archived_segments.extend(archived_segments);
-
                 if !new_segment_headers.is_empty() {
                     segment_headers_store.add_segment_headers(&new_segment_headers)?;
                 }
@@ -701,9 +691,7 @@ where
     }
 
     Ok(InitializedArchiver {
-        confirmation_depth_k,
         archiver,
-        older_archived_segments,
         best_archived_block: best_archived_block
             .expect("Must always set if there is no logical error; qed"),
     })
@@ -808,6 +796,7 @@ where
         None
     };
 
+    // Subscribing synchronously before returning
     let mut block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
         .subscribe();
@@ -817,11 +806,10 @@ where
             Some(archiver) => archiver,
             None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
         };
+        let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k().into();
 
         let InitializedArchiver {
-            confirmation_depth_k,
             mut archiver,
-            older_archived_segments,
             best_archived_block,
         } = archiver;
         let (mut best_archived_block_hash, mut best_archived_block_number) = best_archived_block;
@@ -829,31 +817,44 @@ where
         let archived_segment_notification_sender =
             subspace_link.archived_segment_notification_sender.clone();
 
-        // Farmers may have not received all previous segments, send them now.
-        for archived_segment in older_archived_segments {
-            send_archived_segment_notification(
-                &archived_segment_notification_sender,
-                archived_segment,
-            )
-            .await;
-        }
-
-        while let Some(ref block_import_notification) =
+        while let Some(block_importing_notification) =
             block_importing_notification_stream.next().await
         {
-            let block_number_to_archive = match block_import_notification
-                .block_number
-                .checked_sub(&confirmation_depth_k.into())
-            {
-                Some(block_number_to_archive) => block_number_to_archive,
-                None => {
-                    // Too early to archive blocks
-                    continue;
-                }
-            };
+            let importing_block_number = block_importing_notification.block_number;
+            let block_number_to_archive =
+                match importing_block_number.checked_sub(&confirmation_depth_k) {
+                    Some(block_number_to_archive) => block_number_to_archive,
+                    None => {
+                        // Too early to archive blocks
+                        continue;
+                    }
+                };
 
-            if best_archived_block_number >= block_number_to_archive {
+            let last_archived_block_number = NumberFor::<Block>::from(
+                segment_headers_store
+                    .last_segment_header()
+                    .expect("Exists after archiver initialization; qed")
+                    .last_archived_block()
+                    .number,
+            );
+            trace!(
+                %importing_block_number,
+                %block_number_to_archive,
+                %best_archived_block_number,
+                %last_archived_block_number,
+                "Checking if block needs to be skipped"
+            );
+            if best_archived_block_number >= block_number_to_archive
+                || last_archived_block_number > block_number_to_archive
+            {
                 // This block was already archived, skip
+                debug!(
+                    %importing_block_number,
+                    %block_number_to_archive,
+                    %best_archived_block_number,
+                    %last_archived_block_number,
+                    "Skipping already archived block",
+                );
                 continue;
             }
 
@@ -863,9 +864,7 @@ where
             // previously existing blocks
             if best_archived_block_number + One::one() != block_number_to_archive {
                 InitializedArchiver {
-                    confirmation_depth_k: _,
                     archiver,
-                    older_archived_segments: _,
                     best_archived_block: (best_archived_block_hash, best_archived_block_number),
                 } = initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?;
 
@@ -875,18 +874,19 @@ where
                     // Special sync mode where verified blocks were inserted into blockchain
                     // directly, archiving of this block will naturally happen later
                     continue;
-                } else if best_archived_block_number.is_zero() {
-                    // We may have imported some block using special sync mode right after genesis,
-                    // in which case archiver will be stuck at genesis block
+                } else if client.hash(importing_block_number - One::one())?.is_none() {
+                    // We may have imported some block using special sync mode and block we're about
+                    // to import is the first one after the gap at which archiver is supposed to be
+                    // initialized, but we are only about to import it, so wait for the next block
+                    // for now
                     continue;
                 } else {
                     let error = format!(
                         "There was a gap in blockchain history and the last contiguous series of \
                         blocks starting with doesn't start with archived segment (best archived \
                         block number {best_archived_block_number}, block number to archive \
-                        {block_number_to_archive}), block about to be imported {}), archiver can't \
-                        continue",
-                        block_import_notification.block_number
+                        {block_number_to_archive}), block about to be imported \
+                        {importing_block_number}), archiver can't continue",
                     );
                     return Err(sp_blockchain::Error::Consensus(sp_consensus::Error::Other(
                         error.into(),
