@@ -178,21 +178,21 @@ where
                 let mut caches = self.piece_caches.write().await;
 
                 for (cache_index, cache) in caches.iter_mut().enumerate() {
-                    let Some(offset) = cache.stored_pieces.remove(&key) else {
+                    let Some(piece_offset) = cache.stored_pieces.remove(&key) else {
                         // Not this disk farm
                         continue;
                     };
 
                     // Making offset as unoccupied and remove corresponding key from heap
-                    cache.free_offsets.push_front(offset);
-                    match cache.backend.read_piece_index(offset).await {
+                    cache.free_offsets.push_front(piece_offset);
+                    match cache.backend.read_piece_index(piece_offset).await {
                         Ok(Some(piece_index)) => {
                             worker_state.heap.remove(KeyWrapper(piece_index));
                         }
                         Ok(None) => {
                             warn!(
                                 %cache_index,
-                                %offset,
+                                %piece_offset,
                                 "Piece index out of range, this is likely an implementation bug, \
                                 not freeing heap element"
                             );
@@ -202,7 +202,7 @@ where
                                 %error,
                                 %cache_index,
                                 ?key,
-                                %offset,
+                                %piece_offset,
                                 "Error while reading piece from cache, might be a disk corruption"
                             );
                         }
@@ -248,7 +248,7 @@ where
             .zip(new_piece_caches)
             .enumerate()
             .map(
-                |(index, ((mut stored_pieces, mut free_offsets), new_cache))| {
+                |(cache_index, ((mut stored_pieces, mut free_offsets), new_cache))| {
                     if let Some(metrics) = &self.metrics {
                         metrics
                             .piece_cache_capacity_total
@@ -262,7 +262,7 @@ where
                             let mut maybe_contents = match new_cache.contents().await {
                                 Ok(contents) => Some(contents),
                                 Err(error) => {
-                                    warn!(%index, %error, "Failed to get cache contents");
+                                    warn!(%cache_index, %error, "Failed to get cache contents");
 
                                     None
                                 }
@@ -280,11 +280,12 @@ where
                             stored_pieces.reserve(new_cache.max_num_elements() as usize);
 
                             while let Some(maybe_element_details) = contents.next().await {
-                                let (offset, maybe_piece_index) = match maybe_element_details {
+                                let (piece_offset, maybe_piece_index) = match maybe_element_details
+                                {
                                     Ok(element_details) => element_details,
                                     Err(error) => {
                                         warn!(
-                                            %index,
+                                            %cache_index,
                                             %error,
                                             "Failed to get cache contents element details"
                                         );
@@ -295,11 +296,11 @@ where
                                     Some(piece_index) => {
                                         stored_pieces.insert(
                                             RecordKey::from(piece_index.to_multihash()),
-                                            offset,
+                                            piece_offset,
                                         );
                                     }
                                     None => {
-                                        free_offsets.push_back(offset);
+                                        free_offsets.push_back(piece_offset);
                                     }
                                 }
 
@@ -316,7 +317,7 @@ where
                                 backend: new_cache,
                             }
                         },
-                        format!("piece-cache.{index}"),
+                        format!("piece-cache.{cache_index}"),
                     )
                 },
             )
@@ -419,8 +420,8 @@ where
             state
                 .stored_pieces
                 .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
-                .for_each(|(_piece_index, offset)| {
-                    state.free_offsets.push_front(offset);
+                .for_each(|(_piece_index, piece_offset)| {
+                    state.free_offsets.push_front(piece_offset);
                 });
         });
 
@@ -494,17 +495,20 @@ where
             sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
             if !stream::iter(sorted_caches)
                 .any(|(cache_index, cache)| async move {
-                    let Some(offset) = cache.free_offsets.pop_front() else {
+                    let Some(piece_offset) = cache.free_offsets.pop_front() else {
                         return false;
                     };
 
-                    if let Err(error) = cache.backend.write_piece(offset, *piece_index, piece).await
+                    if let Err(error) = cache
+                        .backend
+                        .write_piece(piece_offset, *piece_index, piece)
+                        .await
                     {
                         error!(
                             %error,
                             %cache_index,
                             %piece_index,
-                            %offset,
+                            %piece_offset,
                             "Failed to write piece into cache"
                         );
                         return false;
@@ -514,7 +518,7 @@ where
                     }
                     cache
                         .stored_pieces
-                        .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                        .insert(RecordKey::from(piece_index.to_multihash()), piece_offset);
                     true
                 })
                 .await
@@ -760,18 +764,21 @@ where
             Some(KeyWrapper(old_piece_index)) => {
                 for (cache_index, cache) in caches.iter_mut().enumerate() {
                     let old_record_key = RecordKey::from(old_piece_index.to_multihash());
-                    let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
+                    let Some(piece_offset) = cache.stored_pieces.remove(&old_record_key) else {
                         // Not this disk farm
                         continue;
                     };
 
-                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece).await
+                    if let Err(error) = cache
+                        .backend
+                        .write_piece(piece_offset, piece_index, &piece)
+                        .await
                     {
                         error!(
                             %error,
                             %cache_index,
                             %piece_index,
-                            %offset,
+                            %piece_offset,
                             "Failed to write piece into cache"
                         );
                     } else {
@@ -779,10 +786,10 @@ where
                             %cache_index,
                             %old_piece_index,
                             %piece_index,
-                            %offset,
+                            %piece_offset,
                             "Successfully replaced old cached piece"
                         );
-                        cache.stored_pieces.insert(record_key, offset);
+                        cache.stored_pieces.insert(record_key, piece_offset);
                     }
                     return;
                 }
@@ -801,31 +808,34 @@ where
                 // populated first
                 sorted_caches.sort_by_key(|(_, cache)| cache.stored_pieces.len());
                 for (cache_index, cache) in sorted_caches {
-                    let Some(offset) = cache.free_offsets.pop_front() else {
+                    let Some(piece_offset) = cache.free_offsets.pop_front() else {
                         // Not this disk farm
                         continue;
                     };
 
-                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece).await
+                    if let Err(error) = cache
+                        .backend
+                        .write_piece(piece_offset, piece_index, &piece)
+                        .await
                     {
                         error!(
                             %error,
                             %cache_index,
                             %piece_index,
-                            %offset,
+                            %piece_offset,
                             "Failed to write piece into cache"
                         );
                     } else {
                         trace!(
                             %cache_index,
                             %piece_index,
-                            %offset,
+                            %piece_offset,
                             "Successfully stored piece in cache"
                         );
                         if let Some(metrics) = &self.metrics {
                             metrics.piece_cache_capacity_used.inc();
                         }
-                        cache.stored_pieces.insert(record_key, offset);
+                        cache.stored_pieces.insert(record_key, piece_offset);
                     }
                     return;
                 }
@@ -982,10 +992,10 @@ impl FarmerCache {
     /// Get piece from cache
     pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
         for (cache_index, cache) in self.piece_caches.read().await.iter().enumerate() {
-            let Some(&offset) = cache.stored_pieces.get(&key) else {
+            let Some(&piece_offset) = cache.stored_pieces.get(&key) else {
                 continue;
             };
-            match cache.backend.read_piece(offset).await {
+            match cache.backend.read_piece(piece_offset).await {
                 Ok(maybe_piece) => {
                     return match maybe_piece {
                         Some((_piece_index, piece)) => {
@@ -1007,7 +1017,7 @@ impl FarmerCache {
                         %error,
                         %cache_index,
                         ?key,
-                        %offset,
+                        %piece_offset,
                         "Error while reading piece from cache, might be a disk corruption"
                     );
 
@@ -1050,13 +1060,13 @@ impl FarmerCache {
         let key = RecordKey::from(piece_index.to_multihash());
 
         for cache in self.piece_caches.read().await.iter() {
-            let Some(&offset) = cache.stored_pieces.get(&key) else {
+            let Some(&piece_offset) = cache.stored_pieces.get(&key) else {
                 continue;
             };
             if let Some(metrics) = &self.metrics {
                 metrics.cache_find_hit.inc();
             }
-            return Some((*cache.backend.id(), offset));
+            return Some((*cache.backend.id(), piece_offset));
         }
 
         if let Some(metrics) = &self.metrics {
