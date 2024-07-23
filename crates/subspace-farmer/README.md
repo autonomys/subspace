@@ -68,7 +68,7 @@ target/production/subspace-farmer --help
 target/production/subspace-farmer farm --reward-address st... path=/path/to/farm,size=100G
 ```
 
-`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar), `/path/to/farm` with location where you want to store plot and `100G` replaced with desired plot size.
+`st...` should be replaced with the reward address taken from [Polkadot.js wallet](https://polkadot.js.org/extension/) (or similar), `/path/to/farm` with location where you want to store plot and `100G` replaced with desired plot size.
 
 This will connect to local node and will try to solve on every slot notification, while also plotting all existing and new history of the blockchain in parallel.
 
