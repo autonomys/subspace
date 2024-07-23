@@ -114,14 +114,10 @@ where
                 piece_offset,
             };
 
-            match self.pieces.entry(piece_index) {
-                Entry::Occupied(mut entry) => {
-                    entry.get_mut().push(piece_details);
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(vec![piece_details]);
-                }
-            }
+            self.pieces
+                .entry(piece_index)
+                .or_default()
+                .push(piece_details);
         }
     }
 

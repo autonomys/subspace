@@ -592,6 +592,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
             .map_err(Error::BundleStorageFund)?;
 
         hold_deposit::<T>(&nominator_id, operator_id, new_deposit.staking)?;
+        Pallet::<T>::deposit_event(Event::OperatorNominated {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            amount: new_deposit.staking,
+        });
 
         // increment total deposit for operator pool within this epoch
         operator.deposits_in_epoch = operator
@@ -910,7 +915,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-) -> Result<BalanceOf<T>, Error> {
+) -> Result<(), Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
     ensure!(
         *operator.status::<T>(operator_id) == OperatorStatus::Registered,
@@ -966,6 +971,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
         )
         .map_err(|_| Error::RemoveLock)?;
 
+        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            unlocked_amount: amount_to_unlock,
+        });
+
         // Release storage fund
         let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         T::Currency::release(
@@ -975,6 +986,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
+
+        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            storage_fee: storage_fee_refund,
+        });
 
         // if there are no withdrawals, then delete the storage as well
         if withdrawal.withdrawals.is_empty() && withdrawal.withdrawal_in_shares.is_none() {
@@ -990,7 +1007,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             });
         }
 
-        Ok(amount_to_unlock)
+        Ok(())
     })
 }
 
@@ -1101,6 +1118,12 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         )
         .map_err(|_| Error::RemoveLock)?;
 
+        Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            unlocked_amount: total_amount_to_unlock,
+        });
+
         total_stake = total_stake.saturating_sub(nominator_staked_amount);
         total_shares = total_shares.saturating_sub(nominator_shares);
 
@@ -1120,8 +1143,15 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         .map_err(Error::BundleStorageFund)?;
 
         // Release all storage fee that of the nominator.
-        T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
-            .map_err(|_| Error::RemoveLock)?;
+        let storage_fee_refund =
+            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
+                .map_err(|_| Error::RemoveLock)?;
+
+        Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
+            operator_id,
+            nominator_id: nominator_id.clone(),
+            storage_fee: storage_fee_refund,
+        });
 
         // reduce total storage fee deposit with nominator total fee deposit
         total_storage_fee_deposit =
@@ -1311,8 +1341,9 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlock,
-        NextOperatorId, NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
+        Config, Deposits, DomainRegistry, DomainStakingSummary,
+        LatestConfirmedDomainExecutionReceipt, NextOperatorId, NominatorCount, OperatorIdOwner,
+        Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
@@ -1322,7 +1353,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, Error, ExecutionReceiptOf, NominatorId, SlashedReason,
+        MAX_NOMINATORS_TO_SLASH,
     };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
@@ -1332,8 +1364,8 @@ pub(crate) mod tests {
     use sp_core::crypto::UncheckedFrom;
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
-        ConfirmedDomainBlock, DomainId, OperatorAllowList, OperatorId, OperatorPair,
-        OperatorPublicKey, OperatorSignature,
+        BlockFees, DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
+        OperatorSignature, Transfers,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -1889,14 +1921,21 @@ pub(crate) mod tests {
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             let confirmed_domain_block = 100;
-            LatestConfirmedDomainBlock::<Test>::insert(
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                 domain_id,
-                ConfirmedDomainBlock {
-                    block_number: confirmed_domain_block,
-                    block_hash: Default::default(),
-                    parent_block_receipt_hash: Default::default(),
-                    state_root: Default::default(),
-                    extrinsics_root: Default::default(),
+                ExecutionReceiptOf::<Test> {
+                    domain_block_number: confirmed_domain_block,
+                    domain_block_hash: Default::default(),
+                    domain_block_extrinsic_root: Default::default(),
+                    parent_domain_block_receipt_hash: Default::default(),
+                    consensus_block_number: Default::default(),
+                    consensus_block_hash: Default::default(),
+                    inboxed_bundles: vec![],
+                    final_state_root: Default::default(),
+                    execution_trace: vec![],
+                    execution_trace_root: Default::default(),
+                    block_fees: BlockFees::default(),
+                    transfers: Transfers::default(),
                 },
             );
 
@@ -1957,14 +1996,21 @@ pub(crate) mod tests {
                 // staking withdrawal is 5 blocks
                 // to unlock funds, confirmed block should be atleast 105
                 let confirmed_domain_block = 105;
-                LatestConfirmedDomainBlock::<Test>::insert(
+                LatestConfirmedDomainExecutionReceipt::<Test>::insert(
                     domain_id,
-                    ConfirmedDomainBlock {
-                        block_number: confirmed_domain_block,
-                        block_hash: Default::default(),
-                        parent_block_receipt_hash: Default::default(),
-                        state_root: Default::default(),
-                        extrinsics_root: Default::default(),
+                    ExecutionReceiptOf::<Test> {
+                        domain_block_number: confirmed_domain_block,
+                        domain_block_hash: Default::default(),
+                        domain_block_extrinsic_root: Default::default(),
+                        parent_domain_block_receipt_hash: Default::default(),
+                        consensus_block_number: Default::default(),
+                        consensus_block_hash: Default::default(),
+                        inboxed_bundles: vec![],
+                        final_state_root: Default::default(),
+                        execution_trace: vec![],
+                        execution_trace_root: Default::default(),
+                        block_fees: BlockFees::default(),
+                        transfers: Transfers::default(),
                     },
                 );
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));

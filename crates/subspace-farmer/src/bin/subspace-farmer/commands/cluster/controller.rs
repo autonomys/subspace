@@ -136,7 +136,8 @@ pub(super) async fn controller(
     let peer_id = keypair.public().to_peer_id();
     let instance = peer_id.to_string();
 
-    let (farmer_cache, farmer_cache_worker) = FarmerCache::new(node_client.clone(), peer_id);
+    let (farmer_cache, farmer_cache_worker) =
+        FarmerCache::new(node_client.clone(), peer_id, Some(registry));
 
     // TODO: Metrics
 

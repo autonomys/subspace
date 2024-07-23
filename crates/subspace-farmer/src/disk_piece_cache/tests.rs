@@ -8,7 +8,7 @@ use tempfile::tempdir;
 fn basic() {
     let path = tempdir().unwrap();
     {
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
 
         // Initially empty
         assert_eq!(
@@ -115,7 +115,7 @@ fn basic() {
 
     // Reopening works
     {
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
         // Two pieces stored
         assert_eq!(
             disk_piece_cache
@@ -130,7 +130,7 @@ fn basic() {
     {
         DiskPieceCache::wipe(path.as_ref()).unwrap();
 
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2).unwrap();
+        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
         // Wiped successfully
         assert_eq!(
             disk_piece_cache

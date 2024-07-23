@@ -275,11 +275,11 @@ pub struct ClusterNodeClient {
 
 impl ClusterNodeClient {
     /// Create a new instance
-    pub async fn new(nats_client: NatsClient) -> anyhow::Result<Self> {
-        Ok(Self {
+    pub fn new(nats_client: NatsClient) -> Self {
+        Self {
             nats_client,
             last_slot_info_instance: Arc::default(),
-        })
+        }
     }
 }
 

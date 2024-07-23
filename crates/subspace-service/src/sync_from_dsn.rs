@@ -13,11 +13,11 @@ use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::service::traits::NetworkService;
+use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
-use sp_runtime::Saturating;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
@@ -85,7 +85,7 @@ enum NotificationReason {
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn create_observer_and_worker<Block, AS, Client, PG>(
+pub(super) fn create_observer_and_worker<Block, Backend, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<dyn NetworkService>,
     node: Node,
@@ -100,11 +100,13 @@ pub(super) fn create_observer_and_worker<Block, AS, Client, PG>(
 )
 where
     Block: BlockT,
+    Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
         + ProvideRuntimeApi<Block>
+        + ClientExt<Block, Backend>
         + Send
         + Sync
         + 'static,
@@ -248,7 +250,7 @@ async fn create_substrate_network_observer(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Block, AS, IQS, Client, PG>(
+async fn create_worker<Block, Backend, AS, IQS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
@@ -260,10 +262,12 @@ async fn create_worker<Block, AS, IQS, Client, PG>(
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
+    Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
+        + ClientExt<Block, Backend>
         + Send
         + Sync
         + 'static,
@@ -282,9 +286,7 @@ where
     let mut last_processed_segment_index = SegmentIndex::ZERO;
     // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
-    let mut last_processed_block_number = info
-        .best_number
-        .saturating_sub(chain_constants.confirmation_depth_k().into());
+    let mut last_processed_block_number = info.best_number;
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
 
     while let Some(reason) = notifications.next().await {
@@ -331,6 +333,11 @@ where
                 // Almost synced, DSN sync can't possibly help here
             }
         }
+
+        // Clear the block gap that arises from first block import with a much higher number than
+        // previously (resulting in a gap)
+        // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
+        client.clear_block_gap()?;
 
         debug!("Finished DSN sync");
 

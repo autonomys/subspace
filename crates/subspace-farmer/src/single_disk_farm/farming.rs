@@ -9,6 +9,7 @@ use crate::farm::{
     AuditingDetails, FarmingError, FarmingNotification, ProvingDetails, ProvingResult,
 };
 use crate::node_client::NodeClient;
+use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use crate::single_disk_farm::Handlers;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::mpsc;
@@ -36,6 +37,7 @@ const NON_FATAL_ERROR_LIMIT: usize = 10;
 pub(super) async fn slot_notification_forwarder<NC>(
     node_client: &NC,
     mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
+    metrics: Option<Arc<SingleDiskFarmMetrics>>,
 ) -> Result<(), FarmingError>
 where
     NC: NodeClient,
@@ -52,9 +54,12 @@ where
 
         let slot = slot_info.slot_number;
 
-        // Error means farmer is still solving for previous slot, which is too late and
-        // we need to skip this slot
+        // Error means farmer is still solving for previous slot, which is too late, and we need to
+        // skip this slot
         if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+            if let Some(metrics) = &metrics {
+                metrics.skipped_slots.inc();
+            }
             debug!(%slot, "Slow farming, skipping slot");
         }
     }
@@ -201,6 +206,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) thread_pool: ThreadPool,
     pub(super) read_sector_record_chunks_mode: ReadSectorRecordChunksMode,
     pub(super) global_mutex: Arc<AsyncMutex<()>>,
+    pub(super) metrics: Option<Arc<SingleDiskFarmMetrics>>,
 }
 
 /// Starts farming process.
@@ -229,6 +235,7 @@ where
         thread_pool,
         read_sector_record_chunks_mode,
         global_mutex,
+        metrics,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -285,12 +292,18 @@ where
                 a_solution_distance.cmp(&b_solution_distance)
             });
 
-            handlers
-                .farming_notification
-                .call_simple(&FarmingNotification::Auditing(AuditingDetails {
-                    sectors_count: sectors_metadata.len() as SectorIndex,
-                    time: start.elapsed(),
-                }));
+            {
+                let time = start.elapsed();
+                if let Some(metrics) = &metrics {
+                    metrics.auditing_time.observe(time.as_secs_f64());
+                }
+                handlers
+                    .farming_notification
+                    .call_simple(&FarmingNotification::Auditing(AuditingDetails {
+                        sectors_count: sectors_metadata.len() as SectorIndex,
+                        time,
+                    }));
+            }
 
             // Take mutex and hold until proving end to make sure nothing else major happens at the
             // same time
@@ -309,6 +322,10 @@ where
                     let solution = match maybe_solution {
                         Ok(solution) => solution,
                         Err(error) => {
+                            if let Some(metrics) = &metrics {
+                                metrics
+                                    .observe_proving_time(&start.elapsed(), ProvingResult::Failed);
+                            }
                             error!(%slot, %sector_index, %error, "Failed to prove");
                             // Do not error completely as disk corruption or other reasons why
                             // proving might fail
@@ -320,20 +337,26 @@ where
                     debug!(%slot, %sector_index, "Solution found");
                     trace!(?solution, "Solution found");
 
-                    if start.elapsed() >= farming_timeout {
-                        handlers
-                            .farming_notification
-                            .call_simple(&FarmingNotification::Proving(ProvingDetails {
-                                result: ProvingResult::Timeout,
-                                time: start.elapsed(),
-                            }));
-                        warn!(
-                            %slot,
-                            %sector_index,
-                            "Proving for solution skipped due to farming time limit",
-                        );
+                    {
+                        let time = start.elapsed();
+                        if time >= farming_timeout {
+                            if let Some(metrics) = &metrics {
+                                metrics.observe_proving_time(&time, ProvingResult::Timeout);
+                            }
+                            handlers.farming_notification.call_simple(
+                                &FarmingNotification::Proving(ProvingDetails {
+                                    result: ProvingResult::Timeout,
+                                    time,
+                                }),
+                            );
+                            warn!(
+                                %slot,
+                                %sector_index,
+                                "Proving for solution skipped due to farming time limit",
+                            );
 
-                        break 'solutions_processing;
+                            break 'solutions_processing;
+                        }
                     }
 
                     let response = SolutionResponse {
@@ -344,11 +367,15 @@ where
                     handlers.solution.call_simple(&response);
 
                     if let Err(error) = node_client.submit_solution_response(response).await {
+                        let time = start.elapsed();
+                        if let Some(metrics) = &metrics {
+                            metrics.observe_proving_time(&time, ProvingResult::Rejected);
+                        }
                         handlers
                             .farming_notification
                             .call_simple(&FarmingNotification::Proving(ProvingDetails {
                                 result: ProvingResult::Rejected,
-                                time: start.elapsed(),
+                                time,
                             }));
                         warn!(
                             %slot,
@@ -359,11 +386,15 @@ where
                         break 'solutions_processing;
                     }
 
+                    let time = start.elapsed();
+                    if let Some(metrics) = &metrics {
+                        metrics.observe_proving_time(&time, ProvingResult::Success);
+                    }
                     handlers
                         .farming_notification
                         .call_simple(&FarmingNotification::Proving(ProvingDetails {
                             result: ProvingResult::Success,
-                            time: start.elapsed(),
+                            time,
                         }));
                     start = Instant::now();
                 }
@@ -386,6 +417,9 @@ where
                 "Non-fatal farming error"
             );
 
+            if let Some(metrics) = &metrics {
+                metrics.note_farming_error(&error);
+            }
             handlers
                 .farming_notification
                 .call_simple(&FarmingNotification::NonFatalError(Arc::new(error)));

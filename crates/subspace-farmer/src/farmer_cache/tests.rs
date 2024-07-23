@@ -185,7 +185,7 @@ async fn basic() {
 
     {
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited =
             tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
@@ -207,8 +207,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
                 ],
                 vec![],
             )
@@ -385,7 +385,7 @@ async fn basic() {
         pieces.lock().clear();
 
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::new(node_client.clone(), public_key.to_peer_id());
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
 
@@ -407,8 +407,8 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1).unwrap()),
+                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
                 ],
                 vec![],
             )

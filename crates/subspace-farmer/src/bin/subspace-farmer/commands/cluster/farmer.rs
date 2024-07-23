@@ -8,6 +8,7 @@ use bytesize::ByteSize;
 use clap::Parser;
 use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
+use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;
@@ -25,7 +26,6 @@ use subspace_farmer::cluster::plotter::ClusterPlotter;
 use subspace_farmer::farm::Farm;
 use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeClient;
 use subspace_farmer::node_client::NodeClient;
-use subspace_farmer::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
@@ -173,13 +173,9 @@ where
         None
     };
 
-    let node_client = CachingProxyNodeClient::new(
-        ClusterNodeClient::new(nats_client.clone())
-            .await
-            .map_err(|error| anyhow!("Failed to create cluster node client: {error}"))?,
-    )
-    .await
-    .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
+    let node_client = CachingProxyNodeClient::new(ClusterNodeClient::new(nats_client.clone()))
+        .await
+        .map_err(|error| anyhow!("Failed to create caching proxy node client: {error}"))?;
 
     let farmer_app_info = node_client
         .farmer_app_info()
@@ -241,7 +237,7 @@ where
         let faster_read_sector_record_chunks_mode_barrier =
             Arc::new(Barrier::new(disk_farms.len()));
         let faster_read_sector_record_chunks_mode_concurrency = Arc::new(Semaphore::new(1));
-        let metrics = &SingleDiskFarmMetrics::new(registry);
+        let registry = &Mutex::new(registry);
 
         let mut farms = Vec::with_capacity(disk_farms.len());
         let mut farms_stream = disk_farms
@@ -283,7 +279,7 @@ where
                                 .read_sector_record_chunks_mode,
                             faster_read_sector_record_chunks_mode_barrier,
                             faster_read_sector_record_chunks_mode_concurrency,
-                            metrics: Some(metrics.clone()),
+                            registry: Some(registry),
                             create,
                         },
                         farm_index,

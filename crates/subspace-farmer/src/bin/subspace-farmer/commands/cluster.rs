@@ -110,7 +110,7 @@ where
     )
     .await
     .map_err(|error| anyhow!("Failed to connect to NATS server: {error}"))?;
-    let mut registry = Registry::default();
+    let mut registry = Registry::with_prefix("subspace_farmer");
 
     let mut tasks = FuturesUnordered::new();
 

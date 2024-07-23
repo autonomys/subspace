@@ -373,7 +373,7 @@ where
         );
 
         import_queue_service
-            .import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block_to_import]);
+            .import_blocks(BlockOrigin::ConsensusBroadcast, vec![last_block_to_import]);
     }
 
     // Wait for blocks to be imported

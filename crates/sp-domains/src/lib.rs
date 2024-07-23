@@ -776,21 +776,6 @@ impl<CHash: Default> ProofOfElection<CHash> {
     }
 }
 
-/// Type holding the block details of confirmed domain block.
-#[derive(TypeInfo, Encode, Decode, Debug, Clone, PartialEq, Eq)]
-pub struct ConfirmedDomainBlock<DomainBlockNumber: Codec, DomainHash: Codec> {
-    /// Block number of the confirmed domain block.
-    pub block_number: DomainBlockNumber,
-    /// Block hash of the confirmed domain block.
-    pub block_hash: DomainHash,
-    /// Parent block hash of the confirmed domain block.
-    pub parent_block_receipt_hash: DomainHash,
-    /// State root of the domain block.
-    pub state_root: DomainHash,
-    /// Extrinsic root of the domain block.
-    pub extrinsics_root: DomainHash,
-}
-
 /// Type that represents an operator allow list for Domains.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperatorAllowList<AccountId: Ord> {
