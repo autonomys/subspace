@@ -70,7 +70,6 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
             &network_request,
             &sync_service,
             None,
-            false,
         );
 
         match snap_sync_fut.await {
@@ -241,10 +240,6 @@ where
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
 /// segment) or to the last archived block.
-///
-/// Note: setting import_state_block_only will import only the block related to the state (a block
-/// number equal or less than target_block or the first block of the last archived segment) and
-/// disable importing the remaining blocks of the downloaded segment.
 async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -255,7 +250,6 @@ async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     network_request: &NR,
     sync_service: &SyncingService<Block>,
     target_block: Option<BlockNumber>,
-    import_state_block_only: bool,
 ) -> Result<(), Error>
 where
     B: sc_client_api::Backend<Block>,
@@ -340,30 +334,28 @@ where
         });
     }
 
-    if !import_state_block_only {
-        debug!(
-            blocks_count = %blocks.len(),
-            "Queuing importing remaining blocks from target segment"
-        );
+    debug!(
+        blocks_count = %blocks.len(),
+        "Queuing importing remaining blocks from target segment"
+    );
 
-        for (_block_number, block_bytes) in blocks {
-            let signed_block = decode_block::<Block>(&block_bytes)
-                .map_err(|error| format!("Failed to decode archived block: {error}"))?;
-            let (header, extrinsics) = signed_block.block.deconstruct();
+    for (_block_number, block_bytes) in blocks {
+        let signed_block = decode_block::<Block>(&block_bytes)
+            .map_err(|error| format!("Failed to decode archived block: {error}"))?;
+        let (header, extrinsics) = signed_block.block.deconstruct();
 
-            blocks_to_import.push(IncomingBlock {
-                hash: header.hash(),
-                header: Some(header),
-                body: Some(extrinsics),
-                indexed_body: None,
-                justifications: signed_block.justifications,
-                origin: None,
-                allow_missing_state: false,
-                import_existing: false,
-                skip_execution: false,
-                state: None,
-            });
-        }
+        blocks_to_import.push(IncomingBlock {
+            hash: header.hash(),
+            header: Some(header),
+            body: Some(extrinsics),
+            indexed_body: None,
+            justifications: signed_block.justifications,
+            origin: None,
+            allow_missing_state: false,
+            import_existing: false,
+            skip_execution: false,
+            state: None,
+        });
     }
 
     let maybe_last_block_to_import = blocks_to_import.pop();
