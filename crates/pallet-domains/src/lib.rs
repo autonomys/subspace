@@ -216,6 +216,7 @@ mod pallet {
     use domain_runtime_primitives::EVMChainId;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+    use frame_support::traits::tokens::Preservation;
     use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
@@ -1628,6 +1629,24 @@ mod pallet {
             });
 
             Ok(Some(actual_weight).into())
+        }
+
+        /// Transfer funds from treasury to given account
+        #[pallet::call_index(20)]
+        #[pallet::weight(T::WeightInfo::transfer_treasury_funds())]
+        pub fn transfer_treasury_funds(
+            origin: OriginFor<T>,
+            account_id: T::AccountId,
+            balance: BalanceOf<T>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            T::Currency::transfer(
+                &T::TreasuryAccount::get(),
+                &account_id,
+                balance,
+                Preservation::Preserve,
+            )?;
+            Ok(())
         }
     }
 

@@ -21,7 +21,7 @@ use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::fungible::Mutate;
+use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
 use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
@@ -858,6 +858,23 @@ mod benchmarks {
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config.operator_allow_list, new_allow_list);
+    }
+
+    #[benchmark]
+    fn transfer_treasury_funds() {
+        // Ensure the treasury account has balance
+        let treasury_amount = 5000u32.into();
+        let transfer_amount = 500u32.into();
+        let account = account("slashed_account", 1, SEED);
+        assert_eq!(T::Currency::balance(&account), 0u32.into());
+        T::Currency::set_balance(&T::TreasuryAccount::get(), treasury_amount);
+        #[extrinsic_call]
+        _(RawOrigin::Root, account.clone(), transfer_amount);
+        assert_eq!(T::Currency::balance(&account), transfer_amount);
+        assert_eq!(
+            T::Currency::balance(&T::TreasuryAccount::get()),
+            treasury_amount - transfer_amount
+        );
     }
 
     fn register_runtime<T: Config>() -> RuntimeId {
