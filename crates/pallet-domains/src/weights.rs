@@ -48,6 +48,7 @@ pub trait WeightInfo {
 	fn unlock_funds() -> Weight;
 	fn unlock_nominator() -> Weight;
 	fn update_domain_operator_allow_list() -> Weight;
+	fn transfer_treasury_funds() -> Weight;
 }
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
@@ -478,6 +479,17 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
+	/// Storage: `System::Account` (r:2 w:2)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	fn transfer_treasury_funds() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `140`
+		//  Estimated: `6196`
+		// Minimum execution time: 34_000_000 picoseconds.
+		Weight::from_parts(35_000_000, 6196)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(2_u64))
+	}
 }
 
 // For backwards compatibility and tests
@@ -906,5 +918,16 @@ impl WeightInfo for () {
 		Weight::from_parts(17_000_000, 3917)
 			.saturating_add(ParityDbWeight::get().reads(1_u64))
 			.saturating_add(ParityDbWeight::get().writes(1_u64))
+	}
+	/// Storage: `System::Account` (r:2 w:2)
+	/// Proof: `System::Account` (`max_values`: None, `max_size`: Some(128), added: 2603, mode: `MaxEncodedLen`)
+	fn transfer_treasury_funds() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `140`
+		//  Estimated: `6196`
+		// Minimum execution time: 34_000_000 picoseconds.
+		Weight::from_parts(35_000_000, 6196)
+			.saturating_add(ParityDbWeight::get().reads(2_u64))
+			.saturating_add(ParityDbWeight::get().writes(2_u64))
 	}
 }
