@@ -207,9 +207,11 @@ where
         proof_of_election: ProofOfElection<CBlock::Hash>,
         tx_range: U256,
         operator_id: OperatorId,
+        receipt: ExecutionReceiptFor<Block, CBlock>,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
-        let parent_number = self.client.info().best_number;
-        let parent_hash = self.client.info().best_hash;
+        // NOTE: use the domain block that derive the ER to validate the extrinsic to be included
+        // in the bundle, so the validity of the extrinsic is committed to the ER that submited together.
+        let (parent_number, parent_hash) = (receipt.domain_block_number, receipt.domain_block_hash);
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
         // TODO: proper timeout
@@ -231,8 +233,6 @@ where
         // bundle fail to submit to the consensus chain due to any reason.
         self.previous_bundled_tx
             .maybe_clear(self.consensus_client.info().best_hash);
-
-        let receipt = self.load_bundle_receipt(parent_number)?;
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
 
@@ -395,33 +395,20 @@ where
     }
 
     /// Returns the receipt in the next domain bundle.
-    fn load_bundle_receipt(
+    pub fn load_next_receipt(
         &self,
-        header_number: NumberFor<Block>,
+        head_domain_number: NumberFor<Block>,
+        head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
-        let consensus_chain_block_hash = self.consensus_client.info().best_hash;
-        let head_receipt_number = self
-            .consensus_client
-            .runtime_api()
-            .head_receipt_number(consensus_chain_block_hash, self.domain_id)?;
-
-        // TODO: the `receipt_number` may not be the best domain block number if there
-        // is fraud proof submitted and bad ERs pruned, thus the ER may not the one that
-        // derive from the latest domain block, which may cause the lagging operator able
-        // to submit invalid bundle accidentally.
-        //
-        // We need to resolve `https://github.com/subspace/subspace/issues/1673` to fix it
-        // completely.
-        let receipt_number = (head_receipt_number + One::one()).min(header_number);
-
         tracing::trace!(
-            ?header_number,
+            ?head_domain_number,
             ?head_receipt_number,
-            ?receipt_number,
-            "Collecting receipts at {consensus_chain_block_hash:?}"
+            "Collecting receipt"
         );
 
-        if receipt_number.is_zero() {
+        // Both `head_domain_number` and `head_receipt_number` are zero means the domain just
+        // instantiated and nothing have submitted yet so submit the genesis receipt
+        if head_domain_number.is_zero() && head_receipt_number.is_zero() {
             let genesis_hash = self.client.info().genesis_hash;
             let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
@@ -435,6 +422,9 @@ where
                 genesis_hash,
             ));
         }
+
+        // The next receipt must extend the current head receipt
+        let receipt_number = head_receipt_number + One::one();
 
         // Get the domain block hash corresponding to `receipt_number` in the domain canonical chain
         let domain_hash = self.client.hash(receipt_number)?.ok_or_else(|| {

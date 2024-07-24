@@ -49,6 +49,7 @@ pub trait WeightInfo {
 	fn unlock_nominator() -> Weight;
 	fn update_domain_operator_allow_list() -> Weight;
 	fn transfer_treasury_funds() -> Weight;
+	fn submit_receipt() -> Weight;
 }
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
@@ -490,6 +491,27 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:1)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:1)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:1)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:1)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTreeNodes` (r:0 w:1)
+	/// Proof: `Domains::BlockTreeNodes` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn submit_receipt() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `655`
+		//  Estimated: `4120`
+		// Minimum execution time: 32_000_000 picoseconds.
+		Weight::from_parts(35_000_000, 4120)
+			.saturating_add(T::DbWeight::get().reads(5_u64))
+			.saturating_add(T::DbWeight::get().writes(5_u64))
+	}
 }
 
 // For backwards compatibility and tests
@@ -929,5 +951,26 @@ impl WeightInfo for () {
 		Weight::from_parts(35_000_000, 6196)
 			.saturating_add(ParityDbWeight::get().reads(2_u64))
 			.saturating_add(ParityDbWeight::get().writes(2_u64))
+	}
+	/// Storage: `Domains::HeadReceiptNumber` (r:1 w:1)
+	/// Proof: `Domains::HeadReceiptNumber` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::NewAddedHeadReceipt` (r:1 w:1)
+	/// Proof: `Domains::NewAddedHeadReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestConfirmedDomainExecutionReceipt` (r:1 w:0)
+	/// Proof: `Domains::LatestConfirmedDomainExecutionReceipt` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTree` (r:1 w:1)
+	/// Proof: `Domains::BlockTree` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::LatestSubmittedER` (r:1 w:1)
+	/// Proof: `Domains::LatestSubmittedER` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	/// Storage: `Domains::BlockTreeNodes` (r:0 w:1)
+	/// Proof: `Domains::BlockTreeNodes` (`max_values`: None, `max_size`: None, mode: `Measured`)
+	fn submit_receipt() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `655`
+		//  Estimated: `4120`
+		// Minimum execution time: 32_000_000 picoseconds.
+		Weight::from_parts(35_000_000, 4120)
+			.saturating_add(ParityDbWeight::get().reads(5_u64))
+			.saturating_add(ParityDbWeight::get().writes(5_u64))
 	}
 }

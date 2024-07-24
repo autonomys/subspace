@@ -29,7 +29,8 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, BlockFees, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, RuntimeType, Transfers,
+    OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
+    RuntimeType, SealedSingletonReceipt, SingletonReceipt, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
@@ -877,6 +878,36 @@ mod benchmarks {
         );
     }
 
+    #[benchmark]
+    fn submit_receipt() {
+        let domain_id = register_domain::<T>();
+        let (_, operator_id) =
+            register_helper_operator::<T>(domain_id, T::MinNominatorStake::get());
+
+        assert_eq!(Domains::<T>::head_receipt_number(domain_id), 0u32.into());
+
+        let receipt = {
+            let mut er = BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
+                .and_then(BlockTreeNodes::<T>::get)
+                .expect("genesis receipt must exist")
+                .execution_receipt;
+            er.domain_block_number = One::one();
+            er
+        };
+        let sealed_singleton_receipt = SealedSingletonReceipt {
+            singleton_receipt: SingletonReceipt {
+                proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
+                receipt,
+            },
+            signature: OperatorSignature::unchecked_from([0u8; 64]),
+        };
+
+        #[extrinsic_call]
+        submit_receipt(RawOrigin::None, sealed_singleton_receipt);
+
+        assert_eq!(Domains::<T>::head_receipt_number(domain_id), 1u32.into());
+    }
+
     fn register_runtime<T: Config>() -> RuntimeId {
         let genesis_storage = include_bytes!("../res/evm-domain-genesis-storage").to_vec();
         let runtime_id = NextRuntimeId::<T>::get();
@@ -978,6 +1009,9 @@ mod benchmarks {
     }
 
     fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
+        if let Some(parent_block_number) = block_number.checked_sub(&One::one()) {
+            <Domains<T> as Hooks<BlockNumberFor<T>>>::on_finalize(parent_block_number);
+        }
         System::<T>::set_block_number(block_number);
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
         <Domains<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);

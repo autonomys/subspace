@@ -199,6 +199,12 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
+        fn submit_receipt_unsigned(
+            _singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+        ) {
+            unreachable!()
+        }
+
         fn extract_successful_bundles(
             _domain_id: DomainId,
             _extrinsics: Vec<<Block as BlockT>::Extrinsic>,

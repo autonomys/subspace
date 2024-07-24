@@ -13,6 +13,7 @@ use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Eve};
 use domain_test_service::Sr25519Keyring::{self, Alice as Sr25519Alice, Ferdie};
 use domain_test_service::{construct_extrinsic_generic, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID};
 use futures::StreamExt;
+use pallet_domains::OperatorConfig;
 use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
@@ -32,7 +33,7 @@ use sp_domains::core_api::DomainCoreApi;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     Bundle, BundleValidity, ChainId, ChannelId, DomainsApi, HeaderHashingFor, InboxedBundle,
-    InvalidBundleType, Transfers,
+    InvalidBundleType, OperatorSignature, OperatorSigningKeyProofOfOwnershipData, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProofVariant,
@@ -2868,6 +2869,8 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     .build_evm_node(Role::Authority, Alice, &mut ferdie)
     .await;
 
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
     for i in 0..3 {
         let tx = alice.construct_extrinsic(
             alice.account_nonce() + i,
@@ -3273,16 +3276,19 @@ async fn stale_and_in_future_bundle_should_be_rejected() {
         .produce_bundle(operator_id, slot_info(valid_slot, valid_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     let bundle_with_unknow_pot = bundle_producer
         .produce_bundle(operator_id, slot_info(valid_slot, unknow_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     let bundle_with_slot_in_future = bundle_producer
         .produce_bundle(operator_id, slot_info(slot_in_future, valid_pot))
         .await
         .unwrap()
+        .and_then(|res| res.into_opaque_bundle())
         .unwrap();
     for bundle in [
         bundle_with_unknow_pot.clone(),
@@ -4325,7 +4331,7 @@ async fn test_bad_receipt_chain() {
     // Start Ferdie
     let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
-        Ferdie,
+        Sr25519Alice,
         BasePath::new(directory.path().join("ferdie")),
     );
 
@@ -4365,10 +4371,11 @@ async fn test_bad_receipt_chain() {
         )
     };
 
-    produce_blocks!(ferdie, alice, 5).await.unwrap();
+    produce_blocks!(ferdie, alice, 15).await.unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, mut opaque_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let stale_bundle = opaque_bundle.clone();
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_hash = Default::default();
@@ -4422,6 +4429,7 @@ async fn test_bad_receipt_chain() {
             )
             .await
             .expect("produce bundle must success")
+            .and_then(|res| res.into_opaque_bundle())
             .expect("must win the challenge");
         let (receipt_hash, bad_submit_bundle_tx) = {
             let mut opaque_bundle = bundle;
@@ -4463,12 +4471,115 @@ async fn test_bad_receipt_chain() {
 
     let ferdie_best_hash = ferdie.client.info().best_hash;
     let runtime_api = ferdie.client.runtime_api();
-    for receipt_hash in bad_receipt_descendants {
-        assert!(ferdie.does_receipt_exist(receipt_hash).unwrap());
+    for receipt_hash in &bad_receipt_descendants {
+        assert!(ferdie.does_receipt_exist(*receipt_hash).unwrap());
         assert!(runtime_api
-            .is_bad_er_pending_to_prune(ferdie_best_hash, EVM_DOMAIN_ID, receipt_hash)
+            .is_bad_er_pending_to_prune(ferdie_best_hash, EVM_DOMAIN_ID, *receipt_hash)
             .unwrap());
     }
+
+    // There should be a receipt gap
+    let head_domain_number = ferdie
+        .client
+        .runtime_api()
+        .domain_best_number(ferdie_best_hash, EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    let head_receipt_number = ferdie
+        .client
+        .runtime_api()
+        .head_receipt_number(ferdie_best_hash, EVM_DOMAIN_ID)
+        .unwrap();
+    assert_eq!(head_domain_number - head_receipt_number, 9);
+    // The previou bundle will be rejected as there is a receipt gap
+    match ferdie
+        .submit_transaction(bundle_to_tx(stale_bundle))
+        .await
+        .unwrap_err()
+    {
+        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+            assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
+        }
+        e => panic!("Unexpected error: {e}"),
+    }
+
+    // Register another operator as Alice is slashed
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_domains::Call::register_operator {
+            domain_id: EVM_DOMAIN_ID,
+            amount: 1000 * SSC,
+            config: OperatorConfig {
+                signing_key: Sr25519Keyring::Charlie.public().into(),
+                minimum_nominator_stake: Balance::MAX,
+                nomination_tax: Default::default(),
+            },
+            signing_key_proof_of_ownership: OperatorSignature::from(
+                OperatorSigningKeyProofOfOwnershipData {
+                    operator_owner: Sr25519Alice.to_account_id(),
+                }
+                .using_encoded(|e| Sr25519Keyring::Charlie.sign(e)),
+            ),
+        })
+        .await
+        .unwrap();
+    ferdie.produce_blocks(1).await.unwrap();
+
+    ferdie
+        .construct_and_send_extrinsic_with(pallet_sudo::Call::sudo {
+            call: Box::new(subspace_test_runtime::RuntimeCall::Domains(
+                pallet_domains::Call::force_staking_epoch_transition {
+                    domain_id: EVM_DOMAIN_ID,
+                },
+            )),
+        })
+        .await
+        .unwrap();
+    ferdie.produce_blocks(1).await.unwrap();
+
+    let alice_best_number = alice.client.info().best_number;
+    drop(alice);
+
+    // Start another operator node
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        BasePath::new(directory.path().join("bob")),
+    )
+    .operator_id(2)
+    .build_evm_node(Role::Authority, Charlie, &mut ferdie)
+    .await;
+    ferdie.produce_blocks(1).await.unwrap();
+
+    let bob_best_number = bob.client.info().best_number;
+    assert_eq!(alice_best_number, bob_best_number);
+
+    // Bad receipt should be pruned as singletone receipt submitting
+    for receipt_hash in vec![bad_receipt_hash]
+        .into_iter()
+        .chain(bad_receipt_descendants)
+    {
+        let slot = ferdie.produce_slot();
+        ferdie.notify_new_slot_and_wait_for_bundle(slot).await;
+        ferdie.produce_block_with_slot(slot).await.unwrap();
+        assert!(!ferdie.does_receipt_exist(receipt_hash).unwrap());
+    }
+
+    // The receipt gap should be fill up
+    let ferdie_best_hash = ferdie.client.info().best_hash;
+    let head_domain_number = ferdie
+        .client
+        .runtime_api()
+        .domain_best_number(ferdie_best_hash, EVM_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+    let head_receipt_number = ferdie
+        .client
+        .runtime_api()
+        .head_receipt_number(ferdie_best_hash, EVM_DOMAIN_ID)
+        .unwrap();
+    assert_eq!(head_domain_number - head_receipt_number, 1);
+    assert_eq!(bob_best_number, bob.client.info().best_number);
+
+    produce_blocks!(ferdie, bob, 15).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -754,6 +754,10 @@ impl<CHash> ProofOfElection<CHash> {
         bytes.append(&mut self.vrf_signature.proof.encode());
         blake3_hash(&bytes)
     }
+
+    pub fn slot_number(&self) -> u64 {
+        self.slot_number
+    }
 }
 
 impl<CHash: Default> ProofOfElection<CHash> {
@@ -773,6 +777,93 @@ impl<CHash: Default> ProofOfElection<CHash> {
             operator_id,
             consensus_block_hash: Default::default(),
         }
+    }
+}
+
+/// Singleton receipt submit along when there is a gap between `HeadDomainNumber`
+/// and `HeadReceiptNumber`
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
+    /// Proof of receipt producer election.
+    pub proof_of_election: ProofOfElection<Hash>,
+    /// The receipt to submit
+    pub receipt: ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    >,
+}
+
+impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
+    SingletonReceipt<Number, Hash, DomainHeader, Balance>
+{
+    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
+        HeaderHashingFor::<DomainHeader>::hash_of(&self)
+    }
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct SealedSingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
+    /// A collection of the receipt.
+    pub singleton_receipt: SingletonReceipt<Number, Hash, DomainHeader, Balance>,
+    /// Signature of the receipt bundle.
+    pub signature: OperatorSignature,
+}
+
+impl<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>
+    SealedSingletonReceipt<Number, Hash, DomainHeader, Balance>
+{
+    /// Returns the `domain_id`
+    pub fn domain_id(&self) -> DomainId {
+        self.singleton_receipt.proof_of_election.domain_id
+    }
+
+    /// Return the `operator_id`
+    pub fn operator_id(&self) -> OperatorId {
+        self.singleton_receipt.proof_of_election.operator_id
+    }
+
+    /// Return the `slot_number` of the `proof_of_election`
+    pub fn slot_number(&self) -> u64 {
+        self.singleton_receipt.proof_of_election.slot_number
+    }
+
+    /// Return the receipt
+    pub fn receipt(
+        &self,
+    ) -> &ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        &self.singleton_receipt.receipt
+    }
+
+    /// Consume this `SealedSingletonReceipt` and return the receipt
+    pub fn into_receipt(
+        self,
+    ) -> ExecutionReceipt<
+        Number,
+        Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    > {
+        self.singleton_receipt.receipt
+    }
+
+    /// Returns the hash of `SingletonReceipt`
+    pub fn pre_hash(&self) -> HeaderHashFor<DomainHeader> {
+        HeaderHashingFor::<DomainHeader>::hash_of(&self.singleton_receipt)
+    }
+
+    /// Return the encode size of `SealedSingletonReceipt`
+    pub fn size(&self) -> u32 {
+        self.encoded_size() as u32
     }
 }
 
@@ -1419,6 +1510,9 @@ sp_api::decl_runtime_apis! {
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
+
+        // Submit singleton receipt via an unsigned extrinsic.
+        fn submit_receipt_unsigned(singleton_receipt: SealedSingletonReceipt<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(

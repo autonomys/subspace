@@ -1349,6 +1349,12 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
+        fn submit_receipt_unsigned(
+            singleton_receipt: sp_domains::SealedSingletonReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+        ) {
+            Domains::submit_receipt_unsigned(singleton_receipt)
+        }
+
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,

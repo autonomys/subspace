@@ -29,7 +29,7 @@ use sp_block_builder::BlockBuilder;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::{Encode, H256};
 use sp_domains::core_api::DomainCoreApi;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, OperatorId};
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
@@ -134,6 +134,7 @@ where
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
         skip_empty_bundle_production: bool,
+        maybe_operator_id: Option<OperatorId>,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -186,7 +187,7 @@ where
 
         let maybe_operator_id = role
             .is_authority()
-            .then_some(if domain_id == EVM_DOMAIN_ID { 0 } else { 1 });
+            .then_some(maybe_operator_id.unwrap_or(if domain_id == EVM_DOMAIN_ID { 0 } else { 1 }));
 
         let consensus_best_hash = mock_consensus_node.client.info().best_hash;
         let chain_constants = mock_consensus_node
@@ -409,6 +410,7 @@ pub struct DomainNodeBuilder {
     domain_nodes_exclusive: bool,
     skip_empty_bundle_production: bool,
     base_path: BasePath,
+    maybe_operator_id: Option<OperatorId>,
 }
 
 impl DomainNodeBuilder {
@@ -423,6 +425,7 @@ impl DomainNodeBuilder {
             domain_nodes_exclusive: false,
             skip_empty_bundle_production: false,
             base_path,
+            maybe_operator_id: None,
         }
     }
 
@@ -449,6 +452,12 @@ impl DomainNodeBuilder {
         self
     }
 
+    /// Set the operator id
+    pub fn operator_id(mut self, operator_id: OperatorId) -> Self {
+        self.maybe_operator_id = Some(operator_id);
+        self
+    }
+
     /// Build a evm domain node
     pub async fn build_evm_node(
         self,
@@ -464,6 +473,7 @@ impl DomainNodeBuilder {
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
+            self.maybe_operator_id,
             role,
             mock_consensus_node,
         )
@@ -485,6 +495,7 @@ impl DomainNodeBuilder {
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.skip_empty_bundle_production,
+            self.maybe_operator_id,
             role,
             mock_consensus_node,
         )
