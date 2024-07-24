@@ -223,6 +223,7 @@ mod pallet {
     use domain_runtime_primitives::EVMChainId;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+    use frame_support::traits::tokens::Preservation;
     use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
@@ -1133,23 +1134,6 @@ mod pallet {
                             SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
                         )
                         .map_err(Error::<T>::from)?;
-
-                        if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
-                            == Zero::zero()
-                        {
-                            let epoch_transition_res =
-                                do_finalize_domain_current_epoch::<T>(domain_id)
-                                    .map_err(Error::<T>::from)?;
-
-                            Self::deposit_event(Event::DomainEpochCompleted {
-                                domain_id,
-                                completed_epoch_index: epoch_transition_res.completed_epoch_index,
-                            });
-
-                            actual_weight = actual_weight.saturating_add(
-                                Self::actual_epoch_transition_weight(epoch_transition_res),
-                            );
-                        }
                     }
                 }
             }
@@ -1172,6 +1156,22 @@ mod pallet {
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?
                     .checked_add(&missed_upgrade.into())
                     .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
+
+                // Trigger epoch transition if any at the first bundle in the block
+                #[cfg(not(feature = "runtime-benchmarks"))]
+                if next_number % T::StakeEpochDuration::get() == Zero::zero() {
+                    let epoch_transition_res = do_finalize_domain_current_epoch::<T>(domain_id)
+                        .map_err(Error::<T>::from)?;
+
+                    Self::deposit_event(Event::DomainEpochCompleted {
+                        domain_id,
+                        completed_epoch_index: epoch_transition_res.completed_epoch_index,
+                    });
+
+                    actual_weight = actual_weight
+                        .saturating_add(Self::actual_epoch_transition_weight(epoch_transition_res));
+                }
+
                 HeadDomainNumber::<T>::set(domain_id, next_number);
             }
 
@@ -1643,7 +1643,25 @@ mod pallet {
             Ok(Some(actual_weight).into())
         }
 
+        /// Transfer funds from treasury to given account
         #[pallet::call_index(20)]
+        #[pallet::weight(T::WeightInfo::transfer_treasury_funds())]
+        pub fn transfer_treasury_funds(
+            origin: OriginFor<T>,
+            account_id: T::AccountId,
+            balance: BalanceOf<T>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            T::Currency::transfer(
+                &T::TreasuryAccount::get(),
+                &account_id,
+                balance,
+                Preservation::Preserve,
+            )?;
+            Ok(())
+        }
+
+        #[pallet::call_index(21)]
         #[pallet::weight(Pallet::<T>::max_submit_receipt_weight())]
         pub fn submit_receipt(
             origin: OriginFor<T>,
