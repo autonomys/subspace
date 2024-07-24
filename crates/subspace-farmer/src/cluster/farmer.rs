@@ -509,14 +509,7 @@ async fn identify_responder(
     identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
     let mut subscription = nats_client
-        .subscribe_to_broadcasts::<ClusterControllerFarmerIdentifyBroadcast>(
-            None,
-            // Use the first farm as a queue group. Doesn't matter what we use, just needs to be
-            // deterministic.
-            farms_details
-                .first()
-                .map(|farm_details| farm_details.farm_id_string.clone()),
-        )
+        .subscribe_to_broadcasts::<ClusterControllerFarmerIdentifyBroadcast>(None, None)
         .await
         .map_err(|error| {
             anyhow!("Failed to subscribe to farmer identify broadcast requests: {error}")
