@@ -15,7 +15,9 @@ pub enum SegmentHeaderRequest {
         /// Segment indexes to get.
         segment_indexes: Vec<SegmentIndex>,
     },
-    /// Defines how many segment headers to return.
+    // TODO: Should this be changed to return segments in normal order once we can introduce
+    //  breaking changes?
+    /// Defines how many segment headers to return, segments will be in reverse order.
     LastSegmentHeaders {
         /// Number of segment headers to return.
         // TODO: Replace u64 with a smaller type when able to make breaking changes
