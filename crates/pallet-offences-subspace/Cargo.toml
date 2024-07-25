@@ -5,7 +5,7 @@ authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspa
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/subspace"
+repository = "https://github.com/autonomys/subspace"
 description = "offences-subspace pallet"
 readme = "README.md"
 

@@ -20,7 +20,7 @@ use std::sync::Arc;
 const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 
 // TODO: remove dead_code once the `InboxedBundle` variant is used
-// currently blocked due to https://github.com/subspace/subspace/issues/2287
+// currently blocked due to https://github.com/autonomys/subspace/issues/2287
 #[allow(dead_code)]
 #[derive(Debug)]
 enum BadReceiptType {

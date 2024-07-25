@@ -162,7 +162,7 @@ impl SubstrateCli for DomainCli {
     }
 
     fn support_url() -> String {
-        "https://github.com/subspace/subspace/issues/new".into()
+        "https://github.com/autonomys/subspace/issues/new".into()
     }
 
     fn copyright_start_year() -> i32 {

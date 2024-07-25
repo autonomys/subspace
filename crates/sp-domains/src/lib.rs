@@ -84,7 +84,7 @@ mod app {
     app_crypto!(sr25519, KEY_TYPE);
 }
 
-// TODO: this runtime constant is not support to update, see https://github.com/subspace/subspace/issues/2712
+// TODO: this runtime constant is not support to update, see https://github.com/autonomys/subspace/issues/2712
 // for more detail about the problem and what we need to do to support it.
 //
 // The domain storage fee multiplier used to charge a higher storage fee to the domain
@@ -333,7 +333,7 @@ impl<Balance> Transfers<Balance> {
     }
 }
 
-// TODO: this runtime constant is not support to update, see https://github.com/subspace/subspace/issues/2712
+// TODO: this runtime constant is not support to update, see https://github.com/autonomys/subspace/issues/2712
 // for more detail about the problem and what we need to do to support it.
 //
 /// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
@@ -724,7 +724,7 @@ pub struct ProofOfElection<CHash> {
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
     /// TODO: this field is only used in the bundle equivocation FP which is removed,
-    /// also this field is problematic see <https://github.com/subspace/subspace/issues/2737>
+    /// also this field is problematic see <https://github.com/autonomys/subspace/issues/2737>
     /// so remove this field before next network
     ///
     /// Consensus block hash at which proof of election was derived.

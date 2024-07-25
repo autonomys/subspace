@@ -7,7 +7,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 build = "build.rs"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/subspace"
+repository = "https://github.com/autonomys/subspace"
 include = [
     "/res",
     "/src",

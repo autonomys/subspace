@@ -1,6 +1,6 @@
 # ⚠️ Living document
 
-**‼️ NOTE: This is a living document reflecting current state of the codebase, make sure to open this page from the [release you want to install](https://github.com/subspace/subspace/releases) and not directly ‼️**
+**‼️ NOTE: This is a living document reflecting current state of the codebase, make sure to open this page from the [release you want to install](https://github.com/autonomys/subspace/releases) and not directly ‼️**
 
 # 👨‍🌾 Getting Started Farming
 
@@ -16,7 +16,7 @@ You need 2 executables, select whichever applies to your operating system
 * Node Executable - `subspace-node-...`
 * Farmer Executable - `subspace-farmer-...`
 
-You can find these executables in the [Releases](https://github.com/subspace/subspace/releases) section of this Repository.
+You can find these executables in the [Releases](https://github.com/autonomys/subspace/releases) section of this Repository.
 
 ## Polkadot.js wallet
 
@@ -34,7 +34,7 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ## 🖼️ Windows Instructions
 
-1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
+1. Download the executables for your operating system from the [Releases](https://github.com/autonomys/subspace/releases) tab.
 2. Open `Powershell` (we do not recommend using Command Prompt as its syntax is slightly different)
 3. In the terminal we will change to the Downloads directory using this command `cd Downloads`
 4. We will then start the node using the following command
@@ -84,7 +84,7 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ## 🐧 Ubuntu Instructions
 
-1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
+1. Download the executables for your operating system from the [Releases](https://github.com/autonomys/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
 3. Make the farmer & node executable  `chmod +x farmer-name` & `chmod +X node-name`
 4. We will then start the node using the following command
@@ -133,7 +133,7 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ## 🍎 macOS Instructions
 
-1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab and extract binaries from ZIP archives.
+1. Download the executables for your operating system from the [Releases](https://github.com/autonomys/subspace/releases) tab and extract binaries from ZIP archives.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
 3. Make the farmer & node executable  `chmod +x farmer-name` & `chmod +X node-name`
 4. We will then start the node using the following command
@@ -193,7 +193,7 @@ services:
   node:
     # Replace `snapshot-DATE` with the latest release (like `snapshot-2022-apr-29`)
     # For running on Aarch64 add `-aarch64` after `DATE`
-    image: ghcr.io/subspace/node:snapshot-DATE
+    image: ghcr.io/autonomys/node:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
 # alternatively specify path to the directory where files will be stored, just make
@@ -231,7 +231,7 @@ services:
         condition: service_healthy
     # Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
     # For running on Aarch64 add `-aarch64` after `DATE`
-    image: ghcr.io/subspace/farmer:snapshot-DATE
+    image: ghcr.io/autonomys/farmer:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
 # alternatively specify path to the directory where files will be stored, just make
@@ -273,7 +273,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3h.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3h.subspace.network%2Fws#/explorer), from there you can interact with Autonomys Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 
@@ -341,7 +341,7 @@ Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subs
 
 Now clone the source and build snapshot `snapshot-2022-apr-29` (replace occurrences with the snapshot you want to build):
 ```bash
-git clone https://github.com/subspace/subspace.git
+git clone https://github.com/autonomys/subspace.git
 cd subspace
 git checkout snapshot-2022-apr-29
 cargo build \
