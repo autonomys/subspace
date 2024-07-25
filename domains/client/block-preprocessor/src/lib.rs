@@ -29,7 +29,8 @@ use sp_domains::{
 };
 use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header, NumberFor};
+use sp_runtime::DigestItem;
 use sp_state_machine::LayoutV1;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_weights::Weight;
@@ -235,15 +236,38 @@ where
             if consensus_spec_version >= 6
                 && bundle.receipt().domain_block_number != parent_domain_number
             {
-                return Err(sp_blockchain::Error::RuntimeApiError(
-                    ApiError::Application(
-                        format!(
-                            "Unexpected bundle in consensus block: {:?}, something must be wrong",
-                            at_consensus_hash
-                        )
-                        .into(),
-                    ),
-                ));
+                // If there consensus runtime just upgraded to spec version 6, which bring the receipt
+                // gap check, the bundle that included in the same block is doesn't perform the check
+                // because the new runtime take effect in the next block so skip the check here too.
+                let is_consensus_runtime_upgraded_to_6 = {
+                    let consensus_header = self
+                        .consensus_client
+                        .header(at_consensus_hash)?
+                        .ok_or_else(|| {
+                            sp_blockchain::Error::Backend(format!(
+                                "Consensus block header of {at_consensus_hash:?} unavailable"
+                            ))
+                        })?;
+
+                    let runtime_upgraded = consensus_header
+                        .digest()
+                        .logs()
+                        .iter()
+                        .any(|di| di == &DigestItem::RuntimeEnvironmentUpdated);
+
+                    runtime_upgraded && consensus_spec_version == 6
+                };
+                if !is_consensus_runtime_upgraded_to_6 {
+                    return Err(sp_blockchain::Error::RuntimeApiError(
+                        ApiError::Application(
+                            format!(
+                                "Unexpected bundle in consensus block: {:?}, something must be wrong",
+                                at_consensus_hash
+                            )
+                            .into(),
+                        ),
+                    ));
+                }
             }
 
             let extrinsic_root = bundle.extrinsics_root();
