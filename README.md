@@ -1,9 +1,9 @@
 # Subspace Network Monorepo
 
-[![Latest Release](https://img.shields.io/github/v/release/subspace/subspace?display_name=tag&style=flat-square)](https://github.com/subspace/subspace/releases)
-[![Downloads Latest](https://img.shields.io/github/downloads/subspace/subspace/latest/total?style=flat-square)](https://github.com/subspace/subspace/releases/latest)
-[![Rust](https://img.shields.io/github/actions/workflow/status/subspace/subspace/rust.yml?branch=main)](https://github.com/subspace/subspace/actions/workflows/rust.yaml)
-[![Rust Docs](https://img.shields.io/github/actions/workflow/status/subspace/subspace/rustdoc.yml?branch=main)](https://subspace.github.io/subspace)
+[![Latest Release](https://img.shields.io/github/v/release/autonomys/subspace?display_name=tag&style=flat-square)](https://github.com/autonomys/subspace/releases)
+[![Downloads Latest](https://img.shields.io/github/downloads/autonomys/subspace/latest/total?style=flat-square)](https://github.com/autonomys/subspace/releases/latest)
+[![Rust](https://img.shields.io/github/actions/workflow/status/autonomys/subspace/rust.yml?branch=main)](https://github.com/autonomys/subspace/actions/workflows/rust.yaml)
+[![Rust Docs](https://img.shields.io/github/actions/workflow/status/autonomys/subspace/rustdoc.yml?branch=main)](https://autonomys.github.io/subspace)
 
 This is a mono repository for [Subspace Network](https://subspace.network/) implementation, primarily containing
 Subspace node/client using Substrate framework and farmer app implementations.

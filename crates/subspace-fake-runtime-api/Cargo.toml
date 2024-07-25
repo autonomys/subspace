@@ -6,7 +6,7 @@ description = "Fake subspace runtime API."
 edition = "2021"
 license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/subspace"
+repository = "https://github.com/autonomys/subspace"
 include = ["/src", "/Cargo.toml"]
 
 [package.metadata.docs.rs]

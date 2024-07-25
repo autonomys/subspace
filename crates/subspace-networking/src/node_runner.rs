@@ -246,7 +246,7 @@ where
         }
 
         // TODO: Remove once https://github.com/libp2p/rust-libp2p/issues/5432 is resolved,
-        //  downstream issue is https://github.com/subspace/subspace/issues/2729
+        //  downstream issue is https://github.com/autonomys/subspace/issues/2729
         if tokio::time::timeout(BOOTSTRAP_TIMEOUT, self.bootstrap())
             .await
             .is_err()

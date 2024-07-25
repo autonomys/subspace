@@ -5,7 +5,7 @@ authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/subspace"
+repository = "https://github.com/autonomys/subspace"
 description = "Subspace node pallet for simple objects storage"
 readme = "README.md"
 

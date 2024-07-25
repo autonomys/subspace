@@ -266,7 +266,7 @@ where
                     // and `blocks_importing` notification are arrived, the `block_imported` notification will be processed
                     // first, such that we can ensure when the `blocks_importing` acknowledgement is responded, the
                     // imported block must being processed by the executor.
-                    // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.
+                    // Please see https://github.com/autonomys/subspace/pull/1363#discussion_r1162571291 for more details.
                     biased;
 
                     maybe_block_imported = blocks_imported.next() => {

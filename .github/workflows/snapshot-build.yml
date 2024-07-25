@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
     permissions:
       contents: write
       packages: write
@@ -92,31 +92,31 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
             #  https://github.com/RustCrypto/block-ciphers/pull/395
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
@@ -255,7 +255,7 @@ jobs:
 
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
@@ -263,7 +263,7 @@ jobs:
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe"
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-node.exe"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
 
       - name: Prepare executables for uploading (Ubuntu)
