@@ -72,17 +72,40 @@ where
 }
 
 #[derive(Debug, Clone)]
+struct CacheBackend {
+    backend: Arc<dyn PieceCache>,
+    total_capacity: u32,
+}
+
+impl std::ops::Deref for CacheBackend {
+    type Target = Arc<dyn PieceCache>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.backend
+    }
+}
+
+impl CacheBackend {
+    fn new(backend: Arc<dyn PieceCache>, total_capacity: u32) -> Self {
+        Self {
+            backend,
+            total_capacity,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 struct PieceCachesState<CacheIndex> {
     stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
-    free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
-    backends: Vec<Arc<dyn PieceCache>>,
+    dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
+    backends: Vec<CacheBackend>,
 }
 
 impl<CacheIndex> Default for PieceCachesState<CacheIndex> {
     fn default() -> Self {
         Self {
             stored_pieces: HashMap::default(),
-            free_offsets: VecDeque::default(),
+            dangling_free_offsets: VecDeque::default(),
             backends: Vec::default(),
         }
     }
@@ -91,8 +114,8 @@ impl<CacheIndex> Default for PieceCachesState<CacheIndex> {
 #[derive(Debug)]
 struct CacheState<CacheIndex> {
     cache_stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
-    cache_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
-    backend: Arc<dyn PieceCache>,
+    cache_free_offsets: Vec<FarmerCacheOffset<CacheIndex>>,
+    backend: CacheBackend,
 }
 
 #[derive(Debug)]
@@ -227,7 +250,7 @@ where
                     return;
                 };
 
-                caches.free_offsets.push_front(offset);
+                caches.dangling_free_offsets.push_front(offset);
                 match backend.read_piece_index(piece_offset).await {
                     Ok(Some(piece_index)) => {
                         worker_state.heap.remove(KeyWrapper(piece_index));
@@ -267,11 +290,11 @@ where
         // Pull old cache state since it will be replaced with a new one and reuse its allocations
         let PieceCachesState {
             mut stored_pieces,
-            mut free_offsets,
+            mut dangling_free_offsets,
             backends: _,
         } = mem::take(&mut *self.piece_caches.write().await);
         stored_pieces.clear();
-        free_offsets.clear();
+        dangling_free_offsets.clear();
 
         debug!("Collecting pieces that were in the cache before");
 
@@ -286,6 +309,8 @@ where
             .into_iter()
             .enumerate()
             .filter_map(|(cache_index, new_cache)| {
+                let total_capacity = new_cache.max_num_elements();
+                let backend = CacheBackend::new(new_cache, total_capacity);
                 let Ok(cache_index) = CacheIndex::try_from(cache_index) else {
                     warn!(
                         ?piece_caches_number,
@@ -297,14 +322,14 @@ where
                 if let Some(metrics) = &self.metrics {
                     metrics
                         .piece_cache_capacity_total
-                        .inc_by(new_cache.max_num_elements() as i64);
+                        .inc_by(total_capacity as i64);
                 }
 
                 let init_fut = async move {
                     // Hack with first collecting into `Option` with `Option::take()` call
                     // later is to satisfy compiler that gets confused about ownership
                     // otherwise
-                    let mut maybe_contents = match new_cache.contents().await {
+                    let mut maybe_contents = match backend.backend.contents().await {
                         Ok(contents) => Some(contents),
                         Err(error) => {
                             warn!(%cache_index, %error, "Failed to get cache contents");
@@ -315,7 +340,7 @@ where
 
                     #[allow(clippy::mutable_key_type)]
                     let mut cache_stored_pieces = HashMap::new();
-                    let mut cache_free_offsets = VecDeque::new();
+                    let mut cache_free_offsets = Vec::new();
 
                     let Some(mut contents) = maybe_contents.take() else {
                         drop(maybe_contents);
@@ -323,7 +348,7 @@ where
                         return CacheState {
                             cache_stored_pieces,
                             cache_free_offsets,
-                            backend: new_cache,
+                            backend,
                         };
                     };
 
@@ -346,7 +371,7 @@ where
                                     .insert(RecordKey::from(piece_index.to_multihash()), offset);
                             }
                             None => {
-                                cache_free_offsets.push_back(offset);
+                                cache_free_offsets.push(offset);
                             }
                         }
 
@@ -360,7 +385,7 @@ where
                     CacheState {
                         cache_stored_pieces,
                         cache_free_offsets,
-                        backend: new_cache,
+                        backend,
                     }
                 };
 
@@ -385,10 +410,12 @@ where
 
         while let Some(maybe_cache) = caches_futures.next().await {
             match maybe_cache {
-                Ok(mut cache) => {
+                Ok(cache) => {
+                    let backend = cache.backend;
+                    let free_offsets = cache.cache_free_offsets;
                     stored_pieces.extend(cache.cache_stored_pieces.into_iter());
-                    free_offsets.append(&mut cache.cache_free_offsets);
-                    backends.push(cache.backend);
+                    dangling_free_offsets.extend(free_offsets.into_iter());
+                    backends.push(backend);
                 }
                 Err(_cancelled) => {
                     error!("Piece cache reading thread panicked");
@@ -400,7 +427,7 @@ where
 
         let mut caches = PieceCachesState {
             stored_pieces,
-            free_offsets,
+            dangling_free_offsets,
             backends,
         };
 
@@ -440,7 +467,10 @@ where
 
         debug!(%last_segment_index, "Identified last segment index");
 
-        let limit = caches.stored_pieces.len() + caches.free_offsets.len();
+        let limit = caches
+            .backends
+            .iter()
+            .fold(0usize, |acc, backend| acc + backend.total_capacity as usize);
         worker_state.heap.clear();
         // Change limit to number of pieces
         worker_state.heap.set_limit(limit);
@@ -470,7 +500,7 @@ where
             .stored_pieces
             .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
             .for_each(|(_piece_index, offset)| {
-                caches.free_offsets.push_front(offset);
+                caches.dangling_free_offsets.push_front(offset);
             });
 
         if let Some(metrics) = &self.metrics {
@@ -544,7 +574,7 @@ where
             // It will likely result in higher read load on one disk and lower on another now
 
             // Find plot in which there is a place for new piece to be stored
-            let Some(offset) = caches.free_offsets.pop_front() else {
+            let Some(offset) = caches.dangling_free_offsets.pop_front() else {
                 error!(
                     %piece_index,
                     "Failed to store piece in cache, there was no space"
@@ -848,7 +878,7 @@ where
             }
             // There is free space in cache, need to find a free spot and place piece there
             None => {
-                let Some(offset) = caches.free_offsets.pop_front() else {
+                let Some(offset) = caches.dangling_free_offsets.pop_front() else {
                     warn!(
                         %piece_index,
                         "Should have inserted piece into cache, but it didn't happen, this is an \
