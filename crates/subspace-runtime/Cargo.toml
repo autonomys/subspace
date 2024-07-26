@@ -26,12 +26,16 @@ frame-system-benchmarking = { default-features = false, git = "https://github.co
 frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 orml-vesting = { version = "0.9.1", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+pallet-collective = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+pallet-democracy = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-messenger = { version = "0.1.0", path = "../../domains/pallets/messenger", default-features = false }
 pallet-mmr = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
+pallet-preimage = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
+pallet-scheduler = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["serde"], path = "../pallet-subspace" }
 pallet-subspace-mmr = { version = "0.1.0", default-features = false, path = "../pallet-subspace-mmr" }
 pallet-sudo = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
@@ -87,12 +91,16 @@ std = [
     "frame-system-rpc-runtime-api/std",
     "orml-vesting/std",
     "pallet-balances/std",
+    "pallet-collective/std",
+    "pallet-democracy/std",
     "pallet-domains/std",
     "pallet-messenger/std",
     "pallet-mmr/std",
     "pallet-offences-subspace/std",
+    "pallet-preimage/std",
     "pallet-rewards/std",
     "pallet-runtime-configs/std",
+    "pallet-scheduler/std",
     "pallet-subspace/std",
     "pallet-subspace-mmr/std",
     "pallet-sudo/std",
@@ -138,6 +146,7 @@ runtime-benchmarks = [
     "frame-system-benchmarking/runtime-benchmarks",
     "orml-vesting/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
+    "pallet-collective/runtime-benchmarks",
     "pallet-domains/runtime-benchmarks",
     "pallet-mmr/runtime-benchmarks",
     "pallet-rewards/runtime-benchmarks",

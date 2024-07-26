@@ -32,9 +32,10 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
-    MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
+    EnableRewardsAt, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig,
+    MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -447,6 +448,8 @@ fn subspace_genesis_config(
         },
         rewards: rewards_config,
         vesting: VestingConfig { vesting },
+        council: CouncilConfig::default(),
+        democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
             enable_dynamic_cost_of_storage,

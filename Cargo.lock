@@ -1918,7 +1918,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/w3f/ring-proof#b273d33f9981e2bb3375ab45faeb537f7ee35224"
+source = "git+https://github.com/w3f/ring-proof#665f5f51af5734c7b6d90b985dd6861d4c5b4752"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -7748,6 +7748,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-collective"
+version = "28.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef#0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-democracy"
+version = "28.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef#0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-domain-id"
 version = "0.1.0"
 dependencies = [
@@ -8010,6 +8045,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-preimage"
+version = "28.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef#0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
@@ -8039,6 +8091,24 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-scheduler"
+version = "29.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef#0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef"
+dependencies = [
+ "docify",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-weights",
 ]
 
 [[package]]
@@ -9520,13 +9590,14 @@ dependencies = [
 [[package]]
 name = "ring"
 version = "0.1.0"
-source = "git+https://github.com/w3f/ring-proof#b273d33f9981e2bb3375ab45faeb537f7ee35224"
+source = "git+https://github.com/w3f/ring-proof#665f5f51af5734c7b6d90b985dd6861d4c5b4752"
 dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-poly",
  "ark-serialize",
  "ark-std",
+ "arrayvec",
  "blake2 0.10.6",
  "common",
  "fflonk",
@@ -13079,12 +13150,16 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
+ "pallet-collective",
+ "pallet-democracy",
  "pallet-domains",
  "pallet-messenger",
  "pallet-mmr",
  "pallet-offences-subspace",
+ "pallet-preimage",
  "pallet-rewards",
  "pallet-runtime-configs",
+ "pallet-scheduler",
  "pallet-subspace",
  "pallet-subspace-mmr",
  "pallet-sudo",
