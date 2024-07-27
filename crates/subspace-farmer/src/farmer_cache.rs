@@ -74,6 +74,7 @@ where
 #[derive(Debug, Clone)]
 struct CacheBackend {
     backend: Arc<dyn PieceCache>,
+    used_capacity: u32,
     total_capacity: u32,
 }
 
@@ -89,8 +90,24 @@ impl CacheBackend {
     fn new(backend: Arc<dyn PieceCache>, total_capacity: u32) -> Self {
         Self {
             backend,
+            used_capacity: 0,
             total_capacity,
         }
+    }
+
+    fn next_free(&mut self) -> Option<PieceCacheOffset> {
+        let offset = self.used_capacity;
+        if offset < self.total_capacity {
+            self.used_capacity += 1;
+            Some(PieceCacheOffset(offset))
+        } else {
+            debug!(?offset, total_capacity = ?self.total_capacity, "No free space in cache backend");
+            None
+        }
+    }
+
+    fn free_size(&self) -> u32 {
+        self.total_capacity - self.used_capacity
     }
 }
 
@@ -99,6 +116,41 @@ struct PieceCachesState<CacheIndex> {
     stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
     dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
     backends: Vec<CacheBackend>,
+}
+
+impl<CacheIndex> PieceCachesState<CacheIndex>
+where
+    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
+    usize: From<CacheIndex>,
+    CacheIndex: TryFrom<usize>,
+{
+    fn pop_free_offset(&mut self) -> Option<FarmerCacheOffset<CacheIndex>> {
+        match self.dangling_free_offsets.pop_front() {
+            Some(free_offset) => {
+                debug!(?free_offset, "Popped dangling free offset");
+                Some(free_offset)
+            }
+            None => {
+                let mut sorted_backends = self
+                    .backends
+                    .iter_mut()
+                    .enumerate()
+                    .filter_map(|(cache_index, backend)| {
+                        Some((CacheIndex::try_from(cache_index).ok()?, backend))
+                    })
+                    .collect::<Vec<_>>();
+                sorted_backends.sort_unstable_by_key(|(_, backend)| backend.free_size());
+                sorted_backends
+                    .into_iter()
+                    .rev()
+                    .find_map(|(cache_index, backend)| {
+                        backend
+                            .next_free()
+                            .map(|free_offset| FarmerCacheOffset::new(cache_index, free_offset))
+                    })
+            }
+        }
+    }
 }
 
 impl<CacheIndex> Default for PieceCachesState<CacheIndex> {
@@ -310,7 +362,7 @@ where
             .enumerate()
             .filter_map(|(cache_index, new_cache)| {
                 let total_capacity = new_cache.max_num_elements();
-                let backend = CacheBackend::new(new_cache, total_capacity);
+                let mut backend = CacheBackend::new(new_cache, total_capacity);
                 let Ok(cache_index) = CacheIndex::try_from(cache_index) else {
                     warn!(
                         ?piece_caches_number,
@@ -326,6 +378,8 @@ where
                 }
 
                 let init_fut = async move {
+                    let used_capacity = &mut backend.used_capacity;
+
                     // Hack with first collecting into `Option` with `Option::take()` call
                     // later is to satisfy compiler that gets confused about ownership
                     // otherwise
@@ -367,6 +421,7 @@ where
                         let offset = FarmerCacheOffset::new(cache_index, piece_offset);
                         match maybe_piece_index {
                             Some(piece_index) => {
+                                *used_capacity = piece_offset.0 + 1;
                                 cache_stored_pieces
                                     .insert(RecordKey::from(piece_index.to_multihash()), offset);
                             }
@@ -412,9 +467,12 @@ where
             match maybe_cache {
                 Ok(cache) => {
                     let backend = cache.backend;
-                    let free_offsets = cache.cache_free_offsets;
                     stored_pieces.extend(cache.cache_stored_pieces.into_iter());
-                    dangling_free_offsets.extend(free_offsets.into_iter());
+                    dangling_free_offsets.extend(
+                        cache.cache_free_offsets.into_iter().filter(|free_offset| {
+                            free_offset.piece_offset.0 < backend.used_capacity
+                        }),
+                    );
                     backends.push(backend);
                 }
                 Err(_cancelled) => {
@@ -500,6 +558,8 @@ where
             .stored_pieces
             .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
             .for_each(|(_piece_index, offset)| {
+                // There is no need to adjust the `last_stored_offset` of the `backend` here,
+                // as the free_offset will be preferentially taken from the dangling free offsets
                 caches.dangling_free_offsets.push_front(offset);
             });
 
@@ -570,11 +630,8 @@ where
                 continue;
             };
 
-            // TODO: Make the cache load as balanced as possible
-            // It will likely result in higher read load on one disk and lower on another now
-
             // Find plot in which there is a place for new piece to be stored
-            let Some(offset) = caches.dangling_free_offsets.pop_front() else {
+            let Some(offset) = caches.pop_free_offset() else {
                 error!(
                     %piece_index,
                     "Failed to store piece in cache, there was no space"
@@ -878,7 +935,7 @@ where
             }
             // There is free space in cache, need to find a free spot and place piece there
             None => {
-                let Some(offset) = caches.dangling_free_offsets.pop_front() else {
+                let Some(offset) = caches.pop_free_offset() else {
                     warn!(
                         %piece_index,
                         "Should have inserted piece into cache, but it didn't happen, this is an \
