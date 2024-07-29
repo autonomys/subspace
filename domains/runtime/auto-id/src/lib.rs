@@ -120,7 +120,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-auto-id-domain"),
     impl_name: create_runtime_str!("subspace-auto-id-domain"),
     authoring_version: 0,
-    spec_version: 0,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
