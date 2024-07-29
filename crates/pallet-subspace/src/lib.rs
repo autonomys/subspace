@@ -958,6 +958,13 @@ impl<T: Config> Pallet<T> {
         T::EraChangeTrigger::trigger::<T>(block_number);
 
         {
+            let pot_slot_iterations =
+                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+            // This is what we had after previous block
+            frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+                pot_slot_iterations,
+            ));
+
             let mut maybe_pot_slot_iterations_update = PotSlotIterationsUpdate::<T>::get();
             // Check PoT slot iterations update and apply it if it is time to do so, while also
             // removing corresponding storage item
@@ -976,14 +983,10 @@ impl<T: Config> Pallet<T> {
                 PotSlotIterations::<T>::put(update.slot_iterations);
                 update.slot_iterations
             } else {
-                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed")
+                pot_slot_iterations
             };
             let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
             let pot_entropy_injection_delay = T::PotEntropyInjectionDelay::get();
-
-            frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
-                pot_slot_iterations,
-            ));
 
             let mut entropy = PotEntropy::<T>::get();
             let lookback_in_blocks = pot_entropy_injection_interval
