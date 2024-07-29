@@ -13144,6 +13144,8 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "array-bytes",
+ "async-channel 1.9.0",
  "async-trait",
  "cross-domain-message-gossip",
  "domain-runtime-primitives",
@@ -13171,7 +13173,9 @@ dependencies = [
  "sc-executor",
  "sc-informant",
  "sc-network",
+ "sc-network-light",
  "sc-network-sync",
+ "sc-network-transactions",
  "sc-offchain",
  "sc-proof-of-time",
  "sc-rpc",
@@ -13183,6 +13187,8 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "sc-utils",
+ "schnellru",
  "schnorrkel",
  "sp-api",
  "sp-block-builder",

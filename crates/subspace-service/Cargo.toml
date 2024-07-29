@@ -16,6 +16,8 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+array-bytes = "6.2.2"
+async-channel = "1.8.0"
 async-trait = "0.1.80"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
@@ -41,7 +43,9 @@ sc-domains = { version = "0.1.0", path = "../sc-domains" }
 sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-informant = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-network = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sc-network-light = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sc-network-transactions = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-offchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
@@ -53,6 +57,8 @@ sc-telemetry = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb
 sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
+schnellru = "0.2.1"
 schnorrkel = "0.11.4"
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
