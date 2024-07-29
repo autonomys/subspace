@@ -382,7 +382,7 @@ impl VariantCount for HoldIdentifier {
     // also used as the limit of how many channel an account can open.
     //
     // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/subspace/subspace/issues/2674 for more details. It
+    // https://github.com/autonomys/subspace/issues/2674 for more details. It
     // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
     const VARIANT_COUNT: u32 = 100;
 }

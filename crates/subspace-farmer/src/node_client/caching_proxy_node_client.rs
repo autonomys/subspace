@@ -52,7 +52,6 @@ impl SegmentHeaders {
             .copied()
             .rev()
             .take(limit as usize)
-            .rev()
             .map(Some)
             .collect()
     }
@@ -88,10 +87,7 @@ impl SegmentHeaders {
                     break 'outer;
                 };
 
-                if self.segment_headers.len() == u64::from(segment_header.segment_index()) as usize
-                {
-                    self.segment_headers.push(segment_header);
-                }
+                self.push(segment_header);
             }
 
             segment_index_offset += segment_index_step;

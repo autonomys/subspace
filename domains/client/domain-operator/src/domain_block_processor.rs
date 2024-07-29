@@ -171,7 +171,7 @@ where
                 //
                 // NOTE: it is important to check the auxiliary storage first before checking if it
                 // is the genesis block otherwise we may repeatedly processing the empty consensus
-                // block, see https://github.com/subspace/subspace/issues/1763 for more detail.
+                // block, see https://github.com/autonomys/subspace/issues/1763 for more detail.
                 None if best_number.is_zero() => self
                     .consensus_client
                     .hash(self.domain_created_at)?
@@ -884,7 +884,7 @@ where
         let bad_receipt_hash = bad_receipt.hash::<HeaderHashingFor<Block::Header>>();
 
         // NOTE: the checking order MUST follow exactly as the dependency order of fraud proof
-        // see https://github.com/subspace/subspace/issues/1892
+        // see https://github.com/autonomys/subspace/issues/1892
         if let Some(InboxedBundleMismatchInfo {
             bundle_index,
             mismatch_type,

@@ -167,7 +167,7 @@ impl farm::PieceCache for DiskPieceCache {
         //  usage. No idea why it happens, but not spawning anything at all helps for some reason.
         //  Someone at some point should figure it out and fix, but it will probably be not me
         //  (Nazar).
-        //  See https://github.com/subspace/subspace/issues/2813 and linked forum post for details.
+        //  See https://github.com/autonomys/subspace/issues/2813 and linked forum post for details.
         //  This TODO exists in multiple files
         if cfg!(windows) {
             Ok(task::block_in_place(|| self.read_piece(offset))?)

@@ -3987,7 +3987,7 @@ async fn test_unordered_cross_domains_message_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// TODO: https://github.com/subspace/subspace/pull/1954 broke this on Windows, we suspect the test
+// TODO: https://github.com/autonomys/subspace/pull/1954 broke this on Windows, we suspect the test
 //  is racy, but didn't find why and why it only fails on Windows. This needs to be fixed and test
 //  un-ignored on Windows.
 #[cfg_attr(windows, ignore)]

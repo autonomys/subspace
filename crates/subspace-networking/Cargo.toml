@@ -9,7 +9,7 @@ description = "Networking functionality of Subspace Network, primarily used for 
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
-repository = "https://github.com/subspace/subspace"
+repository = "https://github.com/autonomys/subspace"
 include = [
     "/src",
     "/Cargo.toml",

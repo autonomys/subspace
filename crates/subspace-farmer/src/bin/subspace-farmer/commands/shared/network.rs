@@ -199,11 +199,10 @@ where
                     match internal_result {
                         Ok(segment_headers) => segment_headers
                             .into_iter()
-                            .map(|maybe_segment_header| {
+                            .inspect(|maybe_segment_header| {
                                 if maybe_segment_header.is_none() {
                                     error!("Received empty optional segment header!");
                                 }
-                                maybe_segment_header
                             })
                             .collect::<Option<Vec<_>>>()
                             .map(|segment_headers| SegmentHeaderResponse { segment_headers }),

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for considering contributing to Subspace Network!
+Thanks for considering contributing to Autonomys Network!
 
 The best way to start is to join our [Forum](https://forum.subspace.network/) or
 [Discord](https://discord.gg/subspace-network), [official website](https://subspace.network/) has a bunch of learning
@@ -14,10 +14,10 @@ on GitHub productive for everyone involved.
 
 ## Process optimized for maintainers
 
-Subspace Network is maintained by a small group of passionate individuals with limited time. Number of potential outside
+Autonomys Network is maintained by a small group of passionate individuals with limited time. Number of potential outside
 contributors is much larger than number of maintainers and wider community of users is even bigger than that.
 
-As such, the process of contributing to Subspace Network needs to be optimized in such a way that it doesn't overwhelm
+As such, the process of contributing to Autonomys Network needs to be optimized in such a way that it doesn't overwhelm
 maintainers with unnecessary notifications, questions that can be answered by wider community and follow practices
 defined in this document below, such that contributions can be processed in the most productive way saving time and
 making it a better experience overall.
