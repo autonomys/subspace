@@ -118,7 +118,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     if maybe_domain_configuration.is_some() && subspace_configuration.sync == ChainSyncMode::Snap {
         return Err(Error::Other(
-            "Snap sync mode is not supported for domains".to_string(),
+            "Snap sync mode is not supported for domains, use full sync".to_string(),
         ));
     }
 

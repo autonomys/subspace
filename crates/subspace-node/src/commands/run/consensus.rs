@@ -407,8 +407,10 @@ pub(super) struct ConsensusChainOptions {
     timekeeper_options: TimekeeperOptions,
 
     /// Sync mode
-    #[arg(long, default_value_t = ChainSyncMode::Snap)]
-    sync: ChainSyncMode,
+    ///
+    /// Examples: `snap`, `full`
+    #[arg(long, default_value = None)]
+    sync: Option<ChainSyncMode>,
 }
 
 pub(super) struct PrometheusConfiguration {
@@ -451,11 +453,12 @@ pub(super) fn create_consensus_chain_configuration(
         dsn_options,
         storage_monitor,
         mut timekeeper_options,
-        sync,
+        mut sync,
     } = consensus_node_options;
 
     let transaction_pool;
     let rpc_cors;
+
     // Development mode handling is limited to this section
     {
         if dev {
@@ -468,6 +471,10 @@ pub(super) fn create_consensus_chain_configuration(
             force_authoring = true;
             network_options.allow_private_ips = true;
             timekeeper_options.timekeeper = true;
+
+            if sync.is_none() {
+                sync.replace(ChainSyncMode::Full);
+            }
         }
 
         transaction_pool = pool_config.transaction_pool(dev);
@@ -486,6 +493,9 @@ pub(super) fn create_consensus_chain_configuration(
             }
         });
     }
+
+    // Snap sync is the default mode.
+    let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
     let chain_spec = match chain.as_deref() {
         Some("gemini-3h-compiled") => chain_spec::gemini_3h_compiled()?,
