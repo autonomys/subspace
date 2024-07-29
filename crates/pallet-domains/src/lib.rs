@@ -1994,7 +1994,9 @@ impl<T: Config> Pallet<T> {
             | BundleError::SlotInThePast
             | BundleError::SlotInTheFuture
             | BundleError::InvalidProofOfTime
-            | BundleError::SlotSmallerThanPreviousBlockBundle => {
+            | BundleError::SlotSmallerThanPreviousBlockBundle
+            | BundleError::ExpectingReceiptGap
+            | BundleError::UnexpectedReceiptGap => {
                 log::debug!(
                     target: "runtime::domains",
                     "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
