@@ -420,8 +420,6 @@ pub struct DomainInherentExtrinsicDataProof {
     pub dynamic_cost_of_storage_proof: DynamicCostOfStorageProof,
     pub consensus_chain_byte_fee_proof: ConsensusTransactionByteFeeProof,
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
-    // TODO: remove this before next consensus runtime upgrade. Skipping to maintain compatibility with Gemini
-    #[codec(skip)]
     pub maybe_domain_sudo_call_proof: Option<DomainSudoCallStorageProof>,
 }
 
