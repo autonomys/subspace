@@ -131,6 +131,8 @@ where
                 Some(free_offset)
             }
             None => {
+                // Sort piece caches by number of stored pieces to fill those that are less
+                // populated first
                 let mut sorted_backends = self
                     .backends
                     .iter_mut()
@@ -426,6 +428,8 @@ where
                                     .insert(RecordKey::from(piece_index.to_multihash()), offset);
                             }
                             None => {
+                                // TODO: Optimize to not store all free offsets, only dangling
+                                //  offsets are actually necessary
                                 cache_free_offsets.push(offset);
                             }
                         }
