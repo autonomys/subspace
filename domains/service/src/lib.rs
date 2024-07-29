@@ -90,9 +90,11 @@ where
     if client.requires_full_sync() {
         match config.network.sync_mode {
             SyncMode::LightState { .. } => {
-                return Err("Fast sync doesn't work for archive nodes".into());
+                return Err("Fast sync doesn't work for archive nodes: use full sync".into());
             }
-            SyncMode::Warp => return Err("Warp sync doesn't work for archive nodes".into()),
+            SyncMode::Warp => {
+                return Err("Warp sync doesn't work for archive nodes: use full sync".into())
+            }
             SyncMode::Full => {}
         }
     }
