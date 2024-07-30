@@ -58,6 +58,8 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 
+type CacheIndex = u8;
+
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 pub(crate) struct FarmingArgs {
@@ -342,7 +344,7 @@ where
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
     let (farmer_cache, farmer_cache_worker) =
-        FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
+        FarmerCache::<CacheIndex>::new(node_client.clone(), peer_id, Some(&mut registry));
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
