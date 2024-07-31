@@ -103,15 +103,10 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
-            #  https://github.com/RustCrypto/block-ciphers/pull/395
-            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
+            rustflags: "-C linker=aarch64-linux-gnu-gcc"
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
-            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
-            #  https://github.com/RustCrypto/block-ciphers/pull/395
-            rustflags: "--cfg aes_armv8"
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}

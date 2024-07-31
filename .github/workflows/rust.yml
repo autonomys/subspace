@@ -24,9 +24,7 @@ env:
   CARGO_TERM_COLOR: always
   # Build smaller artifacts to avoid running out of space in CI
   # TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
-  # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate with MSRV bump ships:
-  #  https://github.com/RustCrypto/block-ciphers/pull/395
-  RUSTFLAGS: -C strip=symbols -C opt-level=s --cfg aes_armv8
+  RUSTFLAGS: -C strip=symbols -C opt-level=s
 
 jobs:
   cargo-fmt:
