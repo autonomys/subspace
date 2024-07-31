@@ -1720,12 +1720,35 @@ mod pallet {
                     )
                     .map_err(Error::<T>::from)?;
 
-                    // Singleton receipt are used to fill up the receipt gap and there should be no
-                    // new domain block being confirmed before the gap is fill up
-                    ensure!(
-                        maybe_confirmed_domain_block_info.is_none(),
-                        Error::<T>::BlockTree(BlockTreeError::UnexpectedConfirmedDomainBlock),
-                    );
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_receipt` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
+                    if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
+                        actual_weight =
+                            actual_weight.saturating_add(T::WeightInfo::confirm_domain_block(
+                                confirmed_block_info.operator_ids.len() as u32,
+                                confirmed_block_info.invalid_bundle_authors.len() as u32,
+                            ));
+
+                        refund_storage_fee::<T>(
+                            confirmed_block_info.total_storage_fee,
+                            confirmed_block_info.paid_bundle_storage_fees,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        do_reward_operators::<T>(
+                            domain_id,
+                            confirmed_block_info.operator_ids.into_iter(),
+                            confirmed_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        do_mark_operators_as_slashed::<T>(
+                            confirmed_block_info.invalid_bundle_authors.into_iter(),
+                            SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
                 }
             }
 
@@ -2750,7 +2773,7 @@ impl<T: Config> Pallet<T> {
             .saturating_add(
                 // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
                 // `confirm_domain_block` can happen, thus we use the `max` of them
-
+                //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
@@ -2765,10 +2788,15 @@ impl<T: Config> Pallet<T> {
     pub fn max_submit_receipt_weight() -> Weight {
         T::WeightInfo::submit_bundle()
             .saturating_add(
+                // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
+                // `confirm_domain_block` can happen, thus we use the `max` of them
+                //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
-                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK),
+                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK).max(
+                    T::WeightInfo::confirm_domain_block(MAX_BUNDLE_PER_BLOCK, MAX_BUNDLE_PER_BLOCK),
+                ),
             )
             .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
     }

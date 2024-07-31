@@ -51,7 +51,6 @@ pub enum Error {
     RuntimeNotFound,
     LastBlockNotFound,
     UnmatchedNewHeadReceipt,
-    UnexpectedConfirmedDomainBlock,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
