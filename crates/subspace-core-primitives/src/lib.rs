@@ -25,7 +25,6 @@
     const_try,
     new_uninit,
     portable_simd,
-    slice_flatten,
     step_trait
 )]
 

@@ -11,7 +11,6 @@
     never_type,
     new_uninit,
     portable_simd,
-    slice_flatten,
     try_blocks
 )]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]

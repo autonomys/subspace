@@ -13,8 +13,6 @@
     let_chains,
     never_type,
     result_flattening,
-    slice_flatten,
-    split_at_checked,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,

@@ -284,7 +284,9 @@ impl Default for RecordedHistorySegment {
 impl AsRef<[u8]> for RecordedHistorySegment {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        RawRecord::slice_to_repr(&self.0).flatten().flatten()
+        RawRecord::slice_to_repr(&self.0)
+            .as_flattened()
+            .as_flattened()
     }
 }
 
@@ -292,8 +294,8 @@ impl AsMut<[u8]> for RecordedHistorySegment {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         RawRecord::slice_mut_to_repr(&mut self.0)
-            .flatten_mut()
-            .flatten_mut()
+            .as_flattened_mut()
+            .as_flattened_mut()
     }
 }
 

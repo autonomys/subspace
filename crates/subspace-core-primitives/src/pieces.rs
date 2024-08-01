@@ -332,14 +332,14 @@ impl Default for RawRecord {
 impl AsRef<[u8]> for RawRecord {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.0.as_slice().flatten()
+        self.0.as_slice().as_flattened()
     }
 }
 
 impl AsMut<[u8]> for RawRecord {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut_slice().flatten_mut()
+        self.0.as_mut_slice().as_flattened_mut()
     }
 }
 
@@ -487,14 +487,14 @@ impl Default for Record {
 impl AsRef<[u8]> for Record {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.0.flatten()
+        self.0.as_flattened()
     }
 }
 
 impl AsMut<[u8]> for Record {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.flatten_mut()
+        self.0.as_flattened_mut()
     }
 }
 
@@ -604,7 +604,7 @@ impl Record {
                     length,
                 )
             };
-            for byte in slice.flatten_mut().flatten_mut() {
+            for byte in slice.as_flattened_mut().as_flattened_mut() {
                 byte.write(0);
             }
         }
