@@ -185,13 +185,13 @@ impl UnbufferedIoFileWindows {
         // done with granularity of physical sector size
         let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
         self.file.read_exact_at(
-            &mut scratch_buffer.flatten_mut()[..(bytes_to_read + offset_in_buffer)
+            &mut scratch_buffer.as_flattened_mut()[..(bytes_to_read + offset_in_buffer)
                 .div_ceil(self.physical_sector_size)
                 * self.physical_sector_size],
             offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
         )?;
 
-        Ok(&scratch_buffer.flatten()[offset_in_buffer..][..bytes_to_read])
+        Ok(&scratch_buffer.as_flattened()[offset_in_buffer..][..bytes_to_read])
     }
 
     /// Panics on writes over `MAX_READ_SIZE` (including padding on both ends)
@@ -202,7 +202,7 @@ impl UnbufferedIoFileWindows {
         offset: u64,
     ) -> io::Result<()> {
         // This is guaranteed by `UnbufferedIoFileWindows::open()`
-        assert!(scratch_buffer.flatten().len() >= MAX_READ_SIZE);
+        assert!(scratch_buffer.as_flattened().len() >= MAX_READ_SIZE);
 
         let aligned_offset =
             offset / self.physical_sector_size as u64 * self.physical_sector_size as u64;
@@ -212,13 +212,13 @@ impl UnbufferedIoFileWindows {
             * self.physical_sector_size;
 
         if padding == 0 && bytes_to_read == bytes_to_write.len() {
-            let scratch_buffer = &mut scratch_buffer.flatten_mut()[..bytes_to_read];
+            let scratch_buffer = &mut scratch_buffer.as_flattened_mut()[..bytes_to_read];
             scratch_buffer.copy_from_slice(bytes_to_write);
             self.file.write_all_at(scratch_buffer, offset)?;
         } else {
             // Read whole pages where `bytes_to_write` will be written
             self.read_exact_at_internal(scratch_buffer, bytes_to_read, aligned_offset)?;
-            let scratch_buffer = &mut scratch_buffer.flatten_mut()[..bytes_to_read];
+            let scratch_buffer = &mut scratch_buffer.as_flattened_mut()[..bytes_to_read];
             // Update contents of existing pages and write into the file
             scratch_buffer[padding..][..bytes_to_write.len()].copy_from_slice(bytes_to_write);
             self.file.write_all_at(scratch_buffer, aligned_offset)?;

@@ -31,9 +31,9 @@ use crate::utils::strip_peer_id;
 /// Each `ReservedPeerState` can be in one of the following states, represented by the
 /// `ConnectionStatus` enum:
 /// 1. `NotConnected`: This state indicates that the peer is currently not connected.
-/// The time for the next connection attempt is scheduled and can be queried.
+///    The time for the next connection attempt is scheduled and can be queried.
 /// 2. `PendingConnection`: This state means that a connection attempt to the peer is currently
-/// in progress.
+///    in progress.
 /// 3. `Connected`: This state signals that the peer is currently connected.
 ///
 /// The protocol will attempt to establish a connection to a `NotConnected` peer after a set delay,

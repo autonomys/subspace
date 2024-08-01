@@ -1,4 +1,13 @@
 //! Consensus related types.
+//!
+//! The relay protocol needs to expose these data types to be included
+//! in the top level data types:
+//! 1. The request/response types to be included in
+//!    [`ProtocolInitialRequest`]/[`ProtocolInitialResponse`].
+//! 2. The handshake message to be included in `ProtocolMessage`.
+//!    The corresponding handshake response is not included in the
+//!    top level messages, and is private to the protocol
+//!    implementation.
 
 use crate::protocol::compact_block::{
     CompactBlockHandshake, CompactBlockInitialRequest, CompactBlockInitialResponse,
@@ -23,15 +32,6 @@ const STATUS_SUCCESS: &str = "success";
 const DOWNLOAD_LABEL: &str = "client_download";
 const DOWNLOAD_BLOCKS: &str = "blocks";
 const DOWNLOAD_BYTES: &str = "bytes";
-
-/// The relay protocol needs to expose these data types to be included
-/// in the top level data types:
-/// 1. The request/response types to be included in
-///    `ProtocolInitialRequest`/`ProtocolInitialResponse`.
-/// 2. The handshake message to be included in `ProtocolMessage`.
-///    The corresponding handshake response is not included in the
-///    top level messages, and is private to the protocol
-///    implementation.
 
 /// Client -> server request.
 #[derive(From, Encode, Decode)]

@@ -672,8 +672,8 @@ async fn download_sector_internal<PG: PieceGetter>(
             // Fancy way to insert value in order to avoid going through stack (if naive de-referencing
             // is used) and potentially causing stack overflow as the result
             record
-                .flatten_mut()
-                .copy_from_slice(piece.record().flatten());
+                .as_flattened_mut()
+                .copy_from_slice(piece.record().as_flattened());
             *metadata = RecordMetadata {
                 commitment: *piece.commitment(),
                 witness: *piece.witness(),
