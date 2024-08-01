@@ -24,6 +24,7 @@ scale-info = { version = "2.11.2", default-features = false, features = ["derive
 sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef", optional = true }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef", optional = true }
+subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
 [features]
 default = ["std"]
@@ -35,6 +36,7 @@ std = [
     "scale-info/std",
     "sp-runtime/std",
     "sp-std?/std",
+    "subspace-runtime-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [

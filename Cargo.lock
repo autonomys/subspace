@@ -8091,6 +8091,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -13207,6 +13208,7 @@ dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",

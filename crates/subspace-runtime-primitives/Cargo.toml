@@ -21,6 +21,7 @@ frame-support = { default-features = false, git = "https://github.com/subspace/p
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
+serde = { version = "1.0.203", default-features = false, features = ["alloc", "derive"] }
 sp-core = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-io = { default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
@@ -34,6 +35,7 @@ std = [
     "frame-system/std",
     "pallet-transaction-payment/std",
     "scale-info/std",
+    "serde/std",
     "sp-core/std",
     "sp-runtime/std",
     "subspace-core-primitives/std",

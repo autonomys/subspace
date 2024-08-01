@@ -21,12 +21,14 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::time::{BLOCKS_IN_AN_MINUTE, BLOCKS_IN_A_DAY};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use codec::{Codec, Decode, Encode};
+use codec::{Codec, Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::Weight;
 use frame_support::traits::tokens;
 use frame_support::weights::constants::WEIGHT_REF_TIME_PER_SECOND;
+use frame_support::{Deserialize, Serialize};
 use frame_system::limits::BlockLength;
 use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
 use scale_info::TypeInfo;
@@ -95,6 +97,82 @@ pub mod opaque {
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
     pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+}
+
+pub mod time {
+    /// Since Subspace is probabilistic this is the average expected block time that
+    /// we are targeting. Blocks will be produced at a minimum duration defined
+    /// by `SLOT_DURATION`, but some slots will not be allocated to any
+    /// farmer and hence no block will be produced. We expect to have this
+    /// block time on average following the defined slot duration and the value
+    /// of `c` configured for Subspace (where `1 - c` represents the probability of
+    /// a slot being empty).
+    /// This value is only used indirectly to define the unit constants below
+    /// that are expressed in blocks. The rest of the code should use
+    /// `SLOT_DURATION` instead (like the Timestamp pallet for calculating the
+    /// minimum period).
+    ///
+    /// Based on:
+    /// <https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html#-6.-practical-results>
+    pub const MILLISECS_PER_BLOCK: u64 = 6000;
+    /// Approximate number of block in a minute.
+    pub const BLOCKS_IN_AN_MINUTE: u32 = (60 * 1000) / MILLISECS_PER_BLOCK as u32;
+    /// Approximate number of blocks in an hour.
+    pub const BLOCKS_IN_AN_HOUR: u32 = 60 * BLOCKS_IN_AN_MINUTE;
+    /// Approximate number of blocks in a day.
+    pub const BLOCKS_IN_A_DAY: u32 = 24 * BLOCKS_IN_AN_HOUR;
+}
+
+#[derive(Copy, Clone, Encode, Decode, TypeInfo, Serialize, Deserialize, MaxEncodedLen, Debug)]
+pub struct CouncilDemocracyConfigParams<BlockNumber> {
+    /// Council motion duration.
+    pub council_motion_duration: BlockNumber,
+    /// Democracy cooloff period.
+    pub democracy_cooloff_period: BlockNumber,
+    /// Democracy enactment period.
+    pub democracy_enactment_period: BlockNumber,
+    /// Fast track voting period.
+    pub democracy_fast_track_voting_period: BlockNumber,
+    /// Launch period.
+    pub democracy_launch_period: BlockNumber,
+    /// Vote locking period.
+    pub democracy_vote_locking_period: BlockNumber,
+    /// Voting period.
+    pub democracy_voting_period: BlockNumber,
+}
+
+impl<BlockNumber: From<u32>> Default for CouncilDemocracyConfigParams<BlockNumber> {
+    fn default() -> Self {
+        Self {
+            council_motion_duration: BLOCKS_IN_A_DAY.into(),
+            democracy_cooloff_period: BLOCKS_IN_A_DAY.into(),
+            democracy_enactment_period: BLOCKS_IN_A_DAY.into(),
+            democracy_fast_track_voting_period: (2 * BLOCKS_IN_A_DAY).into(),
+            democracy_launch_period: (2 * BLOCKS_IN_A_DAY).into(),
+            democracy_vote_locking_period: BLOCKS_IN_A_DAY.into(),
+            democracy_voting_period: BLOCKS_IN_A_DAY.into(),
+        }
+    }
+}
+
+impl<BlockNumber: From<u32>> CouncilDemocracyConfigParams<BlockNumber> {
+    /// Production params for Council democracy config.
+    pub fn production_params() -> Self {
+        Self::default()
+    }
+
+    /// Fast period params for Council democracy config.
+    pub fn fast_params() -> Self {
+        Self {
+            council_motion_duration: (15 * BLOCKS_IN_AN_MINUTE).into(),
+            democracy_cooloff_period: (5 * BLOCKS_IN_AN_MINUTE).into(),
+            democracy_enactment_period: (15 * BLOCKS_IN_AN_MINUTE).into(),
+            democracy_fast_track_voting_period: (5 * BLOCKS_IN_AN_MINUTE).into(),
+            democracy_launch_period: (15 * BLOCKS_IN_AN_MINUTE).into(),
+            democracy_vote_locking_period: BLOCKS_IN_AN_MINUTE.into(),
+            democracy_voting_period: (15 * BLOCKS_IN_AN_MINUTE).into(),
+        }
+    }
 }
 
 /// A trait for determining whether rewards are enabled or not
