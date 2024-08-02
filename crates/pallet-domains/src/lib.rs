@@ -654,6 +654,10 @@ mod pallet {
     /// successfully submitted to current consensus block, which mean a new domain block with this block
     /// number will be produce. Used as a pointer in `ExecutionInbox` to identify the current under building
     /// domain block, also used as a mapping of consensus block number to domain block number.
+    //
+    // NOTE: the `HeadDomainNumber` is lazily updated for the domain runtime upgrade block (which only include
+    // the runtime upgrade tx from the consensus chain and no any user submitted tx from the bundle), use
+    // `domain_best_number` for the actual best domain block
     #[pallet::storage]
     pub(super) type HeadDomainNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
@@ -763,6 +767,8 @@ mod pallet {
         UnexpectedReceiptGap,
         /// Expecting receipt gap when validating `submit_receipt`
         ExpectingReceiptGap,
+        /// Failed to get missed domain runtime upgrade count
+        FailedToGetMissedUpgradeCount,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -2043,8 +2049,13 @@ impl<T: Config> Pallet<T> {
             .and_then(|mut runtime_object| runtime_object.raw_genesis.take_runtime_code())
     }
 
-    pub fn domain_best_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
-        Some(HeadDomainNumber::<T>::get(domain_id))
+    pub fn domain_best_number(domain_id: DomainId) -> Result<DomainBlockNumberFor<T>, BundleError> {
+        // The missed domain runtime upgrades will derive domain blocks thus should be accountted
+        // into the domain best number
+        let missed_upgrade = Self::missed_domain_runtime_upgrade(domain_id)
+            .map_err(|_| BundleError::FailedToGetMissedUpgradeCount)?;
+
+        Ok(HeadDomainNumber::<T>::get(domain_id) + missed_upgrade.into())
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
@@ -2288,7 +2299,7 @@ impl<T: Config> Pallet<T> {
         // derived from the latest domain block, and the stale bundle (that verified against an old
         // domain block) produced by a lagging honest operator will be rejected.
         ensure!(
-            Self::receipt_gap(domain_id) <= One::one(),
+            Self::receipt_gap(domain_id)? <= One::one(),
             BundleError::UnexpectedReceiptGap,
         );
 
@@ -2324,7 +2335,7 @@ impl<T: Config> Pallet<T> {
 
         // Singleton receipt is only allowed when there is a receipt gap
         ensure!(
-            Self::receipt_gap(domain_id) > One::one(),
+            Self::receipt_gap(domain_id)? > One::one(),
             BundleError::ExpectingReceiptGap,
         );
 
@@ -2698,6 +2709,11 @@ impl<T: Config> Pallet<T> {
         // Start from the oldest non-confirmed ER to the head domain number
         let mut to_check =
             Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
+
+        // NOTE: we use the `HeadDomainNumber` here instead of the `domain_best_number`, which include the
+        // missed domain runtime upgrade block, because we don't want to trigger empty bundle production
+        // for confirming these blocks since they only include runtime upgrade extrinsic and no any user
+        // submitted extrinsic.
         let head_number = HeadDomainNumber::<T>::get(domain_id);
 
         while to_check <= head_number {
@@ -2970,13 +2986,13 @@ impl<T: Config> Pallet<T> {
         DomainSudoCalls::<T>::get(domain_id).maybe_call
     }
 
-    // The gap between `HeadDomainNumber` and `HeadReceiptNumber` represent the number
+    // The gap between `domain_best_number` and `HeadReceiptNumber` represent the number
     // of receipt to be submitted
-    pub fn receipt_gap(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+    pub fn receipt_gap(domain_id: DomainId) -> Result<DomainBlockNumberFor<T>, BundleError> {
+        let domain_best_number = Self::domain_best_number(domain_id)?;
         let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
 
-        head_domain_number.saturating_sub(head_receipt_number)
+        Ok(domain_best_number.saturating_sub(head_receipt_number))
     }
 }
 

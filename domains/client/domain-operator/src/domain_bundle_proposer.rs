@@ -397,18 +397,18 @@ where
     /// Returns the receipt in the next domain bundle.
     pub fn load_next_receipt(
         &self,
-        head_domain_number: NumberFor<Block>,
+        domain_best_number_onchain: NumberFor<Block>,
         head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
         tracing::trace!(
-            ?head_domain_number,
+            ?domain_best_number_onchain,
             ?head_receipt_number,
             "Collecting receipt"
         );
 
-        // Both `head_domain_number` and `head_receipt_number` are zero means the domain just
+        // Both `domain_best_number_onchain` and `head_receipt_number` are zero means the domain just
         // instantiated and nothing have submitted yet so submit the genesis receipt
-        if head_domain_number.is_zero() && head_receipt_number.is_zero() {
+        if domain_best_number_onchain.is_zero() && head_receipt_number.is_zero() {
             let genesis_hash = self.client.info().genesis_hash;
             let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(

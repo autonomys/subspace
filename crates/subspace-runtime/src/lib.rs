@@ -1231,7 +1231,7 @@ impl_runtime_apis! {
         }
 
         fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
-            Domains::domain_best_number(domain_id)
+            Domains::domain_best_number(domain_id).ok()
         }
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
