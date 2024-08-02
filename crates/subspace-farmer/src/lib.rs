@@ -6,7 +6,7 @@
     duration_constructors,
     exact_size_is_empty,
     fmt_helpers_for_derive,
-    hash_extract_if,
+    btree_extract_if,
     impl_trait_in_assoc_type,
     int_roundings,
     iter_collect_into,
