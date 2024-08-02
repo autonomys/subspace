@@ -1,5 +1,5 @@
+use crate::utils::key_with_distance::UniqueRecordBinaryHeap;
 use crate::utils::multihash::Multihash;
-use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
 use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 
