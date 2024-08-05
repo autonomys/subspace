@@ -364,7 +364,7 @@ pub enum SingleDiskFarmError {
     Io(#[from] io::Error),
     /// Failed to spawn task for blocking thread
     #[error("Failed to spawn task for blocking thread: {0}")]
-    TokioJoinError(#[from] tokio::task::JoinError),
+    TokioJoinError(#[from] task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
@@ -803,7 +803,7 @@ impl SingleDiskFarm {
             create,
         } = options;
 
-        let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+        let single_disk_farm_init_fut = task::spawn_blocking({
             let directory = directory.clone();
             let farmer_app_info = farmer_app_info.clone();
             let span = span.clone();
@@ -905,7 +905,7 @@ impl SingleDiskFarm {
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
             .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
-        let farming_plot_fut = tokio::task::spawn_blocking(|| {
+        let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
                     #[cfg(windows)]
@@ -939,7 +939,7 @@ impl SingleDiskFarm {
                 let span = span.clone();
                 let plot_file = Arc::clone(&plot_file);
 
-                let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                let read_sector_record_chunks_mode_fut = task::spawn_blocking(move || {
                     farming_thread_pool
                         .install(move || {
                             let _span_guard = span.enter();
@@ -960,7 +960,7 @@ impl SingleDiskFarm {
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 
-        let plotting_join_handle = tokio::task::spawn_blocking({
+        let plotting_join_handle = task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let handlers = Arc::clone(&handlers);
             let sectors_being_modified = Arc::clone(&sectors_being_modified);
@@ -1073,7 +1073,7 @@ impl SingleDiskFarm {
             }
         }));
 
-        let farming_join_handle = tokio::task::spawn_blocking({
+        let farming_join_handle = task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
             let sectors_being_modified = Arc::clone(&sectors_being_modified);
@@ -1165,7 +1165,7 @@ impl SingleDiskFarm {
                     global_mutex,
                 );
 
-                let reading_join_handle = tokio::task::spawn_blocking({
+                let reading_join_handle = task::spawn_blocking({
                     let mut stop_receiver = stop_sender.subscribe();
                     let reading_fut = reading_fut.instrument(span.clone());
 
@@ -1197,7 +1197,7 @@ impl SingleDiskFarm {
                     global_mutex,
                 );
 
-                let reading_join_handle = tokio::task::spawn_blocking({
+                let reading_join_handle = task::spawn_blocking({
                     let mut stop_receiver = stop_sender.subscribe();
                     let reading_fut = reading_fut.instrument(span.clone());
 
