@@ -1168,6 +1168,11 @@ impl FraudProofStorageKeyProvider<NumberFor<Block>> for StorageKeyProvider {
             FraudProofStorageKeyRequest::MmrRoot(block_number) => {
                 pallet_subspace_mmr::MmrRootHashes::<Runtime>::hashed_key_for(block_number)
             }
+            FraudProofStorageKeyRequest::LastConfirmedDomainBlockReceipt(domain_id) => {
+                pallet_domains::LatestConfirmedDomainExecutionReceipt::<Runtime>::hashed_key_for(
+                    domain_id,
+                )
+            }
         }
     }
 }

@@ -50,6 +50,7 @@ pub enum VerificationError {
     ExtrinsicStorageProof(StorageProofVerificationError),
     DomainSudoCallStorageProof(StorageProofVerificationError),
     MmrRootStorageProof(StorageProofVerificationError),
+    LastConfirmedDomainBlockReceiptProof(StorageProofVerificationError),
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
@@ -64,6 +65,7 @@ pub enum FraudProofStorageKeyRequest<Number> {
     DynamicCostOfStorage,
     DomainSudoCall(DomainId),
     MmrRoot(Number),
+    LastConfirmedDomainBlockReceipt(DomainId),
 }
 
 impl<Number> FraudProofStorageKeyRequest<Number> {
@@ -83,6 +85,9 @@ impl<Number> FraudProofStorageKeyRequest<Number> {
                 VerificationError::DomainSudoCallStorageProof(err)
             }
             Self::MmrRoot(_) => VerificationError::MmrRootStorageProof(err),
+            Self::LastConfirmedDomainBlockReceipt(_) => {
+                VerificationError::LastConfirmedDomainBlockReceiptProof(err)
+            }
         }
     }
 }
@@ -158,6 +163,18 @@ pub trait BasicStorageProof<Block: BlockT>:
             StorageKey(storage_key),
         )
         .map_err(|err| storage_key_req.into_error(err))
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct LastConfirmedDomainBlockReceiptProof(StorageProof);
+
+impl_storage_proof!(LastConfirmedDomainBlockReceiptProof);
+impl<Block: BlockT> BasicStorageProof<Block> for LastConfirmedDomainBlockReceiptProof {
+    type StorageValue = Vec<H256>;
+    type Key = DomainId;
+    fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
+        FraudProofStorageKeyRequest::LastConfirmedDomainBlockReceipt(key)
     }
 }
 
