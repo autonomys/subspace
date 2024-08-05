@@ -1506,7 +1506,7 @@ impl<Balance> OnChainRewards<Balance> for () {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(5)]
+    #[api_version(6)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1600,7 +1600,10 @@ sp_api::decl_runtime_apis! {
 
         /// Return domain sudo call.
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;
-    }
+
+        /// Return last confirmed domain block execution receipt.
+        fn last_confirmed_domain_block_receipt(domain_id: DomainId) ->Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
+}
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
         fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>>;

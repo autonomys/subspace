@@ -1479,6 +1479,10 @@ impl_runtime_apis! {
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>> {
             Domains::domain_sudo_call(domain_id)
         }
+
+        fn last_confirmed_domain_block_receipt(domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>{
+            Domains::latest_confirmed_domain_execution_receipt(domain_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
