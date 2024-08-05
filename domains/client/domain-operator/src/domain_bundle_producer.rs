@@ -183,7 +183,7 @@ where
 
         let domain_best_number = self.client.info().best_number;
         let consensus_chain_best_hash = self.consensus_client.info().best_hash;
-        let head_domain_number = self
+        let domain_best_number_onchain = self
             .consensus_client
             .runtime_api()
             .domain_best_number(consensus_chain_best_hash, self.domain_id)?
@@ -239,7 +239,7 @@ where
 
             let receipt = self
                 .domain_bundle_proposer
-                .load_next_receipt(head_domain_number, head_receipt_number)?;
+                .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
 
             let api_version = self
                 .consensus_client
@@ -256,10 +256,10 @@ where
             // instead of bundle
             // TODO: remove api runtime version check before next network
             if api_version >= 5
-                && head_domain_number.saturating_sub(head_receipt_number) > 1u32.into()
+                && domain_best_number_onchain.saturating_sub(head_receipt_number) > 1u32.into()
             {
                 info!(
-                    ?head_domain_number,
+                    ?domain_best_number_onchain,
                     ?head_receipt_number,
                     "🔖 Producing singleton receipt at slot {:?}",
                     slot_info.slot

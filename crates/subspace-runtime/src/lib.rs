@@ -118,7 +118,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 6,
+    spec_version: 7,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -1231,7 +1231,7 @@ impl_runtime_apis! {
         }
 
         fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
-            Domains::domain_best_number(domain_id)
+            Domains::domain_best_number(domain_id).ok()
         }
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {

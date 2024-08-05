@@ -780,7 +780,7 @@ impl<CHash: Default> ProofOfElection<CHash> {
     }
 }
 
-/// Singleton receipt submit along when there is a gap between `HeadDomainNumber`
+/// Singleton receipt submit along when there is a gap between `domain_best_number`
 /// and `HeadReceiptNumber`
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
