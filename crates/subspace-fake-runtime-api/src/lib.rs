@@ -316,6 +316,10 @@ sp_api::impl_runtime_apis! {
         fn domain_sudo_call(_domain_id: DomainId) -> Option<Vec<u8>> {
             unreachable!()
         }
+
+        fn last_confirmed_domain_block_receipt(_domain_id: DomainId) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            unreachable!()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
