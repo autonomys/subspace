@@ -656,6 +656,7 @@ impl ScrubTarget {
 }
 
 struct AllocatedSpaceDistribution {
+    piece_cache_file_size: u64,
     piece_cache_capacity: u32,
     plot_file_size: u64,
     target_sector_count: u16,
@@ -735,6 +736,8 @@ impl AllocatedSpaceDistribution {
         };
 
         Ok(Self {
+            piece_cache_file_size: u64::from(piece_cache_capacity)
+                * u64::from(DiskPieceCache::element_size()),
             piece_cache_capacity,
             plot_file_size,
             target_sector_count,
@@ -1643,6 +1646,92 @@ impl SingleDiskFarm {
             info: single_disk_farm_info,
             directory,
         }
+    }
+
+    /// Effective on-disk allocation of the files related to the farm (takes some buffer space
+    /// into consideration).
+    ///
+    /// This is a helpful number in case some files were not allocated properly or were removed and
+    /// do not correspond to allocated space in the farm info accurately.
+    pub fn effective_disk_usage(
+        directory: &Path,
+        cache_percentage: u8,
+    ) -> Result<u64, SingleDiskFarmError> {
+        let mut effective_disk_usage;
+        match SingleDiskFarmInfo::load_from(directory)? {
+            Some(single_disk_farm_info) => {
+                let allocated_space_distribution = AllocatedSpaceDistribution::new(
+                    single_disk_farm_info.allocated_space(),
+                    sector_size(single_disk_farm_info.pieces_in_sector()) as u64,
+                    cache_percentage,
+                    SectorMetadataChecksummed::encoded_size() as u64,
+                )?;
+
+                effective_disk_usage = single_disk_farm_info.allocated_space();
+                effective_disk_usage -= Identity::file_size() as u64;
+                effective_disk_usage -= allocated_space_distribution.metadata_file_size;
+                effective_disk_usage -= allocated_space_distribution.plot_file_size;
+                effective_disk_usage -= allocated_space_distribution.piece_cache_file_size;
+            }
+            None => {
+                // No farm info, try to collect actual file sizes is any
+                effective_disk_usage = 0;
+            }
+        };
+
+        if Identity::open(directory)?.is_some() {
+            effective_disk_usage += Identity::file_size() as u64;
+        }
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::METADATA_FILE))
+        {
+            Ok(metadata_file) => {
+                effective_disk_usage += metadata_file.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::PLOT_FILE))
+        {
+            Ok(plot_file) => {
+                effective_disk_usage += plot_file.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(DiskPieceCache::FILE_NAME))
+        {
+            Ok(piece_cache) => {
+                effective_disk_usage += piece_cache.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        Ok(effective_disk_usage)
     }
 
     /// Read all sectors metadata
