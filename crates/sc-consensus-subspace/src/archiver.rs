@@ -655,7 +655,7 @@ where
                             Ok((block, block_object_mappings))
                         },
                     )
-                    .collect::<sp_blockchain::Result<Vec<_>>>()
+                    .collect::<sp_blockchain::Result<Vec<(SignedBlock<_>, _)>>>()
             })?;
 
             best_archived_block =
@@ -740,7 +740,7 @@ fn finalize_block<Block, Backend, Client>(
     });
 }
 
-/// Crate an archiver task that will listen for importing blocks and archive blocks at `K` depth,
+/// Create an archiver task that will listen for importing blocks and archive blocks at `K` depth,
 /// producing pieces and segment headers (segment headers are then added back to the blockchain as
 /// `store_segment_header` extrinsic).
 ///
@@ -874,7 +874,10 @@ where
                     // Special sync mode where verified blocks were inserted into blockchain
                     // directly, archiving of this block will naturally happen later
                     continue;
-                } else if client.hash(importing_block_number - One::one())?.is_none() {
+                } else if client
+                    .block_hash(importing_block_number - One::one())?
+                    .is_none()
+                {
                     // We may have imported some block using special sync mode and block we're about
                     // to import is the first one after the gap at which archiver is supposed to be
                     // initialized, but we are only about to import it, so wait for the next block
@@ -942,7 +945,7 @@ where
     let block = client
         .block(
             client
-                .hash(block_number_to_archive)?
+                .block_hash(block_number_to_archive)?
                 .expect("Older block by number must always exist"),
         )?
         .expect("Older block by number must always exist");
@@ -1022,7 +1025,7 @@ where
 
         if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
             // Block is not guaranteed to be present this deep if we have only synced recent blocks
-            if let Some(block_hash_to_finalize) = client.hash(block_number_to_finalize)? {
+            if let Some(block_hash_to_finalize) = client.block_hash(block_number_to_finalize)? {
                 finalize_block(
                     client.as_ref(),
                     telemetry.clone(),
