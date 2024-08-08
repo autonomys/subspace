@@ -83,7 +83,7 @@ pub struct BlockObjectMapping {
     pub objects: Vec<BlockObject>,
 }
 
-/// Object stored inside of the block
+/// Object stored inside of the piece
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -95,7 +95,7 @@ pub enum PieceObject {
         /// Object hash
         hash: Blake3Hash,
         // TODO: This is a raw record offset, not a regular one
-        /// Offset of the object
+        /// Offset of the object in that piece
         offset: u32,
     },
 }
@@ -121,11 +121,11 @@ impl PieceObject {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct PieceObjectMapping {
-    /// Objects stored inside of the block
+    /// Objects stored inside of the piece
     pub objects: Vec<PieceObject>,
 }
 
-/// Object stored inside in the history of the blockchain
+/// Object stored in the history of the blockchain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
