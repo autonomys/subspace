@@ -145,9 +145,9 @@ where
         ..
     } = full_deps;
 
-    let mut signers = Vec::new();
+    let mut signers = Vec::<Box<dyn EthSigner>>::new();
     if enable_dev_signer {
-        signers.push(Box::new(EthDevSigner::new()) as Box<dyn EthSigner>);
+        signers.push(Box::new(EthDevSigner::new()));
     }
 
     io.merge(
@@ -157,7 +157,7 @@ where
             graph.clone(),
             converter,
             sync.clone(),
-            vec![],
+            signers,
             storage_override.clone(),
             frontier_backend.clone(),
             is_authority,
