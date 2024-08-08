@@ -745,7 +745,7 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
-    pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
+    pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     /// Minimum operator stake to become an operator.
     // TODO: this value should be properly updated before mainnet
     pub const MinOperatorStake: Balance = 100 * SSC;
@@ -759,8 +759,8 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 14_400;
-    pub const StakeWithdrawalLockingPeriod: DomainNumber = 14_400;
+    pub const BlockTreePruningDepth: u32 = 100;
+    pub const StakeWithdrawalLockingPeriod: DomainNumber = 100;
     // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;

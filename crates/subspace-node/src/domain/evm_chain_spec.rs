@@ -129,7 +129,14 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
             .into_iter()
             .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * SSC))
             .collect(),
-        SpecId::DevNet | SpecId::Gemini => vec![],
+        SpecId::DevNet => {
+            let alith_account = get_dev_accounts()[0].clone();
+            vec![(
+                AccountId20Converter::convert(alith_account),
+                1_000_000 * SSC,
+            )]
+        }
+        SpecId::Gemini => vec![],
     }
 }
 
@@ -188,9 +195,7 @@ fn get_operator_params(
         },
         SpecId::DevNet => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Anyone,
-            operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
-            )),
+            operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
         },
     }
 }

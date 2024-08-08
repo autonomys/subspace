@@ -1493,7 +1493,7 @@ pub(crate) mod tests {
             domain_id,
             operator_stake,
             operator_config.clone(),
-            signature,
+            // signature,
         );
         assert_ok!(res);
 
@@ -1537,7 +1537,7 @@ pub(crate) mod tests {
                 domain_id,
                 Default::default(),
                 operator_config,
-                OperatorSignature::unchecked_from([1u8; 64]),
+                // OperatorSignature::unchecked_from([1u8; 64]),
             );
             assert_err!(
                 res,
@@ -1570,7 +1570,7 @@ pub(crate) mod tests {
                 domain_id,
                 Default::default(),
                 operator_config,
-                signature,
+                // signature,
             );
             assert_err!(
                 res,
@@ -1645,7 +1645,7 @@ pub(crate) mod tests {
                 domain_id,
                 operator_stake,
                 operator_config.clone(),
-                signature.clone(),
+                // signature.clone(),
             );
             assert_err!(
                 res,
@@ -1664,7 +1664,7 @@ pub(crate) mod tests {
                 domain_id,
                 operator_stake,
                 operator_config,
-                signature,
+                // signature,
             );
             assert_err!(
                 res,

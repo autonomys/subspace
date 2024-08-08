@@ -360,7 +360,7 @@ where
                 minimum_nominator_stake: Balance::MAX,
                 nomination_tax: Default::default(),
             },
-            signing_key_proof_of_ownership: signature,
+            // signing_key_proof_of_ownership: signature,
         };
         self.submit_consensus_extrinsic(Some(nonce), call.into())
     }

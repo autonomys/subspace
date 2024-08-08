@@ -160,9 +160,7 @@ fn get_operator_params(
         },
         SpecId::DevNet => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Anyone,
-            operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
-                "18df97b9335e11f239f8f3f8041819d42f27b60845cf209416fdba8de15f4b7c"
-            )),
+            operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Bob"),
         },
     }
 }
