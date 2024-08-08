@@ -99,7 +99,7 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+            rustflags: "-C target-cpu=x86-64-v2"
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
@@ -114,7 +114,7 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+            rustflags: "-C target-cpu=x86-64-v2"
       fail-fast: false
     runs-on: ${{ matrix.build.os }}
     env:
