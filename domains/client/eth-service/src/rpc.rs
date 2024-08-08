@@ -145,7 +145,7 @@ where
         ..
     } = full_deps;
 
-    let mut signers: Vec<Box<dyn EthSigner>> = Vec::new();
+    let mut signers = Vec::<Box<dyn EthSigner>>::new();
     if enable_dev_signer {
         signers.push(Box::new(EthDevSigner::new()));
     }
