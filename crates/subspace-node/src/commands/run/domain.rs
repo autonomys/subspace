@@ -388,7 +388,7 @@ pub(super) async fn run_domain(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-) -> Result<Arc<sc_domains::RuntimeExecutor>, Error> {
+) -> Result<(), Error> {
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -514,7 +514,7 @@ pub(super) async fn run_domain(
 
             domain_node.task_manager.future().await?;
 
-            Ok(domain_node.code_executor.clone())
+            Ok(())
         }
         RuntimeType::AutoId => {
             let domain_params = domain_service::DomainParams {
@@ -553,7 +553,7 @@ pub(super) async fn run_domain(
 
             domain_node.task_manager.future().await?;
 
-            Ok(domain_node.code_executor.clone())
+            Ok(())
         }
     }
 }
