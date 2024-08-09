@@ -27,7 +27,6 @@ mod tests;
 pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
-pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
