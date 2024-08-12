@@ -80,19 +80,17 @@ pub fn generate_protocol_name<Hash: AsRef<[u8]>>(
 }
 
 /// Request last confirmed domain block data from a peer.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct LastConfirmedBlockRequest {
     pub domain_id: DomainId,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct LastConfirmedBlockResponse<Block: BlockT, DomainHeader: Header> {
-    pub last_confirmed_block_data: Option<(
+    pub last_confirmed_block_data: (
         ExecutionReceiptFor<DomainHeader, Block, Balance>,
         LastConfirmedDomainBlockReceiptProof,
-    )>,
+    ),
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -203,42 +201,37 @@ where
             let response = match (storage_proof, last_confirmed_block_receipt) {
                 (Ok(storage_proof), Ok(Some(last_confirmed_block_receipt))) => {
                     LastConfirmedBlockResponse::<Block, DomainHeader> {
-                        last_confirmed_block_data: Some((
-                            last_confirmed_block_receipt,
-                            storage_proof,
-                        )),
+                        last_confirmed_block_data: (last_confirmed_block_receipt, storage_proof),
                     }
                 }
-                (storage_proof, last_confirmed_block_receipt) => {
-                    if let Err(err) = storage_proof {
-                        debug!(
-                            domain_id=%request.domain_id,
-                            %best_hash,
-                            ?err,
-                            "Storage proof generation failed.",
-                        );
-                    }
+                (_, Ok(None)) => {
+                    debug!(
+                        domain_id=%request.domain_id,
+                        %best_hash,
+                        "Last confirmed domain block acquisition failed: no data.",
+                    );
 
-                    if let Err(ref err) = last_confirmed_block_receipt {
-                        debug!(
-                            domain_id=%request.domain_id,
-                            %best_hash,
-                            ?err,
-                            "Last confirmed domain block acquisition failed.",
-                        );
-                    }
+                    return Err(HandleRequestError::AbsentLastConfirmedDomainBlockData);
+                }
+                (Err(err), _) => {
+                    debug!(
+                        domain_id=%request.domain_id,
+                        %best_hash,
+                        ?err,
+                        "Storage proof generation failed.",
+                    );
 
-                    if let Ok(None) = last_confirmed_block_receipt {
-                        debug!(
-                            domain_id=%request.domain_id,
-                            %best_hash,
-                            "Last confirmed domain block acquisition failed: no data.",
-                        );
-                    }
+                    return Err(HandleRequestError::StorageProofGenerationFailed);
+                }
+                (_, Err(err)) => {
+                    debug!(
+                        domain_id=%request.domain_id,
+                        %best_hash,
+                        ?err,
+                        "Last confirmed domain block acquisition failed.",
+                    );
 
-                    LastConfirmedBlockResponse::<Block, DomainHeader> {
-                        last_confirmed_block_data: None,
-                    }
+                    return Err(HandleRequestError::LastConfirmedDomainDataAcquisitionFailed(err));
                 }
             };
 
@@ -265,4 +258,13 @@ enum HandleRequestError {
 
     #[error("Failed to decode request: {0}.")]
     Decode(#[from] codec::Error),
+
+    #[error("Storage proof generation failed.")]
+    StorageProofGenerationFailed,
+
+    #[error("Last confirmed domain block acquisition failed: no data.")]
+    AbsentLastConfirmedDomainBlockData,
+
+    #[error("Last confirmed domain block acquisition failed: no data.")]
+    LastConfirmedDomainDataAcquisitionFailed(#[from] sp_api::ApiError),
 }

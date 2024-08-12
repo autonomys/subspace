@@ -171,7 +171,7 @@ pub struct LastConfirmedDomainBlockReceiptProof(StorageProof);
 
 impl_storage_proof!(LastConfirmedDomainBlockReceiptProof);
 impl<Block: BlockT> BasicStorageProof<Block> for LastConfirmedDomainBlockReceiptProof {
-    type StorageValue = Vec<H256>;
+    type StorageValue = Vec<u8>;
     type Key = DomainId;
     fn storage_key_request(key: Self::Key) -> FraudProofStorageKeyRequest<NumberFor<Block>> {
         FraudProofStorageKeyRequest::LastConfirmedDomainBlockReceipt(key)

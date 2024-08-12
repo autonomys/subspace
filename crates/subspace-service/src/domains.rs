@@ -95,19 +95,9 @@ where
 
             match response {
                 Ok(response) => {
-                    trace!(
-                        "Response from a peer {peer_id}: data={},",
-                        response.last_confirmed_block_data.is_some()
-                    );
+                    trace!("Response from a peer {peer_id},",);
 
-                    if response.last_confirmed_block_data.is_some() {
-                        return response.last_confirmed_block_data;
-                    }
-
-                    if response.last_confirmed_block_data.is_none() {
-                        debug!("Empty response from peer={}", peer_id);
-                        continue 'peers;
-                    }
+                    return Some(response.last_confirmed_block_data);
                 }
                 Err(error) => {
                     debug!("Domain info request failed. peer = {peer_id}: {error}");
