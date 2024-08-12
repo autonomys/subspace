@@ -28,7 +28,6 @@ use sp_core::offchain::{DbExternalities, OffchainStorage, StorageKind};
 use sp_runtime::codec;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
-use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,22 +85,13 @@ pub fn generate_protocol_name<Hash: AsRef<[u8]>>(
 }
 
 /// The key of [`BlockRequestHandler::seen_requests`].
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 struct SeenRequestsKey {
     peer: PeerId,
     starting_position: u32,
 }
 
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for SeenRequestsKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.peer.hash(state);
-        self.starting_position.hash(state);
-    }
-}
-
 /// Request MMR data from a peer.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct MmrRequest {
     /// Starting position for MMR node.
@@ -110,7 +100,6 @@ pub struct MmrRequest {
     pub limit: u32,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, Encode, Decode, Debug)]
 pub struct MmrResponse {
     /// MMR-nodes related to node position
