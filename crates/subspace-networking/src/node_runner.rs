@@ -723,7 +723,10 @@ where
     async fn handle_identify_event(&mut self, event: IdentifyEvent) {
         let local_peer_id = *self.swarm.local_peer_id();
 
-        if let IdentifyEvent::Received { peer_id, mut info } = event {
+        if let IdentifyEvent::Received {
+            peer_id, mut info, ..
+        } = event
+        {
             debug!(?peer_id, protocols = ?info.protocols, "IdentifyEvent::Received");
 
             // Check for network partition
@@ -927,7 +930,7 @@ where
                                 cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
-                                    peer,
+                                    peer.peer_id,
                                     "GetClosestPeersOk",
                                     &id,
                                 ) || cancelled;
@@ -944,7 +947,7 @@ where
                                 cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
-                                    peer,
+                                    peer.peer_id,
                                     "GetClosestPeersError::Timeout",
                                     &id,
                                 ) || cancelled;

@@ -1,4 +1,5 @@
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
+use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{
@@ -153,6 +154,7 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         if let Some(attempts) = self.outgoing_allow_list.get_mut(&peer) {
             *attempts -= 1;
@@ -164,8 +166,13 @@ impl NetworkBehaviour for Behaviour {
             return Ok(Self::ConnectionHandler {});
         }
 
-        self.inner
-            .handle_established_outbound_connection(connection_id, peer, addr, role_override)
+        self.inner.handle_established_outbound_connection(
+            connection_id,
+            peer,
+            addr,
+            role_override,
+            port_use,
+        )
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm) {

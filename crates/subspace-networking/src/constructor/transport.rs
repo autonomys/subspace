@@ -1,7 +1,7 @@
 use crate::constructor::temporary_bans::TemporaryBans;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
+use libp2p::core::transport::{Boxed, DialOpts, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
 use libp2p::dns::tokio::Transport as TokioTransport;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
@@ -92,7 +92,11 @@ where
         self.base_transport.remove_listener(id)
     }
 
-    fn dial(&mut self, addr: Multiaddr) -> Result<Self::Dial, TransportError<Self::Error>> {
+    fn dial(
+        &mut self,
+        addr: Multiaddr,
+        opts: DialOpts,
+    ) -> Result<Self::Dial, TransportError<Self::Error>> {
         let mut addr_iter = addr.iter();
 
         match addr_iter.next() {
@@ -126,18 +130,7 @@ where
             }
         }
 
-        self.base_transport.dial(addr)
-    }
-
-    fn dial_as_listener(
-        &mut self,
-        addr: Multiaddr,
-    ) -> Result<Self::Dial, TransportError<Self::Error>> {
-        self.base_transport.dial_as_listener(addr)
-    }
-
-    fn address_translation(&self, listen: &Multiaddr, observed: &Multiaddr) -> Option<Multiaddr> {
-        self.base_transport.address_translation(listen, observed)
+        self.base_transport.dial(addr, opts)
     }
 
     fn poll(
