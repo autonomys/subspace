@@ -30,7 +30,6 @@ use std::any::type_name;
 use std::collections::VecDeque;
 use std::future::{pending, Future};
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};

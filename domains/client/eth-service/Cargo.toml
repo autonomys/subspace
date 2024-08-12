@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-clap = { version = "4.5.7", features = ["derive"] }
+clap = { version = "4.5.15", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 domain-service = { version = "0.1.0", path = "../../service" }
 fc-consensus = { version = "2.0.0-dev", git = "https://github.com/polkadot-evm/frontier", rev = "2e219e17a526125da003e64ef22ec037917083fa" }
@@ -32,7 +32,7 @@ sc-network-sync = { git = "https://github.com/subspace/polkadot-sdk", rev = "562
 sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631", default-features = false }
 sc-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.206", features = ["derive"] }
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }

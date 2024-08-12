@@ -30,5 +30,5 @@ sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-thiserror = "1.0.59"
+thiserror = "1.0.63"
 tracing = "0.1.40"

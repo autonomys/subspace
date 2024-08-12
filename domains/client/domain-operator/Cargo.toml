@@ -40,8 +40,8 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 tracing = "0.1.40"
-thiserror = "1.0.61"
-tokio = { version = "1.38.0", features = ["macros"] }
+thiserror = "1.0.63"
+tokio = { version = "1.39.2", features = ["macros"] }
 
 [dev-dependencies]
 auto-id-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/auto-id" }
@@ -65,4 +65,4 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 subspace-test-primitives = { version = "0.1.0", path = "../../../test/subspace-test-primitives" }
-tempfile = "3.10.1"
+tempfile = "3.12.0"

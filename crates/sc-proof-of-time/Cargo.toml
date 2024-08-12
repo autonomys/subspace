@@ -13,7 +13,7 @@ include = [
 [dependencies]
 atomic = "0.5.3"
 core_affinity = "0.8.1"
-derive_more = "0.99.18"
+derive_more = { version = "1.0.0", features = ["full"] }
 futures = "0.3.29"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 parking_lot = "0.12.2"
@@ -33,5 +33,5 @@ sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-proof-of-time = { version = "0.1.0", path = "../subspace-proof-of-time" }
 thread-priority = "1.1.0"
-tokio = { version = "1.38.0", features = ["sync"] }
+tokio = { version = "1.39.2", features = ["sync"] }
 tracing = "0.1.40"

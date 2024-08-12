@@ -25,7 +25,6 @@ use core::array::TryFromSliceError;
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::num::TryFromIntError;
-use core::ops::{Deref, DerefMut};
 use core::{mem, slice};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,

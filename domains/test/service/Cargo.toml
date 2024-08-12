@@ -34,7 +34,7 @@ sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d
 sc-tracing = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.206", features = ["derive"] }
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-arithmetic = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-blockchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
@@ -53,5 +53,5 @@ subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 substrate-test-client = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
-tokio = { version = "1.38.0", features = ["macros"] }
+tokio = { version = "1.39.2", features = ["macros"] }
 tracing = "0.1.40"
