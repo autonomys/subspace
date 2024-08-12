@@ -46,8 +46,6 @@ use tokio::task::yield_now;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
-const BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<PeerRecord>,
@@ -245,14 +243,7 @@ where
             }
         }
 
-        // TODO: Remove once https://github.com/libp2p/rust-libp2p/issues/5432 is resolved,
-        //  downstream issue is https://github.com/autonomys/subspace/issues/2729
-        if tokio::time::timeout(BOOTSTRAP_TIMEOUT, self.bootstrap())
-            .await
-            .is_err()
-        {
-            warn!("Bootstrapping timed out, moving on regardless");
-        }
+        self.bootstrap().await;
 
         loop {
             futures::select! {
