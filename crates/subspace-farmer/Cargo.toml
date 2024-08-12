@@ -32,7 +32,7 @@ fs4 = "0.8.4"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 hwlocality = { version = "1.0.0-alpha.5", features = ["vendored"], optional = true }
-jsonrpsee = { version = "0.23.1", features = ["ws-client"] }
+jsonrpsee = { version = "0.23.2", features = ["ws-client"] }
 mimalloc = "0.1.42"
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.12"
