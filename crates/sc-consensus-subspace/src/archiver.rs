@@ -900,7 +900,7 @@ where
             (best_archived_block_hash, best_archived_block_number) = archive_block(
                 &mut archiver,
                 segment_headers_store.clone(),
-                client.clone(),
+                &*client,
                 &sync_oracle,
                 telemetry.clone(),
                 archived_segment_notification_sender.clone(),
@@ -919,7 +919,7 @@ where
 async fn archive_block<Block, Backend, Client, AS, SO>(
     archiver: &mut Archiver,
     segment_headers_store: SegmentHeadersStore<AS>,
-    client: Arc<Client>,
+    client: &Client,
     sync_oracle: &SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
@@ -1027,7 +1027,7 @@ where
             // Block is not guaranteed to be present this deep if we have only synced recent blocks
             if let Some(block_hash_to_finalize) = client.block_hash(block_number_to_finalize)? {
                 finalize_block(
-                    client.as_ref(),
+                    client,
                     telemetry.clone(),
                     block_hash_to_finalize,
                     block_number_to_finalize,
