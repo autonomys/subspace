@@ -228,26 +228,15 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
         ChainId::Domain(domain_id),
         consensus_chain_client.clone(),
         confirmation_depth_k,
-        |consensus_chain_client, consensus_block, (domain_block_number, domain_hash)| {
-            let res = Relayer::submit_messages_from_domain(
+        |consensus_chain_client, consensus_block, (_domain_block_number, domain_hash)| {
+            Relayer::submit_messages_from_domain(
                 domain_id,
                 &domain_client,
                 consensus_chain_client,
                 consensus_block,
                 domain_hash,
                 &gossip_message_sink,
-            );
-
-            if res.is_ok() {
-                Relayer::store_relayed_domain_block(
-                    &domain_client,
-                    domain_id,
-                    domain_block_number,
-                    domain_hash,
-                )?;
-            }
-
-            res
+            )
         },
         sync_oracle,
         |consensus_block_number|
@@ -292,17 +281,6 @@ pub async fn relay_domain_messages<CClient, Client, CBlock, Block, SO>(
             if let Some((domain_block_number, domain_block_hash)) = confirmed_domain_block {
                 // short circuit if the domain state is unavailable to relay messages.
                 if !is_state_available(&domain_state_pruning, &domain_client, domain_block_number) {
-                    return Ok(None);
-                }
-
-                // check if this domain block is already relayed
-                if Relayer::fetch_domains_blocks_relayed_at(
-                    &domain_client,
-                    domain_id,
-                    domain_block_number,
-                )
-                    .contains(&domain_block_hash)
-                {
                     return Ok(None);
                 }
 
@@ -410,53 +388,36 @@ where
             }
         };
 
-        let blocks_to_process: Vec<(NumberFor<CBlock>, CBlock::Hash)> =
-            Relayer::fetch_unprocessed_consensus_blocks_until(
-                &consensus_client,
-                chain_id,
-                number,
-                hash,
-            )?;
+        tracing::debug!(
+            target: LOG_TARGET,
+            "Checking messages to be submitted from chain: {chain_id:?} at block: ({number:?}, {hash:?})",
+        );
 
-        for (number, hash) in blocks_to_process {
+        // check if the message is ready to be relayed.
+        // if not, the node is lagging behind and/or there is no way to generate a proof.
+        // mark this block processed and continue to next one.
+        if let Some(extra_data) = can_relay_message_from_block(number)? {
+            match message_processor(&consensus_client, (number, hash), extra_data) {
+                Ok(_) => {
+                    tracing::debug!(
+                        target: LOG_TARGET,
+                        "Messages from {chain_id:?} at block({number:?}, {hash:?}) are processed."
+                    )
+                }
+                Err(err) => {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        ?err,
+                        "Failed to submit messages from the chain {chain_id:?} at the block ({number:?}, {hash:?})"
+                    );
+                    break;
+                }
+            }
+        } else {
             tracing::debug!(
                 target: LOG_TARGET,
-                "Checking messages to be submitted from chain: {chain_id:?} at block: ({number:?}, {hash:?})",
+                "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
             );
-
-            // check if the message is ready to be relayed.
-            // if not, the node is lagging behind and/or there is no way to generate a proof.
-            // mark this block processed and continue to next one.
-            if let Some(extra_data) = can_relay_message_from_block(number)? {
-                match message_processor(&consensus_client, (number, hash), extra_data) {
-                    Ok(_) => {
-                        Relayer::store_relayed_consensus_block(
-                            &consensus_client,
-                            chain_id,
-                            number,
-                            hash,
-                        )?;
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            "Messages from {chain_id:?} at block({number:?}, {hash:?}) are processed."
-                        )
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Failed to submit messages from the chain {chain_id:?} at the block ({number:?}, {hash:?})"
-                        );
-                        break;
-                    }
-                }
-            } else {
-                Relayer::store_relayed_consensus_block(&consensus_client, chain_id, number, hash)?;
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
-                );
-            }
         }
     }
 

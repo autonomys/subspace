@@ -9,7 +9,7 @@ use async_channel::TrySendError;
 use cross_domain_message_gossip::{
     ChannelStorage, Message as GossipMessage, MessageData as GossipMessageData,
 };
-use parity_scale_codec::{Codec, Decode, Encode};
+use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
@@ -20,7 +20,7 @@ use sp_messenger::messages::{
 };
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_mmr_primitives::MmrApi;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One};
 use sp_runtime::ArithmeticError;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use std::marker::PhantomData;
@@ -93,7 +93,6 @@ impl From<sp_api::ApiError> for Error {
 }
 
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, H256>;
-type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
 fn construct_consensus_mmr_proof<Client, Block>(
     consensus_chain_client: &Arc<Client>,
@@ -538,137 +537,5 @@ where
             domain_proof,
             message_proof: proof,
         })
-    }
-
-    fn relayed_consensus_blocks_at_number_key(
-        chain_id: ChainId,
-        number: NumberFor<Block>,
-    ) -> Vec<u8> {
-        (
-            b"message_relayer_processed_consensus_block_of_chain",
-            chain_id,
-            number,
-        )
-            .encode()
-    }
-
-    fn relayed_domain_blocks_at_number_key(
-        domain_id: DomainId,
-        number: NumberFor<Block>,
-    ) -> Vec<u8> {
-        (b"message_relayer_processed_domain_block", domain_id, number).encode()
-    }
-
-    /// Takes number as tip and finds all the unprocessed blocks including the tip.
-    fn fetch_unprocessed_consensus_blocks_until(
-        client: &Arc<Client>,
-        chain_id: ChainId,
-        best_number: NumberFor<Block>,
-        best_hash: Block::Hash,
-    ) -> Result<UnProcessedBlocks<Block>, Error> {
-        let mut blocks_to_process = vec![];
-        let (mut number_to_check, mut hash_to_check) = (best_number, best_hash);
-        while !Self::fetch_consensus_blocks_relayed_at(client, chain_id, number_to_check)
-            .contains(&hash_to_check)
-        {
-            blocks_to_process.push((number_to_check, hash_to_check));
-            if number_to_check == Zero::zero() {
-                break;
-            }
-
-            hash_to_check = match client.header(hash_to_check).ok().flatten() {
-                Some(header) => *header.parent_hash(),
-                None => {
-                    return Err(
-                        sp_blockchain::Error::MissingHeader(hash_to_check.to_string()).into(),
-                    );
-                }
-            };
-
-            number_to_check = number_to_check
-                .checked_sub(&One::one())
-                .expect("block number is guaranteed to be >= 1 from the above check")
-        }
-
-        blocks_to_process.reverse();
-        Ok(blocks_to_process)
-    }
-
-    fn fetch_consensus_blocks_relayed_at(
-        client: &Arc<Client>,
-        chain_id: ChainId,
-        number: NumberFor<Block>,
-    ) -> Vec<Block::Hash> {
-        Self::fetch_blocks_relayed_at(
-            client,
-            Self::relayed_consensus_blocks_at_number_key(chain_id, number),
-        )
-    }
-
-    fn fetch_domains_blocks_relayed_at(
-        client: &Arc<Client>,
-        domain_id: DomainId,
-        number: NumberFor<Block>,
-    ) -> Vec<Block::Hash> {
-        Self::fetch_blocks_relayed_at(
-            client,
-            Self::relayed_domain_blocks_at_number_key(domain_id, number),
-        )
-    }
-
-    fn fetch_blocks_relayed_at(client: &Arc<Client>, key: Vec<u8>) -> Vec<Block::Hash> {
-        client
-            .get_aux(&key)
-            .ok()
-            .flatten()
-            .and_then(|enc_val| Vec::<Block::Hash>::decode(&mut enc_val.as_ref()).ok())
-            .unwrap_or_default()
-    }
-
-    // TODO: at the moment the aux storage grows as the chain grows
-    // We can prune the the storage by doing another round of check for any undelivered messages
-    // and then prune the storage.
-    // We can use Finalize event but its not triggered yet as we dont finalize.
-    // Other option would be to use fraud proof period.
-    fn store_relayed_block(
-        client: &Arc<Client>,
-        key: Vec<u8>,
-        block_hash: Block::Hash,
-    ) -> Result<(), Error> {
-        let mut processed_blocks = Self::fetch_blocks_relayed_at(client, key.clone());
-        if processed_blocks.contains(&block_hash) {
-            return Ok(());
-        }
-
-        processed_blocks.push(block_hash);
-        client
-            .insert_aux(&[(key.as_ref(), processed_blocks.encode().as_ref())], &[])
-            .map_err(|_| Error::StoreRelayedBlockNumber)
-    }
-
-    fn store_relayed_consensus_block(
-        client: &Arc<Client>,
-        chain_id: ChainId,
-        block_number: NumberFor<Block>,
-        block_hash: Block::Hash,
-    ) -> Result<(), Error> {
-        Self::store_relayed_block(
-            client,
-            Self::relayed_consensus_blocks_at_number_key(chain_id, block_number),
-            block_hash,
-        )
-    }
-
-    fn store_relayed_domain_block(
-        client: &Arc<Client>,
-        domain_id: DomainId,
-        block_number: NumberFor<Block>,
-        block_hash: Block::Hash,
-    ) -> Result<(), Error> {
-        Self::store_relayed_block(
-            client,
-            Self::relayed_domain_blocks_at_number_key(domain_id, block_number),
-            block_hash,
-        )
     }
 }
