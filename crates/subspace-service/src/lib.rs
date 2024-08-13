@@ -29,6 +29,7 @@
 pub mod config;
 pub mod dsn;
 mod metrics;
+pub(crate) mod mmr;
 pub mod rpc;
 pub mod sync_from_dsn;
 pub mod transaction_pool;
@@ -36,6 +37,7 @@ pub mod transaction_pool;
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
+use crate::mmr::request_handler::MmrRequestHandler;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
 use crate::transaction_pool::FullPool;
@@ -72,7 +74,7 @@ use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions}
 use sc_consensus_subspace::SubspaceLink;
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::service::traits::NetworkService;
-use sc_network::{NotificationMetrics, NotificationService};
+use sc_network::{NetworkWorker, NotificationMetrics, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
@@ -730,6 +732,7 @@ where
     } = other;
 
     let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
+    let fork_id = config.base.chain_spec.fork_id().map(String::from);
     let (node, bootstrap_nodes) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
@@ -844,6 +847,31 @@ where
         pot_gossip_peers_set_config();
     net_config.add_notification_protocol(pot_gossip_notification_config);
     let pause_sync = Arc::clone(&net_config.network_config.pause_sync);
+
+    if let Some(offchain_storage) = backend.offchain_storage() {
+        let num_peer_hint = net_config.network_config.default_peers_set_num_full as usize
+            + net_config
+                .network_config
+                .default_peers_set
+                .reserved_nodes
+                .len();
+
+        // Allow both outgoing and incoming requests.
+        let (handler, protocol_config) =
+            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>, _>(
+                &config.base.protocol_id(),
+                fork_id.as_deref(),
+                client.clone(),
+                num_peer_hint,
+                offchain_storage,
+            );
+        task_manager
+            .spawn_handle()
+            .spawn("mmr-request-handler", Some("networking"), handler.run());
+
+        net_config.add_request_response_protocol(protocol_config);
+    }
+
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config.base,
@@ -933,12 +961,10 @@ where
         pause_sync.store(true, Ordering::Release);
     }
 
-    let fork_id = config.base.chain_spec.fork_id().map(String::from);
-
     let snap_sync_task = snap_sync(
         segment_headers_store.clone(),
         node.clone(),
-        fork_id,
+        fork_id.clone(),
         Arc::clone(&client),
         import_queue_service1,
         pause_sync.clone(),

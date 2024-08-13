@@ -364,7 +364,7 @@ pub enum SingleDiskFarmError {
     Io(#[from] io::Error),
     /// Failed to spawn task for blocking thread
     #[error("Failed to spawn task for blocking thread: {0}")]
-    TokioJoinError(#[from] tokio::task::JoinError),
+    TokioJoinError(#[from] task::JoinError),
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
@@ -655,6 +655,98 @@ impl ScrubTarget {
     }
 }
 
+struct AllocatedSpaceDistribution {
+    piece_cache_file_size: u64,
+    piece_cache_capacity: u32,
+    plot_file_size: u64,
+    target_sector_count: u16,
+    metadata_file_size: u64,
+}
+
+impl AllocatedSpaceDistribution {
+    fn new(
+        allocated_space: u64,
+        sector_size: u64,
+        cache_percentage: u8,
+        sector_metadata_size: u64,
+    ) -> Result<Self, SingleDiskFarmError> {
+        let single_sector_overhead = sector_size + sector_metadata_size;
+        // Fixed space usage regardless of plot size
+        let fixed_space_usage = RESERVED_PLOT_METADATA
+            + RESERVED_FARM_INFO
+            + Identity::file_size() as u64
+            + KnownPeersManager::file_size(KNOWN_PEERS_CACHE_SIZE) as u64;
+        // Calculate how many sectors can fit
+        let target_sector_count = {
+            let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
+                / 100
+                * (100 - u64::from(cache_percentage));
+            // Do the rounding to make sure we have exactly as much space as fits whole number of
+            // sectors, account for disk sector size just in case
+            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
+        };
+
+        if target_sector_count == 0 {
+            let mut single_plot_with_cache_space =
+                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage)) * 100;
+            // Cache must not be empty, ensure it contains at least one element even if
+            // percentage-wise it will use more space
+            if single_plot_with_cache_space - single_sector_overhead
+                < DiskPieceCache::element_size() as u64
+            {
+                single_plot_with_cache_space =
+                    single_sector_overhead + DiskPieceCache::element_size() as u64;
+            }
+
+            return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
+                min_space: fixed_space_usage + single_plot_with_cache_space,
+                allocated_space,
+            });
+        }
+        let plot_file_size = target_sector_count * sector_size;
+        // Align plot file size for disk sector size
+        let plot_file_size =
+            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
+
+        // Remaining space will be used for caching purposes
+        let piece_cache_capacity = if cache_percentage > 0 {
+            let cache_space = allocated_space
+                - fixed_space_usage
+                - plot_file_size
+                - (sector_metadata_size * target_sector_count);
+            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
+        } else {
+            0
+        };
+        let target_sector_count = match SectorIndex::try_from(target_sector_count) {
+            Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
+                target_sector_count
+            }
+            _ => {
+                // We use this for both count and index, hence index must not reach actual `MAX`
+                // (consensus doesn't care about this, just farmer implementation detail)
+                let max_sectors = SectorIndex::MAX - 1;
+                return Err(SingleDiskFarmError::FarmTooLarge {
+                    allocated_space: target_sector_count * sector_size,
+                    allocated_sectors: target_sector_count,
+                    max_space: max_sectors as u64 * sector_size,
+                    max_sectors,
+                });
+            }
+        };
+
+        Ok(Self {
+            piece_cache_file_size: u64::from(piece_cache_capacity)
+                * u64::from(DiskPieceCache::element_size()),
+            piece_cache_capacity,
+            plot_file_size,
+            target_sector_count,
+            metadata_file_size: RESERVED_PLOT_METADATA
+                + sector_metadata_size * u64::from(target_sector_count),
+        })
+    }
+}
+
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
@@ -803,7 +895,7 @@ impl SingleDiskFarm {
             create,
         } = options;
 
-        let single_disk_farm_init_fut = tokio::task::spawn_blocking({
+        let single_disk_farm_init_fut = task::spawn_blocking({
             let directory = directory.clone();
             let farmer_app_info = farmer_app_info.clone();
             let span = span.clone();
@@ -905,7 +997,7 @@ impl SingleDiskFarm {
             .spawn_handler(tokio_rayon_spawn_handler())
             .build()
             .map_err(SingleDiskFarmError::FailedToCreateThreadPool)?;
-        let farming_plot_fut = tokio::task::spawn_blocking(|| {
+        let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
                     #[cfg(windows)]
@@ -939,7 +1031,7 @@ impl SingleDiskFarm {
                 let span = span.clone();
                 let plot_file = Arc::clone(&plot_file);
 
-                let read_sector_record_chunks_mode_fut = tokio::task::spawn_blocking(move || {
+                let read_sector_record_chunks_mode_fut = task::spawn_blocking(move || {
                     farming_thread_pool
                         .install(move || {
                             let _span_guard = span.enter();
@@ -960,7 +1052,7 @@ impl SingleDiskFarm {
 
         faster_read_sector_record_chunks_mode_barrier.wait().await;
 
-        let plotting_join_handle = tokio::task::spawn_blocking({
+        let plotting_join_handle = task::spawn_blocking({
             let sectors_metadata = Arc::clone(&sectors_metadata);
             let handlers = Arc::clone(&handlers);
             let sectors_being_modified = Arc::clone(&sectors_being_modified);
@@ -1073,7 +1165,7 @@ impl SingleDiskFarm {
             }
         }));
 
-        let farming_join_handle = tokio::task::spawn_blocking({
+        let farming_join_handle = task::spawn_blocking({
             let erasure_coding = erasure_coding.clone();
             let handlers = Arc::clone(&handlers);
             let sectors_being_modified = Arc::clone(&sectors_being_modified);
@@ -1165,7 +1257,7 @@ impl SingleDiskFarm {
                     global_mutex,
                 );
 
-                let reading_join_handle = tokio::task::spawn_blocking({
+                let reading_join_handle = task::spawn_blocking({
                     let mut stop_receiver = stop_sender.subscribe();
                     let reading_fut = reading_fut.instrument(span.clone());
 
@@ -1197,7 +1289,7 @@ impl SingleDiskFarm {
                     global_mutex,
                 );
 
-                let reading_join_handle = tokio::task::spawn_blocking({
+                let reading_join_handle = task::spawn_blocking({
                     let mut stop_receiver = stop_sender.subscribe();
                     let reading_fut = reading_fut.instrument(span.clone());
 
@@ -1378,72 +1470,15 @@ impl SingleDiskFarm {
         };
 
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
-        let sector_size = sector_size(pieces_in_sector);
+        let sector_size = sector_size(pieces_in_sector) as u64;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
-        let single_sector_overhead = (sector_size + sector_metadata_size) as u64;
-        // Fixed space usage regardless of plot size
-        let fixed_space_usage = RESERVED_PLOT_METADATA
-            + RESERVED_FARM_INFO
-            + Identity::file_size() as u64
-            + KnownPeersManager::file_size(KNOWN_PEERS_CACHE_SIZE) as u64;
-        // Calculate how many sectors can fit
-        let target_sector_count = {
-            let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)
-                / 100
-                * (100 - u64::from(cache_percentage));
-            // Do the rounding to make sure we have exactly as much space as fits whole number of
-            // sectors, account for disk sector size just in case
-            (potentially_plottable_space - DISK_SECTOR_SIZE as u64) / single_sector_overhead
-        };
-
-        if target_sector_count == 0 {
-            let mut single_plot_with_cache_space =
-                single_sector_overhead.div_ceil(100 - u64::from(cache_percentage)) * 100;
-            // Cache must not be empty, ensure it contains at least one element even if
-            // percentage-wise it will use more space
-            if single_plot_with_cache_space - single_sector_overhead
-                < DiskPieceCache::element_size() as u64
-            {
-                single_plot_with_cache_space =
-                    single_sector_overhead + DiskPieceCache::element_size() as u64;
-            }
-
-            return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
-                min_space: fixed_space_usage + single_plot_with_cache_space,
-                allocated_space,
-            });
-        }
-        let plot_file_size = target_sector_count * sector_size as u64;
-        // Align plot file size for disk sector size
-        let plot_file_size =
-            plot_file_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
-
-        // Remaining space will be used for caching purposes
-        let piece_cache_capacity = if cache_percentage > 0 {
-            let cache_space = allocated_space
-                - fixed_space_usage
-                - plot_file_size
-                - (sector_metadata_size as u64 * target_sector_count);
-            (cache_space / u64::from(DiskPieceCache::element_size())) as u32
-        } else {
-            0
-        };
-        let target_sector_count = match SectorIndex::try_from(target_sector_count) {
-            Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
-                target_sector_count
-            }
-            _ => {
-                // We use this for both count and index, hence index must not reach actual `MAX`
-                // (consensus doesn't care about this, just farmer implementation detail)
-                let max_sectors = SectorIndex::MAX - 1;
-                return Err(SingleDiskFarmError::FarmTooLarge {
-                    allocated_space: target_sector_count * sector_size as u64,
-                    allocated_sectors: target_sector_count,
-                    max_space: max_sectors as u64 * sector_size as u64,
-                    max_sectors,
-                });
-            }
-        };
+        let allocated_space_distribution = AllocatedSpaceDistribution::new(
+            allocated_space,
+            sector_size,
+            cache_percentage,
+            sector_metadata_size as u64,
+        )?;
+        let target_sector_count = allocated_space_distribution.target_sector_count;
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
         #[cfg(not(windows))]
@@ -1461,8 +1496,7 @@ impl SingleDiskFarm {
         let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
-        let expected_metadata_size =
-            RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
+        let expected_metadata_size = allocated_space_distribution.metadata_file_size;
         // Align plot file size for disk sector size
         let expected_metadata_size =
             expected_metadata_size.div_ceil(DISK_SECTOR_SIZE as u64) * DISK_SECTOR_SIZE as u64;
@@ -1563,14 +1597,14 @@ impl SingleDiskFarm {
         #[cfg(windows)]
         let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
 
-        if plot_file.size()? != plot_file_size {
+        if plot_file.size()? != allocated_space_distribution.plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
             // writes to fail later)
             plot_file
-                .preallocate(plot_file_size)
+                .preallocate(allocated_space_distribution.plot_file_size)
                 .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
             // Truncating file (if necessary)
-            plot_file.set_len(plot_file_size)?;
+            plot_file.set_len(allocated_space_distribution.plot_file_size)?;
         }
 
         let plot_file = Arc::new(plot_file);
@@ -1591,7 +1625,7 @@ impl SingleDiskFarm {
             metadata_header,
             target_sector_count,
             sectors_metadata,
-            piece_cache_capacity,
+            piece_cache_capacity: allocated_space_distribution.piece_cache_capacity,
             plot_cache,
         })
     }
@@ -1612,6 +1646,92 @@ impl SingleDiskFarm {
             info: single_disk_farm_info,
             directory,
         }
+    }
+
+    /// Effective on-disk allocation of the files related to the farm (takes some buffer space
+    /// into consideration).
+    ///
+    /// This is a helpful number in case some files were not allocated properly or were removed and
+    /// do not correspond to allocated space in the farm info accurately.
+    pub fn effective_disk_usage(
+        directory: &Path,
+        cache_percentage: u8,
+    ) -> Result<u64, SingleDiskFarmError> {
+        let mut effective_disk_usage;
+        match SingleDiskFarmInfo::load_from(directory)? {
+            Some(single_disk_farm_info) => {
+                let allocated_space_distribution = AllocatedSpaceDistribution::new(
+                    single_disk_farm_info.allocated_space(),
+                    sector_size(single_disk_farm_info.pieces_in_sector()) as u64,
+                    cache_percentage,
+                    SectorMetadataChecksummed::encoded_size() as u64,
+                )?;
+
+                effective_disk_usage = single_disk_farm_info.allocated_space();
+                effective_disk_usage -= Identity::file_size() as u64;
+                effective_disk_usage -= allocated_space_distribution.metadata_file_size;
+                effective_disk_usage -= allocated_space_distribution.plot_file_size;
+                effective_disk_usage -= allocated_space_distribution.piece_cache_file_size;
+            }
+            None => {
+                // No farm info, try to collect actual file sizes is any
+                effective_disk_usage = 0;
+            }
+        };
+
+        if Identity::open(directory)?.is_some() {
+            effective_disk_usage += Identity::file_size() as u64;
+        }
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::METADATA_FILE))
+        {
+            Ok(metadata_file) => {
+                effective_disk_usage += metadata_file.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::PLOT_FILE))
+        {
+            Ok(plot_file) => {
+                effective_disk_usage += plot_file.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        match OpenOptions::new()
+            .read(true)
+            .open(directory.join(DiskPieceCache::FILE_NAME))
+        {
+            Ok(piece_cache) => {
+                effective_disk_usage += piece_cache.size()?;
+            }
+            Err(error) => {
+                if error.kind() == io::ErrorKind::NotFound {
+                    // File is not stored on disk
+                } else {
+                    return Err(error.into());
+                }
+            }
+        };
+
+        Ok(effective_disk_usage)
     }
 
     /// Read all sectors metadata

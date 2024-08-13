@@ -200,26 +200,6 @@ impl fmt::Debug for CpuCoreSet {
 }
 
 impl CpuCoreSet {
-    /// Regroup CPU core sets to contain at most `target_sets` sets, useful when there are many L3
-    /// cache groups and not as many farms
-    pub fn regroup(cpu_core_sets: &[Self], target_sets: usize) -> Vec<Self> {
-        cpu_core_sets
-            // Chunk CPU core sets
-            .chunks(cpu_core_sets.len().div_ceil(target_sets))
-            .map(|sets| Self {
-                // Combine CPU cores
-                cores: sets
-                    .iter()
-                    .flat_map(|set| set.cores.iter())
-                    .copied()
-                    .collect(),
-                // Preserve topology object
-                #[cfg(feature = "numa")]
-                topology: sets[0].topology.clone(),
-            })
-            .collect()
-    }
-
     /// Get cpu core numbers in this set
     pub fn cpu_cores(&self) -> &[usize] {
         &self.cores
@@ -227,9 +207,74 @@ impl CpuCoreSet {
 
     /// Will truncate list of CPU cores to this number.
     ///
+    /// Truncation will take into account L2 and L3 cache topology in order to use half of the
+    /// actual physical cores and half of each core type in case of heterogeneous CPUs.
+    ///
     /// If `cores` is zero, call will do nothing since zero number of cores is not allowed.
-    pub fn truncate(&mut self, cores: usize) {
-        self.cores.truncate(cores.max(1));
+    pub fn truncate(&mut self, num_cores: usize) {
+        let num_cores = num_cores.clamp(1, self.cores.len());
+
+        #[cfg(feature = "numa")]
+        if let Some(topology) = &self.topology {
+            use hwlocality::object::attributes::ObjectAttributes;
+            use hwlocality::object::types::ObjectType;
+
+            let mut grouped_by_l2_cache_size_and_core_count =
+                std::collections::HashMap::<(usize, usize), Vec<usize>>::new();
+            topology
+                .objects_with_type(ObjectType::L2Cache)
+                .for_each(|object| {
+                    let l2_cache_size =
+                        if let Some(ObjectAttributes::Cache(cache)) = object.attributes() {
+                            cache
+                                .size()
+                                .map(|size| size.get() as usize)
+                                .unwrap_or_default()
+                        } else {
+                            0
+                        };
+                    if let Some(cpuset) = object.complete_cpuset() {
+                        let cpuset = cpuset
+                            .into_iter()
+                            .map(usize::from)
+                            .filter(|core| self.cores.contains(core))
+                            .collect::<Vec<_>>();
+                        let cpuset_len = cpuset.len();
+
+                        if !cpuset.is_empty() {
+                            grouped_by_l2_cache_size_and_core_count
+                                .entry((l2_cache_size, cpuset_len))
+                                .or_default()
+                                .extend(cpuset);
+                        }
+                    }
+                });
+
+            // Make sure all CPU cores in this set were found
+            if grouped_by_l2_cache_size_and_core_count
+                .values()
+                .flatten()
+                .count()
+                == self.cores.len()
+            {
+                // Walk through groups of cores for each (L2 cache size + number of cores in set)
+                // tuple and pull number of CPU cores proportional to the fraction of the cores that
+                // should be returned according to function argument
+                self.cores = grouped_by_l2_cache_size_and_core_count
+                    .into_values()
+                    .flat_map(|cores| {
+                        let limit = cores.len() * num_cores / self.cores.len();
+                        // At least 1 CPU core is needed
+                        cores.into_iter().take(limit.max(1))
+                    })
+                    .collect();
+
+                self.cores.sort();
+
+                return;
+            }
+        }
+        self.cores.truncate(num_cores);
     }
 
     /// Pin current thread to this NUMA node (not just one CPU core)

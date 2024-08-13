@@ -29,30 +29,31 @@
 //! on the execution layer, they provide the necessary computational resources to maintain the
 //! blockchain state by running domains. Some deposits as the stake are required to be an operator.
 //!
-//! Specifically, operators have the responsibity of producing a [`Bundle`] which contains a
+//! Specifically, operators have the responsibility of producing a [`Bundle`] which contains a
 //! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The operators
 //! are primarily driven by two events from the consensus chain.
 //!
 //! - On each new slot, operators will attempt to solve a domain-specific bundle election
-//! challenge derived from a global randomness provided by the consensus chain. Upon finding
-//! a solution to the challenge, they will start producing a bundle: they will collect a set
-//! of extrinsics from the transaction pool which are verified to be able to cover the transaction
-//! fee. With these colltected extrinsics, the bundle election solution and proper receipts, a
-//! [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
-//! included in each bundle are uninterpretable blob from the consensus chain's perspective.
+//!   challenge derived from a global randomness provided by the consensus chain. Upon finding
+//!   a solution to the challenge, they will start producing a bundle: they will collect a set
+//!   of extrinsics from the transaction pool which are verified to be able to cover the transaction
+//!   fee. With these collected extrinsics, the bundle election solution and proper receipts, a
+//!   [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
+//!   included in each bundle are uninterpretable blob from the consensus chain's perspective.
 //!
 //! - On each imported consensus block, operators will extract all the needed bundles from it
-//! and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to
-//! build a domain block. The execution trace of all the extrinsics and hooks like
-//! `initialize_block`/`finalize_block` will be recorded during the domain block execution.
-//! Once the domain block is imported successfully, the [`ExecutionReceipt`] of this block
-//! will be generated and stored locally.
+//!   and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to
+//!   build a domain block. The execution trace of all the extrinsics and hooks like
+//!   `initialize_block`/`finalize_block` will be recorded during the domain block execution.
+//!   Once the domain block is imported successfully, the [`ExecutionReceipt`] of this block
+//!   will be generated and stored locally.
 //!
 //! The receipt of each domain block contains all the intermediate state roots during the block
-//! execution, which will be gossiped in the domain subnet (in future). All operators whether running as an
-//! authority or a full node will compute each block and generate an execution receipt independently,
-//! once the execution receipt received from the network does not match the one produced locally,
-//! a [`FraudProof`] will be generated and reported to the consensus chain accordingly.
+//! execution, which will be gossiped in the domain subnet (in future). All operators whether
+//! running as an authority or a full node will compute each block and generate an execution receipt
+//! independently, once the execution receipt received from the network does not match the one
+//! produced locally, a [`FraudProof`] will be generated and reported to the consensus chain
+//! accordingly.
 //!
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html

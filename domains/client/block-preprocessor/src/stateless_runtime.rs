@@ -26,10 +26,10 @@ use subspace_runtime_primitives::Moment;
 ///
 /// NOTE:
 /// - This is only supposed to be used when no domain client available, i.e., when the
-/// caller does not own the entire domain state.
+///   caller does not own the entire domain state.
 /// - This perfectly fits the runtime APIs that are purely stateless, but it's also usable
-/// for the stateful APIs. If some states are used inside a runtime api, these states must
-/// be provided and set before dispatching otherwise [`StatelessRuntime`] may give invalid output.
+///   for the stateful APIs. If some states are used inside a runtime api, these states must
+///   be provided and set before dispatching otherwise [`StatelessRuntime`] may give invalid output.
 pub struct StatelessRuntime<CBlock, Block, Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,

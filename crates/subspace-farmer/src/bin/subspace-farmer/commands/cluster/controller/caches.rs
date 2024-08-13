@@ -15,7 +15,9 @@ use std::future::{ready, Future};
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_farmer::cluster::cache::{ClusterCacheIdentifyBroadcast, ClusterPieceCache};
+use subspace_farmer::cluster::cache::{
+    ClusterCacheIdentifyBroadcast, ClusterCacheIndex, ClusterPieceCache,
+};
 use subspace_farmer::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::{PieceCache, PieceCacheId};
@@ -86,7 +88,7 @@ impl KnownCaches {
 pub(super) async fn maintain_caches(
     cache_group: &str,
     nats_client: &NatsClient,
-    farmer_cache: FarmerCache,
+    farmer_cache: FarmerCache<ClusterCacheIndex>,
 ) -> anyhow::Result<()> {
     let mut known_caches = KnownCaches::default();
 

@@ -88,10 +88,9 @@ impl DiskPlotCache {
         #[cfg(windows)] file: &Arc<UnbufferedIoFileWindows>,
         sectors_metadata: &Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         target_sector_count: SectorIndex,
-        sector_size: usize,
+        sector_size: u64,
     ) -> Self {
         info!("Checking plot cache contents, this can take a while");
-        let sector_size = sector_size as u64;
         let cached_pieces = {
             let sectors_metadata = sectors_metadata.read_blocking();
             let mut element = vec![0; Self::element_size() as usize];

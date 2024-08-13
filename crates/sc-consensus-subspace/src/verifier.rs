@@ -294,7 +294,7 @@ where
             }
 
             let future_slot = slot + self.chain_constants.block_authoring_delay();
-            let slot_to_check = Slot::from(
+            let first_slot_to_check = Slot::from(
                 future_slot
                     .checked_sub(checkpoints.len() as u64 - 1)
                     .ok_or(VerificationError::InvalidProofOfTime)?,
@@ -303,13 +303,13 @@ where
                 .pot_parameters_change
                 .as_ref()
                 .and_then(|parameters_change| {
-                    (parameters_change.slot == slot_to_check)
+                    (parameters_change.slot <= first_slot_to_check)
                         .then_some(parameters_change.slot_iterations)
                 })
                 .unwrap_or(subspace_digest_items.pot_slot_iterations);
 
             let mut pot_input = PotNextSlotInput {
-                slot: slot_to_check,
+                slot: first_slot_to_check,
                 slot_iterations,
                 seed,
             };

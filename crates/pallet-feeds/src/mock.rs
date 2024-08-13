@@ -1,3 +1,7 @@
+// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
+// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
+#![allow(non_camel_case_types)]
+
 use crate::feed_processor::{FeedObjectMapping, FeedProcessor, FeedProcessor as FeedProcessorT};
 use crate::{self as pallet_feeds};
 use codec::{Compact, CompactLen, Decode, Encode};

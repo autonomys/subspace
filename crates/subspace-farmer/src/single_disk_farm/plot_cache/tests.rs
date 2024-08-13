@@ -81,7 +81,7 @@ async fn basic() {
         &file,
         &sectors_metadata,
         TARGET_SECTOR_COUNT,
-        FAKE_SECTOR_SIZE,
+        FAKE_SECTOR_SIZE as u64,
     );
 
     // Initially empty
@@ -111,7 +111,7 @@ async fn basic() {
         &file,
         &sectors_metadata,
         TARGET_SECTOR_COUNT,
-        FAKE_SECTOR_SIZE,
+        FAKE_SECTOR_SIZE as u64,
     );
 
     // Successfully stores piece if not all sectors are plotted

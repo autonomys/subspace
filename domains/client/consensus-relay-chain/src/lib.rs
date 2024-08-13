@@ -26,10 +26,10 @@
 //! 2. This parachain candidate is send to the parachain validators that are part of the relay chain.
 //!
 //! 3. The parachain validators validate at most X different parachain candidates, where X is the
-//! total number of parachain validators.
+//!    total number of parachain validators.
 //!
 //! 4. The parachain candidate that is backed by the most validators is chosen by the relay-chain
-//! block producer to be added as backed candidate on chain.
+//!    block producer to be added as backed candidate on chain.
 //!
 //! 5. After the parachain candidate got backed and included, all collators start at 1.
 

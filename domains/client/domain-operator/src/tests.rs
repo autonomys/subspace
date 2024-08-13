@@ -1060,6 +1060,7 @@ async fn test_long_trace_for_finalize_block_proof_creation_and_verification_shou
 /// - 2 to test the `apply_extrinsic` state transition with the inherent `set_consensus_chain_byte_fee` extrinsic
 /// - 3 to test the `apply_extrinsic` state transition with regular domain extrinsic
 /// - 4 to test the `finalize_block` state transition
+///
 /// TraceDiffType can be passed as `TraceDiffType::Shorter`, `TraceDiffType::Longer`
 /// and `TraceDiffType::Mismatch`
 async fn test_invalid_state_transition_proof_creation_and_verification(

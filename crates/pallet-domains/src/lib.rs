@@ -27,7 +27,6 @@ mod tests;
 pub mod block_tree;
 mod bundle_storage_fund;
 pub mod domain_registry;
-pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -654,6 +653,10 @@ mod pallet {
     /// successfully submitted to current consensus block, which mean a new domain block with this block
     /// number will be produce. Used as a pointer in `ExecutionInbox` to identify the current under building
     /// domain block, also used as a mapping of consensus block number to domain block number.
+    //
+    // NOTE: the `HeadDomainNumber` is lazily updated for the domain runtime upgrade block (which only include
+    // the runtime upgrade tx from the consensus chain and no any user submitted tx from the bundle), use
+    // `domain_best_number` for the actual best domain block
     #[pallet::storage]
     pub(super) type HeadDomainNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
@@ -763,6 +766,8 @@ mod pallet {
         UnexpectedReceiptGap,
         /// Expecting receipt gap when validating `submit_receipt`
         ExpectingReceiptGap,
+        /// Failed to get missed domain runtime upgrade count
+        FailedToGetMissedUpgradeCount,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -1720,12 +1725,35 @@ mod pallet {
                     )
                     .map_err(Error::<T>::from)?;
 
-                    // Singleton receipt are used to fill up the receipt gap and there should be no
-                    // new domain block being confirmed before the gap is fill up
-                    ensure!(
-                        maybe_confirmed_domain_block_info.is_none(),
-                        Error::<T>::BlockTree(BlockTreeError::UnexpectedConfirmedDomainBlock),
-                    );
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_receipt` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
+                    if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
+                        actual_weight =
+                            actual_weight.saturating_add(T::WeightInfo::confirm_domain_block(
+                                confirmed_block_info.operator_ids.len() as u32,
+                                confirmed_block_info.invalid_bundle_authors.len() as u32,
+                            ));
+
+                        refund_storage_fee::<T>(
+                            confirmed_block_info.total_storage_fee,
+                            confirmed_block_info.paid_bundle_storage_fees,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        do_reward_operators::<T>(
+                            domain_id,
+                            confirmed_block_info.operator_ids.into_iter(),
+                            confirmed_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        do_mark_operators_as_slashed::<T>(
+                            confirmed_block_info.invalid_bundle_authors.into_iter(),
+                            SlashedReason::InvalidBundle(confirmed_block_info.domain_block_number),
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
                 }
             }
 
@@ -1994,7 +2022,9 @@ impl<T: Config> Pallet<T> {
             | BundleError::SlotInThePast
             | BundleError::SlotInTheFuture
             | BundleError::InvalidProofOfTime
-            | BundleError::SlotSmallerThanPreviousBlockBundle => {
+            | BundleError::SlotSmallerThanPreviousBlockBundle
+            | BundleError::ExpectingReceiptGap
+            | BundleError::UnexpectedReceiptGap => {
                 log::debug!(
                     target: "runtime::domains",
                     "Bad bundle/receipt, domain {domain_id:?}, operator {operator_id:?}, error: {err:?}",
@@ -2018,8 +2048,13 @@ impl<T: Config> Pallet<T> {
             .and_then(|mut runtime_object| runtime_object.raw_genesis.take_runtime_code())
     }
 
-    pub fn domain_best_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
-        Some(HeadDomainNumber::<T>::get(domain_id))
+    pub fn domain_best_number(domain_id: DomainId) -> Result<DomainBlockNumberFor<T>, BundleError> {
+        // The missed domain runtime upgrades will derive domain blocks thus should be accountted
+        // into the domain best number
+        let missed_upgrade = Self::missed_domain_runtime_upgrade(domain_id)
+            .map_err(|_| BundleError::FailedToGetMissedUpgradeCount)?;
+
+        Ok(HeadDomainNumber::<T>::get(domain_id) + missed_upgrade.into())
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
@@ -2263,7 +2298,7 @@ impl<T: Config> Pallet<T> {
         // derived from the latest domain block, and the stale bundle (that verified against an old
         // domain block) produced by a lagging honest operator will be rejected.
         ensure!(
-            Self::receipt_gap(domain_id) <= One::one(),
+            Self::receipt_gap(domain_id)? <= One::one(),
             BundleError::UnexpectedReceiptGap,
         );
 
@@ -2299,7 +2334,7 @@ impl<T: Config> Pallet<T> {
 
         // Singleton receipt is only allowed when there is a receipt gap
         ensure!(
-            Self::receipt_gap(domain_id) > One::one(),
+            Self::receipt_gap(domain_id)? > One::one(),
             BundleError::ExpectingReceiptGap,
         );
 
@@ -2673,6 +2708,11 @@ impl<T: Config> Pallet<T> {
         // Start from the oldest non-confirmed ER to the head domain number
         let mut to_check =
             Self::latest_confirmed_domain_block_number(domain_id).saturating_add(One::one());
+
+        // NOTE: we use the `HeadDomainNumber` here instead of the `domain_best_number`, which include the
+        // missed domain runtime upgrade block, because we don't want to trigger empty bundle production
+        // for confirming these blocks since they only include runtime upgrade extrinsic and no any user
+        // submitted extrinsic.
         let head_number = HeadDomainNumber::<T>::get(domain_id);
 
         while to_check <= head_number {
@@ -2748,7 +2788,7 @@ impl<T: Config> Pallet<T> {
             .saturating_add(
                 // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
                 // `confirm_domain_block` can happen, thus we use the `max` of them
-
+                //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
@@ -2763,10 +2803,15 @@ impl<T: Config> Pallet<T> {
     pub fn max_submit_receipt_weight() -> Weight {
         T::WeightInfo::submit_bundle()
             .saturating_add(
+                // NOTE: within `submit_bundle`, only one of (or none) `handle_bad_receipt` and
+                // `confirm_domain_block` can happen, thus we use the `max` of them
+                //
                 // We use `MAX_BUNDLE_PER_BLOCK` number to assume the number of slashed operators.
                 // We do not expect so many operators to be slashed but nontheless, if it did happen
                 // we will limit the weight to 100 operators.
-                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK),
+                T::WeightInfo::handle_bad_receipt(MAX_BUNDLE_PER_BLOCK).max(
+                    T::WeightInfo::confirm_domain_block(MAX_BUNDLE_PER_BLOCK, MAX_BUNDLE_PER_BLOCK),
+                ),
             )
             .saturating_add(T::WeightInfo::slash_operator(MAX_NOMINATORS_TO_SLASH))
     }
@@ -2940,13 +2985,13 @@ impl<T: Config> Pallet<T> {
         DomainSudoCalls::<T>::get(domain_id).maybe_call
     }
 
-    // The gap between `HeadDomainNumber` and `HeadReceiptNumber` represent the number
+    // The gap between `domain_best_number` and `HeadReceiptNumber` represent the number
     // of receipt to be submitted
-    pub fn receipt_gap(domain_id: DomainId) -> DomainBlockNumberFor<T> {
-        let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+    pub fn receipt_gap(domain_id: DomainId) -> Result<DomainBlockNumberFor<T>, BundleError> {
+        let domain_best_number = Self::domain_best_number(domain_id)?;
         let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
 
-        head_domain_number.saturating_sub(head_receipt_number)
+        Ok(domain_best_number.saturating_sub(head_receipt_number))
     }
 }
 

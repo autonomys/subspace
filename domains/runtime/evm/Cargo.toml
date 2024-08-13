@@ -45,6 +45,7 @@ pallet-timestamp = { default-features = false, git = "https://github.com/subspac
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 pallet-transporter = { version = "0.1.0", path = "../../pallets/transporter", default-features = false }
+pallet-utility = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
 sp-block-builder = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0cbfcb0232bbf71ac5b14cc8c99bf043cec420ef" }
@@ -105,6 +106,7 @@ std = [
     "pallet-transaction-payment-rpc-runtime-api/std",
     "pallet-transaction-payment/std",
     "pallet-transporter/std",
+    "pallet-utility/std",
     "scale-info/std",
     "sp-api/std",
     "sp-block-builder/std",
@@ -139,6 +141,7 @@ runtime-benchmarks = [
     "pallet-ethereum/runtime-benchmarks",
     "pallet-evm/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
+    "pallet-utility/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
     "sp-storage",
 ]

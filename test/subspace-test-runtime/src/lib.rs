@@ -18,6 +18,9 @@
 #![feature(const_option, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
+// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
+// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
+#![allow(non_camel_case_types)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -1428,7 +1431,7 @@ impl_runtime_apis! {
         }
 
         fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
-            Domains::domain_best_number(domain_id)
+            Domains::domain_best_number(domain_id).ok()
         }
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {

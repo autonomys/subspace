@@ -22,16 +22,16 @@
 //! A request-response protocol works in the following way:
 //!
 //! - For every emitted request, a new substream is open and the protocol is negotiated. If the
-//! remote supports the protocol, the size of the request is sent as a LEB128 number, followed
-//! with the request itself. The remote then sends the size of the response as a LEB128 number,
-//! followed with the response.
+//!   remote supports the protocol, the size of the request is sent as a LEB128 number, followed
+//!   with the request itself. The remote then sends the size of the response as a LEB128 number,
+//!   followed with the response.
 //!
 //! - Requests have a certain time limit before they time out. This time includes the time it
-//! takes to send/receive the request and response.
+//!   takes to send/receive the request and response.
 //!
 //! - If provided, a ["requests processing"](ProtocolConfig::inbound_queue) channel
-//! is used to handle incoming requests.
-
+//!   is used to handle incoming requests.
+//!
 //! Original file commit: <https://github.com/paritytech/substrate/commit/c2fc4b3ca0d7a15cc3f9cb1e5f441d99ec8d6e0b>
 
 #[cfg(test)]
@@ -163,7 +163,7 @@ pub struct IncomingRequest {
     /// 1. Drop `pending_response` and thus not changing the reputation of the peer.
     ///
     /// 2. Sending an `Err(())` via `pending_response`, optionally including reputation changes for
-    /// the given peer.
+    ///    the given peer.
     pub pending_response: oneshot::Sender<OutgoingResponse>,
 }
 

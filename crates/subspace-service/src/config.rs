@@ -306,7 +306,7 @@ impl FromStr for ChainSyncMode {
         match input {
             "full" => Ok(Self::Full),
             "snap" => Ok(Self::Snap),
-            _ => Err("Unsupported sync type".to_string()),
+            _ => Err("Unsupported sync type: use full or snap".to_string()),
         }
     }
 }
