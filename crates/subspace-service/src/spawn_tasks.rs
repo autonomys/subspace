@@ -14,28 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use prometheus_endpoint::Registry;
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, ProofProvider, StorageProvider, UsageProvider,
 };
 use sc_rpc_api::DenyUnsafe;
-use sc_service::config::PrometheusConfig;
 use sc_service::{
-    gen_rpc_module, init_telemetry, propagate_transaction_notifications, start_rpc_servers,
-    Configuration, Error, RpcHandlers, SpawnTasksParams,
+    gen_rpc_module, init_telemetry, propagate_transaction_notifications, start_rpc_servers, Error,
+    MetricsService, RpcHandlers, SpawnTasksParams,
 };
-use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::MaintainedTransactionPool;
-use sp_api::__private::BlockT;
 use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::block_validation::Chain;
-use sp_runtime::traits::BlockIdTo;
+use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use std::sync::Arc;
 use tracing::info;
 
 /// Spawn the tasks that are required to run a node.
-pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
+pub(super) fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
     params: SpawnTasksParams<TBl, TCl, TExPool, TRpc, TBackend>,
 ) -> Result<RpcHandlers, Error>
 where
@@ -64,6 +60,8 @@ where
     TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
 {
     let SpawnTasksParams {
+        // TODO: Stop using `Configuration` once
+        //  https://github.com/paritytech/polkadot-sdk/pull/5364 is in our fork
         mut config,
         task_manager,
         client,
@@ -79,18 +77,6 @@ where
     } = params;
 
     let chain_info = client.usage_info().chain;
-
-    sp_session::generate_initial_session_keys(
-        client.clone(),
-        chain_info.best_hash,
-        config
-            .dev_key_seed
-            .clone()
-            .map(|s| vec![s])
-            .unwrap_or_default(),
-        keystore.clone(),
-    )
-    .map_err(|e| Error::Application(Box::new(e)))?;
 
     let sysinfo = sc_sysinfo::gather_sysinfo();
     sc_sysinfo::print_sysinfo(&sysinfo);
@@ -128,27 +114,11 @@ where
         ),
     );
 
-    // Prometheus metrics.
-    let metrics_service =
-        if let Some(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
-            // Set static metrics.
-            let metrics = MetricsService::with_prometheus(telemetry, &registry, &config)?;
-            spawn_handle.spawn(
-                "prometheus-endpoint",
-                None,
-                prometheus_endpoint::init_prometheus(port, registry).map(drop),
-            );
-
-            metrics
-        } else {
-            MetricsService::new(telemetry)
-        };
-
     // Periodically updated metrics and telemetry updates.
     spawn_handle.spawn(
         "telemetry-periodic-send",
         None,
-        metrics_service.run(
+        MetricsService::new(telemetry).run(
             client.clone(),
             transaction_pool.clone(),
             network.clone(),
@@ -173,8 +143,11 @@ where
         )
     };
 
-    let rpc = start_rpc_servers(&config, gen_rpc_module, rpc_id_provider)?;
-    let rpc_handlers = RpcHandlers(Arc::new(gen_rpc_module(sc_rpc::DenyUnsafe::No)?.into()));
+    let rpc = config
+        .rpc_addr
+        .map(|_| start_rpc_servers(&config, gen_rpc_module, rpc_id_provider))
+        .transpose()?;
+    let rpc_handlers = RpcHandlers::new(Arc::new(gen_rpc_module(DenyUnsafe::No)?));
 
     // Spawn informant task
     spawn_handle.spawn(
