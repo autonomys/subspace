@@ -5,6 +5,7 @@ mod tests;
 use futures::FutureExt;
 use futures_timer::Delay;
 use handler::Handler;
+use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -162,6 +163,7 @@ impl NetworkBehaviour for Behaviour {
         peer_id: PeerId,
         _: &Multiaddr,
         _: Endpoint,
+        _: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         Ok(self.new_reserved_peers_handler(&peer_id))
     }

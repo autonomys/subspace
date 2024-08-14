@@ -17,7 +17,7 @@ bench = false
 
 [dependencies]
 async-lock = "3.3.0"
-async-trait = "0.1.80"
+async-trait = "0.1.81"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
@@ -30,15 +30,15 @@ parking_lot = "0.12.2"
 rand = "0.8.5"
 rayon = "1.10.0"
 schnorrkel = "0.11.4"
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.206", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.61"
-tokio = { version = "1.38.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
+thiserror = "1.0.63"
+tokio = { version = "1.39.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
 tracing = "0.1.40"
 
 [target.'cfg(windows)'.dependencies]

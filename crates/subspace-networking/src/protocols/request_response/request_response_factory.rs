@@ -40,6 +40,7 @@ mod tests;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
+use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
 use libp2p::request_response::{
@@ -457,22 +458,29 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<Self::ConnectionHandler, ConnectionDenied> {
         let iter = self.protocols.iter_mut().map(|(p, (r, _))| {
             (
                 p.to_string(),
-                r.handle_established_outbound_connection(connection_id, peer, addr, role_override)
-                    .expect(
-                        "Behaviours return handlers in these methods with the exception of \
-                        'connection management' behaviours like connection-limits or allow-black list. \
-                         So, inner request-response behaviour always returns Ok(handler).",
-                    ),
+                r.handle_established_outbound_connection(
+                    connection_id,
+                    peer,
+                    addr,
+                    role_override,
+                    port_use,
+                )
+                .expect(
+                    "Behaviours return handlers in these methods with the exception of \
+                        'connection management' behaviours like connection-limits or allow-black \
+                        list. So, inner request-response behaviour always returns Ok(handler).",
+                ),
             )
         });
 
         let handler = MultiHandler::try_from_iter(iter).expect(
             "Protocols are in a HashMap and there can be at most one handler per protocol name, \
-			 which is the only possible error; qed",
+            which is the only possible error; qed",
         );
 
         Ok(handler)
@@ -492,6 +500,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                         peer_id: inner.peer_id,
                         connection_id: inner.connection_id,
                         endpoint: inner.endpoint,
+                        cause: inner.cause,
                         remaining_established: inner.remaining_established,
                     }));
                 }
@@ -517,6 +526,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
                         send_back_addr: inner.send_back_addr,
                         error: inner.error,
                         connection_id: inner.connection_id,
+                        peer_id: inner.peer_id,
                     }));
                 }
             }
