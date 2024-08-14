@@ -28,8 +28,7 @@ pub use runtime_interface::{domain_mmr_runtime_interface, subspace_mmr_runtime_i
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+
 use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};

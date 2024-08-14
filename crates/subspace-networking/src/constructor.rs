@@ -283,13 +283,12 @@ where
             })
             .unwrap_or((None, None));
 
-        let mut kademlia = KademliaConfig::default();
+        let mut kademlia = KademliaConfig::new(
+            StreamProtocol::try_from_owned(KADEMLIA_PROTOCOL.to_owned())
+                .expect("Manual protocol name creation."),
+        );
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
-            .set_protocol_names(vec![StreamProtocol::try_from_owned(
-                KADEMLIA_PROTOCOL.to_owned(),
-            )
-            .expect("Manual protocol name creation.")])
             .disjoint_query_paths(true)
             .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(BucketInserts::Manual)

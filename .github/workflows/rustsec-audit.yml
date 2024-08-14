@@ -20,8 +20,5 @@ jobs:
       - uses: rustsec/audit-check@dd51754d4e59da7395a4cd9b593f0ff2d61a9b95 #v1.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # TODO: Remove first two Substrate upgrades libp2p and we no longer have rustls 0.20.9 and curve25519-dalek 3.2.0
-          #  in our dependencies: https://github.com/paritytech/polkadot-sdk/pull/1631
-          # TODO: Remove third once https://github.com/paritytech/polkadot-sdk/pull/4799 is used to remove old and
-          #  vulnerable ed25519-dalek (we are not using litep2p anyway)
-          ignore: RUSTSEC-2024-0336,RUSTSEC-2024-0344,RUSTSEC-2022-0093
+          # TODO: Remove once Substrate upgrades litep2p and we no longer have rustls 0.20.9 in our dependencies
+          ignore: RUSTSEC-2024-0336

@@ -46,8 +46,6 @@ use tokio::task::yield_now;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
-const BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<PeerRecord>,
@@ -245,14 +243,7 @@ where
             }
         }
 
-        // TODO: Remove once https://github.com/libp2p/rust-libp2p/issues/5432 is resolved,
-        //  downstream issue is https://github.com/autonomys/subspace/issues/2729
-        if tokio::time::timeout(BOOTSTRAP_TIMEOUT, self.bootstrap())
-            .await
-            .is_err()
-        {
-            warn!("Bootstrapping timed out, moving on regardless");
-        }
+        self.bootstrap().await;
 
         loop {
             futures::select! {
@@ -723,7 +714,10 @@ where
     async fn handle_identify_event(&mut self, event: IdentifyEvent) {
         let local_peer_id = *self.swarm.local_peer_id();
 
-        if let IdentifyEvent::Received { peer_id, mut info } = event {
+        if let IdentifyEvent::Received {
+            peer_id, mut info, ..
+        } = event
+        {
             debug!(?peer_id, protocols = ?info.protocols, "IdentifyEvent::Received");
 
             // Check for network partition
@@ -927,7 +921,7 @@ where
                                 cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
-                                    peer,
+                                    peer.peer_id,
                                     "GetClosestPeersOk",
                                     &id,
                                 ) || cancelled;
@@ -944,7 +938,7 @@ where
                                 cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
-                                    peer,
+                                    peer.peer_id,
                                     "GetClosestPeersError::Timeout",
                                     &id,
                                 ) || cancelled;

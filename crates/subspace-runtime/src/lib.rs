@@ -46,7 +46,7 @@ use frame_support::inherent::ProvideInherent;
 use frame_support::traits::fungible::HoldConsideration;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, ConstU8, Currency, EitherOfDiverse, EqualPrivilegeOnly,
-    Everything, Get, LinearStoragePrice, OnUnbalanced, VariantCount,
+    Everything, Get, LinearStoragePrice, OnUnbalanced, Time, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
