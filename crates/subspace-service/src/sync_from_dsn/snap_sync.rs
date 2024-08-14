@@ -2,9 +2,12 @@ use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use sc_client_api::{AuxStore, LockImportRun, ProofProvider};
+use sc_client_api::{AuxStore, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::{ImportedState, IncomingBlock};
+use sc_consensus::{
+    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
+    StorageChanges,
+};
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkRequest, PeerId};
 use sc_network_sync::service::syncing_service::SyncRestartArgs;
@@ -46,10 +49,12 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
         + ClientExt<Block, Backend>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
-        + LockImportRun<Block, Backend>
+        + BlockImport<Block>
         + Send
         + Sync
         + 'static,
+    // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
+    for<'a> &'a Client: BlockImport<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     PG: DsnSyncPieceGetter,
     NR: NetworkRequest,
@@ -260,10 +265,12 @@ where
         + ClientExt<Block, B>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
-        + LockImportRun<Block, B>
+        + BlockImport<Block>
         + Send
         + Sync
         + 'static,
+    // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
+    for<'a> &'a Client: BlockImport<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized,
     NR: NetworkRequest,
@@ -283,7 +290,7 @@ where
         target_segment_index
     );
 
-    let mut blocks_to_import = Vec::with_capacity(blocks.len());
+    let mut blocks_to_import = Vec::with_capacity(blocks.len().saturating_sub(1));
     let last_block_number;
 
     // First block is special because we need to download state for it
@@ -320,18 +327,18 @@ where
 
         debug!("Downloaded state of the first block of the target segment");
 
-        blocks_to_import.push(IncomingBlock {
-            hash: header.hash(),
-            header: Some(header),
-            body: Some(extrinsics),
-            indexed_body: None,
-            justifications: signed_block.justifications,
-            origin: None,
-            allow_missing_state: true,
-            import_existing: true,
-            skip_execution: true,
-            state: Some(state),
-        });
+        // Import first block as finalized
+        let mut block = BlockImportParams::new(BlockOrigin::NetworkInitialSync, header);
+        block.body.replace(extrinsics);
+        block.justifications = signed_block.justifications;
+        block.state_action = StateAction::ApplyChanges(StorageChanges::Import(state));
+        block.finalized = true;
+        block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
+        // TODO: Simplify when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
+        (&mut client.as_ref())
+            .import_block(block)
+            .await
+            .map_err(|error| format!("Failed to import first block of target segment: {error}"))?;
     }
 
     debug!(
