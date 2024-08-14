@@ -154,14 +154,7 @@ impl From<SubstrateConfiguration> for Configuration {
                 max_parallel_downloads: 5,
                 // Substrate's default
                 max_blocks_per_request: 64,
-                sync_mode: match configuration.network.sync_mode {
-                    ChainSyncMode::Full => SyncMode::Full,
-                    // TODO: revisit SyncMode change after https://github.com/paritytech/polkadot-sdk/issues/4407
-                    ChainSyncMode::Snap => SyncMode::LightState {
-                        skip_proofs: false,
-                        storage_chain_mode: false,
-                    },
-                },
+                sync_mode: SyncMode::Full,
                 pause_sync: Arc::new(AtomicBool::new(false)),
                 // Substrate's default
                 enable_dht_random_walk: true,

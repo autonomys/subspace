@@ -215,6 +215,7 @@ fn main() -> Result<(), Error> {
 
             let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
                 &consensus_chain_config,
+                false,
                 &pot_external_entropy,
             )
             .map_err(|error| {

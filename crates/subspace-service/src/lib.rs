@@ -460,11 +460,12 @@ type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
 >;
 
 /// Creates `PartialComponents` for Subspace client.
-#[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi>(
     // TODO: Stop using `Configuration` once
     //  https://github.com/paritytech/polkadot-sdk/pull/5364 is in our fork
     config: &Configuration,
+    // TODO: Replace with check for `ChainSyncMode` once we get rid of ^ `Configuration`
+    snap_sync: bool,
     pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi>, ServiceError>
 where
@@ -502,7 +503,7 @@ where
 
     let genesis_block_builder = GenesisBlockBuilder::new(
         config.chain_spec.as_storage_builder(),
-        !config.no_genesis(),
+        !snap_sync,
         backend.clone(),
         executor.clone(),
     )?;

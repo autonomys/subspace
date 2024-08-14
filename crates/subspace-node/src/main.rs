@@ -148,6 +148,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
+                    false,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
@@ -166,6 +167,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
+                    false,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
@@ -185,6 +187,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
+                    false,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
@@ -205,6 +208,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
+                    false,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
@@ -227,6 +231,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                     &config,
+                    false,
                     &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
@@ -263,6 +268,7 @@ fn main() -> Result<(), Error> {
                         let PartialComponents { client, .. } =
                             subspace_service::new_partial::<PosTable, RuntimeApi>(
                                 &config,
+                                false,
                                 &derive_pot_external_entropy(&config, None)?,
                             )?;
 
@@ -279,6 +285,7 @@ fn main() -> Result<(), Error> {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi>(
                             &config,
+                            false,
                             &derive_pot_external_entropy(&config, None)?,
                         )?;
                         let db = backend.expose_db();
