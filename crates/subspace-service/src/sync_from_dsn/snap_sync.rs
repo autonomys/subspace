@@ -328,9 +328,9 @@ where
         debug!("Downloaded state of the first block of the target segment");
 
         // Import first block as finalized
-        let mut block = BlockImportParams::new(BlockOrigin::NetworkInitialSync, header.clone());
-        block.body.replace(extrinsics.clone());
-        block.justifications = signed_block.justifications.clone();
+        let mut block = BlockImportParams::new(BlockOrigin::NetworkInitialSync, header);
+        block.body.replace(extrinsics);
+        block.justifications = signed_block.justifications;
         block.state_action = StateAction::ApplyChanges(StorageChanges::Import(state));
         block.finalized = true;
         block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
