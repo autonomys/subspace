@@ -13,10 +13,13 @@ use sp_runtime::{BuildStorage, MultiSigner, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime::{
-    AllowAuthoringBy, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize, MaxDomainBlockWeight,
-    RewardsConfig, RuntimeConfigsConfig, SubspaceConfig, VestingConfig,
+    AllowAuthoringBy, CouncilConfig, DemocracyConfig, DomainsConfig, EnableRewardsAt,
+    MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
+    VestingConfig,
 };
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
+use subspace_runtime_primitives::{
+    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
+};
 
 fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
     [
@@ -236,12 +239,16 @@ fn subspace_genesis_config(
         },
         rewards: rewards_config,
         vesting: VestingConfig { vesting },
+        council: CouncilConfig::default(),
+        democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
             enable_dynamic_cost_of_storage,
             enable_balance_transfers,
             enable_non_root_calls,
             confirmation_depth_k,
+            council_democracy_config_params:
+                CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(

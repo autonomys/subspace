@@ -32,11 +32,14 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
-    MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
+    EnableRewardsAt, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, WASM_BINARY,
 };
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
+use subspace_runtime_primitives::time::MILLISECS_PER_BLOCK;
+use subspace_runtime_primitives::{
+    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
+};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 
@@ -206,6 +209,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                         auto_id_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account)?,
                     ],
                 },
+                CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -315,6 +319,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                         sudo_account,
                     )?],
                 },
+                CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -374,6 +379,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                         sudo_account,
                     )?],
                 },
+                CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         ))
@@ -388,6 +394,7 @@ fn subspace_genesis_config(
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
+    council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumber>,
 ) -> Result<RuntimeGenesisConfig, String> {
     let GenesisParams {
         enable_rewards_at,
@@ -447,12 +454,15 @@ fn subspace_genesis_config(
         },
         rewards: rewards_config,
         vesting: VestingConfig { vesting },
+        council: CouncilConfig::default(),
+        democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
             enable_dynamic_cost_of_storage,
             enable_balance_transfers,
             enable_non_root_calls,
             confirmation_depth_k,
+            council_democracy_config_params,
         },
         domains: DomainsConfig {
             permissioned_action_allowed_by: enable_domains

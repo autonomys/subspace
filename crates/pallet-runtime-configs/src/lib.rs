@@ -29,6 +29,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Zero;
+    use subspace_runtime_primitives::CouncilDemocracyConfigParams;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -58,6 +59,10 @@ mod pallet {
     #[pallet::storage]
     pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
+    #[pallet::storage]
+    pub type CouncilDemocracyConfig<T: Config> =
+        StorageValue<_, CouncilDemocracyConfigParams<BlockNumberFor<T>>, ValueQuery>;
+
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// Weight information for extrinsics in this pallet.
@@ -76,6 +81,8 @@ mod pallet {
         pub enable_non_root_calls: bool,
         /// Confirmation depth k to use in the archiving process
         pub confirmation_depth_k: BlockNumberFor<T>,
+        /// Council and democracy config params.
+        pub council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumberFor<T>>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -87,6 +94,8 @@ mod pallet {
                 enable_balance_transfers: false,
                 enable_non_root_calls: false,
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
+                council_democracy_config_params:
+                    CouncilDemocracyConfigParams::<BlockNumberFor<T>>::default(),
             }
         }
     }
@@ -100,6 +109,7 @@ mod pallet {
                 enable_balance_transfers,
                 enable_non_root_calls,
                 confirmation_depth_k,
+                council_democracy_config_params,
             } = self;
 
             assert!(
@@ -112,6 +122,7 @@ mod pallet {
             <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
             <EnableNonRootCalls<T>>::put(enable_non_root_calls);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
+            CouncilDemocracyConfig::<T>::put(council_democracy_config_params);
         }
     }
 

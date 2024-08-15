@@ -43,14 +43,17 @@ use domain_runtime_primitives::{
 };
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::HoldConsideration;
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get, Time, VariantCount,
+    ConstU16, ConstU32, ConstU64, ConstU8, Currency, EitherOfDiverse, EqualPrivilegeOnly,
+    Everything, Get, LinearStoragePrice, OnUnbalanced, Time, VariantCount,
 };
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::EnsureNever;
+use frame_system::{EnsureNever, EnsureRoot};
+use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
@@ -62,7 +65,7 @@ use sp_consensus_subspace::{
     Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::{OpaqueMetadata, H256};
+use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
@@ -80,7 +83,8 @@ use sp_messenger::messages::{
 use sp_messenger_host_functions::{get_storage_key, StorageKeyRequest};
 use sp_mmr_primitives::EncodableOpaqueLeaf;
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Keccak256, NumberFor,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, ConstU128, Keccak256,
+    NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
@@ -129,22 +133,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 };
 
 // TODO: Many of below constants should probably be updatable but currently they are not
-
-/// Since Subspace is probabilistic this is the average expected block time that
-/// we are targeting. Blocks will be produced at a minimum duration defined
-/// by `SLOT_DURATION`, but some slots will not be allocated to any
-/// farmer and hence no block will be produced. We expect to have this
-/// block time on average following the defined slot duration and the value
-/// of `c` configured for Subspace (where `1 - c` represents the probability of
-/// a slot being empty).
-/// This value is only used indirectly to define the unit constants below
-/// that are expressed in blocks. The rest of the code should use
-/// `SLOT_DURATION` instead (like the Timestamp pallet for calculating the
-/// minimum period).
-///
-/// Based on:
-/// <https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html#-6.-practical-results>
-pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
@@ -342,6 +330,7 @@ parameter_types! {
 pub enum HoldIdentifier {
     Domains(DomainsHoldIdentifier),
     Messenger(MessengerHoldIdentifier),
+    Preimage,
 }
 
 impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
@@ -439,6 +428,164 @@ impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
     type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
+}
+
+pub type CouncilCollective = pallet_collective::Instance1;
+
+// Macro to implement 'Get' trait for each field of 'CouncilDemocracyConfigParams'
+macro_rules! impl_get_council_democracy_field_block_number {
+    ($field_type_name:ident, $field:ident) => {
+        pub struct $field_type_name;
+
+        impl Get<BlockNumber> for $field_type_name {
+            fn get() -> BlockNumber {
+                pallet_runtime_configs::CouncilDemocracyConfig::<Runtime>::get().$field
+            }
+        }
+    };
+}
+
+impl_get_council_democracy_field_block_number! {CouncilMotionDuration, council_motion_duration}
+
+parameter_types! {
+    // maximum dispatch weight of a given council motion
+    // currently set to 50% of maximum block weight
+    pub MaxProposalWeight: Weight = Perbill::from_percent(50) * SubspaceBlockWeights::get().max_block;
+}
+
+// TODO: update params for mainnnet
+impl pallet_collective::Config<CouncilCollective> for Runtime {
+    type DefaultVote = pallet_collective::PrimeDefaultVote;
+    type MaxMembers = ConstU32<100>;
+    type MaxProposalWeight = MaxProposalWeight;
+    type MaxProposals = ConstU32<100>;
+    /// Duration of voting for a given council motion.
+    type MotionDuration = CouncilMotionDuration;
+    type Proposal = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
+    type SetMembersOrigin = EnsureRoot<AccountId>;
+    type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
+}
+
+// TODO: update params for mainnnet
+parameter_types! {
+    pub PreimageBaseDeposit: Balance = 100 * SSC;
+    pub PreimageByteDeposit: Balance = SSC;
+    pub const PreImageHoldReason: HoldIdentifier = HoldIdentifier::Preimage;
+}
+
+impl pallet_preimage::Config for Runtime {
+    type Consideration = HoldConsideration<
+        AccountId,
+        Balances,
+        PreImageHoldReason,
+        LinearStoragePrice<PreimageBaseDeposit, PreimageByteDeposit, Balance>,
+    >;
+    type Currency = Balances;
+    type ManagerOrigin = EnsureRoot<AccountId>;
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = pallet_preimage::weights::SubstrateWeight<Runtime>;
+}
+
+parameter_types! {
+    pub MaximumSchedulerWeight: Weight = Perbill::from_percent(80) * SubspaceBlockWeights::get().max_block;
+    // Retry a scheduled item every 10 blocks (2 minutes) until the preimage exists.
+    pub const NoPreimagePostponement: Option<u32> = Some(10);
+}
+
+impl pallet_scheduler::Config for Runtime {
+    type MaxScheduledPerBlock = ConstU32<50>;
+    type MaximumWeight = MaximumSchedulerWeight;
+    type OriginPrivilegeCmp = EqualPrivilegeOnly;
+    type PalletsOrigin = OriginCaller;
+    type Preimages = Preimage;
+    type RuntimeCall = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeOrigin = RuntimeOrigin;
+    type ScheduleOrigin = EnsureRoot<AccountId>;
+    type WeightInfo = pallet_scheduler::weights::SubstrateWeight<Runtime>;
+}
+
+// TODO: update params for mainnnet
+pub type EnsureRootOr<O> = EitherOfDiverse<EnsureRoot<AccountId>, O>;
+pub type AllCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
+pub type TwoThirdsCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
+pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
+
+type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
+
+pub struct DemocracySlash;
+impl OnUnbalanced<NegativeImbalance> for DemocracySlash {
+    fn on_nonzero_unbalanced(slashed: NegativeImbalance) {
+        Balances::resolve_creating(&TreasuryAccount::get(), slashed);
+    }
+}
+
+impl_get_council_democracy_field_block_number! {CooloffPeriod, democracy_cooloff_period}
+impl_get_council_democracy_field_block_number! {EnactmentPeriod, democracy_enactment_period}
+impl_get_council_democracy_field_block_number! {FastTrackVotingPeriod, democracy_fast_track_voting_period}
+impl_get_council_democracy_field_block_number! {LaunchPeriod, democracy_launch_period}
+impl_get_council_democracy_field_block_number! {VoteLockingPeriod, democracy_vote_locking_period}
+impl_get_council_democracy_field_block_number! {VotingPeriod, democracy_voting_period}
+
+// TODO: update params for mainnnet
+impl pallet_democracy::Config for Runtime {
+    type BlacklistOrigin = EnsureRoot<AccountId>;
+    /// To cancel a proposal before it has been passed and slash its backers, must be root.
+    type CancelProposalOrigin = EnsureRoot<AccountId>;
+    /// Origin to cancel a proposal.
+    type CancellationOrigin = EnsureRootOr<TwoThirdsCouncil>;
+    /// Period in blocks where an external proposal may not be re-submitted
+    /// after being vetoed.
+    type CooloffPeriod = CooloffPeriod;
+    type Currency = Balances;
+    /// The minimum period of locking and the period between a proposal being
+    /// approved and enacted.
+    type EnactmentPeriod = EnactmentPeriod;
+    /// A unanimous council can have the next scheduled referendum be a straight
+    /// default-carries (negative turnout biased) vote.
+    /// 100% council vote.
+    type ExternalDefaultOrigin = AllCouncil;
+    /// A simple majority can have the next scheduled referendum be a straight
+    /// majority-carries vote.
+    /// 50% of council votes.
+    type ExternalMajorityOrigin = HalfCouncil;
+    /// A simple majority of the council can decide what their next motion is.
+    /// 50% council votes.
+    type ExternalOrigin = HalfCouncil;
+    /// Half of the council can have an ExternalMajority/ExternalDefault vote
+    /// be tabled immediately and with a shorter voting/enactment period.
+    type FastTrackOrigin = EnsureRootOr<HalfCouncil>;
+    /// Voting period for Fast track voting.
+    type FastTrackVotingPeriod = FastTrackVotingPeriod;
+    type InstantAllowed = ConstBool<true>;
+    type InstantOrigin = EnsureRootOr<AllCouncil>;
+    /// How often (in blocks) new public referenda are launched.
+    type LaunchPeriod = LaunchPeriod;
+    type MaxBlacklisted = ConstU32<100>;
+    type MaxDeposits = ConstU32<100>;
+    type MaxProposals = ConstU32<100>;
+    type MaxVotes = ConstU32<100>;
+    /// The minimum amount to be used as a deposit for a public referendum
+    /// proposal.
+    type MinimumDeposit = ConstU128<{ 1000 * SSC }>;
+    type PalletsOrigin = OriginCaller;
+    type Preimages = Preimage;
+    type RuntimeEvent = RuntimeEvent;
+    type Scheduler = Scheduler;
+    /// Handler for the unbalanced reduction when slashing a preimage deposit.
+    type Slash = DemocracySlash;
+    /// Origin used to submit proposals.
+    /// Currently set to Council member so that no one can submit new proposals except council through democracy
+    type SubmitOrigin = EnsureMember<AccountId, CouncilCollective>;
+    /// Any single council member may veto a coming council proposal, however they
+    /// can only do it once and it lasts only for the cooloff period.
+    type VetoOrigin = EnsureMember<AccountId, CouncilCollective>;
+    type VoteLockingPeriod = VoteLockingPeriod;
+    /// How often (in blocks) to check for new votes.
+    type VotingPeriod = VotingPeriod;
+    type WeightInfo = pallet_democracy::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {
@@ -812,6 +959,12 @@ construct_runtime!(
         // Note: Indexes should match with indexes on other chains and domains
         Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
+
+        // council and democracy
+        Scheduler: pallet_scheduler = 81,
+        Council: pallet_collective::<Instance1> = 82,
+        Democracy: pallet_democracy = 83,
+        Preimage: pallet_preimage = 84,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,

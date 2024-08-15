@@ -7629,6 +7629,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-collective"
+version = "37.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=5626154d0781ac9a6ffd5a6207ed237f425ae631#5626154d0781ac9a6ffd5a6207ed237f425ae631"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-democracy"
+version = "37.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=5626154d0781ac9a6ffd5a6207ed237f425ae631#5626154d0781ac9a6ffd5a6207ed237f425ae631"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-domain-id"
 version = "0.1.0"
 dependencies = [
@@ -7890,6 +7923,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-preimage"
+version = "37.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=5626154d0781ac9a6ffd5a6207ed237f425ae631#5626154d0781ac9a6ffd5a6207ed237f425ae631"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
@@ -7919,6 +7968,24 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
+name = "pallet-scheduler"
+version = "38.0.0"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=5626154d0781ac9a6ffd5a6207ed237f425ae631#5626154d0781ac9a6ffd5a6207ed237f425ae631"
+dependencies = [
+ "docify",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-io",
+ "sp-runtime",
+ "sp-weights",
 ]
 
 [[package]]
@@ -12860,12 +12927,16 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
+ "pallet-collective",
+ "pallet-democracy",
  "pallet-domains",
  "pallet-messenger",
  "pallet-mmr",
  "pallet-offences-subspace",
+ "pallet-preimage",
  "pallet-rewards",
  "pallet-runtime-configs",
+ "pallet-scheduler",
  "pallet-subspace",
  "pallet-subspace-mmr",
  "pallet-sudo",
@@ -12913,6 +12984,7 @@ dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",
