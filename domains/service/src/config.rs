@@ -27,7 +27,7 @@ pub const RPC_DEFAULT_MAX_RESPONSE_SIZE_MB: u32 = 15;
 #[derive(Debug)]
 pub struct SubstrateRpcConfiguration {
     /// IP and port (TCP) on which to listen for RPC requests
-    pub listen_on: SocketAddr,
+    pub listen_on: Option<SocketAddr>,
     /// Maximum number of connections for JSON-RPC server
     pub max_connections: u32,
     /// CORS settings for HTTP & WS servers. `None` if all origins are allowed
@@ -173,7 +173,7 @@ impl From<SubstrateConfiguration> for Configuration {
             blocks_pruning: configuration.blocks_pruning,
             wasm_method: Default::default(),
             wasm_runtime_overrides: None,
-            rpc_addr: Some(configuration.rpc_options.listen_on),
+            rpc_addr: configuration.rpc_options.listen_on,
             rpc_methods: configuration.rpc_options.methods,
             rpc_max_connections: configuration.rpc_options.max_connections,
             rpc_cors: configuration.rpc_options.cors,

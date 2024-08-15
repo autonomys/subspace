@@ -583,7 +583,7 @@ pub(super) fn create_consensus_chain_configuration(
         state_pruning: pruning_params.state_pruning(),
         blocks_pruning: pruning_params.blocks_pruning(),
         rpc_options: SubstrateRpcConfiguration {
-            listen_on: rpc_options.rpc_listen_on,
+            listen_on: Some(rpc_options.rpc_listen_on),
             max_connections: rpc_options.rpc_max_connections,
             cors: rpc_cors.into(),
             methods: match rpc_options.rpc_methods {

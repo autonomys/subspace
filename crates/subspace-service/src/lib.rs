@@ -32,6 +32,7 @@ mod metrics;
 pub(crate) mod mmr;
 pub mod rpc;
 pub mod sync_from_dsn;
+mod task_spawner;
 pub mod transaction_pool;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
@@ -1180,7 +1181,7 @@ where
     // We replace the Substrate implementation of metrics server with our own.
     config.base.prometheus_config.take();
 
-    let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
+    let rpc_handlers = task_spawner::spawn_tasks(SpawnTasksParams {
         network: network_service.clone(),
         client: client.clone(),
         keystore: keystore_container.keystore(),
