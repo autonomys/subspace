@@ -10,9 +10,7 @@ use sc_consensus::{
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
 use sc_network::{NetworkRequest, PeerId};
-use sc_network_sync::service::syncing_service::SyncRestartArgs;
 use sc_network_sync::SyncingService;
-use sc_service::config::SyncMode;
 use sc_service::{ClientExt, Error};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -90,15 +88,6 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
     } else {
         debug!("Snap sync can only work with genesis state, skipping");
     }
-
-    // Switch back to full sync mode
-    let info = client.info();
-    sync_service
-        .restart(SyncRestartArgs {
-            sync_mode: SyncMode::Full,
-            new_best_block: Some(info.best_number),
-        })
-        .await;
 }
 
 // Get blocks from the last segment or from the segment containing the target block.

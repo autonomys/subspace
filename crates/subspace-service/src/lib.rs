@@ -52,6 +52,7 @@ use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
+use sc_chain_spec::GenesisBlockBuilder;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
     AuxStore, Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend,
@@ -459,9 +460,12 @@ type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
 >;
 
 /// Creates `PartialComponents` for Subspace client.
-#[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi>(
+    // TODO: Stop using `Configuration` once
+    //  https://github.com/paritytech/polkadot-sdk/pull/5364 is in our fork
     config: &Configuration,
+    // TODO: Replace with check for `ChainSyncMode` once we get rid of ^ `Configuration`
+    snap_sync: bool,
     pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi>, ServiceError>
 where
@@ -495,11 +499,23 @@ where
     let executor = sc_service::new_wasm_executor(config);
     let domains_executor = sc_service::new_wasm_executor(config);
 
+    let backend = sc_service::new_db_backend(config.db_config())?;
+
+    let genesis_block_builder = GenesisBlockBuilder::new(
+        config.chain_spec.as_storage_builder(),
+        !snap_sync,
+        backend.clone(),
+        executor.clone(),
+    )?;
+
     let (client, backend, keystore_container, task_manager) =
-        sc_service::new_full_parts::<Block, RuntimeApi, _>(
+        sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
+            backend,
+            genesis_block_builder,
+            false,
         )?;
 
     let kzg = tokio::task::block_in_place(|| Kzg::new(embedded_kzg_settings()));
