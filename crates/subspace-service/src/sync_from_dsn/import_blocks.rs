@@ -221,20 +221,7 @@ where
 
         if !blocks_to_import.is_empty() {
             // Import queue handles verification and importing it into the client
-            let last_segment = segment_indices_iter.peek().is_none();
-            if last_segment {
-                let last_block = blocks_to_import
-                    .pop()
-                    .expect("Not empty, checked above; qed");
-                import_queue_service
-                    .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
-                // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
-                import_queue_service
-                    .import_blocks(BlockOrigin::ConsensusBroadcast, vec![last_block]);
-            } else {
-                import_queue_service
-                    .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
-            }
+            import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
         }
 
         *last_processed_segment_index = segment_index;

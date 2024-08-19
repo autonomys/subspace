@@ -9,7 +9,7 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
-use sc_network::{NetworkRequest, PeerId};
+use sc_network::{NetworkBlock, NetworkRequest, PeerId};
 use sc_network_sync::SyncingService;
 use sc_service::{ClientExt, Error};
 use sp_api::ProvideRuntimeApi;
@@ -59,7 +59,8 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
 {
     let info = client.info();
     // Only attempt snap sync with genesis state
-    // TODO: Support snap sync from any state
+    // TODO: Support snap sync from any state once
+    //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
@@ -84,6 +85,12 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
             }
         }
 
+        // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
+        // gracefully
+        {
+            let info = client.info();
+            sync_service.new_best_block_imported(info.best_hash, info.best_number);
+        }
         pause_sync.store(false, Ordering::Release);
     } else {
         debug!("Snap sync can only work with genesis state, skipping");
@@ -354,22 +361,8 @@ where
         });
     }
 
-    let maybe_last_block_to_import = blocks_to_import.pop();
-
     if !blocks_to_import.is_empty() {
         import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
-    }
-
-    // Import last block (if there was more than one) and notify Substrate sync about it
-    if let Some(last_block_to_import) = maybe_last_block_to_import {
-        debug!(
-            %last_block_number,
-            %target_segment_index,
-            "Importing the last block from the target segment"
-        );
-
-        import_queue_service
-            .import_blocks(BlockOrigin::ConsensusBroadcast, vec![last_block_to_import]);
     }
 
     // Wait for blocks to be imported

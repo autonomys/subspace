@@ -996,6 +996,7 @@ where
         node.clone(),
         Arc::clone(&client),
         import_queue_service2,
+        sync_service.clone(),
         sync_target_block_number,
         pause_sync,
         dsn_sync_piece_getter,
