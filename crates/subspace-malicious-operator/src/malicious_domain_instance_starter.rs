@@ -14,7 +14,6 @@ use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_network::NetworkPeers;
-use sc_service::PruningMode;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -47,7 +46,6 @@ pub struct DomainInstanceStarter {
     pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
     pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
-    pub consensus_state_pruning: PruningMode,
 }
 
 impl DomainInstanceStarter {
@@ -80,7 +78,6 @@ impl DomainInstanceStarter {
             domain_message_receiver,
             gossip_message_sink,
             consensus_network,
-            consensus_state_pruning,
         } = self;
 
         let domain_id = domain_cli.domain_id.into();
@@ -163,7 +160,6 @@ impl DomainInstanceStarter {
                     skip_out_of_order_slot: false,
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
-                    consensus_state_pruning,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 };
 
@@ -222,7 +218,6 @@ impl DomainInstanceStarter {
                     skip_out_of_order_slot: false,
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
-                    consensus_state_pruning,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                 };
 

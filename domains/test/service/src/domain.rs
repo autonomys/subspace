@@ -21,7 +21,7 @@ use sc_domains::RuntimeExecutor;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
-use sc_service::{BasePath, PruningMode, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
@@ -213,7 +213,6 @@ where
             skip_empty_bundle_production,
             skip_out_of_order_slot: true,
             maybe_operator_id,
-            consensus_state_pruning: PruningMode::ArchiveCanonical,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
         };
 

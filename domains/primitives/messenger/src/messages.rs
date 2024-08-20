@@ -264,6 +264,12 @@ pub struct BlockMessagesWithStorageKey {
     pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
+impl BlockMessagesWithStorageKey {
+    pub fn is_empty(&self) -> bool {
+        self.outbox.is_empty() && self.inbox_responses.is_empty()
+    }
+}
+
 impl<BlockNumber, BlockHash, MmrHash> CrossDomainMessage<BlockNumber, BlockHash, MmrHash> {
     pub fn from_relayer_msg_with_proof(
         r_msg: BlockMessageWithStorageKey,
