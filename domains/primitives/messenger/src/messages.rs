@@ -257,11 +257,23 @@ pub struct BlockMessageWithStorageKey {
     pub weight_tag: MessageWeightTag,
 }
 
+impl BlockMessageWithStorageKey {
+    pub fn id(&self) -> (ChannelId, Nonce) {
+        (self.channel_id, self.nonce)
+    }
+}
+
 /// Set of messages with storage keys to be relayed in a given block..
 #[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct BlockMessagesWithStorageKey {
     pub outbox: Vec<BlockMessageWithStorageKey>,
     pub inbox_responses: Vec<BlockMessageWithStorageKey>,
+}
+
+impl BlockMessagesWithStorageKey {
+    pub fn is_empty(&self) -> bool {
+        self.outbox.is_empty() && self.inbox_responses.is_empty()
+    }
 }
 
 impl<BlockNumber, BlockHash, MmrHash> CrossDomainMessage<BlockNumber, BlockHash, MmrHash> {

@@ -20,7 +20,7 @@ use sc_network::{NetworkPeers, NotificationMetrics};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
-    PruningMode, SpawnTasksParams, TFullBackend, TaskManager,
+    SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -239,7 +239,6 @@ where
     pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
-    pub consensus_state_pruning: PruningMode,
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
 }
@@ -328,7 +327,6 @@ where
         domain_message_receiver,
         provider,
         skip_empty_bundle_production,
-        consensus_state_pruning,
         skip_out_of_order_slot,
         confirmation_depth_k,
     } = domain_params;
@@ -373,7 +371,6 @@ where
         })?;
 
     let is_authority = domain_config.role.is_authority();
-    let domain_state_pruning = domain_config.state_pruning.clone().unwrap_or_default();
     domain_config.rpc_id_provider = provider.rpc_id();
     let rpc_builder = {
         let deps = crate::rpc::FullDeps {
@@ -466,13 +463,11 @@ where
     .await?;
 
     if is_authority {
-        let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::start_relaying_messages(
             domain_id,
             consensus_client.clone(),
-            confirmation_depth_k,
-            consensus_state_pruning,
             client.clone(),
-            domain_state_pruning,
+            confirmation_depth_k,
             // domain relayer will use consensus chain sync oracle instead of domain sync oracle
             // since domain sync oracle will always return `synced` due to force sync being set.
             consensus_network_sync_oracle.clone(),

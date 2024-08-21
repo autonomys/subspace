@@ -45,8 +45,7 @@ use sc_service::config::{
     RpcBatchRequestConfig, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, NetworkStarter, PruningMode, Role, SpawnTasksParams,
-    TaskManager,
+    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
@@ -438,10 +437,6 @@ impl MockConsensusNode {
             ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
-        let state_pruning = config
-            .state_pruning
-            .clone()
-            .unwrap_or(PruningMode::ArchiveCanonical);
         let transaction_pool = subspace_service::transaction_pool::new_full(
             config.transaction_pool.clone(),
             config.role.is_authority(),
@@ -500,28 +495,7 @@ impl MockConsensusNode {
             key.to_account_id(),
         );
 
-        let consensus_best_hash = client.info().best_hash;
-        let chain_constants = client
-            .runtime_api()
-            .chain_constants(consensus_best_hash)
-            .unwrap();
-
         let mut gossip_builder = GossipWorkerBuilder::new();
-        task_manager
-            .spawn_essential_handle()
-            .spawn_essential_blocking(
-                "consensus-chain-relayer",
-                None,
-                Box::pin(
-                    domain_client_message_relayer::worker::relay_consensus_chain_messages(
-                        client.clone(),
-                        chain_constants.confirmation_depth_k(),
-                        state_pruning.clone(),
-                        sync_service.clone(),
-                        gossip_builder.gossip_msg_sink(),
-                    ),
-                ),
-            );
 
         task_manager
             .spawn_essential_handle()

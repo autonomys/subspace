@@ -21,9 +21,6 @@ use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::SubspaceApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
@@ -137,10 +134,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         ));
     }
 
-    let mut consensus_state_pruning = subspace_configuration
-        .state_pruning
-        .clone()
-        .unwrap_or_default();
     let mut task_manager = {
         let consensus_chain_node = {
             let span = info_span!("Consensus");
@@ -161,10 +154,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                         Constrained",
                     ) =>
                 {
-                    // TODO: Workaround for supporting older default `archive-canonical` while new
-                    //  default has become pruned state, can be removed if/when
-                    //  https://github.com/paritytech/polkadot-sdk/issues/4671 is implemented
-                    consensus_state_pruning = PruningMode::ArchiveCanonical;
                     subspace_configuration.base.state_pruning = Some(PruningMode::ArchiveCanonical);
 
                     subspace_service::new_partial::<PosTable, RuntimeApi>(
@@ -226,29 +215,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             {
                 let span = info_span!("Consensus");
                 let _enter = span.enter();
-                let consensus_best_hash = consensus_chain_node.client.info().best_hash;
-                let chain_constants = consensus_chain_node
-                    .client
-                    .runtime_api()
-                    .chain_constants(consensus_best_hash)
-                    .map_err(|err| Error::Other(err.to_string()))?;
-
-                consensus_chain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "consensus-chain-relayer",
-                        None,
-                        Box::pin(
-                            domain_client_message_relayer::worker::relay_consensus_chain_messages(
-                                consensus_chain_node.client.clone(),
-                                chain_constants.confirmation_depth_k(),
-                                consensus_state_pruning.clone(),
-                                consensus_chain_node.sync_service.clone(),
-                                xdm_gossip_worker_builder.gossip_msg_sink(),
-                            ),
-                        ),
-                    );
 
                 // Start cross domain message listener for Consensus chain to receive messages from domains in the network
                 let domain_code_executor: sc_domains::RuntimeExecutor =
@@ -336,7 +302,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 consensus_network_sync_oracle: consensus_chain_node.sync_service,
                 domain_message_receiver,
                 gossip_message_sink,
-                consensus_state_pruning,
             };
 
             consensus_chain_node

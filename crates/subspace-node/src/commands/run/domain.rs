@@ -24,7 +24,7 @@ use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, Tr
 use sc_network::NetworkPeers;
 use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::KeystoreConfig;
-use sc_service::{Configuration, PruningMode};
+use sc_service::Configuration;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -381,7 +381,6 @@ pub(super) struct DomainStartOptions {
     pub(super) domain_message_receiver:
         TracingUnboundedReceiver<cross_domain_message_gossip::ChainMsg>,
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
-    pub(super) consensus_state_pruning: PruningMode,
 }
 
 pub(super) async fn run_domain(
@@ -421,7 +420,6 @@ pub(super) async fn run_domain(
         consensus_network_sync_oracle,
         domain_message_receiver,
         gossip_message_sink,
-        consensus_state_pruning,
     } = domain_start_options;
 
     let block_importing_notification_stream = block_importing_notification_stream.subscribe().then(
@@ -493,7 +491,6 @@ pub(super) async fn run_domain(
                 skip_empty_bundle_production: true,
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
-                consensus_state_pruning,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
             };
 
@@ -532,7 +529,6 @@ pub(super) async fn run_domain(
                 skip_empty_bundle_production: true,
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
-                consensus_state_pruning,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
             };
 

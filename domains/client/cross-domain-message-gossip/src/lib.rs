@@ -4,7 +4,7 @@ mod aux_schema;
 mod gossip_worker;
 mod message_listener;
 
-pub use aux_schema::{ChannelDetail, ChannelStorage};
+pub use aux_schema::{get_channel_state, set_channel_state, ChannelDetail};
 pub use gossip_worker::{
     xdm_gossip_peers_set_config, ChainMsg, ChainSink, ChannelUpdate, GossipWorker,
     GossipWorkerBuilder, Message, MessageData,

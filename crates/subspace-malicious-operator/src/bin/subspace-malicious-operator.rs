@@ -27,9 +27,6 @@ use sc_network::config::MultiaddrWithPeerId;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use serde_json::Value;
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::SubspaceApi;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
@@ -129,10 +126,6 @@ fn main() -> Result<(), Error> {
                 })?
                 .unwrap_or_default();
 
-        let consensus_state_pruning = consensus_chain_config
-            .state_pruning
-            .clone()
-            .unwrap_or_default();
         let (consensus_chain_node, consensus_keystore) = {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -270,31 +263,6 @@ fn main() -> Result<(), Error> {
                 );
                 let _enter = span.enter();
 
-                let consensus_best_hash = consensus_chain_node.client.info().best_hash;
-                let chain_constants = consensus_chain_node
-                    .client
-                    .runtime_api()
-                    .chain_constants(consensus_best_hash)
-                    .map_err(|err| Error::Other(err.to_string()))?;
-
-                let relayer_worker =
-                    domain_client_message_relayer::worker::relay_consensus_chain_messages(
-                        consensus_chain_node.client.clone(),
-                        chain_constants.confirmation_depth_k(),
-                        consensus_state_pruning.clone(),
-                        consensus_chain_node.sync_service.clone(),
-                        xdm_gossip_worker_builder.gossip_msg_sink(),
-                    );
-
-                consensus_chain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "consensus-chain-relayer",
-                        None,
-                        Box::pin(relayer_worker),
-                    );
-
                 let channel_update_worker =
                     domain_client_message_relayer::worker::gossip_channel_updates::<_, _, Block, _>(
                         ChainId::Consensus,
@@ -344,7 +312,6 @@ fn main() -> Result<(), Error> {
                 consensus_sync_service: consensus_chain_node.sync_service.clone(),
                 domain_message_receiver,
                 gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
-                consensus_state_pruning,
             };
 
             let consensus_network_service = consensus_chain_node.network_service.clone();
