@@ -25,7 +25,7 @@ use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
 use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
-use sp_core::crypto::{Ss58Codec, UncheckedFrom};
+use sp_core::crypto::UncheckedFrom;
 use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, BlockFees, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
@@ -568,18 +568,20 @@ mod benchmarks {
         let domain_id = register_domain::<T>();
         let operator_id = NextOperatorId::<T>::get();
         let (key, signature) = {
-            let key = OperatorPublicKey::from_ss58check(
-                "5Gv1Uopoqo1k7125oDtFSCmxH4DzuCiBU7HBKu2bF1GZFsEb",
-            )
+            // Signing requires randomness which is not available in `no_std` environment so use
+            // a hard coded (key, signature) here
+
+            let key = OperatorPublicKey::from_slice(&[
+                114, 172, 2, 55, 186, 130, 245, 128, 64, 159, 70, 62, 237, 238, 168, 252, 145, 234,
+                106, 186, 63, 235, 44, 127, 164, 207, 14, 108, 184, 60, 50, 0,
+            ])
             .unwrap();
 
-            // signature data included operator_account since result from `account` with same
-            // input is always deterministic
             let sig = OperatorSignature::from_slice(&[
-                88, 91, 154, 118, 137, 117, 109, 164, 232, 186, 101, 199, 94, 12, 91, 47, 228, 198,
-                61, 146, 200, 227, 152, 191, 205, 114, 81, 127, 192, 158, 48, 96, 211, 199, 237,
-                121, 170, 38, 118, 109, 3, 44, 198, 54, 155, 133, 240, 77, 200, 117, 107, 34, 248,
-                238, 144, 101, 200, 146, 20, 94, 180, 98, 40, 134,
+                226, 244, 36, 105, 120, 27, 189, 218, 101, 81, 252, 107, 144, 154, 27, 45, 71, 232,
+                230, 238, 111, 254, 196, 171, 93, 164, 92, 195, 200, 169, 205, 6, 108, 67, 213,
+                226, 158, 102, 187, 5, 93, 178, 231, 92, 84, 191, 117, 32, 177, 150, 196, 194, 208,
+                201, 163, 154, 209, 12, 182, 140, 179, 157, 211, 131,
             ])
             .unwrap();
             (key, sig)
