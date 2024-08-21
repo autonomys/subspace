@@ -13,6 +13,7 @@ use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::service::traits::NetworkService;
+use sc_network::NetworkBlock;
 use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -85,12 +86,13 @@ enum NotificationReason {
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn create_observer_and_worker<Block, Backend, AS, Client, PG>(
+pub(super) fn create_observer_and_worker<Block, Backend, AS, NB, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<dyn NetworkService>,
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
+    network_block: NB,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
@@ -102,6 +104,7 @@ where
     Block: BlockT,
     Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
+    NB: NetworkBlock<Block::Hash, NumberFor<Block>> + Send + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
@@ -126,6 +129,7 @@ where
             &node,
             client.as_ref(),
             import_queue_service.as_mut(),
+            network_block,
             sync_target_block_number,
             pause_sync,
             rx,
@@ -250,11 +254,12 @@ async fn create_substrate_network_observer(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Block, Backend, AS, IQS, Client, PG>(
+async fn create_worker<Block, Backend, AS, IQS, NB, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
+    network_block: NB,
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
@@ -264,6 +269,8 @@ where
     Block: BlockT,
     Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
+    IQS: ImportQueueService<Block> + ?Sized,
+    NB: NetworkBlock<Block::Hash, NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
@@ -272,7 +279,6 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-    IQS: ImportQueueService<Block> + ?Sized,
     PG: DsnSyncPieceGetter,
 {
     let info = client.info();
@@ -341,6 +347,12 @@ where
 
         debug!("Finished DSN sync");
 
+        // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
+        // gracefully
+        {
+            let info = client.info();
+            network_block.new_best_block_imported(info.best_hash, info.best_number);
+        }
         pause_sync.store(false, Ordering::Release);
 
         while notifications.try_next().is_ok() {
