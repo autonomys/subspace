@@ -20,7 +20,7 @@
 #![feature(try_blocks)]
 
 use futures::channel::mpsc;
-use futures::{future, FutureExt, StreamExt};
+use futures::{future, stream, FutureExt, StreamExt};
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
@@ -58,6 +58,7 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{
     BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
     Solution,
@@ -154,6 +155,16 @@ pub trait SubspaceRpcApi {
 
     #[method(name = "subspace_lastSegmentHeaders")]
     async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
+
+    /// Block/transaction archived object mappings subscription
+    #[subscription(
+        name = "subspace_subscribeArchivedObjectMappings" => "subspace_archived_object_mappings",
+        unsubscribe = "subspace_unsubscribeArchivedObjectMappings",
+        item = GlobalObject,
+    )]
+    fn subscribe_archived_object_mappings(&self);
+
+    // TODO: add a method for recent/any object mappings based on a list of IDs, piece indexes, or segment indexes
 }
 
 #[derive(Default)]
@@ -698,6 +709,7 @@ where
         Ok(())
     }
 
+    // Note: this RPC uses the cached archived segment, which is only updated by archived segments subscriptions
     fn piece(&self, requested_piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
         self.deny_unsafe.check_if_safe()?;
 
@@ -797,5 +809,31 @@ where
             .collect::<Vec<_>>();
 
         Ok(last_segment_headers)
+    }
+
+    // TODO:
+    // - the number of object mappings in each segment can be very large (hundreds or thousands).
+    //   To avoid RPC connection failures, limit the number of mappings returned in each response,
+    //   or the number of in-flight responses.
+    fn subscribe_archived_object_mappings(&self, pending: PendingSubscriptionSink) {
+        // The genesis segment isn't included in this stream. In other methods we recreate is as the first segment,
+        // but there aren't any mappings in it, so we don't need to recreate it as part of this subscription.
+
+        let stream = self
+            .archived_segment_notification_stream
+            .subscribe()
+            .flat_map(|archived_segment_notification| {
+                let objects = archived_segment_notification
+                    .archived_segment
+                    .global_object_mappings();
+
+                stream::iter(objects)
+            });
+
+        self.subscription_executor.spawn(
+            "subspace-archived-object-mappings-subscription",
+            Some("rpc"),
+            pipe_from_stream(pending, stream).boxed(),
+        );
     }
 }
