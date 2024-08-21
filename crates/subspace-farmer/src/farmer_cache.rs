@@ -292,7 +292,7 @@ where
 
         // Pull old cache state since it will be replaced with a new one and reuse its allocations
         let (mut stored_pieces, mut dangling_free_offsets) =
-            mem::take(&mut *self.piece_caches.write().await).clear();
+            mem::take(&mut *self.piece_caches.write().await).reuse();
 
         debug!("Collecting pieces that were in the cache before");
 

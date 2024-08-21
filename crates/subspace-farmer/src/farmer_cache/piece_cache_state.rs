@@ -121,7 +121,7 @@ where
         self.backends.len()
     }
 
-    pub(super) fn clear(
+    pub(super) fn reuse(
         self,
     ) -> (
         HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
