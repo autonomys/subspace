@@ -35,7 +35,7 @@ use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
-    BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
+    BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, LastArchivedBlock,
@@ -183,6 +183,34 @@ pub struct NewArchivedSegment {
     ///
     /// NOTE: Only half (source pieces) will have corresponding mapping item in this `Vec`.
     pub object_mapping: Vec<PieceObjectMapping>,
+}
+
+impl NewArchivedSegment {
+    /// Returns all the object mappings in this archived segment as a lazy iterator.
+    pub fn global_object_mappings(&self) -> impl Iterator<Item = GlobalObject> + 'static {
+        // Save memory by only returning the necessary parts of NewArchivedSegment
+        let object_mapping = self.object_mapping.clone();
+        let piece_indexes = self
+            .segment_header
+            .segment_index()
+            .segment_piece_indexes_source_first();
+
+        // Iterate through the object mapping vector for each piece
+        object_mapping
+            .into_iter()
+            .zip(piece_indexes)
+            .flat_map(|(piece_mappings, piece_index)| {
+                // And then through each individual object mapping in the piece
+                piece_mappings
+                    .objects
+                    .into_iter()
+                    .map(move |piece_object| GlobalObject::V0 {
+                        piece_index,
+                        offset: piece_object.offset(),
+                        hash: piece_object.hash(),
+                    })
+            })
+    }
 }
 
 /// Archiver instantiation error
