@@ -7,7 +7,7 @@ pub mod worker;
 
 use async_channel::TrySendError;
 use cross_domain_message_gossip::{
-    ChannelStorage, Message as GossipMessage, MessageData as GossipMessageData,
+    get_channel_state, Message as GossipMessage, MessageData as GossipMessageData,
 };
 use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
@@ -232,7 +232,7 @@ where
 // Fetch the XDM at the a given block and filter any already relayed XDM according to the best block
 fn fetch_and_filter_messages<Client, Block, CClient, CNumber, CHash>(
     client: &Arc<Client>,
-    fetch_message_at: &Block::Hash,
+    fetch_message_at: Block::Hash,
     consensus_client: &Arc<CClient>,
 ) -> Result<BlockMessagesWithStorageKey, Error>
 where
@@ -245,13 +245,13 @@ where
 {
     let mut msgs = client
         .runtime_api()
-        .block_messages(*fetch_message_at)
+        .block_messages(fetch_message_at)
         .map_err(|_| Error::FetchAssignedMessages)?;
 
     let api = client.runtime_api();
     let best_hash = client.info().best_hash;
     msgs.outbox.retain(|msg| {
-        let id = (msg.channel_id, msg.nonce);
+        let id = msg.id();
         let should_relay = match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
             Ok(valid) => valid,
             Err(err) => {
@@ -265,12 +265,15 @@ where
             }
         };
 
-        let channel_storage = ChannelStorage::new(msg.dst_chain_id);
         if should_relay
-            && let Some(dst_channel_state) = channel_storage
-                .get_channel_state_for(&**consensus_client, msg.src_chain_id, msg.channel_id)
-                .ok()
-                .flatten()
+            && let Some(dst_channel_state) = get_channel_state(
+                &**consensus_client,
+                msg.dst_chain_id,
+                msg.src_chain_id,
+                msg.channel_id,
+            )
+            .ok()
+            .flatten()
         {
             // if this message should relay,
             // check if the dst_chain inbox nonce is more than message nonce,
@@ -290,7 +293,7 @@ where
     });
 
     msgs.inbox_responses.retain(|msg| {
-        let id = (msg.channel_id, msg.nonce);
+        let id = msg.id();
         let should_relay = match api.should_relay_inbox_message_response(
             best_hash,
             msg.dst_chain_id,
@@ -308,12 +311,15 @@ where
             }
         };
 
-        let channel_storage = ChannelStorage::new(msg.dst_chain_id);
         if should_relay
-            && let Some(dst_channel_state) = channel_storage
-                .get_channel_state_for(&**consensus_client, msg.src_chain_id, msg.channel_id)
-                .ok()
-                .flatten()
+            && let Some(dst_channel_state) = get_channel_state(
+                &**consensus_client,
+                msg.dst_chain_id,
+                msg.src_chain_id,
+                msg.channel_id,
+            )
+            .ok()
+            .flatten()
             && let Some(dst_chain_outbox_response_nonce) =
                 dst_channel_state.latest_response_received_message_nonce
         {
@@ -354,7 +360,7 @@ where
         chain_id: ChainId,
         domain_client: &Arc<Client>,
         consensus_chain_client: &Arc<CClient>,
-        finalized_block_number: NumberFor<CBlock>,
+        confirmed_block_number: NumberFor<CBlock>,
         gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error>
     where
@@ -367,16 +373,16 @@ where
             + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>,
         Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
     {
-        // Since the block MMR leaf is included in the next block, we procees the XDM of block `finalized_block_number - 1`
-        // and use the block `finalized_block_number` to generate the MMR proof of block `finalized_block_number - 1`
+        // Since the block MMR leaf is included in the next block, we procees the XDM of block `confirmed_block_number - 1`
+        // and use the block `confirmed_block_number` to generate the MMR proof of block `confirmed_block_number - 1`
         let mmr_consensus_block = (
-            finalized_block_number,
+            confirmed_block_number,
             consensus_chain_client
-                .hash(finalized_block_number)?
+                .hash(confirmed_block_number)?
                 .ok_or(Error::MissingBlockHash)?,
         );
         let (to_process_consensus_number, to_process_consensus_hash) =
-            match finalized_block_number.checked_sub(&One::one()) {
+            match confirmed_block_number.checked_sub(&One::one()) {
                 None => return Ok(()),
                 Some(n) => {
                     let h = consensus_chain_client
@@ -440,7 +446,7 @@ where
         let block_messages = match &xdm_proof_data {
             XDMProofData::Consensus(consensus_hash) => fetch_and_filter_messages(
                 consensus_chain_client,
-                consensus_hash,
+                *consensus_hash,
                 consensus_chain_client,
             )?,
             XDMProofData::Domain {
@@ -448,7 +454,7 @@ where
                 ..
             } => fetch_and_filter_messages(
                 domain_client,
-                confirmed_domain_block_hash,
+                *confirmed_domain_block_hash,
                 consensus_chain_client,
             )?,
         };

@@ -186,7 +186,7 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
             continue;
         }
 
-        let Some(finalized_block_number) = imported_block
+        let Some(confirmed_block_number) = imported_block
             .header
             .number()
             .checked_sub(&confirmation_depth_k)
@@ -200,7 +200,7 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
                 chain_id,
                 &domain_client,
                 &consensus_client,
-                finalized_block_number,
+                confirmed_block_number,
                 &gossip_message_sink,
             );
 
@@ -208,7 +208,7 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
                 tracing::error!(
                     target: LOG_TARGET,
                     ?err,
-                    "Failed to submit messages from the chain {chain_id:?} at the block ({finalized_block_number:?}"
+                    "Failed to submit messages from the chain {chain_id:?} at the block ({confirmed_block_number:?}"
                 );
                 continue;
             }

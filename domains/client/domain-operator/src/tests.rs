@@ -5,7 +5,7 @@ use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use cross_domain_message_gossip::ChannelStorage;
+use cross_domain_message_gossip::get_channel_state;
 use domain_runtime_primitives::{AccountId20Converter, AccountIdConverter, Hash};
 use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
@@ -3573,17 +3573,23 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // there should be zero channel updates on both consensus and domain chain
-    let consensus_channel_storage = ChannelStorage::new(ChainId::Consensus);
-    assert!(consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
-        .unwrap()
-        .is_none());
+    assert!(get_channel_state(
+        &*ferdie.client,
+        ChainId::Consensus,
+        EVM_DOMAIN_ID.into(),
+        ChannelId::zero()
+    )
+    .unwrap()
+    .is_none());
 
-    let domain_channel_storage = ChannelStorage::new(EVM_DOMAIN_ID.into());
-    assert!(domain_channel_storage
-        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero(),)
-        .unwrap()
-        .is_none());
+    assert!(get_channel_state(
+        &*ferdie.client,
+        EVM_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .is_none());
 
     // Open channel between the Consensus chain and EVM domains
     alice
@@ -3611,19 +3617,27 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
     // there should be channel updates on both consensus and domain chain
 
     // consensus channel update
-    let channel_update = consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
-        .unwrap()
-        .unwrap();
+    let channel_update = get_channel_state(
+        &*ferdie.client,
+        ChainId::Consensus,
+        EVM_DOMAIN_ID.into(),
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
 
     // next channel inbox nonce on consensus from domain should be 1
     assert_eq!(channel_update.next_inbox_nonce, 1.into());
 
     // domain channel update
-    let channel_update = domain_channel_storage
-        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero())
-        .unwrap()
-        .unwrap();
+    let channel_update = get_channel_state(
+        &*ferdie.client,
+        EVM_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
 
     // next channel outbox nonce on domain to consensus should be 1
     assert_eq!(channel_update.next_outbox_nonce, 1.into());
@@ -3663,10 +3677,14 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
     // there should be channel updates on both consensus and domain chain
 
     // consensus channel update
-    let channel_update = consensus_channel_storage
-        .get_channel_state_for(&*ferdie.client, EVM_DOMAIN_ID.into(), ChannelId::zero())
-        .unwrap()
-        .unwrap();
+    let channel_update = get_channel_state(
+        &*ferdie.client,
+        ChainId::Consensus,
+        EVM_DOMAIN_ID.into(),
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
 
     // next channel inbox nonce on consensus from domain should be 2
     assert_eq!(channel_update.next_inbox_nonce, 2.into());
@@ -3701,10 +3719,14 @@ async fn test_xdm_between_consensus_and_domain_should_work() {
     // there should be channel updates on both consensus and domain chain
 
     // domain channel update
-    let channel_update = domain_channel_storage
-        .get_channel_state_for(&*ferdie.client, ChainId::Consensus, ChannelId::zero())
-        .unwrap()
-        .unwrap();
+    let channel_update = get_channel_state(
+        &*ferdie.client,
+        EVM_DOMAIN_ID.into(),
+        ChainId::Consensus,
+        ChannelId::zero(),
+    )
+    .unwrap()
+    .unwrap();
 
     // next channel outbox nonce on domain to consensus should be 2
     assert_eq!(channel_update.next_outbox_nonce, 2.into());

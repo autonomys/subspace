@@ -52,47 +52,11 @@ pub struct ChannelDetail {
     pub latest_response_received_message_nonce: Option<Nonce>,
 }
 
-pub struct ChannelStorage {
-    self_chain_id: ChainId,
-}
-
-impl ChannelStorage {
-    /// Returns channel storage with self chain id passed.
-    pub fn new(self_chain_id: ChainId) -> Self {
-        Self { self_chain_id }
-    }
-
-    /// Load the channel state of self_chain_id on chain_id.
-    pub fn get_channel_state_for<Backend>(
-        &self,
-        backend: &Backend,
-        chain_id: ChainId,
-        channel_id: ChannelId,
-    ) -> ClientResult<Option<ChannelDetail>>
-    where
-        Backend: AuxStore,
-    {
-        get_channel_details(backend, chain_id, self.self_chain_id, channel_id)
-    }
-
-    /// Set the channel state of self_chain_id on chain_id.
-    pub(crate) fn set_channel_state<Backend>(
-        &self,
-        backend: &Backend,
-        chain_id: ChainId,
-        channel_detail: ChannelDetail,
-    ) -> ClientResult<()>
-    where
-        Backend: AuxStore,
-    {
-        set_channel_detail(backend, chain_id, self.self_chain_id, channel_detail)
-    }
-}
-
-fn get_channel_details<Backend>(
+/// Load the channel state of self_chain_id on chain_id.
+pub fn get_channel_state<Backend>(
     backend: &Backend,
-    src_chain_id: ChainId,
-    dst_chain_id: ChainId,
+    self_chain_id: ChainId,
+    chain_id: ChainId,
     channel_id: ChannelId,
 ) -> ClientResult<Option<ChannelDetail>>
 where
@@ -100,14 +64,15 @@ where
 {
     load_decode(
         backend,
-        channel_detail_key(src_chain_id, dst_chain_id, channel_id).as_slice(),
+        channel_detail_key(chain_id, self_chain_id, channel_id).as_slice(),
     )
 }
 
-fn set_channel_detail<Backend>(
+/// Set the channel state of self_chain_id on chain_id.
+pub fn set_channel_state<Backend>(
     backend: &Backend,
-    src_chain_id: ChainId,
-    dst_chain_id: ChainId,
+    self_chain_id: ChainId,
+    chain_id: ChainId,
     channel_detail: ChannelDetail,
 ) -> ClientResult<()>
 where
@@ -115,7 +80,7 @@ where
 {
     backend.insert_aux(
         &[(
-            channel_detail_key(src_chain_id, dst_chain_id, channel_detail.channel_id).as_slice(),
+            channel_detail_key(chain_id, self_chain_id, channel_detail.channel_id).as_slice(),
             channel_detail.encode().as_slice(),
         )],
         vec![],

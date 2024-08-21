@@ -1,6 +1,6 @@
-use crate::aux_schema::ChannelDetail;
+use crate::aux_schema::{get_channel_state, set_channel_state};
 use crate::gossip_worker::{ChannelUpdate, MessageData};
-use crate::{ChainMsg, ChannelStorage};
+use crate::{ChainMsg, ChannelDetail};
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use fp_account::AccountId20;
 use futures::{Stream, StreamExt};
@@ -264,9 +264,12 @@ where
         .hash(consensus_block_number.into())?
         .ok_or(Error::MissingBlockHash)?;
 
-    let channel_storage = ChannelStorage::new(ChainId::Consensus);
-    let maybe_existing_channel_detail =
-        channel_storage.get_channel_state_for(&**consensus_client, self_chain_id, channel_id)?;
+    let maybe_existing_channel_detail = get_channel_state(
+        &**consensus_client,
+        ChainId::Consensus,
+        self_chain_id,
+        channel_id,
+    )?;
 
     let api = consensus_client.runtime_api();
     let best_hash = consensus_client.info().best_hash;
@@ -304,7 +307,12 @@ where
         latest_response_received_message_nonce: channel.latest_response_received_message_nonce,
     };
 
-    channel_storage.set_channel_state(&**consensus_client, self_chain_id, channel_detail)?;
+    set_channel_state(
+        &**consensus_client,
+        ChainId::Consensus,
+        self_chain_id,
+        channel_detail,
+    )?;
     Ok(())
 }
 
@@ -367,9 +375,12 @@ where
     // if there is an existing channel detail,
     // return if the channel update is from canonical domain and block number is latest
     // else store the update.
-    let channel_storage = ChannelStorage::new(ChainId::Domain(src_domain_id));
-    let maybe_existing_channel_detail =
-        channel_storage.get_channel_state_for(&**consensus_client, self_chain_id, channel_id)?;
+    let maybe_existing_channel_detail = get_channel_state(
+        &**consensus_client,
+        ChainId::Domain(src_domain_id),
+        self_chain_id,
+        channel_id,
+    )?;
 
     if let Some(existing_channel_update) = maybe_existing_channel_detail {
         // if the existing update domain block number
@@ -443,7 +454,12 @@ where
         }
     };
 
-    channel_storage.set_channel_state(&**consensus_client, self_chain_id, channel_detail)?;
+    set_channel_state(
+        &**consensus_client,
+        ChainId::Domain(src_domain_id),
+        self_chain_id,
+        channel_detail,
+    )?;
     Ok(())
 }
 

@@ -257,6 +257,12 @@ pub struct BlockMessageWithStorageKey {
     pub weight_tag: MessageWeightTag,
 }
 
+impl BlockMessageWithStorageKey {
+    pub fn id(&self) -> (ChannelId, Nonce) {
+        (self.channel_id, self.nonce)
+    }
+}
+
 /// Set of messages with storage keys to be relayed in a given block..
 #[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct BlockMessagesWithStorageKey {
