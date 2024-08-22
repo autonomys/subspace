@@ -83,7 +83,7 @@ pub struct BlockObjectMapping {
     pub objects: Vec<BlockObject>,
 }
 
-/// Object stored inside of the block
+/// Object stored inside of the piece
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -95,7 +95,7 @@ pub enum PieceObject {
         /// Object hash
         hash: Blake3Hash,
         // TODO: This is a raw record offset, not a regular one
-        /// Offset of the object
+        /// Offset of the object in that piece
         offset: u32,
     },
 }
@@ -121,11 +121,11 @@ impl PieceObject {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct PieceObjectMapping {
-    /// Objects stored inside of the block
+    /// Objects stored inside of the piece
     pub objects: Vec<PieceObject>,
 }
 
-/// Object stored inside in the history of the blockchain
+/// Object stored in the history of the blockchain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -134,10 +134,13 @@ pub enum GlobalObject {
     #[codec(index = 0)]
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
-        /// Piece index where object is contained (at least its beginning, might not fit fully)
+        /// Piece index where object is contained (at least its beginning, might not fit fully).
+        /// The index and offset must be first, so that the Ord derives are valid.
         piece_index: PieceIndex,
-        /// Offset of the object
+        /// Offset of the object in that piece
         offset: u32,
+        /// Object hash
+        hash: Blake3Hash,
     },
 }
 
@@ -155,4 +158,21 @@ impl GlobalObject {
             Self::V0 { offset, .. } => *offset,
         }
     }
+
+    /// Object hash
+    pub fn hash(&self) -> Blake3Hash {
+        match self {
+            Self::V0 { hash, .. } => *hash,
+        }
+    }
+}
+
+/// Mapping of objects stored in the history of the blockchain
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct GlobalObjectMapping {
+    /// Objects stored in the history of the blockchain.
+    /// Mappings are ordered by the piece index and offset of the first GlobalObject in objects.
+    pub objects: Vec<GlobalObject>,
 }
