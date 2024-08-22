@@ -44,6 +44,7 @@ use sp_objects::ObjectsApi;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::BlockNumber;
+use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
@@ -80,6 +81,8 @@ where
     pub sync_oracle: SubspaceSyncOracle<SO>,
     /// Kzg instance.
     pub kzg: Kzg,
+    /// Erasure coding instance.
+    pub erasure_coding: ErasureCoding,
     /// Backend used by the node.
     pub backend: Arc<B>,
 }
@@ -122,6 +125,7 @@ where
         segment_headers_store,
         sync_oracle,
         kzg,
+        erasure_coding,
         backend,
     } = deps;
 
@@ -144,6 +148,7 @@ where
             segment_headers_store,
             sync_oracle,
             kzg,
+            erasure_coding,
             deny_unsafe,
         })?
         .into_rpc(),

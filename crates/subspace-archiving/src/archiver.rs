@@ -28,7 +28,6 @@ use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -189,12 +188,6 @@ pub struct NewArchivedSegment {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ArchiverInstantiationError {
-    /// Failed to initialize erasure coding
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to initialize erasure coding: {0}")
-    )]
-    FailedToInitializeErasureCoding(String),
     /// Invalid last archived block, its size is the same as encoded block
     #[cfg_attr(
         feature = "thiserror",
@@ -245,22 +238,9 @@ pub struct Archiver {
 }
 
 impl Archiver {
-    // TODO: Make erasure coding an explicit argument
-    /// Create a new instance with specified record size and recorded history segment size.
-    ///
-    /// Note: this is the only way to instantiate object archiver, while block archiver can be
-    /// instantiated with `BlockArchiver::with_initial_state()` in case of restarts.
-    pub fn new(kzg: Kzg) -> Result<Self, ArchiverInstantiationError> {
-        // TODO: Check if KZG can process number configured number of elements and update proof
-        //  message in `.expect()`
-
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Archived history segment contains at very least one piece; qed"),
-        )
-        .map_err(ArchiverInstantiationError::FailedToInitializeErasureCoding)?;
-
-        Ok(Self {
+    /// Create a new instance
+    pub fn new(kzg: Kzg, erasure_coding: ErasureCoding) -> Self {
+        Self {
             buffer: VecDeque::default(),
             incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
                 RecordedHistorySegment::NUM_RAW_RECORDS,
@@ -270,7 +250,7 @@ impl Archiver {
             segment_index: SegmentIndex::ZERO,
             prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
-        })
+        }
     }
 
     /// Create a new instance of the archiver with initial state in case of restart.
@@ -278,11 +258,12 @@ impl Archiver {
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
     pub fn with_initial_state(
         kzg: Kzg,
+        erasure_coding: ErasureCoding,
         segment_header: SegmentHeader,
         encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
-        let mut archiver = Self::new(kzg)?;
+        let mut archiver = Self::new(kzg, erasure_coding);
 
         archiver.segment_index = segment_header.segment_index() + SegmentIndex::ONE;
         archiver.prev_segment_header_hash = segment_header.hash();

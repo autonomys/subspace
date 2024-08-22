@@ -1,14 +1,16 @@
 use rand::{thread_rng, Rng};
 use std::assert_matches::assert_matches;
 use std::iter;
+use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, FlatPieces, LastArchivedBlock, Piece,
+    ArchivedBlockProgress, ArchivedHistorySegment, FlatPieces, LastArchivedBlock, Piece, Record,
     RecordedHistorySegment, SegmentIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.pieces().map(Some).collect()
@@ -17,7 +19,12 @@ fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
 #[test]
 fn basic() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(kzg).unwrap();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg, erasure_coding.clone());
     // Block that fits into the segment fully
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 2];
@@ -59,7 +66,7 @@ fn basic() {
 
     assert_eq!(archived_segments.len(), 5);
 
-    let mut reconstructor = Reconstructor::new().unwrap();
+    let mut reconstructor = Reconstructor::new(erasure_coding.clone());
 
     {
         let contents = reconstructor
@@ -91,7 +98,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new().unwrap();
+        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[1].pieces))
             .unwrap();
@@ -132,7 +139,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new().unwrap();
+        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[2].pieces))
             .unwrap();
@@ -175,7 +182,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new().unwrap();
+        let mut partial_reconstructor = Reconstructor::new(erasure_coding.clone());
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[3].pieces))
             .unwrap();
@@ -218,7 +225,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new().unwrap();
+        let mut partial_reconstructor = Reconstructor::new(erasure_coding);
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[4].pieces))
             .unwrap();
@@ -243,7 +250,12 @@ fn basic() {
 #[test]
 fn partial_data() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(kzg).unwrap();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg, erasure_coding.clone());
     // Block that fits into the segment fully
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 2];
@@ -268,8 +280,7 @@ fn partial_data() {
 
     {
         // Take just source shards
-        let contents = Reconstructor::new()
-            .unwrap()
+        let contents = Reconstructor::new(erasure_coding.clone())
             .add_segment(
                 &pieces
                     .source_pieces()
@@ -285,8 +296,7 @@ fn partial_data() {
 
     {
         // Take just parity shards
-        let contents = Reconstructor::new()
-            .unwrap()
+        let contents = Reconstructor::new(erasure_coding.clone())
             .add_segment(
                 &iter::repeat(None)
                     .take(RecordedHistorySegment::NUM_RAW_RECORDS)
@@ -312,7 +322,9 @@ fn partial_data() {
             .for_each(|piece| {
                 piece.take();
             });
-        let contents = Reconstructor::new().unwrap().add_segment(&pieces).unwrap();
+        let contents = Reconstructor::new(erasure_coding)
+            .add_segment(&pieces)
+            .unwrap();
 
         assert_eq!(contents.blocks, vec![(0, block_0)]);
     }
@@ -321,8 +333,12 @@ fn partial_data() {
 #[test]
 fn invalid_usage() {
     let kzg = Kzg::new(embedded_kzg_settings());
-
-    let mut archiver = Archiver::new(kzg).unwrap();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .unwrap();
+    let mut archiver = Archiver::new(kzg, erasure_coding.clone());
     // Block that overflows into the next segments
     let block_0 = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE * 4];
@@ -336,7 +352,7 @@ fn invalid_usage() {
 
     {
         // Not enough shards with contents
-        let result = Reconstructor::new().unwrap().add_segment(
+        let result = Reconstructor::new(erasure_coding.clone()).add_segment(
             &archived_segments[0]
                 .pieces
                 .pieces()
@@ -352,7 +368,7 @@ fn invalid_usage() {
 
     {
         // Garbage data
-        let result = Reconstructor::new().unwrap().add_segment(
+        let result = Reconstructor::new(erasure_coding.clone()).add_segment(
             &iter::repeat_with(|| {
                 let mut piece = Piece::default();
                 thread_rng().fill(piece.as_mut());
@@ -366,7 +382,7 @@ fn invalid_usage() {
     }
 
     {
-        let mut reconstructor = Reconstructor::new().unwrap();
+        let mut reconstructor = Reconstructor::new(erasure_coding);
 
         reconstructor
             .add_segment(&pieces_to_option_of_pieces(&archived_segments[0].pieces))

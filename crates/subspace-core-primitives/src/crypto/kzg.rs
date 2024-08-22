@@ -445,7 +445,7 @@ impl Kzg {
 
     /// Get FFT settings for specified number of values, uses internal cache to avoid derivation
     /// every time.
-    pub fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
+    fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
         let num_values = num_values.next_power_of_two();
         Ok(
             match self.inner.fft_settings_cache.lock().entry(num_values) {

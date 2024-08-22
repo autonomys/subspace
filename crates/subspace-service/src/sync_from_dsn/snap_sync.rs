@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{BlockNumber, SegmentIndex};
+use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
 use tracing::{debug, error};
@@ -39,6 +40,7 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
     piece_getter: PG,
     network_request: NR,
     sync_service: Arc<SyncingService<Block>>,
+    erasure_coding: ErasureCoding,
 ) where
     Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
@@ -74,6 +76,7 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
             &network_request,
             &sync_service,
             None,
+            &erasure_coding,
         );
 
         match snap_sync_fut.await {
@@ -104,6 +107,7 @@ pub(crate) async fn get_blocks_from_target_segment<AS, PG>(
     node: &Node,
     piece_getter: &PG,
     target_block: Option<BlockNumber>,
+    erasure_coding: &ErasureCoding,
 ) -> Result<Option<(SegmentIndex, VecDeque<(BlockNumber, Vec<u8>)>)>, Error>
 where
     AS: AuxStore,
@@ -225,7 +229,7 @@ where
     // Reconstruct blocks of the last segment
     let mut blocks = VecDeque::new();
     {
-        let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+        let mut reconstructor = Reconstructor::new(erasure_coding.clone());
 
         for segment_index in segments_to_reconstruct {
             let blocks_fut =
@@ -251,6 +255,7 @@ async fn sync<PG, AS, Block, Client, IQS, B, NR>(
     network_request: &NR,
     sync_service: &SyncingService<Block>,
     target_block: Option<BlockNumber>,
+    erasure_coding: &ErasureCoding,
 ) -> Result<(), Error>
 where
     B: sc_client_api::Backend<Block>,
@@ -273,9 +278,14 @@ where
 {
     debug!("Starting snap sync...");
 
-    let Some((target_segment_index, mut blocks)) =
-        get_blocks_from_target_segment(segment_headers_store, node, piece_getter, target_block)
-            .await?
+    let Some((target_segment_index, mut blocks)) = get_blocks_from_target_segment(
+        segment_headers_store,
+        node,
+        piece_getter,
+        target_block,
+        erasure_coding,
+    )
+    .await?
     else {
         // Snap-sync skipped
         return Ok(());

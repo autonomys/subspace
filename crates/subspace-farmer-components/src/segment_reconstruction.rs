@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{ArchivedHistorySegment, Piece, PieceIndex, RecordedHistorySegment};
+use subspace_erasure_coding::ErasureCoding;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tokio::task::JoinError;
@@ -28,6 +29,7 @@ pub(crate) enum SegmentReconstructionError {
 pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     piece_getter: &PG,
     kzg: Kzg,
+    erasure_coding: ErasureCoding,
     missing_piece_index: PieceIndex,
 ) -> Result<Piece, SegmentReconstructionError> {
     info!(%missing_piece_index, "Recovering missing piece...");
@@ -103,8 +105,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     }
 
     let result = tokio::task::spawn_blocking(move || {
-        let reconstructor =
-            PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
+        let reconstructor = PiecesReconstructor::new(kzg, erasure_coding);
 
         reconstructor.reconstruct_piece(&segment_pieces, position as usize)
     })

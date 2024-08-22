@@ -43,6 +43,7 @@ use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use sp_consensus_subspace::ChainConstants;
 use sp_runtime::traits::Block as BlockT;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_erasure_coding::ErasureCoding;
 
 /// State that must be shared between various consensus components.
 #[derive(Clone)]
@@ -59,11 +60,12 @@ pub struct SubspaceLink<Block: BlockT> {
         SubspaceNotificationStream<BlockImportingNotification<Block>>,
     chain_constants: ChainConstants,
     kzg: Kzg,
+    erasure_coding: ErasureCoding,
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
     /// Create new instance.
-    pub fn new(chain_constants: ChainConstants, kzg: Kzg) -> Self {
+    pub fn new(chain_constants: ChainConstants, kzg: Kzg, erasure_coding: ErasureCoding) -> Self {
         let (new_slot_notification_sender, new_slot_notification_stream) =
             notification::channel("subspace_new_slot_notification_stream");
         let (reward_signing_notification_sender, reward_signing_notification_stream) =
@@ -84,6 +86,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
             block_importing_notification_stream,
             chain_constants,
             kzg,
+            erasure_coding,
         }
     }
 
@@ -126,5 +129,10 @@ impl<Block: BlockT> SubspaceLink<Block> {
     /// Access KZG instance
     pub fn kzg(&self) -> &Kzg {
         &self.kzg
+    }
+
+    /// Access erasure coding instance
+    pub fn erasure_coding(&self) -> &ErasureCoding {
+        &self.erasure_coding
     }
 }

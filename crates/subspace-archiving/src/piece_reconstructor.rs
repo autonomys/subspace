@@ -5,25 +5,12 @@ extern crate alloc;
 use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use core::num::NonZeroUsize;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord};
 use subspace_erasure_coding::ErasureCoding;
-
-/// Reconstructor-related instantiation error.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum ReconstructorInstantiationError {
-    /// Failed to initialize erasure coding
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to initialize erasure coding: {0}")
-    )]
-    FailedToInitializeErasureCoding(String),
-}
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]
@@ -55,21 +42,12 @@ pub struct PiecesReconstructor {
 }
 
 impl PiecesReconstructor {
-    // TODO: Make erasure coding an explicit argument
-    pub fn new(kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
-        // TODO: Check if KZG can process number configured number of elements and update proof
-        //  message in `.expect()`
-
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Archived history segment contains at very least one piece; qed"),
-        )
-        .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
-
-        Ok(Self {
+    /// Create a new instance
+    pub fn new(kzg: Kzg, erasure_coding: ErasureCoding) -> Self {
+        Self {
             erasure_coding,
             kzg,
-        })
+        }
     }
 
     /// Returns incomplete pieces (witness missing) and polynomial that can be used to generate

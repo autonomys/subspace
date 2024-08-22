@@ -370,7 +370,7 @@ pub fn create_archived_segment() -> &'static NewArchivedSegment {
     static ARCHIVED_SEGMENT: OnceLock<NewArchivedSegment> = OnceLock::new();
 
     ARCHIVED_SEGMENT.get_or_init(|| {
-        let mut archiver = Archiver::new(kzg_instance().clone()).unwrap();
+        let mut archiver = Archiver::new(kzg_instance().clone(), erasure_coding_instance().clone());
 
         let mut block = vec![0u8; RecordedHistorySegment::SIZE];
         rand::thread_rng().fill(block.as_mut_slice());

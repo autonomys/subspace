@@ -63,9 +63,7 @@ pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
     *state.finalize().as_bytes()
 }
 
-/// BLAKE3 hashing of a single value truncated to 254 bits.
-///
-/// TODO: We probably wouldn't need this eventually
+/// BLAKE3 hashing of a single value truncated to 254 bits as Scalar for usage with KZG.
 pub fn blake3_254_hash_to_scalar(data: &[u8]) -> Scalar {
     let mut hash = blake3_hash(data);
     // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
