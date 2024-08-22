@@ -199,7 +199,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build farmer (Linux and Windows)
+      - name: Build farmer
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
 
