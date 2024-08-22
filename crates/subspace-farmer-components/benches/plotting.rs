@@ -29,12 +29,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
     .unwrap();
+    let mut archiver = Archiver::new(kzg.clone(), erasure_coding.clone());
     let mut table_generators = [
         PosTable::generator(),
         PosTable::generator(),

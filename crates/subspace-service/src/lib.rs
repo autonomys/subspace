@@ -113,10 +113,12 @@ use sp_subspace_mmr::host_functions::{SubspaceMmrExtension, SubspaceMmrHostFunct
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{BlockNumber, PotSeed, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{BlockNumber, PotSeed, Record, REWARD_SIGNING_CONTEXT};
+use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -519,7 +521,20 @@ where
             false,
         )?;
 
-    let kzg = tokio::task::block_in_place(|| Kzg::new(embedded_kzg_settings()));
+    // TODO: Make these explicit arguments we no longer use Substate's `Configuration`
+    let (kzg, maybe_erasure_coding) = tokio::task::block_in_place(|| {
+        rayon::join(
+            || Kzg::new(embedded_kzg_settings()),
+            || {
+                ErasureCoding::new(
+                    NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+                        .expect("Not zero; qed"),
+                )
+                .map_err(|error| format!("Failed to instantiate erasure coding: {error}"))
+            },
+        )
+    });
+    let erasure_coding = maybe_erasure_coding?;
 
     let client = Arc::new(client);
     let client_info = client.info();
@@ -559,7 +574,7 @@ where
     })
     .map_err(|error| ServiceError::Application(error.into()))?;
 
-    let subspace_link = SubspaceLink::new(chain_constants, kzg.clone());
+    let subspace_link = SubspaceLink::new(chain_constants, kzg.clone(), erasure_coding);
     let segment_headers_store = segment_headers_store.clone();
 
     let block_import = SubspaceBlockImport::<PosTable, _, _, _, _, _>::new(
@@ -988,6 +1003,7 @@ where
         dsn_sync_piece_getter.clone(),
         Arc::clone(&network_service),
         sync_service.clone(),
+        subspace_link.erasure_coding().clone(),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
@@ -1000,6 +1016,7 @@ where
         sync_target_block_number,
         pause_sync,
         dsn_sync_piece_getter,
+        subspace_link.erasure_coding().clone(),
     );
     task_manager
         .spawn_handle()
@@ -1212,6 +1229,7 @@ where
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
+                    erasure_coding: subspace_link.erasure_coding().clone(),
                     backend: backend.clone(),
                 };
 

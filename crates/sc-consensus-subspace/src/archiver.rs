@@ -79,6 +79,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, info, trace, warn};
 
 /// Number of WASM instances is 8, this is a bit lower to avoid warnings exceeding number of
@@ -412,6 +413,7 @@ where
 pub fn recreate_genesis_segment<Block, Client>(
     client: &Client,
     kzg: Kzg,
+    erasure_coding: ErasureCoding,
 ) -> Result<Option<NewArchivedSegment>, Box<dyn Error>>
 where
     Block: BlockT,
@@ -437,7 +439,7 @@ where
 
     let encoded_block = encode_block(signed_block);
 
-    let new_archived_segment = Archiver::new(kzg)?
+    let new_archived_segment = Archiver::new(kzg, erasure_coding)
         .add_block(encoded_block, block_object_mappings, false)
         .into_iter()
         .next()
@@ -581,6 +583,7 @@ where
 
             let archiver = Archiver::with_initial_state(
                 subspace_link.kzg().clone(),
+                subspace_link.erasure_coding().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
                 block_object_mappings,
@@ -591,7 +594,10 @@ where
         } else {
             info!("Starting archiving from genesis");
 
-            Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
+            Archiver::new(
+                subspace_link.kzg().clone(),
+                subspace_link.erasure_coding().clone(),
+            )
         };
 
     // Process blocks since last fully archived block up to the current head minus K

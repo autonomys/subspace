@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
+use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
 use tracing::{debug, info, warn};
@@ -96,6 +97,7 @@ pub(super) fn create_observer_and_worker<Block, Backend, AS, NB, Client, PG>(
     sync_target_block_number: Arc<AtomicU32>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
+    erasure_coding: ErasureCoding,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -134,6 +136,7 @@ where
             pause_sync,
             rx,
             &piece_getter,
+            &erasure_coding,
         )
         .await
     };
@@ -264,6 +267,7 @@ async fn create_worker<Block, Backend, AS, IQS, NB, Client, PG>(
     pause_sync: Arc<AtomicBool>,
     mut notifications: mpsc::Receiver<NotificationReason>,
     piece_getter: &PG,
+    erasure_coding: &ErasureCoding,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
@@ -308,6 +312,7 @@ where
             import_queue_service,
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
+            erasure_coding,
         );
         let wait_almost_synced_fut = async {
             loop {

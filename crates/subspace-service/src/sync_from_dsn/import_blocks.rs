@@ -33,6 +33,7 @@ use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::multihash::ToMultihash;
 use tokio::sync::Semaphore;
 use tracing::warn;
@@ -46,6 +47,7 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     segment_header_downloader: &SegmentHeaderDownloader<'_>,
@@ -54,6 +56,7 @@ pub(super) async fn import_blocks_from_dsn<Block, AS, Client, PG, IQS>(
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
+    erasure_coding: &ErasureCoding,
 ) -> Result<u64, Error>
 where
     Block: BlockT,
@@ -84,7 +87,7 @@ where
     }
 
     let mut imported_blocks = 0;
-    let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+    let mut reconstructor = Reconstructor::new(erasure_coding.clone());
     // Start from the first unprocessed segment and process all segments known so far
     let segment_indices_iter = (*last_processed_segment_index + SegmentIndex::ONE)
         ..=segment_headers_store
@@ -120,7 +123,7 @@ where
         if last_archived_block_number <= *last_processed_block_number {
             *last_processed_segment_index = segment_index;
             // Reset reconstructor instance
-            reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+            reconstructor = Reconstructor::new(erasure_coding.clone());
             continue;
         }
         // Just one partial unprocessed block and this was the last segment available, so nothing to
@@ -130,7 +133,7 @@ where
             && segment_indices_iter.peek().is_none()
         {
             // Reset reconstructor instance
-            reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+            reconstructor = Reconstructor::new(erasure_coding.clone());
             continue;
         }
 

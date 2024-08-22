@@ -55,12 +55,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(42);
     rng.fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = &Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = &ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
     .unwrap();
+    let mut archiver = Archiver::new(kzg.clone(), erasure_coding.clone());
     let mut table_generator = PosTable::generator();
     let archived_history_segment = archiver
         .add_block(

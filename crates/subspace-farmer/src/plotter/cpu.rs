@@ -311,6 +311,7 @@ where
                         piece_getter: &piece_getter,
                         farmer_protocol_info,
                         kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         pieces_in_sector,
                     });
 

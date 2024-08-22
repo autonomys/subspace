@@ -7,7 +7,6 @@ use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem;
-use core::num::NonZeroUsize;
 use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
@@ -15,18 +14,6 @@ use subspace_core_primitives::{
     RawRecord, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-
-/// Reconstructor-related instantiation error.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum ReconstructorInstantiationError {
-    /// Failed to initialize erasure coding
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to initialize erasure coding: {0}")
-    )]
-    FailedToInitializeErasureCoding(String),
-}
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]
@@ -74,22 +61,13 @@ pub struct Reconstructor {
 }
 
 impl Reconstructor {
-    // TODO: Make erasure coding an explicit argument
-    pub fn new() -> Result<Self, ReconstructorInstantiationError> {
-        // TODO: Check if KZG can process number configured number of elements and update proof
-        //  message in `.expect()`
-
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Archived history segment contains at very least one piece; qed"),
-        )
-        .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
-
-        Ok(Self {
+    /// Create a new instance
+    pub fn new(erasure_coding: ErasureCoding) -> Self {
+        Self {
             erasure_coding,
             last_segment_index: None,
             partial_block: None,
-        })
+        }
     }
 
     /// Given a set of pieces of a segment of the archived history (any half of all pieces are

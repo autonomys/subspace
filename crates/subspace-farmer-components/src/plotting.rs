@@ -188,6 +188,7 @@ where
         piece_getter,
         farmer_protocol_info,
         kzg,
+        erasure_coding,
         pieces_in_sector,
     });
 
@@ -232,6 +233,8 @@ pub struct DownloadSectorOptions<'a, PG> {
     pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
     pub kzg: &'a Kzg,
+    /// Erasure coding instance
+    pub erasure_coding: &'a ErasureCoding,
     /// How many pieces should sector contain
     pub pieces_in_sector: u16,
 }
@@ -252,6 +255,7 @@ where
         piece_getter,
         farmer_protocol_info,
         kzg,
+        erasure_coding,
         pieces_in_sector,
     } = options;
 
@@ -285,6 +289,7 @@ where
                 &mut raw_sector,
                 piece_getter,
                 kzg,
+                erasure_coding,
                 &mut incremental_piece_indices,
             )
             .await
@@ -628,6 +633,7 @@ async fn download_sector_internal<PG: PieceGetter>(
     raw_sector: &mut RawSector,
     piece_getter: &PG,
     kzg: &Kzg,
+    erasure_coding: &ErasureCoding,
     piece_indexes: &mut [Option<PieceIndex>],
 ) -> Result<(), PlottingError> {
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
@@ -659,8 +665,13 @@ async fn download_sector_internal<PG: PieceGetter>(
                         return Err(PlottingError::FailedToRetrievePiece { piece_index, error });
                     }
                 };
-                let recovered_piece =
-                    recover_missing_piece(piece_getter, kzg.clone(), piece_index).await;
+                let recovered_piece = recover_missing_piece(
+                    piece_getter,
+                    kzg.clone(),
+                    erasure_coding.clone(),
+                    piece_index,
+                )
+                .await;
 
                 piece_result = recovered_piece.map(Some).map_err(Into::into);
             }

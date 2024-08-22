@@ -62,6 +62,7 @@ use subspace_core_primitives::{
     BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
     Solution,
 };
+use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -215,6 +216,8 @@ where
     pub deny_unsafe: DenyUnsafe,
     /// Kzg instance
     pub kzg: Kzg,
+    /// Erasure coding instance
+    pub erasure_coding: ErasureCoding,
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
@@ -243,6 +246,7 @@ where
     chain_constants: ChainConstants,
     max_pieces_in_sector: u16,
     kzg: Kzg,
+    erasure_coding: ErasureCoding,
     deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
 }
@@ -300,6 +304,7 @@ where
             chain_constants,
             max_pieces_in_sector,
             kzg: config.kzg,
+            erasure_coding: config.erasure_coding,
             deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
         })
@@ -717,7 +722,11 @@ where
                     debug!(%requested_piece_index, "Re-creating genesis segment on demand");
 
                     // Try to re-create genesis segment on demand
-                    match recreate_genesis_segment(&*self.client, self.kzg.clone()) {
+                    match recreate_genesis_segment(
+                        &*self.client,
+                        self.kzg.clone(),
+                        self.erasure_coding.clone(),
+                    ) {
                         Ok(Some(archived_segment)) => {
                             let archived_segment = Arc::new(archived_segment);
                             cached_archived_segment.replace(CachedArchivedSegment::Genesis(
