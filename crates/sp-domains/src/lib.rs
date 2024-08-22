@@ -1191,7 +1191,7 @@ impl InvalidBundleType {
             Self::IllegalTx(i) => *i,
             Self::InvalidXDM(i) => *i,
             Self::InherentExtrinsic(i) => *i,
-            // NOTE: the `InvalidBundleWeight` is targetting the whole bundle not a specific
+            // NOTE: the `InvalidBundleWeight` is targeting the whole bundle not a specific
             // single extrinsic, as `extrinsic_index` is used as the order to check the extrinsic
             // in the bundle returning `u32::MAX` indicate `InvalidBundleWeight` is checked after
             // all the extrinsic in the bundle is checked.
@@ -1222,7 +1222,7 @@ impl InvalidBundleType {
 
     // Return the index of the extrinsic that the invalid type points to
     //
-    // NOTE: `InvalidBundleWeight` will return `None` since it is targetting the whole bundle not a
+    // NOTE: `InvalidBundleWeight` will return `None` since it is targeting the whole bundle not a
     // specific single extrinsic
     pub fn extrinsic_index(&self) -> Option<u32> {
         match self {
