@@ -139,7 +139,6 @@ jobs:
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
-      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
       - name: Install glibtoolize (macOS)
         run: brew install libtool
         if: runner.os == 'macOS'
