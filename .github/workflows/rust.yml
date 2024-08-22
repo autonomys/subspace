@@ -22,9 +22,8 @@ env:
   # Not needed in CI, should make things a bit faster
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
-  # Build smaller artifacts to avoid running out of space in CI
-  # TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
-  RUSTFLAGS: -C strip=symbols -C opt-level=s
+  # Build smaller artifacts to avoid running out of space in CI and make it a bit faster
+  RUSTFLAGS: -C strip=symbols
 
 jobs:
   cargo-fmt:
@@ -77,7 +76,6 @@ jobs:
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
-      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
       - name: Install glibtoolize (macOS)
         run: brew install libtool
         if: runner.os == 'macOS'
@@ -163,7 +161,6 @@ jobs:
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
         if: runner.os == 'macOS'
 
-      # TODO: Workaround for https://github.com/actions/runner-images/issues/9290
       - name: Install glibtoolize (macOS)
         run: brew install libtool
         if: runner.os == 'macOS'
