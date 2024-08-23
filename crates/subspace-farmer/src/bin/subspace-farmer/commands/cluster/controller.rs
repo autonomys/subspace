@@ -40,7 +40,6 @@ const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
-// TODO: Metrics for controller and sub-components
 /// Arguments for controller
 #[derive(Debug, Parser)]
 pub(super) struct ControllerArgs {

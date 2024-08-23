@@ -121,7 +121,6 @@ struct SubstrateNetworkOptions {
 #[derive(Debug, Parser)]
 struct DsnOptions {
     /// Where local DSN node will listen for incoming connections.
-    // TODO: Add more DSN-related parameters
     #[arg(long, default_values_t = [
         Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(30433)),
