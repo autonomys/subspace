@@ -3,6 +3,7 @@ use std::collections::hash_map::Values;
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::hash::Hash;
+use subspace_core_primitives::PieceIndex;
 use subspace_networking::libp2p::kad::RecordKey;
 use tracing::{debug, trace};
 
@@ -85,7 +86,9 @@ where
         self.stored_pieces.insert(key, cache_offset)
     }
 
-    pub(super) fn stored_pieces_offests(&self) -> Values<'_, RecordKey, FarmerCacheOffset<CacheIndex>> {
+    pub(super) fn stored_pieces_offests(
+        &self,
+    ) -> Values<'_, RecordKey, FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.values()
     }
 
@@ -96,12 +99,12 @@ where
         self.stored_pieces.remove(key)
     }
 
-    pub(super) fn free_stored_piece_if<F>(&mut self, pred: F)
-    where
-        F: FnMut(&RecordKey, &mut FarmerCacheOffset<CacheIndex>) -> bool,
-    {
+    pub(super) fn free_unneeded_stored_pieces(
+        &mut self,
+        piece_indices_to_store: &mut HashMap<RecordKey, PieceIndex>,
+    ) {
         self.stored_pieces
-            .extract_if(pred)
+            .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
             .for_each(|(_piece_index, offset)| {
                 // There is no need to adjust the `last_stored_offset` of the `backend` here,
                 // as the free_offset will be preferentially taken from the dangling free offsets

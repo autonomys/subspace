@@ -495,7 +495,7 @@ where
         // Filter-out piece indices that are stored, but should not be as well as clean
         // `inserted_piece_indices` from already stored piece indices, leaving just those that are
         // still missing in cache
-        caches.free_stored_piece_if(|key, _offset| piece_indices_to_store.remove(key).is_none());
+        caches.free_unneeded_stored_pieces(&mut piece_indices_to_store);
 
         if let Some(metrics) = &self.metrics {
             for offset in caches.stored_pieces_offests() {
