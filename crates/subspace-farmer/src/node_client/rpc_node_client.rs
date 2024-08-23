@@ -16,6 +16,9 @@ use subspace_rpc_primitives::{
 
 /// TODO: Node is having a hard time responding for many piece requests, specifically this results
 ///  in subscriptions become broken on the node: https://github.com/paritytech/jsonrpsee/issues/1409
+///  This needs to be removed after Substrate upgrade when we can take advantage of new Substrate
+///  API that will prevent subscription breakage:
+///  https://github.com/paritytech/jsonrpsee/issues/1409#issuecomment-2303914643
 const MAX_CONCURRENT_PIECE_REQUESTS: usize = 10;
 
 /// Node client implementation that connects to node via RPC (WebSockets).

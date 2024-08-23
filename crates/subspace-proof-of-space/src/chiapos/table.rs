@@ -732,7 +732,6 @@ where
     /// Almost the same as [`Self::create()`], but uses parallelism internally for better
     /// performance (though not efficiency of CPU and memory usage), if you create multiple tables
     /// in parallel, prefer [`Self::create()`] for better overall performance.
-    // TODO: Cache more allocations in this function to improve performance further
     #[cfg(any(feature = "parallel", test))]
     pub(super) fn create_parallel<const PARENT_TABLE_NUMBER: u8>(
         last_table: &Table<K, PARENT_TABLE_NUMBER>,

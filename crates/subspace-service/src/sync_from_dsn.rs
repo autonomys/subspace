@@ -177,14 +177,13 @@ async fn create_observer<Block, Client>(
     //         }
     //     })
     // });
-    futures::select! {
+    select! {
         _ = create_imported_blocks_observer(client, notifications_sender.clone()).fuse() => {
             // Runs indefinitely
         }
         _ = create_substrate_network_observer(network_service, notifications_sender).fuse() => {
             // Runs indefinitely
         }
-        // TODO: More sources
     }
 }
 
