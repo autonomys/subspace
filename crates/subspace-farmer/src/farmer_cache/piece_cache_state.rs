@@ -31,6 +31,11 @@ where
         }
     }
 
+    pub(super) fn total_capacity(&self) -> usize {
+        self.backends()
+            .fold(0usize, |acc, backend| acc + backend.total_capacity as usize)
+    }
+
     pub(super) fn pop_free_offset(&mut self) -> Option<FarmerCacheOffset<CacheIndex>> {
         match self.dangling_free_offsets.pop_front() {
             Some(free_offset) => {

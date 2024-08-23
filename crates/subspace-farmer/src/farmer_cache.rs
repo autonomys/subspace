@@ -469,9 +469,7 @@ where
 
         debug!(%last_segment_index, "Identified last segment index");
 
-        let limit = caches
-            .backends()
-            .fold(0usize, |acc, backend| acc + backend.total_capacity as usize);
+        let limit = caches.total_capacity();
         worker_state.heap.clear();
         // Change limit to number of pieces
         worker_state.heap.set_limit(limit);
