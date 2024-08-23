@@ -113,12 +113,8 @@ where
         self.backends.get(usize::from(cache_index))
     }
 
-    pub(super) fn backends(&self) -> impl Iterator<Item = &CacheBackend> {
+    pub(super) fn backends(&self) -> impl ExactSizeIterator<Item = &CacheBackend> {
         self.backends.iter()
-    }
-
-    pub(super) fn backends_count(&self) -> usize {
-        self.backends.len()
     }
 
     pub(super) fn reuse(

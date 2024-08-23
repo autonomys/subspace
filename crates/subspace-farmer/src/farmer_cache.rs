@@ -493,7 +493,7 @@ where
             })
             .collect::<HashMap<_, _>>();
 
-        let mut piece_caches_capacity_used = vec![0u32; caches.backends_count()];
+        let mut piece_caches_capacity_used = vec![0u32; caches.backends().len()];
         // Filter-out piece indices that are stored, but should not be as well as clean
         // `inserted_piece_indices` from already stored piece indices, leaving just those that are
         // still missing in cache
