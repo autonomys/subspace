@@ -85,7 +85,7 @@ where
         self.stored_pieces.insert(key, cache_offset)
     }
 
-    pub(super) fn stored_pieces(&self) -> Values<'_, RecordKey, FarmerCacheOffset<CacheIndex>> {
+    pub(super) fn stored_pieces_offests(&self) -> Values<'_, RecordKey, FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.values()
     }
 

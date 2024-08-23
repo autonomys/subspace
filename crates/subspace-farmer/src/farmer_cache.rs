@@ -498,7 +498,7 @@ where
         caches.free_stored_piece_if(|key, _offset| piece_indices_to_store.remove(key).is_none());
 
         if let Some(metrics) = &self.metrics {
-            for offset in caches.stored_pieces() {
+            for offset in caches.stored_pieces_offests() {
                 piece_caches_capacity_used[usize::from(offset.cache_index)] += 1;
             }
 
