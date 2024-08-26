@@ -9,7 +9,7 @@ use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
-use futures::stream::FuturesUnordered;
+use futures::stream::{self, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
@@ -22,17 +22,25 @@ use std::time::Instant;
 use subspace_core_primitives::{Blake3Hash, SectorIndex};
 use subspace_farmer::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use subspace_farmer::cluster::farmer::{
-    ClusterFarm, ClusterFarmerIdentifyFarmBroadcast, FarmIndex,
+    ClusterFarm, ClusterFarmerFarmDetailsRequest, ClusterFarmerIdentifyBroadcast,
+    ClusterFarmerIdentifyFarmBroadcast, FarmIndex,
 };
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use tokio::task;
 use tokio::time::MissedTickBehavior;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 type AddRemoveFuture<'a> =
     Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>> + 'a>>;
+
+#[derive(Debug)]
+struct KnownFarmer {
+    farmer_id: FarmId,
+    fingerprint: Blake3Hash,
+    last_identification: Instant,
+}
 
 #[derive(Debug)]
 struct KnownFarm {
@@ -56,10 +64,38 @@ enum KnownFarmInsertResult {
 
 #[derive(Debug, Default)]
 struct KnownFarms {
+    known_farmers: Vec<KnownFarmer>,
     known_farms: HashMap<FarmIndex, KnownFarm>,
 }
 
 impl KnownFarms {
+    fn update_farmer(&mut self, farmer_id: FarmId, fingerprint: Blake3Hash) -> bool {
+        let last_identification = Instant::now();
+        if self.known_farmers.iter_mut().any(|known_farmer| {
+            if known_farmer.farmer_id == farmer_id && known_farmer.fingerprint == fingerprint {
+                known_farmer.last_identification = last_identification;
+                self.known_farms.iter_mut().for_each(|(_, known_farm)| {
+                    // All farms in farmer use the same fingerprint
+                    if known_farm.fingerprint == fingerprint {
+                        known_farm.last_identification = last_identification;
+                    }
+                });
+                true
+            } else {
+                false
+            }
+        }) {
+            return false;
+        }
+
+        self.known_farmers.push(KnownFarmer {
+            farmer_id,
+            fingerprint,
+            last_identification,
+        });
+        true
+    }
+
     fn insert_or_update(
         &mut self,
         farm_id: FarmId,
@@ -116,6 +152,9 @@ impl KnownFarms {
 
     fn remove_expired(&mut self) -> impl Iterator<Item = (FarmIndex, KnownFarm)> + '_ {
         let elapsed = FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2;
+        self.known_farmers
+            .retain(move |known_farmer| known_farmer.last_identification.elapsed() <= elapsed);
+
         self.known_farms.extract_if(move |_farm_index, known_farm| {
             known_farm.last_identification.elapsed() > elapsed
         })
@@ -143,6 +182,11 @@ pub(super) async fn maintain_farms(
         Box::pin(pending()) as Pin<Box<dyn Future<Output = (FarmIndex, anyhow::Result<()>)>>>
     ]);
 
+    let farmer_identify_subscription = pin!(nats_client
+        .subscribe_to_broadcasts::<ClusterFarmerIdentifyBroadcast>(None, None)
+        .await
+        .map_err(|error| anyhow!("Failed to subscribe to farmer identify broadcast: {error}"))?);
+
     let farm_identify_subscription = pin!(nats_client
         .subscribe_to_broadcasts::<ClusterFarmerIdentifyFarmBroadcast>(None, None)
         .await
@@ -159,6 +203,7 @@ pub(super) async fn maintain_farms(
     }
 
     let mut farm_identify_subscription = farm_identify_subscription.fuse();
+    let mut farmer_identify_subscription = farmer_identify_subscription.fuse();
     let mut farm_pruning_interval = tokio::time::interval_at(
         (Instant::now() + FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2).into(),
         FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2,
@@ -214,6 +259,19 @@ pub(super) async fn maintain_farms(
                     plotted_pieces,
                 );
             }
+            maybe_identify_message = farmer_identify_subscription.next() => {
+                let Some(identify_message) = maybe_identify_message else {
+                    return Err(anyhow!("Farmer identify stream ended"));
+                };
+
+                process_farmer_identify_message(
+                    identify_message,
+                    nats_client,
+                    &mut known_farms,
+                    &mut farms_to_add_remove,
+                    plotted_pieces,
+                ).await;
+            }
             _ = farm_pruning_interval.tick().fuse() => {
                 for (farm_index, removed_farm) in known_farms.remove_expired() {
                     let farm_id = removed_farm.farm_id;
@@ -267,6 +325,59 @@ pub(super) async fn maintain_farms(
                 }
             }
         }
+    }
+}
+
+async fn process_farmer_identify_message<'a>(
+    identify_message: ClusterFarmerIdentifyBroadcast,
+    nats_client: &'a NatsClient,
+    known_farms: &mut KnownFarms,
+    farms_to_add_remove: &mut VecDeque<AddRemoveFuture<'a>>,
+    plotted_pieces: &'a Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
+) {
+    let ClusterFarmerIdentifyBroadcast {
+        farmer_id,
+        farms_count,
+        fingerprint,
+    } = identify_message;
+
+    if !known_farms.update_farmer(farmer_id, fingerprint) {
+        // Farmer already known, nothing to do
+        debug!(%farmer_id, "Farmer already known, nothing to do");
+        return;
+    };
+
+    let farm_ids = farmer_id.derive_sub_ids(farms_count.into());
+    match nats_client
+        .stream_request(
+            ClusterFarmerFarmDetailsRequest,
+            Some(&farmer_id.to_string()),
+        )
+        .await
+    {
+        Ok(farms_details) => {
+            let mut farms_details = farms_details.zip(stream::iter(farm_ids));
+            while let Some((farm_details, farm_id)) = farms_details.next().await {
+                let farm_identify_message = ClusterFarmerIdentifyFarmBroadcast {
+                    farm_id,
+                    total_sectors_count: farm_details.total_sectors_count,
+                    fingerprint,
+                };
+
+                process_farm_identify_message(
+                    farm_identify_message,
+                    nats_client,
+                    known_farms,
+                    farms_to_add_remove,
+                    plotted_pieces,
+                )
+            }
+        }
+        Err(error) => warn!(
+            %error,
+            %farmer_id,
+            "Failed to request farmer farm details"
+        ),
     }
 }
 
