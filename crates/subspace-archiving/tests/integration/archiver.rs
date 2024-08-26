@@ -9,7 +9,6 @@ use std::num::NonZeroUsize;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, Piece, Record,
@@ -23,26 +22,19 @@ fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     &data[offset as usize + Compact::compact_len(&size)..][..size as usize]
 }
 
-fn record_to_raw_record_bytes(record: &Record) -> impl Iterator<Item = u8> + '_ {
-    // We have zero byte padding from [`Scalar::SAFE_BYTES`] to [`Scalar::FULL_BYTES`] that we need
-    // to skip
-    record
-        .iter()
-        .flat_map(|bytes| &bytes[..Scalar::SAFE_BYTES])
-        .copied()
-}
-
 fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> Vec<u8> {
     let offset: u64 = offset.into();
     let Compact(size) = Compact::<u64>::decode(
-        &mut record_to_raw_record_bytes(record)
+        &mut record
+            .to_raw_record_bytes()
             .skip(offset as usize)
             .take(8)
             .collect::<Vec<_>>()
             .as_slice(),
     )
     .unwrap();
-    record_to_raw_record_bytes(record)
+    record
+        .to_raw_record_bytes()
         .skip(offset as usize + Compact::compact_len(&size))
         .take(size as usize)
         .collect()
@@ -686,7 +678,9 @@ fn object_on_the_edge_of_segment() {
 
     // Ensure bytes are mapped correctly
     assert_eq!(
-        record_to_raw_record_bytes(archived_segments[1].pieces[0].record())
+        archived_segments[1].pieces[0]
+            .record()
+            .to_raw_record_bytes()
             .skip(archived_segments[1].object_mapping[0].objects[0].offset() as usize)
             .take(mapped_bytes.len())
             .collect::<Vec<_>>(),

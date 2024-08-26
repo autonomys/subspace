@@ -200,9 +200,10 @@ impl NewArchivedSegment {
             .zip(piece_indexes)
             .flat_map(|(piece_mappings, piece_index)| {
                 // And then through each individual object mapping in the piece
-                piece_mappings.objects.into_iter().map(move |piece_object| {
-                    GlobalObject::new(piece_object.hash(), piece_index, piece_object.offset())
-                })
+                piece_mappings
+                    .objects
+                    .into_iter()
+                    .map(move |piece_object| GlobalObject::new(piece_index, &piece_object))
             })
     }
 }
@@ -647,16 +648,16 @@ impl Archiver {
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32))
                                 + block_object.offset() as usize;
-                            let offset = (offset_in_segment % RawRecord::SIZE).try_into().expect(
-                                "Offset within piece should always fit in 16-bit integer; qed",
-                            );
-
+                            let raw_piece_offset =
+                                (offset_in_segment % RawRecord::SIZE).try_into().expect(
+                                    "Offset within piece should always fit in 32-bit integer; qed",
+                                );
                             if let Some(piece_object_mapping) = corrected_object_mapping
                                 .get_mut(offset_in_segment / RawRecord::SIZE)
                             {
                                 piece_object_mapping.objects.push(PieceObject::V0 {
                                     hash: block_object.hash(),
-                                    offset,
+                                    offset: raw_piece_offset,
                                 });
                             }
                         }

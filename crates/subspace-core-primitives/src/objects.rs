@@ -95,8 +95,7 @@ pub enum PieceObject {
         /// Object hash
         #[cfg_attr(feature = "serde", serde(with = "hex"))]
         hash: Blake3Hash,
-        // TODO: This is a raw record offset, not a regular one
-        /// Offset of the object in that piece
+        /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
         offset: u32,
     },
 }
@@ -109,7 +108,7 @@ impl PieceObject {
         }
     }
 
-    /// Offset of the object
+    /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
     pub fn offset(&self) -> u32 {
         match self {
             Self::V0 { offset, .. } => *offset,
@@ -134,36 +133,21 @@ pub struct GlobalObject {
     /// Object hash.
     /// We order by hash, so object hash lookups can be performed efficiently.
     #[cfg_attr(feature = "serde", serde(with = "hex"))]
-    hash: Blake3Hash,
+    pub hash: Blake3Hash,
     /// Piece index where object is contained (at least its beginning, might not fit fully)
-    piece_index: PieceIndex,
-    /// Offset of the object in that piece
-    offset: u32,
+    pub piece_index: PieceIndex,
+    /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
+    pub offset: u32,
 }
 
 impl GlobalObject {
-    /// Returns a newly created GlobalObject from its fields.
-    pub fn new(hash: Blake3Hash, piece_index: PieceIndex, offset: u32) -> Self {
+    /// Returns a newly created GlobalObject from a piece index and object.
+    pub fn new(piece_index: PieceIndex, piece_object: &PieceObject) -> Self {
         Self {
-            hash,
+            hash: piece_object.hash(),
             piece_index,
-            offset,
+            offset: piece_object.offset(),
         }
-    }
-
-    /// Object hash
-    pub fn hash(&self) -> Blake3Hash {
-        self.hash
-    }
-
-    /// Piece index where object is contained (at least its beginning, might not fit fully)
-    pub fn piece_index(&self) -> PieceIndex {
-        self.piece_index
-    }
-
-    /// Offset of the object
-    pub fn offset(&self) -> u32 {
-        self.offset
     }
 }
 
