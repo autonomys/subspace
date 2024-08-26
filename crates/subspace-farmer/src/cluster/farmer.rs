@@ -501,8 +501,8 @@ where
     }
 }
 
-// Listen for farmer identification broadcast from controller and publish identification
-// broadcast in response, also send periodic notifications reminding that farm exists
+/// Listen for farmer identification broadcast from controller and publish identification
+/// broadcast in response, also send periodic notifications reminding that farm exists
 async fn identify_responder(
     nats_client: &NatsClient,
     farms_details: &[FarmDetails],
