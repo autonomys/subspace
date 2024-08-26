@@ -58,7 +58,7 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::objects::GlobalObject;
+use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_core_primitives::{
     BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
     Solution,
@@ -77,6 +77,14 @@ const SUBSPACE_ERROR: i32 = 9000;
 /// the fact that channel sender exists
 const SOLUTION_SENDER_CHANNEL_CAPACITY: usize = 9;
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// The number of object mappings to include in each subscription response message.
+///
+/// This is a tradeoff between `RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN` and
+/// `RPC_DEFAULT_MAX_RESPONSE_SIZE_MB`. We estimate 500K mappings per segment,
+///  and the minimum hex-encoded mapping size is 88 bytes.
+// TODO: make this into a CLI option, or calculate this from other CLI options
+const OBJECT_MAPPING_BATCH_SIZE: usize = 10_000;
 
 // TODO: More specific errors instead of `StringError`
 /// Top-level error type for the RPC handler.
@@ -161,7 +169,7 @@ pub trait SubspaceRpcApi {
     #[subscription(
         name = "subspace_subscribeArchivedObjectMappings" => "subspace_archived_object_mappings",
         unsubscribe = "subspace_unsubscribeArchivedObjectMappings",
-        item = GlobalObject,
+        item = GlobalObjectMapping,
     )]
     fn subscribe_archived_object_mappings(&self);
 
@@ -837,7 +845,9 @@ where
                     .global_object_mappings();
 
                 stream::iter(objects)
-            });
+            })
+            .chunks(OBJECT_MAPPING_BATCH_SIZE)
+            .map(|objects| GlobalObjectMapping::V0 { objects });
 
         self.subscription_executor.spawn(
             "subspace-archived-object-mappings-subscription",
