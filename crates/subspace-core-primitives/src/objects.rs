@@ -42,6 +42,7 @@ pub enum BlockObject {
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
+        #[cfg_attr(feature = "serde", serde(with = "hex"))]
         hash: Blake3Hash,
         /// Offset of object in the encoded block.
         offset: u32,
@@ -92,6 +93,7 @@ pub enum PieceObject {
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
+        #[cfg_attr(feature = "serde", serde(with = "hex"))]
         hash: Blake3Hash,
         // TODO: This is a raw record offset, not a regular one
         /// Offset of the object in that piece
@@ -131,6 +133,7 @@ pub struct PieceObjectMapping {
 pub struct GlobalObject {
     /// Object hash.
     /// We order by hash, so object hash lookups can be performed efficiently.
+    #[cfg_attr(feature = "serde", serde(with = "hex"))]
     hash: Blake3Hash,
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     piece_index: PieceIndex,
