@@ -21,13 +21,12 @@
 //! * for global objects in the global history of the blockchain
 
 #[cfg(not(feature = "std"))]
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::{Blake3Hash, PieceIndex};
 #[cfg(not(feature = "std"))]
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::default::Default;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -129,50 +128,78 @@ pub struct PieceObjectMapping {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum GlobalObject {
-    /// V0 of object mapping data structure
-    #[codec(index = 0)]
-    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-    V0 {
-        /// Piece index where object is contained (at least its beginning, might not fit fully).
-        /// The index and offset must be first, so that the Ord derives are valid.
-        piece_index: PieceIndex,
-        /// Offset of the object in that piece
-        offset: u32,
-        /// Object hash
-        hash: Blake3Hash,
-    },
+pub struct GlobalObject {
+    /// Object hash.
+    /// We order by hash, so object hash lookups can be performed efficiently.
+    hash: Blake3Hash,
+    /// Piece index where object is contained (at least its beginning, might not fit fully)
+    piece_index: PieceIndex,
+    /// Offset of the object in that piece
+    offset: u32,
 }
 
 impl GlobalObject {
-    /// Piece index where object is contained (at least its beginning, might not fit fully)
-    pub fn piece_index(&self) -> PieceIndex {
-        match self {
-            Self::V0 { piece_index, .. } => *piece_index,
-        }
-    }
-
-    /// Offset of the object
-    pub fn offset(&self) -> u32 {
-        match self {
-            Self::V0 { offset, .. } => *offset,
+    /// Returns a newly created GlobalObject from its fields.
+    pub fn new(hash: Blake3Hash, piece_index: PieceIndex, offset: u32) -> Self {
+        Self {
+            hash,
+            piece_index,
+            offset,
         }
     }
 
     /// Object hash
     pub fn hash(&self) -> Blake3Hash {
-        match self {
-            Self::V0 { hash, .. } => *hash,
-        }
+        self.hash
+    }
+
+    /// Piece index where object is contained (at least its beginning, might not fit fully)
+    pub fn piece_index(&self) -> PieceIndex {
+        self.piece_index
+    }
+
+    /// Offset of the object
+    pub fn offset(&self) -> u32 {
+        self.offset
     }
 }
 
 /// Mapping of objects stored in the history of the blockchain
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct GlobalObjectMapping {
-    /// Objects stored in the history of the blockchain.
-    /// Mappings are ordered by the piece index and offset of the first GlobalObject in objects.
-    pub objects: Vec<GlobalObject>,
+#[cfg_attr(feature = "serde", serde(rename_all_fields = "camelCase"))]
+pub enum GlobalObjectMapping {
+    /// V0 of object mapping data structure.
+    #[codec(index = 0)]
+    V0 {
+        /// Objects stored in the history of the blockchain.
+        /// Mappings are ordered by the piece index and offset of the first GlobalObject in objects.
+        objects: Vec<GlobalObject>,
+    },
+}
+
+impl Default for GlobalObjectMapping {
+    fn default() -> Self {
+        Self::V0 {
+            objects: Vec::new(),
+        }
+    }
+}
+
+impl GlobalObjectMapping {
+    /// Returns a newly created GlobalObjectMapping from a list of object mappings
+    #[inline]
+    pub fn from_objects(objects: impl IntoIterator<Item = GlobalObject>) -> Self {
+        Self::V0 {
+            objects: objects.into_iter().collect(),
+        }
+    }
+
+    /// Returns the object mappings
+    pub fn objects(&self) -> &[GlobalObject] {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
 }

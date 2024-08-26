@@ -200,14 +200,9 @@ impl NewArchivedSegment {
             .zip(piece_indexes)
             .flat_map(|(piece_mappings, piece_index)| {
                 // And then through each individual object mapping in the piece
-                piece_mappings
-                    .objects
-                    .into_iter()
-                    .map(move |piece_object| GlobalObject::V0 {
-                        piece_index,
-                        offset: piece_object.offset(),
-                        hash: piece_object.hash(),
-                    })
+                piece_mappings.objects.into_iter().map(move |piece_object| {
+                    GlobalObject::new(piece_object.hash(), piece_index, piece_object.offset())
+                })
             })
     }
 }
