@@ -28,6 +28,7 @@ sp-std = { default-features = false, git = "https://github.com/subspace/polkadot
 
 [dev-dependencies]
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
+pallet-messenger = { version = "0.1.0", path = "../messenger" }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 
 [features]
@@ -52,4 +53,5 @@ runtime-benchmarks = [
     "frame-support/runtime-benchmarks",
     "frame-system/runtime-benchmarks",
     "sp-messenger/runtime-benchmarks",
+    "pallet-messenger/runtime-benchmarks",
 ]

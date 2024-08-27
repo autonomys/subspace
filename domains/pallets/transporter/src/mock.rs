@@ -2,12 +2,17 @@ use crate as pallet_transporter;
 use crate::{Config, TryConvertBack};
 use codec::{Decode, Encode};
 use domain_runtime_primitives::MultiAccountId;
+use frame_support::pallet_prelude::{MaxEncodedLen, TypeInfo};
+use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
-use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
-use sp_messenger::messages::ChainId;
+use pallet_messenger::HoldIdentifier;
+use sp_core::U256;
+use sp_domains::{DomainId, MessengerHoldIdentifier};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
+use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId};
 use sp_runtime::traits::{Convert, IdentityLookup};
-use sp_runtime::{BuildStorage, DispatchError};
+use sp_runtime::{BuildStorage, DispatchError, Perbill};
 
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type Balance = u64;
@@ -18,6 +23,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         Transporter: pallet_transporter,
+        Messenger: pallet_messenger,
     }
 );
 
@@ -39,25 +45,85 @@ impl pallet_balances::Config for MockRuntime {
     type Balance = Balance;
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
+    type RuntimeHoldReason = MockHoldIdentifer;
 }
 
 parameter_types! {
     pub SelfChainId: ChainId = 1.into();
     pub const SelfEndpointId: EndpointId = 100;
+    pub const ChannelReserveFee: Balance = 10;
+    pub const ChannelInitReservePortion: Perbill = Perbill::from_percent(20);
+    pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: 1};
+    pub TransactionWeightFee: Balance = 100_000;
+}
+
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum MockHoldIdentifer {
+    Messenger(MessengerHoldIdentifier),
+}
+
+impl VariantCount for MockHoldIdentifer {
+    const VARIANT_COUNT: u32 = 1u32;
+}
+
+#[derive(Debug)]
+pub struct DomainRegistration;
+impl sp_messenger::DomainRegistration for DomainRegistration {
+    fn is_domain_registered(_domain_id: DomainId) -> bool {
+        true
+    }
+}
+
+impl HoldIdentifier<MockRuntime> for MockHoldIdentifer {
+    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
+        MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+    }
+}
+
+impl pallet_messenger::Config for MockRuntime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfChainId = SelfChainId;
+    type Currency = Balances;
+    type WeightInfo = ();
+    type WeightToFee = frame_support::weights::ConstantMultiplier<u64, TransactionWeightFee>;
+    type OnXDMRewards = ();
+    type MmrHash = sp_core::H256;
+    type MmrProofVerifier = ();
+    type StorageKeys = ();
+    type DomainOwner = ();
+    type ChannelReserveFee = ChannelReserveFee;
+    type ChannelInitReservePortion = ChannelInitReservePortion;
+    type HoldIdentifier = MockHoldIdentifer;
+    type DomainRegistration = DomainRegistration;
+    type ChannelFeeModel = ChannelFeeModel;
+    /// function to fetch endpoint response handler by Endpoint.
+    fn get_endpoint_handler(
+        #[allow(unused_variables)] endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
+        #[cfg(feature = "runtime-benchmarks")]
+        return Some(Box::new(crate::EndpointHandler::<MockRuntime>(
+            core::marker::PhantomData,
+        )));
+
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        None
+    }
 }
 
 #[derive(Debug)]
 pub struct MockMessenger {}
 
 impl Sender<AccountId> for MockMessenger {
-    type MessageId = u64;
+    type MessageId = MessageId;
 
     fn send_message(
         _sender: &AccountId,
         _dst_chain_id: ChainId,
         _req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError> {
-        Ok(0)
+        Ok((U256::zero(), U256::zero()))
     }
 
     #[cfg(feature = "runtime-benchmarks")]
@@ -89,7 +155,10 @@ impl Config for MockRuntime {
     type SelfChainId = SelfChainId;
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type Sender = MockMessenger;
+    #[cfg(feature = "runtime-benchmarks")]
+    type Sender = Messenger;
     type AccountIdConverter = MockAccountIdConverter;
     type WeightInfo = ();
 }

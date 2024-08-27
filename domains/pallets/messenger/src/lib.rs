@@ -863,6 +863,7 @@ mod pallet {
                 max_outgoing_messages: 100,
                 fee_model,
             };
+            ChainAllowlist::<T>::mutate(|list| list.insert(dst_chain_id));
             let channel_id = Self::do_init_channel(dst_chain_id, init_params, None, true)?;
             Self::do_open_channel(dst_chain_id, channel_id)?;
             Ok(())

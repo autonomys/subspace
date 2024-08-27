@@ -10,7 +10,7 @@ use frame_system::RawOrigin;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, Sender,
 };
-use sp_runtime::traits::Convert;
+use sp_runtime::traits::{Bounded, Convert};
 use sp_runtime::DispatchError;
 use sp_std::marker::PhantomData;
 
@@ -30,22 +30,21 @@ mod benchmarks {
 
         let amount: BalanceOf<T> = 100u32.into();
         let dst_chain_id: ChainId = u32::MAX.into();
+        let free_balance = BalanceOf::<T>::max_value();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let location = Location {
             chain_id: dst_chain_id,
             account_id: T::AccountIdConverter::convert(receiver),
         };
 
-        T::Currency::make_free_balance_be(&sender, amount + T::Currency::minimum_balance());
+        T::Currency::make_free_balance_be(&sender, free_balance);
         assert_ok!(T::Sender::unchecked_open_channel(dst_chain_id));
 
         #[extrinsic_call]
         _(RawOrigin::Signed(sender.clone()), location, amount);
 
-        assert_eq!(
-            T::Currency::free_balance(&sender),
-            T::Currency::minimum_balance()
-        );
+        // `amount + relayer fee` are deducted
+        assert!(T::Currency::free_balance(&sender) < free_balance - amount);
     }
 
     #[benchmark]
@@ -53,9 +52,13 @@ mod benchmarks {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
         let dst_chain_id: ChainId = u32::MAX.into();
+        let amount = 10u32.into();
+
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        UnconfirmedTransfers::<T>::insert(dst_chain_id, T::SelfChainId::get(), amount);
+
         let transfer_obj: Transfer<BalanceOf<T>> = Transfer {
-            amount: 10u32.into(),
+            amount,
             sender: Location {
                 chain_id: dst_chain_id,
                 account_id: T::AccountIdConverter::convert(sender),
@@ -89,8 +92,11 @@ mod benchmarks {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
         let dst_chain_id: ChainId = u32::MAX.into();
-        assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let amount = 10u32.into();
+
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        CancelledTransfers::<T>::insert(T::SelfChainId::get(), dst_chain_id, amount);
+
         let transfer_obj = Transfer {
             amount,
             sender: Location {

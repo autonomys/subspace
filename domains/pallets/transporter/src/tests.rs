@@ -6,12 +6,15 @@ use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
+use sp_core::U256;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
 };
-use sp_messenger::messages::ChainId;
+use sp_messenger::messages::{ChainId, MessageId};
 use sp_runtime::traits::Convert;
 use std::marker::PhantomData;
+
+const MESSAGE_ID: MessageId = (U256::zero(), U256::zero());
 
 #[test]
 fn test_initiate_transfer_failed() {
@@ -55,11 +58,11 @@ fn test_initiate_transfer() {
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
                 chain_id: dst_chain_id,
-                message_id: 0,
+                message_id: MESSAGE_ID,
             },
         ));
         assert_eq!(
-            Transporter::outgoing_transfers(dst_chain_id, 0).unwrap(),
+            Transporter::outgoing_transfers(dst_chain_id, MESSAGE_ID).unwrap(),
             Transfer {
                 amount: 500,
                 sender: Location {
@@ -109,7 +112,7 @@ fn initiate_transfer(dst_chain_id: ChainId, account: AccountId, amount: Balance)
     System::assert_has_event(RuntimeEvent::Transporter(
         crate::Event::<MockRuntime>::OutgoingTransferInitiated {
             chain_id: dst_chain_id,
-            message_id: 0,
+            message_id: MESSAGE_ID,
         },
     ));
 }
@@ -122,7 +125,7 @@ fn submit_response(
     let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message_response(
         dst_chain_id,
-        0,
+        MESSAGE_ID,
         EndpointRequest {
             src_endpoint: Endpoint::Id(SelfEndpointId::get()),
             dst_endpoint: Endpoint::Id(SelfEndpointId::get()),
@@ -136,7 +139,7 @@ fn submit_transfer(src_chain_id: ChainId, req_payload: Vec<u8>) -> EndpointRespo
     let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message(
         src_chain_id,
-        0,
+        MESSAGE_ID,
         EndpointRequest {
             src_endpoint: Endpoint::Id(SelfEndpointId::get()),
             dst_endpoint: Endpoint::Id(SelfEndpointId::get()),
@@ -222,7 +225,7 @@ fn test_transfer_response_revert() {
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferFailed {
                 chain_id: dst_chain_id,
-                message_id: 0,
+                message_id: MESSAGE_ID,
                 err: Error::<MockRuntime>::InvalidPayload.into(),
             },
         ));
@@ -276,7 +279,7 @@ fn test_transfer_response_successful() {
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferSuccessful {
                 chain_id: dst_chain_id,
-                message_id: 0,
+                message_id: MESSAGE_ID,
             },
         ));
     })
