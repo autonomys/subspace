@@ -4,7 +4,6 @@ pub mod config;
 mod domain;
 pub mod providers;
 pub mod rpc;
-mod transaction_pool;
 
 pub use self::domain::{new_full, DomainOperator, DomainParams, FullPool, NewFull};
 use futures::channel::oneshot;
