@@ -2,6 +2,7 @@ use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
 use sp_std::iter::Peekable;
 use sp_std::prelude::*;
+use subspace_core_primitives::crypto;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_runtime_primitives::Hash;
 
@@ -88,14 +89,24 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     // Add enum variant to the base offset.
     base_offset += 1;
 
-    if let RuntimeCall::Utility(call) = call {
-        extract_utility_block_object_mapping(
+    match call {
+        // Extract the actual object mappings.
+        RuntimeCall::System(frame_system::Call::remark { remark }) => {
+            objects.push(BlockObject::V0 {
+                hash: crypto::blake3_hash(remark),
+                offset: base_offset,
+            });
+        }
+        // Recursively extract object mappings for the call.
+        RuntimeCall::Utility(call) => extract_utility_block_object_mapping(
             base_offset,
             objects,
             call,
             recursion_depth_left,
             successful_calls,
-        );
+        ),
+        // Other calls don't contain object mappings.
+        _ => {}
     }
 }
 
