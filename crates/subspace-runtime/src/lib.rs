@@ -1110,6 +1110,8 @@ mod benches {
         [pallet_runtime_configs, RuntimeConfigs]
         [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
+        [pallet_messenger, Messenger]
+        [pallet_transporter, Transporter]
     );
 }
 

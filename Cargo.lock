@@ -8132,6 +8132,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-balances",
+ "pallet-messenger",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
