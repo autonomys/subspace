@@ -22,8 +22,6 @@ use crate::archiver::incremental_record_commitments::{
 };
 use alloc::collections::VecDeque;
 #[cfg(not(feature = "std"))]
-use alloc::string::String;
-#[cfg(not(feature = "std"))]
 use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
