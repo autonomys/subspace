@@ -99,9 +99,7 @@ impl pallet_messenger::Config for MockRuntime {
     type DomainRegistration = DomainRegistration;
     type ChannelFeeModel = ChannelFeeModel;
     /// function to fetch endpoint response handler by Endpoint.
-    fn get_endpoint_handler(
-        #[allow(unused_variables)] endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
+    fn get_endpoint_handler(_endpoint: &Endpoint) -> Option<Box<dyn EndpointHandler<MessageId>>> {
         #[cfg(feature = "runtime-benchmarks")]
         return Some(Box::new(crate::EndpointHandler::<MockRuntime>(
             core::marker::PhantomData,
