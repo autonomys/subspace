@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum BlockObject {
     /// V0 of object mapping data structure
+    // TODO: move the enum and accessor method to BlockObjectMapping
     #[codec(index = 0)]
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
@@ -89,6 +90,7 @@ pub struct BlockObjectMapping {
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum PieceObject {
     /// V0 of object mapping data structure
+    // TODO: move the enum and accessor method to PieceObjectMapping
     #[codec(index = 0)]
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
