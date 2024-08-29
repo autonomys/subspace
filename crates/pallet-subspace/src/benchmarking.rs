@@ -9,8 +9,8 @@ use frame_benchmarking::v2::*;
 mod benchmarks {
     use crate::{
         AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards, EnableRewardsAt,
-        NextSolutionRangeOverride, Pallet, SegmentCommitment, ShouldAdjustSolutionRange,
-        SolutionRanges,
+        NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
+        PotSlotIterationsUpdateValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -24,9 +24,10 @@ mod benchmarks {
     use sp_core::Get;
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
+    use sp_std::num::NonZeroU32;
     use subspace_core_primitives::{
-        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotOutput, SegmentHeader,
-        SegmentIndex, Solution, SolutionRange,
+        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput,
+        SegmentHeader, SegmentIndex, Solution, SolutionRange,
     };
 
     const SEED: u32 = 0;
@@ -145,6 +146,28 @@ mod benchmarks {
 
         assert!(AllowAuthoringByAnyone::<T>::get());
         assert!(Pallet::<T>::root_plot_public_key().is_none());
+    }
+
+    #[benchmark]
+    fn set_pot_slot_iterations() {
+        let slot_iterations = NonZeroU32::new(PotCheckpoints::NUM_CHECKPOINTS.get() as u32 * 2)
+            .expect("NUM_CHECKPOINTS is non-zero");
+        let next_slot_iterations = slot_iterations
+            .checked_mul(NonZeroU32::new(2).expect("2 is non-zero"))
+            .expect("Not overflow");
+
+        PotSlotIterations::<T>::set(Some(slot_iterations));
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, next_slot_iterations);
+
+        assert_eq!(
+            PotSlotIterationsUpdate::<T>::get(),
+            Some(PotSlotIterationsUpdateValue {
+                target_slot: None,
+                slot_iterations: next_slot_iterations,
+            })
+        );
     }
 
     // Create a dummy segment header
