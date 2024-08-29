@@ -269,7 +269,7 @@ pub mod pallet {
         pub(super) entropy: Blake3Hash,
     }
 
-    #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo)]
+    #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo, PartialEq)]
     pub(super) struct PotSlotIterationsUpdateValue {
         /// Target slot at which entropy should be injected (when known)
         pub(super) target_slot: Option<Slot>,
