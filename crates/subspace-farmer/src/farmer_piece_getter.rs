@@ -20,7 +20,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
-use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
@@ -195,12 +194,14 @@ where
     }
 
     async fn get_piece_fast_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key = RecordKey::from(piece_index.to_multihash());
-
         let inner = &self.inner;
 
         trace!(%piece_index, "Getting piece from farmer cache");
-        if let Some(piece) = inner.farmer_cache.get_piece(key).await {
+        if let Some(piece) = inner
+            .farmer_cache
+            .get_piece(piece_index.to_multihash())
+            .await
+        {
             trace!(%piece_index, "Got piece from farmer cache successfully");
             return Some(piece);
         }

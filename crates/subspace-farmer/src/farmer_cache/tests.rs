@@ -17,7 +17,6 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::libp2p::identity;
-use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -228,14 +227,14 @@ async fn basic() {
 
             for piece_index in requested_pieces {
                 farmer_cache
-                    .get_piece(RecordKey::from(piece_index.to_multihash()))
+                    .get_piece(piece_index.to_multihash())
                     .await
                     .unwrap();
             }
 
             // Other piece indices are not requested or cached
             assert!(farmer_cache
-                .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
+                .get_piece(PieceIndex::from(10).to_multihash())
                 .await
                 .is_none());
         }
@@ -295,7 +294,7 @@ async fn basic() {
             let stored_pieces = vec![PieceIndex::from(196), PieceIndex::from(276)];
             for piece_index in &stored_pieces {
                 farmer_cache
-                    .get_piece(RecordKey::from(piece_index.to_multihash()))
+                    .get_piece(piece_index.to_multihash())
                     .await
                     .unwrap();
             }
@@ -304,7 +303,7 @@ async fn basic() {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
                     assert!(farmer_cache
-                        .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
+                        .get_piece(PieceIndex::from(10).to_multihash())
                         .await
                         .is_none());
                 }
@@ -361,7 +360,7 @@ async fn basic() {
             let stored_pieces = vec![PieceIndex::from(823), PieceIndex::from(859)];
             for piece_index in &stored_pieces {
                 farmer_cache
-                    .get_piece(RecordKey::from(piece_index.to_multihash()))
+                    .get_piece(piece_index.to_multihash())
                     .await
                     .unwrap();
             }
@@ -370,7 +369,7 @@ async fn basic() {
                 if !stored_pieces.contains(&piece_index) {
                     // Other piece indices are not stored anymore
                     assert!(farmer_cache
-                        .get_piece(RecordKey::from(PieceIndex::from(10).to_multihash()))
+                        .get_piece(PieceIndex::from(10).to_multihash())
                         .await
                         .is_none());
                 }

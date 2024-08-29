@@ -1059,7 +1059,11 @@ where
     }
 
     /// Get piece from cache
-    pub async fn get_piece(&self, key: RecordKey) -> Option<Piece> {
+    pub async fn get_piece<Key>(&self, key: Key) -> Option<Piece>
+    where
+        RecordKey: From<Key>,
+    {
+        let key = RecordKey::from(key);
         let maybe_piece_found = {
             let caches = self.piece_caches.read().await;
 
