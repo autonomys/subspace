@@ -20,6 +20,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use tracing::{debug, error, trace};
 
@@ -196,7 +197,11 @@ where
         let inner = &self.inner;
 
         trace!(%piece_index, "Getting piece from farmer cache");
-        if let Some(piece) = inner.farmer_cache.get_piece(piece_index).await {
+        if let Some(piece) = inner
+            .farmer_cache
+            .get_piece(piece_index.to_multihash())
+            .await
+        {
             trace!(%piece_index, "Got piece from farmer cache successfully");
             return Some(piece);
         }

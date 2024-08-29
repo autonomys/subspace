@@ -14,6 +14,7 @@ use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
@@ -126,7 +127,7 @@ where
                 let farmer_cache = farmer_cache.clone();
 
                 async move {
-                    let piece_from_cache = farmer_cache.get_piece(piece_index).await;
+                    let piece_from_cache = farmer_cache.get_piece(piece_index.to_multihash()).await;
 
                     if let Some(piece) = piece_from_cache {
                         Some(PieceByIndexResponse { piece: Some(piece) })

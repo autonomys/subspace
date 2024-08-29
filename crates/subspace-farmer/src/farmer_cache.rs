@@ -1059,8 +1059,11 @@ where
     }
 
     /// Get piece from cache
-    pub async fn get_piece(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key = RecordKey::from(piece_index.to_multihash());
+    pub async fn get_piece<Key>(&self, key: Key) -> Option<Piece>
+    where
+        RecordKey: From<Key>,
+    {
+        let key = RecordKey::from(key);
         let maybe_piece_found = {
             let caches = self.piece_caches.read().await;
 
