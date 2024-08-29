@@ -1,5 +1,4 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
-use crate::transaction_pool::FullChainApiWrapper;
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
@@ -12,7 +11,7 @@ use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
-    ProofProvider,
+    ProofProvider, UsageProvider,
 };
 use sc_consensus::SharedBlockImport;
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
@@ -23,6 +22,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_transaction_pool::{BasicPool, FullChainApi, RevalidationType};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
@@ -113,8 +113,9 @@ where
     _phantom_data: PhantomData<AccountId>,
 }
 
+/// A transaction pool for a full node.
 pub type FullPool<RuntimeApi> =
-    crate::transaction_pool::FullPool<Block, FullClient<Block, RuntimeApi>>;
+    BasicPool<FullChainApi<FullClient<Block, RuntimeApi>, Block>, Block>;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
@@ -196,7 +197,24 @@ where
         telemetry
     });
 
-    let transaction_pool = crate::transaction_pool::new_full(config, &task_manager, client.clone());
+    let prometheus = config.prometheus_registry();
+    let pool_api = Arc::new(FullChainApi::new(
+        client.clone(),
+        prometheus,
+        &task_manager.spawn_essential_handle(),
+    ));
+
+    let transaction_pool = Arc::new(BasicPool::with_revalidation_type(
+        config.transaction_pool.clone(),
+        config.role.is_authority().into(),
+        pool_api,
+        prometheus,
+        RevalidationType::Full,
+        task_manager.spawn_essential_handle(),
+        client.usage_info().chain.best_number,
+        client.usage_info().chain.best_hash,
+        client.usage_info().chain.finalized_hash,
+    ));
 
     let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
         block_import_provider,
@@ -306,7 +324,7 @@ where
             Block,
             FullClient<Block, RuntimeApi>,
             FullPool<RuntimeApi>,
-            FullChainApiWrapper<Block, FullClient<Block, RuntimeApi>>,
+            FullChainApi<FullClient<Block, RuntimeApi>, Block>,
             TFullBackend<Block>,
             AccountId,
             CreateInherentDataProvider<CClient, CBlock>,
