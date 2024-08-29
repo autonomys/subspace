@@ -7857,6 +7857,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-history-seeding"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-sudo",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
@@ -12945,6 +12960,7 @@ dependencies = [
  "pallet-collective",
  "pallet-democracy",
  "pallet-domains",
+ "pallet-history-seeding",
  "pallet-messenger",
  "pallet-mmr",
  "pallet-offences-subspace",

@@ -588,6 +588,10 @@ impl pallet_democracy::Config for Runtime {
     type WeightInfo = pallet_democracy::weights::SubstrateWeight<Runtime>;
 }
 
+impl pallet_history_seeding::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+}
+
 parameter_types! {
     pub const SelfChainId: ChainId = ChainId::Consensus;
 }
@@ -965,6 +969,9 @@ construct_runtime!(
         Council: pallet_collective::<Instance1> = 82,
         Democracy: pallet_democracy = 83,
         Preimage: pallet_preimage = 84,
+
+        // history seeding
+        HistorySeeding: pallet_history_seeding = 91,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
