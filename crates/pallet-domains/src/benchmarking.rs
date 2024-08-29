@@ -8,7 +8,7 @@ use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{
     do_convert_previous_epoch_deposits, do_mark_operators_as_slashed, do_reward_operators,
-    OperatorConfig, OperatorStatus,
+    OperatorConfig, OperatorStatus, WithdrawStake,
 };
 use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
@@ -701,7 +701,7 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            withdraw_amount.into(),
+            WithdrawStake::Share(withdraw_amount.into()),
         ));
         assert_ok!(Domains::<T>::nominate_operator(
             RawOrigin::Signed(nominator.clone()).into(),
@@ -715,7 +715,7 @@ mod benchmarks {
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            withdraw_amount.into(),
+            WithdrawStake::Share(withdraw_amount.into()),
         );
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
@@ -752,7 +752,7 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            withdraw_amount,
+            WithdrawStake::Share(withdraw_amount),
         ));
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");

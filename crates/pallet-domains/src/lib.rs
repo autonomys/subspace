@@ -197,7 +197,7 @@ mod pallet {
         do_deregister_operator, do_mark_operators_as_slashed, do_nominate_operator,
         do_register_operator, do_unlock_funds, do_unlock_nominator, do_withdraw_stake, Deposit,
         DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
-        Withdrawal,
+        WithdrawStake, Withdrawal,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_slash_operator;
@@ -1433,11 +1433,12 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            shares: T::Share,
+            to_withdraw: WithdrawStake<BalanceOf<T>, T::Share>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            do_withdraw_stake::<T>(operator_id, who.clone(), shares).map_err(Error::<T>::from)?;
+            do_withdraw_stake::<T>(operator_id, who.clone(), to_withdraw)
+                .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::WithdrewStake {
                 operator_id,
