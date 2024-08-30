@@ -650,6 +650,15 @@ impl Record {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
     }
+
+    /// Convert from a record to its raw bytes. Used for object reconstruction.
+    pub fn to_raw_record_bytes(&self) -> impl Iterator<Item = u8> + '_ {
+        // We have zero byte padding from [`Scalar::SAFE_BYTES`] to [`Scalar::FULL_BYTES`] that we need
+        // to skip
+        self.iter()
+            .flat_map(|bytes| &bytes[..Scalar::SAFE_BYTES])
+            .copied()
+    }
 }
 
 /// Record commitment contained within a piece.

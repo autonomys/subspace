@@ -22,8 +22,6 @@ use crate::archiver::incremental_record_commitments::{
 };
 use alloc::collections::VecDeque;
 #[cfg(not(feature = "std"))]
-use alloc::string::String;
-#[cfg(not(feature = "std"))]
 use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -203,11 +201,7 @@ impl NewArchivedSegment {
                 piece_mappings
                     .objects
                     .into_iter()
-                    .map(move |piece_object| GlobalObject::V0 {
-                        piece_index,
-                        offset: piece_object.offset(),
-                        hash: piece_object.hash(),
-                    })
+                    .map(move |piece_object| GlobalObject::new(piece_index, &piece_object))
             })
     }
 }
@@ -652,16 +646,16 @@ impl Archiver {
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32))
                                 + block_object.offset() as usize;
-                            let offset = (offset_in_segment % RawRecord::SIZE).try_into().expect(
-                                "Offset within piece should always fit in 16-bit integer; qed",
-                            );
-
+                            let raw_piece_offset =
+                                (offset_in_segment % RawRecord::SIZE).try_into().expect(
+                                    "Offset within piece should always fit in 32-bit integer; qed",
+                                );
                             if let Some(piece_object_mapping) = corrected_object_mapping
                                 .get_mut(offset_in_segment / RawRecord::SIZE)
                             {
                                 piece_object_mapping.objects.push(PieceObject::V0 {
                                     hash: block_object.hash(),
-                                    offset,
+                                    offset: raw_piece_offset,
                                 });
                             }
                         }

@@ -850,9 +850,11 @@ where
                 %last_archived_block_number,
                 "Checking if block needs to be skipped"
             );
-            if best_archived_block_number >= block_number_to_archive
-                || last_archived_block_number > block_number_to_archive
-            {
+
+            // TODO: replace this cfg! with a CLI option
+            let skip_last_archived_blocks = last_archived_block_number > block_number_to_archive
+                && !cfg!(feature = "full-archive");
+            if best_archived_block_number >= block_number_to_archive || skip_last_archived_blocks {
                 // This block was already archived, skip
                 debug!(
                     %importing_block_number,

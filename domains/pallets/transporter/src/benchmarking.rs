@@ -1,8 +1,5 @@
 //! Benchmarking for `pallet-transporter`.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
