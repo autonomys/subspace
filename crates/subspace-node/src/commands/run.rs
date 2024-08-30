@@ -234,6 +234,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                 _,
                                 DomainBlock,
                                 _,
+                                _,
                             >(
                                 ChainId::Consensus,
                                 consensus_chain_node.client.clone(),
@@ -242,6 +243,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                 consensus_chain_node.network_service.clone(),
                                 consensus_msg_receiver,
                                 domain_code_executor.into(),
+                                consensus_chain_node.sync_service.clone(),
                             ),
                         ),
                     );

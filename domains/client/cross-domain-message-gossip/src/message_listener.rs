@@ -10,6 +10,7 @@ use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_api::{ApiError, ApiExt, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_core::crypto::AccountId32;
 use sp_core::storage::StorageKey;
 use sp_core::traits::CodeExecutor;
@@ -80,6 +81,7 @@ impl From<VerificationError> for Error {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_cross_chain_message_listener<
     Client,
     TxPool,
@@ -88,6 +90,7 @@ pub async fn start_cross_chain_message_listener<
     CBlock,
     Block,
     Executor,
+    SO,
 >(
     chain_id: ChainId,
     consensus_client: Arc<CClient>,
@@ -96,6 +99,7 @@ pub async fn start_cross_chain_message_listener<
     network: Arc<dyn NetworkPeers + Send + Sync>,
     mut listener: TxnListener,
     domain_executor: Arc<Executor>,
+    sync_oracle: SO,
 ) where
     TxPool: TransactionPool + 'static,
     Client: ProvideRuntimeApi<BlockOf<TxPool>> + HeaderBackend<BlockOf<TxPool>>,
@@ -106,6 +110,7 @@ pub async fn start_cross_chain_message_listener<
         + RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>,
     TxnListener: Stream<Item = ChainMsg> + Unpin,
     Executor: CodeExecutor + RuntimeVersionOf,
+    SO: SyncOracle + Send,
 {
     tracing::info!(
         target: LOG_TARGET,
@@ -116,6 +121,11 @@ pub async fn start_cross_chain_message_listener<
     let mut domain_storage_key_cache = BTreeMap::<(H256, ChainId, ChannelId), StorageKey>::new();
 
     while let Some(msg) = listener.next().await {
+        // If the client is in major sync, wait until sync is complete
+        if sync_oracle.is_major_syncing() {
+            continue;
+        }
+
         tracing::debug!(
             target: LOG_TARGET,
             "Message received for Chain: {:?}",

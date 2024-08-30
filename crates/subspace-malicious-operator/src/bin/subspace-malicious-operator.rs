@@ -316,6 +316,7 @@ fn main() -> Result<(), Error> {
 
             let consensus_network_service = consensus_chain_node.network_service.clone();
             let consensus_task_spawn_essential_handler = consensus_chain_node.task_manager.spawn_essential_handle();
+            let consensus_sync_service = consensus_chain_node.sync_service.clone();
             consensus_chain_node
                 .task_manager
                 .spawn_essential_handle()
@@ -352,6 +353,7 @@ fn main() -> Result<(), Error> {
                                         _,
                                         DomainBlock,
                                         _,
+                                        _,
                                     >(
                                         ChainId::Consensus,
                                         consensus_chain_node.client.clone(),
@@ -359,7 +361,8 @@ fn main() -> Result<(), Error> {
                                         consensus_chain_node.transaction_pool.clone(),
                                         consensus_network_service,
                                         consensus_msg_receiver,
-                                        domain_code_executor
+                                        domain_code_executor,
+                                        consensus_sync_service,
                                     );
 
                                 consensus_task_spawn_essential_handler

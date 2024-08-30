@@ -2069,6 +2069,7 @@ dependencies = [
  "sc-utils",
  "sp-api",
  "sp-blockchain",
+ "sp-consensus",
  "sp-core",
  "sp-domains",
  "sp-messenger",
