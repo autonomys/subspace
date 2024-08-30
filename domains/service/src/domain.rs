@@ -368,25 +368,31 @@ where
     let mut task_manager = params.task_manager;
     let net_config = sc_network::config::FullNetworkConfiguration::new(&domain_config.network);
 
-    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
-        crate::build_network(BuildNetworkParams {
-            config: &domain_config,
-            net_config,
-            client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
-            spawn_handle: task_manager.spawn_handle(),
-            import_queue: params.import_queue,
-            // TODO: we might want to re-enable this some day.
-            block_announce_validator_builder: None,
-            warp_sync_params: None,
-            block_relay: None,
-            metrics: NotificationMetrics::new(
-                domain_config
-                    .prometheus_config
-                    .as_ref()
-                    .map(|cfg| &cfg.registry),
-            ),
-        })?;
+    let (
+        network_service,
+        system_rpc_tx,
+        tx_handler_controller,
+        network_starter,
+        sync_service,
+        _block_downloader,
+    ) = crate::build_network(BuildNetworkParams {
+        config: &domain_config,
+        net_config,
+        client: client.clone(),
+        transaction_pool: transaction_pool.clone(),
+        spawn_handle: task_manager.spawn_handle(),
+        import_queue: params.import_queue,
+        // TODO: we might want to re-enable this some day.
+        block_announce_validator_builder: None,
+        warp_sync_params: None,
+        block_relay: None,
+        metrics: NotificationMetrics::new(
+            domain_config
+                .prometheus_config
+                .as_ref()
+                .map(|cfg| &cfg.registry),
+        ),
+    })?;
 
     let is_authority = domain_config.role.is_authority();
     domain_config.rpc_id_provider = provider.rpc_id();
