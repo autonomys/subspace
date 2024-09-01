@@ -836,7 +836,7 @@ where
         // The genesis segment isn't included in this stream. In other methods we recreate is as the first segment,
         // but there aren't any mappings in it, so we don't need to recreate it as part of this subscription.
 
-        let stream = self
+        let mapping_stream = self
             .archived_segment_notification_stream
             .subscribe()
             .flat_map(|archived_segment_notification| {
@@ -846,13 +846,13 @@ where
 
                 stream::iter(objects)
             })
-            .chunks(OBJECT_MAPPING_BATCH_SIZE)
+            .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
             .map(|objects| GlobalObjectMapping::V0 { objects });
 
         self.subscription_executor.spawn(
             "subspace-archived-object-mappings-subscription",
             Some("rpc"),
-            pipe_from_stream(pending, stream).boxed(),
+            pipe_from_stream(pending, mapping_stream).boxed(),
         );
     }
 }
