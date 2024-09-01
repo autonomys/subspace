@@ -524,6 +524,7 @@ impl MockConsensusNode {
             _,
             DomainBlock,
             _,
+            _,
         >(
             ChainId::Consensus,
             client.clone(),
@@ -532,6 +533,7 @@ impl MockConsensusNode {
             network_service.clone(),
             consensus_msg_receiver,
             domain_executor,
+            sync_service.clone(),
         );
 
         task_manager

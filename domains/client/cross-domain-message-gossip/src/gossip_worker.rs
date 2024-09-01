@@ -9,6 +9,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::StorageProof;
+use sp_consensus::SyncOracle;
 use sp_core::twox_256;
 use sp_messenger::messages::{ChainId, ChannelId};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
@@ -101,11 +102,11 @@ impl GossipWorkerBuilder {
         network: Network,
         notification_service: Box<dyn NotificationService>,
         sync: Arc<GossipSync>,
-    ) -> GossipWorker<Block, Network>
+    ) -> GossipWorker<Block, Network, GossipSync>
     where
         Block: BlockT,
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
-        GossipSync: GossipSyncing<Block> + 'static,
+        GossipSync: GossipSyncing<Block> + SyncOracle + Send + 'static,
     {
         let Self {
             gossip_msg_stream,
@@ -116,7 +117,7 @@ impl GossipWorkerBuilder {
         let gossip_validator = Arc::new(GossipValidator::new(network.clone()));
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
-            sync,
+            sync.clone(),
             notification_service,
             PROTOCOL_NAME,
             gossip_validator.clone(),
@@ -128,17 +129,19 @@ impl GossipWorkerBuilder {
             gossip_validator,
             gossip_msg_stream,
             chain_sinks,
+            sync_oracle: sync,
         }
     }
 }
 
 /// Gossip worker to gossip incoming and outgoing messages to other peers.
 /// Also, streams the decoded extrinsics to destination chain tx pool if available.
-pub struct GossipWorker<Block: BlockT, Network> {
+pub struct GossipWorker<Block: BlockT, Network, SO> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     gossip_validator: Arc<GossipValidator<Network>>,
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
     chain_sinks: BTreeMap<ChainId, ChainSink>,
+    sync_oracle: Arc<SO>,
 }
 
 /// Returns the network configuration for cross chain message gossip.
@@ -159,7 +162,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
     <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"cross-chain-messages")
 }
 
-impl<Block: BlockT, Network> GossipWorker<Block, Network> {
+impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {
     /// Starts the Gossip message worker.
     pub async fn run(mut self) {
         let incoming_cross_chain_messages = pin!(self
@@ -205,6 +208,11 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
         self.gossip_engine
             .lock()
             .gossip_message(topic::<Block>(), encoded_msg, false);
+
+        // Skip sending the message since the node unable to verify the message before synced
+        if self.sync_oracle.is_major_syncing() {
+            return;
+        }
 
         let Message { chain_id, data } = msg;
         let sink = match self.chain_sinks.get(&chain_id) {
