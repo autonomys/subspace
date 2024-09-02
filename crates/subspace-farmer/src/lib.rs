@@ -52,6 +52,7 @@
 //! improving defaults, the goal is for default behavior to be already as optimal as efficient as
 //! possible.
 
+#[cfg(feature = "cluster")]
 pub mod cluster;
 pub mod disk_piece_cache;
 pub mod farm;
