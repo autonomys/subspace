@@ -83,6 +83,7 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
 pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
 
 /// BLAKE3 hash output wrapper, which serializes it as a hex string
+// TODO: rename this type to Blake3Hash into a newtype, after checking for any breaking changes
 #[derive(
     Debug,
     Default,
