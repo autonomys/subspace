@@ -23,7 +23,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::{Blake3Hash, PieceIndex};
+use crate::{Blake3Hash, Blake3HashHex, PieceIndex};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::default::Default;
@@ -130,16 +130,34 @@ pub struct PieceObjectMapping {
 /// Object stored in the history of the blockchain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(
+    feature = "serde",
+    serde(from = "CompactGlobalObject", into = "CompactGlobalObject")
+)]
 pub struct GlobalObject {
     /// Object hash.
     /// We order by hash, so object hash lookups can be performed efficiently.
-    #[cfg_attr(feature = "serde", serde(with = "hex"))]
     pub hash: Blake3Hash,
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     pub piece_index: PieceIndex,
     /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
     pub offset: u32,
+}
+
+impl From<CompactGlobalObject> for GlobalObject {
+    fn from(object: CompactGlobalObject) -> Self {
+        Self {
+            hash: *object.0,
+            piece_index: object.1,
+            offset: object.2,
+        }
+    }
+}
+
+impl From<GlobalObject> for CompactGlobalObject {
+    fn from(object: GlobalObject) -> CompactGlobalObject {
+        Self(object.hash.into(), object.piece_index, object.offset)
+    }
 }
 
 impl GlobalObject {
@@ -153,6 +171,11 @@ impl GlobalObject {
     }
 }
 
+/// Space-saving serialization of an object stored in the history of the blockchain
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CompactGlobalObject(Blake3HashHex, PieceIndex, u32);
+
 /// Mapping of objects stored in the history of the blockchain
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -163,7 +186,6 @@ pub enum GlobalObjectMapping {
     #[codec(index = 0)]
     V0 {
         /// Objects stored in the history of the blockchain.
-        /// Mappings are ordered by the piece index and offset of the first GlobalObject in objects.
         objects: Vec<GlobalObject>,
     },
 }

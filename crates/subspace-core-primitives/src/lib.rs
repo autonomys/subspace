@@ -82,6 +82,31 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
 /// BLAKE3 hash output
 pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
 
+/// BLAKE3 hash output wrapper, which serializes it as a hex string
+// TODO: rename this type to Blake3Hash into a newtype, after checking for any breaking changes
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    From,
+    Into,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct Blake3HashHex(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
+
 /// Type of randomness.
 #[derive(
     Debug,
