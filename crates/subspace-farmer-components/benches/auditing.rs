@@ -15,7 +15,9 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
-use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions, PlottedSector};
+use subspace_farmer_components::plotting::{
+    plot_sector, CpuRecordsEncoder, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
@@ -115,7 +117,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let mut plotted_sector_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+        let plotted_sector = block_on(plot_sector(PlotSectorOptions {
             public_key,
             sector_index,
             piece_getter: &archived_history_segment,
@@ -126,7 +128,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             sector_output: &mut plotted_sector_bytes,
             downloading_semaphore: black_box(None),
             encoding_semaphore: black_box(None),
-            table_generators: slice::from_mut(&mut table_generator),
+            records_encoder: &mut CpuRecordsEncoder::<PosTable>::new(
+                slice::from_mut(&mut table_generator),
+                &erasure_coding,
+                &Default::default(),
+            ),
             abort_early: &Default::default(),
         }))
         .unwrap();

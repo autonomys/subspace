@@ -27,7 +27,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, DownloadSectorOptions, EncodeSectorOptions, PlottingError,
+    download_sector, encode_sector, CpuRecordsEncoder, DownloadSectorOptions, EncodeSectorOptions,
+    PlottingError,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_proof_of_space::Table;
@@ -356,18 +357,19 @@ where
                     let plotting_fn = || {
                         let mut sector = Vec::new();
 
-                        let plotted_sector = encode_sector::<PosTable>(
+                        let plotted_sector = encode_sector(
                             downloaded_sector,
                             EncodeSectorOptions {
                                 sector_index,
-                                erasure_coding: &erasure_coding,
-                                pieces_in_sector,
                                 sector_output: &mut sector,
-                                table_generators: &mut (0..record_encoding_concurrency.get())
-                                    .map(|_| PosTable::generator())
-                                    .collect::<Vec<_>>(),
+                                records_encoder: &mut CpuRecordsEncoder::<PosTable>::new(
+                                    &mut (0..record_encoding_concurrency.get())
+                                        .map(|_| PosTable::generator())
+                                        .collect::<Vec<_>>(),
+                                    &erasure_coding,
+                                    &global_mutex,
+                                ),
                                 abort_early: &abort_early,
-                                global_mutex: &global_mutex,
                             },
                         )?;
 
