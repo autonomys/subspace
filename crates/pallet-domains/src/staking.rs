@@ -723,7 +723,7 @@ pub enum WithdrawStake<Balance, Share> {
     Percent(Percent),
     /// Withdraw a given amount of stake, calculated by the share price at
     /// this instant, it may not be accurate and may withdraw a bit more
-    /// stake if there is reward happen later in this epoch
+    /// stake if a reward happens later in this epoch
     Stake(Balance),
     /// Withdraw a given amount of share
     Share(Share),
