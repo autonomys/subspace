@@ -1264,8 +1264,6 @@ where
 }
 
 /// Extracts the `PieceIndex` from a `RecordKey`.
-///
-/// SAFETY: The `RecordKey` must be a valid `PieceIndex` multihash.
 fn decode_piece_index_from_record_key(key: &RecordKey) -> PieceIndex {
     let len = key.as_ref().len();
     let s = len - PieceIndex::SIZE;

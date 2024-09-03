@@ -186,7 +186,7 @@ where
         if let Some(top_key) = top_key {
             top_key > key
         } else {
-            false // TODO: consider adding error here
+            false
         }
     }
 }
