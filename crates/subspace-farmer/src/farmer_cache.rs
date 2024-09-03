@@ -847,7 +847,6 @@ where
                         %piece_offset,
                         "Failed to write piece into cache"
                     );
-                    caches.push_stored_piece(old_key, offset);
                 } else {
                     let old_piece_index = decode_piece_index_from_record_key(old_key.record_key());
                     trace!(
