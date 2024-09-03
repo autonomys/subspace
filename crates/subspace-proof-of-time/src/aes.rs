@@ -1,7 +1,7 @@
 //! AES related functionality.
 
 // TODO: Similarly optimized version for aarch64
-#[cfg(all(target_arch = "x86_64", target_feature = "aes"))]
+#[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 #[cfg(not(feature = "std"))]
@@ -15,16 +15,14 @@ use subspace_core_primitives::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 /// Creates the AES based proof.
 #[inline(always)]
 pub(crate) fn create(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
-    #[cfg(all(target_arch = "x86_64", target_feature = "aes"))]
-    {
-        unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) }
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("aes") {
+        return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
     }
-    #[cfg(not(all(target_arch = "x86_64", target_feature = "aes")))]
+
     create_generic(seed, key, checkpoint_iterations)
 }
 
-#[cfg(any(not(all(target_arch = "x86_64", target_feature = "aes")), test))]
-#[inline(always)]
 fn create_generic(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
     let key = Array::from(*key);
     let cipher = Aes128::new(&key);
@@ -105,7 +103,6 @@ mod tests {
 
         // Can encrypt/decrypt.
         let checkpoints = create(seed, key, checkpoint_iterations);
-        #[cfg(target_arch = "x86_64")]
         {
             let generic_checkpoints = create_generic(seed, key, checkpoint_iterations);
             assert_eq!(checkpoints, generic_checkpoints);
