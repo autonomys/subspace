@@ -1,5 +1,5 @@
 use crate::disk_piece_cache::DiskPieceCache;
-use crate::farmer_cache::FarmerCache;
+use crate::farmer_cache::{decode_piece_index_from_record_key, FarmerCache};
 use crate::node_client::{Error, NodeClient};
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -17,6 +17,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::libp2p::identity;
+use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -435,4 +436,22 @@ async fn basic() {
 
         farmer_cache_worker_exited.await.unwrap();
     }
+}
+
+#[test]
+fn decode_piece_index_from_record_key_test() {
+    let piece_index_0 = PieceIndex::from(0);
+    let record_0 = RecordKey::from(piece_index_0.to_multihash());
+    let decode_0 = decode_piece_index_from_record_key(&record_0);
+    assert_eq!(decode_0, piece_index_0);
+
+    let piece_index_123456 = PieceIndex::from(123456);
+    let record_123456 = RecordKey::from(piece_index_123456.to_multihash());
+    let decode_123456 = decode_piece_index_from_record_key(&record_123456);
+    assert_eq!(decode_123456, piece_index_123456);
+
+    let piece_index_max = PieceIndex::from(u64::MAX);
+    let record_max = RecordKey::from(piece_index_max.to_multihash());
+    let decode_max = decode_piece_index_from_record_key(&record_max);
+    assert_eq!(decode_max, piece_index_max);
 }
