@@ -187,7 +187,10 @@ where
                 .runtime_api()
                 .last_confirmed_domain_block_receipt(target_block_hash, request.domain_id);
 
-            debug!(?last_confirmed_block_receipt, "Last confirmed domain block receipt.");
+            debug!(
+                ?last_confirmed_block_receipt,
+                "Last confirmed domain block receipt."
+            );
 
             let response = match last_confirmed_block_receipt {
                 Ok(Some(last_confirmed_block_receipt)) => {
