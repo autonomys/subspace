@@ -27,6 +27,7 @@ use crate::{Blake3Hash, Blake3HashHex, PieceIndex};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::default::Default;
+use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -175,6 +176,63 @@ impl GlobalObject {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CompactGlobalObject(Blake3HashHex, PieceIndex, u32);
+
+/// GlobalObject wrapper in archive order
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Encode, Decode, TypeInfo)]
+pub struct GlobalObjectArchiveOrder(pub GlobalObject);
+
+impl From<GlobalObject> for GlobalObjectArchiveOrder {
+    fn from(object: GlobalObject) -> Self {
+        Self(object)
+    }
+}
+
+impl From<GlobalObjectArchiveOrder> for GlobalObject {
+    fn from(object: GlobalObjectArchiveOrder) -> Self {
+        object.0
+    }
+}
+
+impl Deref for GlobalObjectArchiveOrder {
+    type Target = GlobalObject;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for GlobalObjectArchiveOrder {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Ord for GlobalObjectArchiveOrder {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.0
+            .piece_index
+            .cmp(&other.0.piece_index)
+            .then(self.0.offset.cmp(&other.0.offset))
+            .then(self.0.hash.cmp(&other.0.hash))
+    }
+}
+
+impl PartialOrd for GlobalObjectArchiveOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl GlobalObjectArchiveOrder {
+    /// Returns a placeholder for the inclusive start or exclusive end of a piece index range.
+    pub fn range_bound(piece_index: PieceIndex) -> Self {
+        Self(GlobalObject {
+            piece_index,
+            offset: 0,
+            hash: Blake3Hash::default(),
+        })
+    }
+}
 
 /// Mapping of objects stored in the history of the blockchain
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
