@@ -183,7 +183,8 @@ pub struct NewArchivedSegment {
 }
 
 impl NewArchivedSegment {
-    /// Returns all the object mappings in this archived segment as a lazy iterator.
+    /// Returns all the object mappings in this archived segment as a lazy iterator,
+    /// in archived order.
     pub fn global_object_mappings(&self) -> impl Iterator<Item = GlobalObject> + 'static {
         // Save memory by only returning the necessary parts of NewArchivedSegment
         let object_mapping = self.object_mapping.clone();

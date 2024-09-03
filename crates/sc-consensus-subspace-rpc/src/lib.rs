@@ -51,14 +51,16 @@ use sp_core::H256;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::objects::GlobalObjectMapping;
+use subspace_core_primitives::objects::{
+    GlobalObject, GlobalObjectArchiveOrder, GlobalObjectMapping,
+};
 use subspace_core_primitives::{
     BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber,
     Solution,
@@ -78,13 +80,25 @@ const SUBSPACE_ERROR: i32 = 9000;
 const SOLUTION_SENDER_CHANNEL_CAPACITY: usize = 9;
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// The number of object mappings to include in each subscription response message.
+/// The maximum number of object mappings to include in a method response.
+///
+/// This is set based on `RPC_DEFAULT_MAX_RESPONSE_SIZE_MB`, and a serialized mapping size of
+/// 73-99 bytes.
+// TODO: make this into a CLI option, or calculate this from other CLI options
+const MAX_OBJECT_MAPPINGS_PER_REQUEST: usize = 10_000;
+
+/// The maximum number of object mappings to cache.
+///
+/// This limits memory usage, and is based on 44 bytes per cached mapping.
+/// Cache memory is only used after a subscription has been started.
+const MAX_OBJECT_MAPPINGS_IN_CACHE: usize = MAX_OBJECT_MAPPINGS_PER_REQUEST * 2;
+
+/// The number of object mapping piece indexes to include in each subscription response message.
 ///
 /// This is a tradeoff between `RPC_DEFAULT_MESSAGE_CAPACITY_PER_CONN` and
 /// `RPC_DEFAULT_MAX_RESPONSE_SIZE_MB`. We estimate 500K mappings per segment,
-///  and the minimum hex-encoded mapping size is 88 bytes.
-// TODO: make this into a CLI option, or calculate this from other CLI options
-const OBJECT_MAPPING_BATCH_SIZE: usize = 10_000;
+///  and the serialized index size of 2-19 bytes.
+const MAX_OBJECT_MAPPING_INDEX_BATCH: usize = MAX_OBJECT_MAPPINGS_PER_REQUEST * 5;
 
 // TODO: More specific errors instead of `StringError`
 /// Top-level error type for the RPC handler.
@@ -165,15 +179,22 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_lastSegmentHeaders")]
     async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
-    /// Block/transaction archived object mappings subscription
+    /// Block/transaction archived object mappings.
+    /// Subscription which returns a list of PieceIndexes with mappings.
     #[subscription(
         name = "subspace_subscribeArchivedObjectMappings" => "subspace_archived_object_mappings",
         unsubscribe = "subspace_unsubscribeArchivedObjectMappings",
-        item = GlobalObjectMapping,
+        item = Vec<PieceIndex>,
     )]
     fn subscribe_archived_object_mappings(&self);
 
-    // TODO: add a method for recent/any object mappings based on a list of IDs, piece indexes, or segment indexes
+    /// Method which returns the mappings for a range of PieceIndexes.
+    #[method(name = "subspace_recentArchivedObjectMappings")]
+    async fn recent_archived_object_mappings(
+        &self,
+        piece_index_start: PieceIndex,
+        limit: PieceIndex,
+    ) -> Result<GlobalObjectMapping, Error>;
 }
 
 #[derive(Default)]
@@ -259,6 +280,7 @@ where
     cached_archived_segment: Arc<Mutex<Option<CachedArchivedSegment>>>,
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
+    cached_archived_object_mappings: Arc<Mutex<BTreeSet<GlobalObjectArchiveOrder>>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
     genesis_hash: BlockHash,
@@ -317,6 +339,7 @@ where
             segment_headers_store: config.segment_headers_store,
             cached_archived_segment: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
+            cached_archived_object_mappings: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle: config.sync_oracle,
             genesis_hash,
@@ -828,31 +851,108 @@ where
         Ok(last_segment_headers)
     }
 
-    // TODO:
-    // - the number of object mappings in each segment can be very large (hundreds or thousands).
-    //   To avoid RPC connection failures, limit the number of mappings returned in each response,
-    //   or the number of in-flight responses.
     fn subscribe_archived_object_mappings(&self, pending: PendingSubscriptionSink) {
+        let cached_archived_object_mappings = Arc::clone(&self.cached_archived_object_mappings);
+
         // The genesis segment isn't included in this stream. In other methods we recreate is as the first segment,
         // but there aren't any mappings in it, so we don't need to recreate it as part of this subscription.
-
         let mapping_stream = self
             .archived_segment_notification_stream
             .subscribe()
-            .flat_map(|archived_segment_notification| {
-                let objects = archived_segment_notification
+            .flat_map(move |archived_segment_notification| {
+                let objects: Vec<GlobalObject> = archived_segment_notification
                     .archived_segment
-                    .global_object_mappings();
+                    .global_object_mappings()
+                    .collect();
 
-                stream::iter(objects)
+                // Check if there are one or more mappings to cache
+                if let Some(last_mapping) = objects.last() {
+                    let mut cached_archived_object_mappings =
+                        cached_archived_object_mappings.lock();
+
+                    // Make sure we're the first subscription updating the cache.
+                    // There aren't any mappings in the genesis segment, so we can use zero as a placeholder.
+                    if last_mapping.piece_index
+                        > cached_archived_object_mappings
+                            .iter()
+                            .last()
+                            .map(|mapping| mapping.piece_index)
+                            .unwrap_or(PieceIndex::ZERO)
+                    {
+                        // Add the new mappings to the cache, then remove the oldest mappings if the cache is too large
+                        cached_archived_object_mappings.extend(
+                            objects
+                                .iter()
+                                .map(|mapping| GlobalObjectArchiveOrder::from(*mapping)),
+                        );
+
+                        if cached_archived_object_mappings.len() > MAX_OBJECT_MAPPINGS_IN_CACHE {
+                            // Find the first mapping we want to keep, by value, then split the cache at that point
+                            let new_first_item = cached_archived_object_mappings.len()
+                                - MAX_OBJECT_MAPPINGS_IN_CACHE;
+                            if let Some(new_first_item) = cached_archived_object_mappings
+                                .iter()
+                                .nth(new_first_item)
+                                .cloned()
+                            {
+                                *cached_archived_object_mappings =
+                                    cached_archived_object_mappings.split_off(&new_first_item);
+                            }
+                        }
+                    }
+                }
+
+                // Just return the piece indexes in the subscription response
+                stream::iter(objects.into_iter().map(|mapping| mapping.piece_index))
             })
-            .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
-            .map(|objects| GlobalObjectMapping::V0 { objects });
+            .ready_chunks(MAX_OBJECT_MAPPING_INDEX_BATCH);
 
         self.subscription_executor.spawn(
             "subspace-archived-object-mappings-subscription",
             Some("rpc"),
             pipe_from_stream(pending, mapping_stream).boxed(),
         );
+    }
+
+    // Note: this RPC uses the cached object mappings, which are only updated by archived object mappings subscriptions
+    async fn recent_archived_object_mappings(
+        &self,
+        piece_index_start: PieceIndex,
+        limit: PieceIndex,
+    ) -> Result<GlobalObjectMapping, Error> {
+        self.deny_unsafe.check_if_safe()?;
+
+        // There can be zero or many mappings per piece, so this check is only provides quick
+        // rejection of large requests.
+        if u64::from(limit) as usize > MAX_OBJECT_MAPPINGS_PER_REQUEST {
+            error!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_OBJECT_MAPPINGS_PER_REQUEST
+            );
+
+            return Err(Error::StringError(format!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_OBJECT_MAPPINGS_PER_REQUEST
+            )));
+        };
+
+        // Clamp the request if it exceeds the maximum piece index.
+        let piece_index_end = u64::from(piece_index_start)
+            .checked_add(limit.into())
+            .unwrap_or(u64::MAX);
+        let piece_index_end = GlobalObjectArchiveOrder::range_bound(piece_index_end.into());
+        let piece_index_start = GlobalObjectArchiveOrder::range_bound(piece_index_start);
+
+        // We can't tell the difference between requests for mappings that don't exist, and
+        // requests for pruned past cached mappings, or potential future mappings. So we just
+        // return an empty or partly empty response.
+        let objects = self
+            .cached_archived_object_mappings
+            .lock()
+            .range(piece_index_start..piece_index_end)
+            .map(|mapping| mapping.0)
+            .collect();
+
+        Ok(GlobalObjectMapping::V0 { objects })
     }
 }
