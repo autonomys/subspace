@@ -52,12 +52,7 @@ impl PartialOrd for KeyWithDistance {
 
 impl Ord for KeyWithDistance {
     fn cmp(&self, other: &Self) -> Ordering {
-        let ordering = self.distance.cmp(&other.distance);
-
-        match ordering {
-            Ordering::Equal => self.key.as_ref().cmp(other.key.as_ref()),
-            _ => ordering,
-        }
+        self.distance.cmp(&other.distance)
     }
 }
 
