@@ -29,7 +29,7 @@ use spin::Mutex;
 use tracing::debug;
 
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases
-/// Generated with with following command (using current Ethereum KZG Summoning Ceremony):
+/// Generated using following command (using current Ethereum KZG Summoning Ceremony):
 /// ```bash
 /// curl -s https://seq.ceremony.ethereum.org/info/current_state | jq '.transcripts[3].powersOfTau' | jq -r '.G1Powers + .G2Powers | map(.[2:]) | join("")' | xxd -r -p - eth-public-parameters.bin
 /// ```
@@ -72,10 +72,13 @@ pub fn bytes_to_kzg_settings(
 
     // Below is the same as `FsKZGSettings::new(&s1, &s2, num_g1_powers, &fft_settings)`, but without
     // extra checks (parameters are static anyway) and without unnecessary allocations
+    // TODO: Switch to `::new()` constructor once
+    //  https://github.com/grandinetech/rust-kzg/issues/264 is resolved
     Ok(FsKZGSettings {
         fs: fft_settings,
         secret_g1,
         secret_g2,
+        precomputation: None,
     })
 }
 
