@@ -21,11 +21,12 @@ extern crate alloc;
 pub mod kzg;
 
 use crate::Blake3Hash;
-use ::kzg::Fr;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::string::ToString;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -207,14 +208,36 @@ impl TryFrom<[u8; Self::FULL_BYTES]> for Scalar {
 
     #[inline]
     fn try_from(value: [u8; Self::FULL_BYTES]) -> Result<Self, Self::Error> {
-        FsFr::from_bytes(&value).map(Scalar)
+        // TODO: The whole method should have been just the following line, but upstream `rust-kzg`
+        //  switched to big-endian and we have to maintain little-endian version for now
+        // FsFr::from_bytes(&value).map(Scalar)
+        let mut bls_scalar = blst::blst_scalar::default();
+        let mut fr = blst::blst_fr::default();
+        unsafe {
+            blst::blst_scalar_from_lendian(&mut bls_scalar, value.as_ptr());
+            if !blst::blst_scalar_fr_check(&bls_scalar) {
+                return Err("Invalid scalar".to_string());
+            }
+            blst::blst_fr_from_scalar(&mut fr, &bls_scalar);
+        }
+        Ok(Self(FsFr(fr)))
     }
 }
 
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
     #[inline]
     fn from(value: &Scalar) -> Self {
-        value.0.to_bytes()
+        // TODO: The whole method should have been just the following line, but upstream `rust-kzg`
+        //  switched to big-endian and we have to maintain little-endian version for now
+        // value.0.to_bytes()
+        let mut scalar = blst::blst_scalar::default();
+        let mut bytes = [0u8; 32];
+        unsafe {
+            blst::blst_scalar_from_fr(&mut scalar, &value.0 .0);
+            blst::blst_lendian_from_scalar(bytes.as_mut_ptr(), &scalar);
+        }
+
+        bytes
     }
 }
 

@@ -12545,6 +12545,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "blst",
  "bytes",
  "criterion",
  "derive_more 1.0.0",

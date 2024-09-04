@@ -164,7 +164,7 @@ pub type SlotNumber = u64;
 pub type SolutionRange = u64;
 
 /// Computes the following:
-/// ```
+/// ```text
 /// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
 /// ```
 pub const fn sectors_to_solution_range(
@@ -183,7 +183,7 @@ pub const fn sectors_to_solution_range(
 }
 
 /// Computes the following:
-/// ```
+/// ```text
 /// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
 /// ```
 pub const fn solution_range_to_sectors(
