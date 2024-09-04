@@ -12929,6 +12929,10 @@ dependencies = [
  "cc",
  "rust-kzg-blst",
  "sppark",
+ "subspace-core-primitives",
+ "subspace-erasure-coding",
+ "subspace-farmer-components",
+ "subspace-proof-of-space",
 ]
 
 [[package]]

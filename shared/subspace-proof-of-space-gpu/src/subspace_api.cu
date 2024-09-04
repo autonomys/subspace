@@ -103,7 +103,6 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
                                                 const fr_t* record,
                                                 uint8_t* chunks_scratch,
                                                 uint32_t* proof_count,
-                                                fr_t* source_record_chunks,
                                                 fr_t* parity_record_chunks,
                                                 int gpu_id)
 {
@@ -148,7 +147,6 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
             }
         };
 
-        vm::touch(source_record_chunks, record_size * sizeof(fr_t));
         vm::touch(parity_record_chunks, record_size * sizeof(fr_t));
         vm::touch(challenge_index, challenge_len * sizeof(uint32_t));
         vm::touch(chunks_scratch, challenge_len * 32);
@@ -182,15 +180,12 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
 
         // End of GPU data allocation and initialization.
 
-        // Converts and duplicates data on the GPU, then creates source_record_chunks.
+        // Converts and duplicates data on the GPU.
         convert_to_mont<fr_t><<<gpu.sm_count(), 1024, 0, gpu>>>(&d_record[record_size],
                                                                 &d_record[record_size],
                                                                 record_size);
 
         CUDA_OK(cudaGetLastError());
-
-        // Creates source record chunks, which are the Montgomery form of the original records.
-        gpu.DtoH(source_record_chunks, &d_record[record_size], record_size);
 
         // Performs inverse NTT on the data in d_record with a given lg_record_size.
         NTT::Base_dev_ptr(gpu, &d_record[record_size], lg_record_size,
@@ -257,7 +252,6 @@ RustError::by_value generate_and_encode_pospace_dispatch(uint32_t K,
                                                          const fr_t* record,
                                                          uint8_t* chunks_scratch,
                                                          uint32_t* proof_count,
-                                                         fr_t* source_record_chunks,
                                                          fr_t* parity_record_chunks,
                                                          int gpu_id)
 {
@@ -265,37 +259,30 @@ RustError::by_value generate_and_encode_pospace_dispatch(uint32_t K,
         case 15: return generate_and_encode_pospace<15>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 16: return generate_and_encode_pospace<16>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 17: return generate_and_encode_pospace<17>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 18: return generate_and_encode_pospace<18>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 19: return generate_and_encode_pospace<19>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 20: return generate_and_encode_pospace<20>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         case 21: return generate_and_encode_pospace<21>(key, lg_record_size,
                                                         challenge_index, record,
                                                         chunks_scratch, proof_count,
-                                                        source_record_chunks,
                                                         parity_record_chunks, gpu_id);
         default: return RustError{EINVAL};
     }

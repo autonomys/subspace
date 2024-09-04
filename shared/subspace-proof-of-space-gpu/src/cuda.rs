@@ -2,7 +2,13 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(test)]
+mod tests;
+
 use rust_kzg_blst::types::fr::FsFr;
+use std::ops::DerefMut;
+use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::{PosProof, PosSeed, Record};
 
 extern "C" {
     /// # Returns
@@ -38,90 +44,147 @@ extern "C" {
         record: *const [u8; 32],
         chunks_scratch: *mut [u8; 32],
         proof_count: *mut u32,
-        source_record_chunks: *mut FsFr,
         parity_record_chunks: *mut FsFr,
         gpu_id: i32,
     ) -> sppark::Error;
 }
 
-/// Returns the number of available GPUs
-pub fn gpu_count_api() -> usize {
-    unsafe { gpu_count() }
+/// Returns [`CudaDevice`] for each available device
+pub fn cuda_devices() -> Vec<CudaDevice> {
+    let num_devices = unsafe { gpu_count() };
+
+    (0i32..)
+        .take(num_devices)
+        .map(|gpu_id| CudaDevice { gpu_id })
+        .collect()
 }
 
-/// Generates and encodes PoSpace on the GPU.
-///
-/// This function performs the generation and encoding of PoSpace
-/// on a GPU. It uses the specified parameters to perform the computations and
-/// ensures that errors are properly handled by returning a `Result` type.
-///
-/// # Parameters
-///
-/// ## Input
-///
-/// - `k`: The size parameter for the table.
-/// - `seed`: A 32-byte seed used for the table generation process.
-/// - `record`: A slice of bytes (`&[u8]`). These records are the data on which the proof of space will be generated.
-/// - `gpu_id`: ID of the GPU to use. This parameter specifies which GPU to use for the computation.
-///
-/// ## Output
-///
-/// - `source_record_chunks`: A mutable vector of original data chunks of type FsFr, each 32 bytes in size.
-/// - `parity_record_chunks`: A mutable vector of parity chunks derived from the source, each 32 bytes in size.
-/// - `proof_count`: A mutable reference to the proof count. This value will be updated with the number of proofs generated.
-/// - `chunks_scratch`:  A mutable vector used to store the processed chunks. This vector holds the final results after combining record chunks and proof hashes.
-/// - `challenge_index`: A mutable vector used to map the challenges to specific parts of the data.
-pub fn generate_and_encode_pospace(
-    k: u8,
-    seed: &[u8; 32],
-    record: &[[u8; 32]],
+/// Wrapper data structure encapsulating a single CUDA-capable device
+#[derive(Debug)]
+pub struct CudaDevice {
     gpu_id: i32,
-) -> Result<(u32, Vec<[u8; 32]>, Vec<u32>, Vec<FsFr>, Vec<FsFr>), String> {
-    let record_len = record.len();
-    let challenge_len = 2 * record_len;
-    let lg_record_size = (record_len).ilog2();
+}
 
-    if challenge_len > u32::MAX as usize {
-        return Err(String::from("challenge_len is too large to fit in u32"));
+impl CudaDevice {
+    /// Cuda device ID
+    pub fn id(&self) -> i32 {
+        self.gpu_id
     }
 
-    let mut proof_count = 0u32;
-    let mut chunks_scratch = Vec::<[u8; 32]>::with_capacity(challenge_len);
-    let mut challenge_index = Vec::<u32>::with_capacity(challenge_len);
-    let mut source_record_chunks = Vec::<FsFr>::with_capacity(record_len);
-    let mut parity_record_chunks = Vec::<FsFr>::with_capacity(record_len);
+    /// Generates and encodes PoSpace on the GPU.
+    ///
+    /// This function performs the generation and encoding of PoSpace
+    /// on a GPU. It uses the specified parameters to perform the computations and
+    /// ensures that errors are properly handled by returning a `Result` type.
+    ///
+    /// # Parameters
+    ///
+    /// ## Input
+    ///
+    /// - `k`: The size parameter for the table.
+    /// - `seed`: A 32-byte seed used for the table generation process.
+    /// - `record`: A slice of bytes (`&[u8]`). These records are the data on which the proof of space will be generated.
+    /// - `gpu_id`: ID of the GPU to use. This parameter specifies which GPU to use for the computation.
+    ///
+    /// ## Output
+    ///
+    /// - `source_record_chunks`: A mutable vector of original data chunks of type FsFr, each 32 bytes in size.
+    /// - `parity_record_chunks`: A mutable vector of parity chunks derived from the source, each 32 bytes in size.
+    /// - `proof_count`: A mutable reference to the proof count. This value will be updated with the number of proofs generated.
+    /// - `chunks_scratch`:  A mutable vector used to store the processed chunks. This vector holds the final results after combining record chunks and proof hashes.
+    /// - `challenge_index`: A mutable vector used to map the challenges to specific parts of the data.
+    pub fn generate_and_encode_pospace(
+        &self,
+        seed: &PosSeed,
+        record: &mut Record,
+        encoded_chunks_used_output: impl ExactSizeIterator<Item = impl DerefMut<Target = bool>>,
+    ) -> Result<(), String> {
+        let record_len = Record::NUM_CHUNKS;
+        let challenge_len = Record::NUM_S_BUCKETS;
+        let lg_record_size = record_len.ilog2();
 
-    let err = unsafe {
-        generate_and_encode_pospace_dispatch(
-            k as u32,
-            seed,
-            lg_record_size,
-            challenge_index.as_mut_ptr(),
-            record.as_ptr(),
-            chunks_scratch.as_mut_ptr(),
-            &mut proof_count,
-            source_record_chunks.as_mut_ptr(),
-            parity_record_chunks.as_mut_ptr(),
-            gpu_id,
-        )
-    };
+        if challenge_len > u32::MAX as usize {
+            return Err(String::from("challenge_len is too large to fit in u32"));
+        }
 
-    if err.code != 0 {
-        return Err(String::from(err));
+        let mut proof_count = 0u32;
+        let mut chunks_scratch_gpu = Vec::<[u8; Scalar::FULL_BYTES]>::with_capacity(challenge_len);
+        let mut challenge_index_gpu = Vec::<u32>::with_capacity(challenge_len);
+        let mut parity_record_chunks = Vec::<Scalar>::with_capacity(Record::NUM_CHUNKS);
+
+        let err = unsafe {
+            generate_and_encode_pospace_dispatch(
+                u32::from(PosProof::K),
+                &**seed,
+                lg_record_size,
+                challenge_index_gpu.as_mut_ptr(),
+                record.as_ptr(),
+                chunks_scratch_gpu.as_mut_ptr(),
+                &mut proof_count,
+                Scalar::slice_mut_to_repr(&mut parity_record_chunks).as_mut_ptr(),
+                self.gpu_id,
+            )
+        };
+
+        if err.code != 0 {
+            return Err(String::from(err));
+        }
+
+        let proof_count = proof_count as usize;
+        unsafe {
+            chunks_scratch_gpu.set_len(proof_count);
+            challenge_index_gpu.set_len(proof_count);
+            parity_record_chunks.set_len(Record::NUM_CHUNKS);
+        }
+
+        let mut encoded_chunks_used = vec![false; challenge_len];
+        let source_record_chunks = record.to_vec();
+
+        let mut chunks_scratch = challenge_index_gpu
+            .into_iter()
+            .zip(chunks_scratch_gpu)
+            .collect::<Vec<_>>();
+
+        chunks_scratch
+            .sort_unstable_by(|(a_out_index, _), (b_out_index, _)| a_out_index.cmp(b_out_index));
+
+        // We don't need all the proofs
+        chunks_scratch.truncate(proof_count.min(Record::NUM_CHUNKS));
+
+        for (out_index, _chunk) in &chunks_scratch {
+            encoded_chunks_used[*out_index as usize] = true;
+        }
+
+        encoded_chunks_used_output
+            .zip(&encoded_chunks_used)
+            .for_each(|(mut output, input)| *output = *input);
+
+        record
+            .iter_mut()
+            .zip(
+                chunks_scratch
+                    .into_iter()
+                    .map(|(_out_index, chunk)| chunk)
+                    .chain(
+                        source_record_chunks
+                            .into_iter()
+                            .zip(parity_record_chunks)
+                            .flat_map(|(a, b)| [a, b.to_bytes()])
+                            .zip(encoded_chunks_used.iter())
+                            // Skip chunks that were used previously
+                            .filter_map(|(record_chunk, encoded_chunk_used)| {
+                                if *encoded_chunk_used {
+                                    None
+                                } else {
+                                    Some(record_chunk)
+                                }
+                            }),
+                    ),
+            )
+            .for_each(|(output_chunk, input_chunk)| {
+                *output_chunk = input_chunk;
+            });
+
+        Ok(())
     }
-
-    unsafe {
-        chunks_scratch.set_len(challenge_len);
-        challenge_index.set_len(challenge_len);
-        source_record_chunks.set_len(record_len);
-        parity_record_chunks.set_len(record_len);
-    }
-
-    Ok((
-        proof_count,
-        chunks_scratch,
-        challenge_index,
-        source_record_chunks,
-        parity_record_chunks,
-    ))
 }
