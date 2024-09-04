@@ -1,10 +1,13 @@
-//! CPU plotter
+//! GPU plotter
 
+#[cfg(feature = "cuda")]
+pub mod cuda;
+mod gpu_encoders_manager;
 pub mod metrics;
 
-use crate::plotter::cpu::metrics::CpuPlotterMetrics;
+use crate::plotter::gpu::gpu_encoders_manager::GpuRecordsEncoderManager;
+use crate::plotter::gpu::metrics::GpuPlotterMetrics;
 use crate::plotter::{Plotter, SectorPlottingProgress};
-use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
@@ -13,12 +16,10 @@ use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
 use prometheus_client::registry::Registry;
-use std::any::type_name;
 use std::error::Error;
 use std::fmt;
 use std::future::pending;
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
+use std::num::TryFromIntError;
 use std::pin::pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -27,11 +28,10 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, CpuRecordsEncoder, DownloadSectorOptions, EncodeSectorOptions,
-    PlottingError,
+    download_sector, encode_sector, DownloadSectorOptions, EncodeSectorOptions, PlottingError,
+    RecordsEncoder,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
-use subspace_proof_of_space::Table;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{warn, Instrument};
@@ -45,12 +45,17 @@ struct Handlers {
     plotting_progress: Handler3<PublicKey, SectorIndex, SectorPlottingProgress>,
 }
 
-/// CPU plotter
-pub struct CpuPlotter<PG, PosTable> {
+/// GPU-specific [`RecordsEncoder`] with extra APIs
+pub trait GpuRecordsEncoder: RecordsEncoder + fmt::Debug + Send {
+    /// GPU encoder type, typically related to GPU vendor
+    const TYPE: &'static str;
+}
+
+/// GPU plotter
+pub struct GpuPlotter<PG, GRE> {
     piece_getter: PG,
     downloading_semaphore: Arc<Semaphore>,
-    plotting_thread_pool_manager: PlottingThreadPoolManager,
-    record_encoding_concurrency: NonZeroUsize,
+    gpu_records_encoders_manager: GpuRecordsEncoderManager<GRE>,
     global_mutex: Arc<AsyncMutex<()>>,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
@@ -58,18 +63,21 @@ pub struct CpuPlotter<PG, PosTable> {
     tasks_sender: mpsc::Sender<AsyncJoinOnDrop<()>>,
     _background_tasks: AsyncJoinOnDrop<()>,
     abort_early: Arc<AtomicBool>,
-    metrics: Option<Arc<CpuPlotterMetrics>>,
-    _phantom: PhantomData<PosTable>,
+    metrics: Option<Arc<GpuPlotterMetrics>>,
 }
 
-impl<PG, PosTable> fmt::Debug for CpuPlotter<PG, PosTable> {
+impl<PG, GRE> fmt::Debug for GpuPlotter<PG, GRE>
+where
+    GRE: GpuRecordsEncoder + 'static,
+{
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CpuPlotter").finish_non_exhaustive()
+        f.debug_struct(&format!("GpuPlotter[type = {}]", GRE::TYPE))
+            .finish_non_exhaustive()
     }
 }
 
-impl<PG, PosTable> Drop for CpuPlotter<PG, PosTable> {
+impl<PG, RE> Drop for GpuPlotter<PG, RE> {
     #[inline]
     fn drop(&mut self) {
         self.abort_early.store(true, Ordering::Release);
@@ -78,10 +86,10 @@ impl<PG, PosTable> Drop for CpuPlotter<PG, PosTable> {
 }
 
 #[async_trait]
-impl<PG, PosTable> Plotter for CpuPlotter<PG, PosTable>
+impl<PG, GRE> Plotter for GpuPlotter<PG, GRE>
 where
     PG: PieceGetter + Clone + Send + Sync + 'static,
-    PosTable: Table,
+    GRE: GpuRecordsEncoder + 'static,
 {
     async fn has_free_capacity(&self) -> Result<bool, String> {
         Ok(self.downloading_semaphore.available_permits() > 0)
@@ -93,7 +101,7 @@ where
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
-        replotting: bool,
+        _replotting: bool,
         mut progress_sender: mpsc::Sender<SectorPlottingProgress>,
     ) {
         let start = Instant::now();
@@ -135,7 +143,6 @@ where
             sector_index,
             farmer_protocol_info,
             pieces_in_sector,
-            replotting,
             progress_sender,
         )
         .await
@@ -147,7 +154,7 @@ where
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
-        replotting: bool,
+        _replotting: bool,
         progress_sender: mpsc::Sender<SectorPlottingProgress>,
     ) -> bool {
         let start = Instant::now();
@@ -164,7 +171,6 @@ where
             sector_index,
             farmer_protocol_info,
             pieces_in_sector,
-            replotting,
             progress_sender,
         )
         .await;
@@ -173,23 +179,23 @@ where
     }
 }
 
-impl<PG, PosTable> CpuPlotter<PG, PosTable>
+impl<PG, GRE> GpuPlotter<PG, GRE>
 where
     PG: PieceGetter + Clone + Send + Sync + 'static,
-    PosTable: Table,
+    GRE: GpuRecordsEncoder + 'static,
 {
-    /// Create new instance
-    #[allow(clippy::too_many_arguments)]
+    /// Create new instance.
+    ///
+    /// Returns an error if empty list of encoders is provided.
     pub fn new(
         piece_getter: PG,
         downloading_semaphore: Arc<Semaphore>,
-        plotting_thread_pool_manager: PlottingThreadPoolManager,
-        record_encoding_concurrency: NonZeroUsize,
+        gpu_records_encoders: Vec<GRE>,
         global_mutex: Arc<AsyncMutex<()>>,
         kzg: Kzg,
         erasure_coding: ErasureCoding,
         registry: Option<&mut Registry>,
-    ) -> Self {
+    ) -> Result<Self, TryFromIntError> {
         let (tasks_sender, mut tasks_receiver) = mpsc::channel(1);
 
         // Basically runs plotting tasks in the background and allows to abort on drop
@@ -219,19 +225,19 @@ where
         );
 
         let abort_early = Arc::new(AtomicBool::new(false));
+        let gpu_records_encoders_manager = GpuRecordsEncoderManager::new(gpu_records_encoders)?;
         let metrics = registry.map(|registry| {
-            Arc::new(CpuPlotterMetrics::new(
+            Arc::new(GpuPlotterMetrics::new(
                 registry,
-                type_name::<PosTable>(),
-                plotting_thread_pool_manager.thread_pool_pairs(),
+                GRE::TYPE,
+                gpu_records_encoders_manager.gpu_records_encoders(),
             ))
         });
 
-        Self {
+        Ok(Self {
             piece_getter,
             downloading_semaphore,
-            plotting_thread_pool_manager,
-            record_encoding_concurrency,
+            gpu_records_encoders_manager,
             global_mutex,
             kzg,
             erasure_coding,
@@ -240,8 +246,7 @@ where
             _background_tasks: background_tasks,
             abort_early,
             metrics,
-            _phantom: PhantomData,
-        }
+        })
     }
 
     /// Subscribe to plotting progress notifications
@@ -261,7 +266,6 @@ where
         sector_index: SectorIndex,
         farmer_protocol_info: FarmerProtocolInfo,
         pieces_in_sector: u16,
-        replotting: bool,
         mut progress_sender: PS,
     ) where
         PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
@@ -280,8 +284,7 @@ where
 
         let plotting_fut = {
             let piece_getter = self.piece_getter.clone();
-            let plotting_thread_pool_manager = self.plotting_thread_pool_manager.clone();
-            let record_encoding_concurrency = self.record_encoding_concurrency;
+            let gpu_records_encoders_manager = self.gpu_records_encoders_manager.clone();
             let global_mutex = Arc::clone(&self.global_mutex);
             let kzg = self.kzg.clone();
             let erasure_coding = self.erasure_coding.clone();
@@ -349,16 +352,10 @@ where
 
                 // Plotting
                 let (sector, plotted_sector) = {
-                    let thread_pools = plotting_thread_pool_manager.get_thread_pools().await;
+                    let mut records_encoder = gpu_records_encoders_manager.get_encoder().await;
                     if let Some(metrics) = &metrics {
                         metrics.plotting_capacity_used.inc();
                     }
-
-                    let thread_pool = if replotting {
-                        &thread_pools.replotting
-                    } else {
-                        &thread_pools.plotting
-                    };
 
                     // Give a chance to interrupt plotting if necessary
                     yield_now().await;
@@ -379,31 +376,22 @@ where
                     let encoding_start = Instant::now();
 
                     let plotting_result = tokio::task::block_in_place(|| {
-                        thread_pool.install(|| {
-                            let mut sector = Vec::new();
-                            let mut generators = (0..record_encoding_concurrency.get())
-                                .map(|_| PosTable::generator())
-                                .collect::<Vec<_>>();
-                            let mut records_encoder = CpuRecordsEncoder::<PosTable>::new(
-                                &mut generators,
-                                &erasure_coding,
-                                &global_mutex,
-                            );
+                        let mut sector = Vec::new();
 
-                            let plotted_sector = encode_sector(
-                                downloaded_sector,
-                                EncodeSectorOptions {
-                                    sector_index,
-                                    sector_output: &mut sector,
-                                    records_encoder: &mut records_encoder,
-                                    abort_early: &abort_early,
-                                },
-                            )?;
+                        let plotted_sector = encode_sector(
+                            downloaded_sector,
+                            EncodeSectorOptions {
+                                sector_index,
+                                sector_output: &mut sector,
+                                records_encoder: &mut *records_encoder,
+                                abort_early: &abort_early,
+                            },
+                        )?;
 
-                            Ok((sector, plotted_sector))
-                        })
+                        Ok((sector, plotted_sector))
                     });
-                    drop(thread_pools);
+                    drop(records_encoder);
+
                     if let Some(metrics) = &metrics {
                         metrics.plotting_capacity_used.dec();
                     }
@@ -476,7 +464,7 @@ struct ProgressUpdater {
     public_key: PublicKey,
     sector_index: SectorIndex,
     handlers: Arc<Handlers>,
-    metrics: Option<Arc<CpuPlotterMetrics>>,
+    metrics: Option<Arc<GpuPlotterMetrics>>,
 }
 
 impl ProgressUpdater {

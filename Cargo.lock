@@ -12672,6 +12672,7 @@ dependencies = [
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
+ "subspace-proof-of-space-gpu",
  "subspace-rpc-primitives",
  "substrate-bip39 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "supports-color",

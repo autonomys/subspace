@@ -392,8 +392,8 @@ where
                             // Take mutex briefly to make sure encoding is allowed right now
                             global_mutex.lock_blocking();
 
-                            // This instead of `while` above because otherwise mutex will be held for
-                            // the duration of the loop and will limit concurrency to 1 table generator
+                            // This instead of `while` above because otherwise mutex will be held
+                            // for the duration of the loop and will limit concurrency to 1 record
                             let Some(((piece_offset, record), encoded_chunks_used)) =
                                 iter.lock().next()
                             else {

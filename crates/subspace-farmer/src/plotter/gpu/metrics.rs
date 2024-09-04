@@ -1,4 +1,4 @@
-//! Metrics for CPU plotter
+//! Metrics for GPU plotter
 
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
@@ -7,9 +7,9 @@ use prometheus_client::registry::{Registry, Unit};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 
-/// Metrics for CPU plotter
+/// Metrics for GPU plotter
 #[derive(Debug)]
-pub(super) struct CpuPlotterMetrics {
+pub(super) struct GpuPlotterMetrics {
     pub(super) sector_downloading_time: Histogram,
     pub(super) sector_encoding_time: Histogram,
     pub(super) sector_plotting_time: Histogram,
@@ -23,7 +23,7 @@ pub(super) struct CpuPlotterMetrics {
     pub(super) plotting_capacity_used: Gauge<i64, AtomicI64>,
 }
 
-impl CpuPlotterMetrics {
+impl GpuPlotterMetrics {
     /// Create new instance
     pub(super) fn new(
         registry: &mut Registry,
@@ -32,7 +32,7 @@ impl CpuPlotterMetrics {
     ) -> Self {
         let registry = registry
             .sub_registry_with_prefix("plotter")
-            .sub_registry_with_label(("kind".into(), format!("cpu-{subtype}").into()));
+            .sub_registry_with_label(("kind".into(), format!("gpu-{subtype}").into()));
 
         let sector_downloading_time = Histogram::new(exponential_buckets(0.1, 2.0, 15));
         registry.register_with_unit(

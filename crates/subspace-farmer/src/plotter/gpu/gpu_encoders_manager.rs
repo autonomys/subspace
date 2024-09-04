@@ -1,52 +1,47 @@
 //! Thread pool managing utilities for plotting purposes
 
+use crate::plotter::gpu::GpuRecordsEncoder;
 use event_listener::Event;
 use parking_lot::Mutex;
-use rayon::{ThreadPool, ThreadPoolBuildError};
-use std::num::NonZeroUsize;
-use std::ops::Deref;
+use std::num::{NonZeroUsize, TryFromIntError};
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-/// A wrapper around thread pool pair for plotting purposes
-#[derive(Debug)]
-pub struct PlottingThreadPoolPair {
-    /// Plotting thread pool
-    pub plotting: ThreadPool,
-    /// Replotting thread pool
-    pub replotting: ThreadPool,
-}
-
-#[derive(Debug)]
-struct Inner {
-    thread_pool_pairs: Vec<PlottingThreadPoolPair>,
-}
-
-/// Wrapper around [`PlottingThreadPoolPair`] that on `Drop` will return thread pool back into
-/// corresponding [`PlottingThreadPoolManager`].
+/// Wrapper around [`GpuEncoder`] that on `Drop` will return thread pool back into
+/// corresponding [`GpuRecordsEncoderManager`].
 #[derive(Debug)]
 #[must_use]
-pub struct PlottingThreadPoolsGuard {
-    inner: Arc<(Mutex<Inner>, Event)>,
-    thread_pool_pair: Option<PlottingThreadPoolPair>,
+pub(super) struct GpuRecordsEncoderGuard<GRE> {
+    inner: Arc<(Mutex<Vec<GRE>>, Event)>,
+    gpu_records_encoder: Option<GRE>,
 }
 
-impl Deref for PlottingThreadPoolsGuard {
-    type Target = PlottingThreadPoolPair;
+impl<GRE> Deref for GpuRecordsEncoderGuard<GRE> {
+    type Target = GRE;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.thread_pool_pair
+        self.gpu_records_encoder
             .as_ref()
             .expect("Value exists until `Drop`; qed")
     }
 }
 
-impl Drop for PlottingThreadPoolsGuard {
+impl<GRE> DerefMut for GpuRecordsEncoderGuard<GRE> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.gpu_records_encoder
+            .as_mut()
+            .expect("Value exists until `Drop`; qed")
+    }
+}
+
+impl<GRE> Drop for GpuRecordsEncoderGuard<GRE> {
     #[inline]
     fn drop(&mut self) {
         let (mutex, event) = &*self.inner;
-        mutex.lock().thread_pool_pairs.push(
-            self.thread_pool_pair
+        mutex.lock().push(
+            self.gpu_records_encoder
                 .take()
                 .expect("Happens only once in `Drop`; qed"),
         );
@@ -54,61 +49,53 @@ impl Drop for PlottingThreadPoolsGuard {
     }
 }
 
-/// Plotting thread pool manager.
+/// GPU records encoder manager.
 ///
-/// This abstraction wraps a set of thread pool pairs and allows to use them one at a time.
-///
-/// Each pair contains one thread pool for plotting purposes and one for replotting, this is because
-/// they'll share the same set of CPU cores in most cases, and it would be inefficient to use them
-/// concurrently.
-///
-/// For example on machine with 64 logical cores and 4 NUMA nodes it would be recommended to create
-/// 4 thread pools with 16 threads each plotting thread pool and 8 threads in each replotting thread
-/// pool, which would mean work done within thread pool is tied to CPU cores dedicated for that
-/// thread pool.
-#[derive(Debug, Clone)]
-pub struct PlottingThreadPoolManager {
-    inner: Arc<(Mutex<Inner>, Event)>,
-    thread_pool_pairs: NonZeroUsize,
+/// This abstraction wraps a set of GPU records encoders and allows to use them one at a time.
+#[derive(Debug)]
+pub(super) struct GpuRecordsEncoderManager<GRE> {
+    inner: Arc<(Mutex<Vec<GRE>>, Event)>,
+    gpu_records_encoders: NonZeroUsize,
 }
 
-impl PlottingThreadPoolManager {
-    /// Create new thread pool manager by instantiating `thread_pools` thread pools using
-    /// `create_thread_pool`.
+impl<GRE> Clone for GpuRecordsEncoderManager<GRE> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            gpu_records_encoders: self.gpu_records_encoders,
+        }
+    }
+}
+
+impl<GRE> GpuRecordsEncoderManager<GRE>
+where
+    GRE: GpuRecordsEncoder,
+{
+    /// Create new instance.
     ///
-    /// `create_thread_pool` takes one argument `thread_pool_index`.
-    pub fn new<C>(
-        create_thread_pools: C,
-        thread_pool_pairs: NonZeroUsize,
-    ) -> Result<Self, ThreadPoolBuildError>
-    where
-        C: FnMut(usize) -> Result<PlottingThreadPoolPair, ThreadPoolBuildError>,
-    {
-        let inner = Inner {
-            thread_pool_pairs: (0..thread_pool_pairs.get())
-                .map(create_thread_pools)
-                .collect::<Result<Vec<_>, _>>()?,
-        };
+    /// Returns an error if empty list of encoders is provided.
+    pub(super) fn new(gpu_records_encoders: Vec<GRE>) -> Result<Self, TryFromIntError> {
+        let count = gpu_records_encoders.len().try_into()?;
 
         Ok(Self {
-            inner: Arc::new((Mutex::new(inner), Event::new())),
-            thread_pool_pairs,
+            inner: Arc::new((Mutex::new(gpu_records_encoders), Event::new())),
+            gpu_records_encoders: count,
         })
     }
 
-    /// How many thread pool pairs are being managed here
-    pub fn thread_pool_pairs(&self) -> NonZeroUsize {
-        self.thread_pool_pairs
+    /// How many gpu records encoders are being managed here
+    pub(super) fn gpu_records_encoders(&self) -> NonZeroUsize {
+        self.gpu_records_encoders
     }
 
     /// Get one of inner thread pool pairs, will wait until one is available if needed
-    pub async fn get_thread_pools(&self) -> PlottingThreadPoolsGuard {
+    pub(super) async fn get_encoder(&self) -> GpuRecordsEncoderGuard<GRE> {
         let (mutex, event) = &*self.inner;
 
-        let thread_pool_pair = loop {
+        let gpu_records_encoder = loop {
             let listener = event.listen();
 
-            if let Some(thread_pool_pair) = mutex.lock().thread_pool_pairs.pop() {
+            if let Some(thread_pool_pair) = mutex.lock().pop() {
                 drop(listener);
                 // It is possible that we got here because there was the last free pair available
                 // and in the meantime listener received notification. Just in case that was the
@@ -121,9 +108,9 @@ impl PlottingThreadPoolManager {
             listener.await;
         };
 
-        PlottingThreadPoolsGuard {
+        GpuRecordsEncoderGuard {
             inner: Arc::clone(&self.inner),
-            thread_pool_pair: Some(thread_pool_pair),
+            gpu_records_encoder: Some(gpu_records_encoder),
         }
     }
 }
