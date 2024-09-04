@@ -4,7 +4,7 @@ use crate::{PosTableType, Table, TableGenerator};
 use core::mem;
 use subspace_core_primitives::{PosProof, PosSeed};
 
-const K: u8 = 20;
+const K: u8 = PosProof::K;
 
 /// Subspace proof of space table generator.
 ///

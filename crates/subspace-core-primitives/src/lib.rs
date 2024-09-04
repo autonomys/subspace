@@ -274,8 +274,10 @@ impl Default for PosProof {
 }
 
 impl PosProof {
+    /// Constant K used for proof of space
+    pub const K: u8 = 20;
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = 20 * 8;
+    pub const SIZE: usize = Self::K as usize * 8;
 
     /// Proof hash.
     pub fn hash(&self) -> Blake3Hash {
