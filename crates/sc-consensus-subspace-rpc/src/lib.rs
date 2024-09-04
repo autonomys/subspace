@@ -896,6 +896,7 @@ where
         };
 
         let mut hashes = HashSet::<Blake3Hash>::from_iter(hashes.into_iter().map(|hash| *hash));
+        let hash_count = hashes.len();
 
         // The genesis segment isn't included in this stream, see
         // `subscribe_archived_object_mappings` for details.
@@ -906,11 +907,14 @@ where
                 let objects = archived_segment_notification
                     .archived_segment
                     .global_object_mappings()
-                    .filter(|object| hashes.contains(&object.hash))
+                    .filter(|object| hashes.remove(&object.hash))
                     .collect::<Vec<_>>();
 
                 stream::iter(objects)
             })
+            // Stop when we've returned mappings for all the hashes. Since we only yield each hash
+            // once, we don't need to check if hashes is empty here.
+            .take(hash_count)
             // Typically batches will be larger than the hash limit, but we want to allow CLI
             // options to change that.
             .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
