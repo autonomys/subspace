@@ -1,0 +1,12 @@
+[package]
+name = "subspace-gpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blst = { git = "https://github.com/supranational/blst", version = "~0.3.11" }
+sppark = { git = "https://github.com/dot-asm/sppark", branch = "rocm" }
+rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
+
+[build-dependencies]
+cc = "^1.0.70"
