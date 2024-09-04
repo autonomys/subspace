@@ -714,7 +714,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 /// Different type of withdrawal
 ///
 /// NOTE: if the deposit was made in the current epoch, the user may not be able to withdraw it
-// until the current epoch ends
+/// until the current epoch ends
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub enum WithdrawStake<Balance, Share> {
     /// Withdraw all stake
