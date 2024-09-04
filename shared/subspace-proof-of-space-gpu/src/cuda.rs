@@ -44,18 +44,9 @@ extern "C" {
     ) -> sppark::Error;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Rust functions
-///////////////////////////////////////////////////////////////////////////////
-
-/// Returns the number of available GPUs.
-pub fn gpu_count_api(
-) -> usize {
-
-    let ngpu = unsafe {
-        gpu_count()
-    };
-    ngpu
+/// Returns the number of available GPUs
+pub fn gpu_count_api() -> usize {
+    unsafe { gpu_count() }
 }
 
 /// Generates and encodes PoSpace on the GPU.
@@ -84,7 +75,7 @@ pub fn generate_and_encode_pospace(
     k: u8,
     seed: &[u8; 32],
     record: &[[u8; 32]],
-    gpu_id: i32
+    gpu_id: i32,
 ) -> Result<(u32, Vec<[u8; 32]>, Vec<u32>, Vec<FsFr>, Vec<FsFr>), String> {
     let record_len = record.len();
     let challenge_len = 2 * record_len;
@@ -94,11 +85,11 @@ pub fn generate_and_encode_pospace(
         return Err(String::from("challenge_len is too large to fit in u32"));
     }
 
-    let mut proof_count: u32 = 0;
-    let mut chunks_scratch: Vec<[u8; 32]> = Vec::with_capacity(challenge_len);
-    let mut challenge_index: Vec<u32> = Vec::with_capacity(challenge_len);
-    let mut source_record_chunks: Vec<FsFr> = Vec::with_capacity(record_len);
-    let mut parity_record_chunks: Vec<FsFr> = Vec::with_capacity(record_len);
+    let mut proof_count = 0u32;
+    let mut chunks_scratch = Vec::<[u8; 32]>::with_capacity(challenge_len);
+    let mut challenge_index = Vec::<u32>::with_capacity(challenge_len);
+    let mut source_record_chunks = Vec::<FsFr>::with_capacity(record_len);
+    let mut parity_record_chunks = Vec::<FsFr>::with_capacity(record_len);
 
     let err = unsafe {
         generate_and_encode_pospace_dispatch(
@@ -126,5 +117,11 @@ pub fn generate_and_encode_pospace(
         parity_record_chunks.set_len(record_len);
     }
 
-    Ok((proof_count, chunks_scratch, challenge_index, source_record_chunks, parity_record_chunks))
+    Ok((
+        proof_count,
+        chunks_scratch,
+        challenge_index,
+        source_record_chunks,
+        parity_record_chunks,
+    ))
 }
