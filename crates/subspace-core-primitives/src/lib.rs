@@ -164,7 +164,7 @@ pub type SlotNumber = u64;
 pub type SolutionRange = u64;
 
 /// Computes the following:
-/// ```
+/// ```text
 /// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
 /// ```
 pub const fn sectors_to_solution_range(
@@ -183,7 +183,7 @@ pub const fn sectors_to_solution_range(
 }
 
 /// Computes the following:
-/// ```
+/// ```text
 /// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
 /// ```
 pub const fn solution_range_to_sectors(
@@ -274,8 +274,10 @@ impl Default for PosProof {
 }
 
 impl PosProof {
+    /// Constant K used for proof of space
+    pub const K: u8 = 20;
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = 20 * 8;
+    pub const SIZE: usize = Self::K as usize * 8;
 
     /// Proof hash.
     pub fn hash(&self) -> Blake3Hash {

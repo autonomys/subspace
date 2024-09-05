@@ -15,12 +15,12 @@ include = [
 bench = false
 
 [dependencies]
-kzg = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
-rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
+kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
-rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c" }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4" }
 criterion = "0.5.1"
 rand = "0.8.5"
 
