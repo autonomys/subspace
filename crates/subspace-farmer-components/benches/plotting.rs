@@ -8,7 +8,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{HistorySize, PublicKey, Record, RecordedHistorySegment};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
+use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
 use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
@@ -74,7 +74,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(sector_size as u64));
     group.bench_function("in-memory", |b| {
         b.iter(|| {
-            block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+            block_on(plot_sector(PlotSectorOptions {
                 public_key: black_box(&public_key),
                 sector_index: black_box(sector_index),
                 piece_getter: black_box(&archived_history_segment),
@@ -85,7 +85,11 @@ fn criterion_benchmark(c: &mut Criterion) {
                 sector_output: black_box(&mut sector_bytes),
                 downloading_semaphore: black_box(None),
                 encoding_semaphore: black_box(None),
-                table_generators: black_box(&mut table_generators),
+                records_encoder: black_box(&mut CpuRecordsEncoder::<PosTable>::new(
+                    &mut table_generators,
+                    &erasure_coding,
+                    &Default::default(),
+                )),
                 abort_early: &Default::default(),
             }))
             .unwrap();

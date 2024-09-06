@@ -52,7 +52,7 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
-use subspace_farmer_components::plotting::{plot_sector, PlotSectorOptions};
+use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
@@ -417,7 +417,7 @@ pub fn create_signed_vote(
     for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+        let plotted_sector = block_on(plot_sector(PlotSectorOptions {
             public_key: &public_key,
             sector_index,
             piece_getter: archived_history_segment,
@@ -428,7 +428,11 @@ pub fn create_signed_vote(
             sector_output: &mut plotted_sector_bytes,
             downloading_semaphore: None,
             encoding_semaphore: None,
-            table_generators: slice::from_mut(&mut table_generator),
+            records_encoder: &mut CpuRecordsEncoder::<PosTable>::new(
+                slice::from_mut(&mut table_generator),
+                erasure_coding,
+                &Default::default(),
+            ),
             abort_early: &Default::default(),
         }))
         .unwrap();

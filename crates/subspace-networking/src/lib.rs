@@ -49,6 +49,6 @@ pub use protocols::request_response::handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 pub use shared::PeerDiscovered;
+pub use utils::key_with_distance::KeyWithDistance;
 pub use utils::multihash::Multihash;
-pub use utils::unique_record_binary_heap::{KeyWrapper, UniqueRecordBinaryHeap};
 pub use utils::PeerAddress;

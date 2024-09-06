@@ -6,6 +6,7 @@
 //! implementations without the rest of the library being aware of implementation details.
 
 pub mod cpu;
+pub mod pool;
 
 use async_trait::async_trait;
 use futures::channel::mpsc;

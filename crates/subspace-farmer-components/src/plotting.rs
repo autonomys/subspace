@@ -28,7 +28,8 @@ use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
-    Blake3Hash, PieceIndex, PieceOffset, PosSeed, PublicKey, Record, SBucket, SectorId, SectorIndex,
+    Blake3Hash, HistorySize, PieceIndex, PieceOffset, PosSeed, PublicKey, Record, SBucket,
+    SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -64,12 +65,12 @@ pub struct PlottedSector {
 /// Plotting status
 #[derive(Debug, Error)]
 pub enum PlottingError {
-    /// Invalid erasure coding instance
-    #[error("Invalid erasure coding instance")]
-    InvalidErasureCodingInstance,
-    /// No table generators
-    #[error("No table generators")]
-    NoTableGenerators,
+    /// Records encoder error
+    #[error("Records encoder error: {error}")]
+    RecordsEncoderError {
+        /// Lower-level error
+        error: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
     /// Bad sector output size
     #[error("Bad sector output size: provided {provided}, expected {expected}")]
     BadSectorOutputSize {
@@ -116,10 +117,7 @@ pub enum PlottingError {
 /// resized to correct size automatically) or correctly sized from the beginning or else error will
 /// be returned.
 #[derive(Debug)]
-pub struct PlotSectorOptions<'a, PosTable, PG>
-where
-    PosTable: Table,
-{
+pub struct PlotSectorOptions<'a, RE, PG> {
     /// Public key corresponding to sector
     pub public_key: &'a PublicKey,
     /// Sector index
@@ -144,7 +142,7 @@ where
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
     /// Proof of space table generators
-    pub table_generators: &'a mut [PosTable::Generator],
+    pub records_encoder: &'a mut RE,
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
 }
@@ -155,11 +153,11 @@ where
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
-pub async fn plot_sector<PosTable, PG>(
-    options: PlotSectorOptions<'_, PosTable, PG>,
+pub async fn plot_sector<RE, PG>(
+    options: PlotSectorOptions<'_, RE, PG>,
 ) -> Result<PlottedSector, PlottingError>
 where
-    PosTable: Table,
+    RE: RecordsEncoder,
     PG: PieceGetter,
 {
     let PlotSectorOptions {
@@ -173,7 +171,7 @@ where
         sector_output,
         downloading_semaphore,
         encoding_semaphore,
-        table_generators,
+        records_encoder,
         abort_early,
     } = options;
 
@@ -199,14 +197,11 @@ where
 
     encode_sector(
         download_sector_fut.await?,
-        EncodeSectorOptions::<PosTable> {
+        EncodeSectorOptions::<RE> {
             sector_index,
-            erasure_coding,
-            pieces_in_sector,
+            records_encoder,
             sector_output,
-            table_generators,
             abort_early,
-            global_mutex: &Default::default(),
         },
     )
 }
@@ -217,7 +212,7 @@ pub struct DownloadedSector {
     sector_id: SectorId,
     piece_indices: Vec<PieceIndex>,
     raw_sector: RawSector,
-    farmer_protocol_info: FarmerProtocolInfo,
+    history_size: HistorySize,
 }
 
 /// Options for sector downloading
@@ -320,8 +315,131 @@ where
         sector_id,
         piece_indices,
         raw_sector: raw_sector.into_inner(),
-        farmer_protocol_info,
+        history_size: farmer_protocol_info.history_size,
     })
+}
+
+/// Records encoder for plotting purposes
+pub trait RecordsEncoder {
+    /// Encode provided sector records
+    fn encode_records(
+        &mut self,
+        sector_id: &SectorId,
+        records: &mut [Record],
+        history_size: HistorySize,
+        abort_early: &AtomicBool,
+    ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>>;
+}
+
+/// CPU implementation of [`RecordsEncoder`]
+#[derive(Debug)]
+pub struct CpuRecordsEncoder<'a, PosTable>
+where
+    PosTable: Table,
+{
+    table_generators: &'a mut [PosTable::Generator],
+    erasure_coding: &'a ErasureCoding,
+    global_mutex: &'a AsyncMutex<()>,
+}
+
+impl<PosTable> RecordsEncoder for CpuRecordsEncoder<'_, PosTable>
+where
+    PosTable: Table,
+{
+    fn encode_records(
+        &mut self,
+        sector_id: &SectorId,
+        records: &mut [Record],
+        history_size: HistorySize,
+        abort_early: &AtomicBool,
+    ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if self.erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
+            return Err(format!(
+                "Invalid erasure coding instance: {} shards needed, {} supported",
+                Record::NUM_S_BUCKETS,
+                self.erasure_coding.max_shards()
+            )
+            .into());
+        }
+
+        if self.table_generators.is_empty() {
+            return Err("No table generators".into());
+        }
+
+        let pieces_in_sector = records
+            .len()
+            .try_into()
+            .map_err(|error| format!("Failed to convert pieces in sector: {error}"))?;
+        let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
+
+        {
+            let table_generators = &mut *self.table_generators;
+            let global_mutex = self.global_mutex;
+            let erasure_coding = self.erasure_coding;
+
+            let iter = Mutex::new(
+                (PieceOffset::ZERO..)
+                    .zip(records.iter_mut())
+                    .zip(sector_contents_map.iter_record_bitfields_mut()),
+            );
+
+            rayon::scope(|scope| {
+                for table_generator in table_generators {
+                    scope.spawn(|_scope| {
+                        let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
+
+                        loop {
+                            // Take mutex briefly to make sure encoding is allowed right now
+                            global_mutex.lock_blocking();
+
+                            // This instead of `while` above because otherwise mutex will be held for
+                            // the duration of the loop and will limit concurrency to 1 table generator
+                            let Some(((piece_offset, record), encoded_chunks_used)) =
+                                iter.lock().next()
+                            else {
+                                return;
+                            };
+                            let pos_seed =
+                                sector_id.derive_evaluation_seed(piece_offset, history_size);
+
+                            record_encoding::<PosTable>(
+                                &pos_seed,
+                                record,
+                                encoded_chunks_used,
+                                table_generator,
+                                erasure_coding,
+                                &mut chunks_scratch,
+                            );
+
+                            if abort_early.load(Ordering::Relaxed) {
+                                return;
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        Ok(sector_contents_map)
+    }
+}
+
+impl<'a, PosTable> CpuRecordsEncoder<'a, PosTable>
+where
+    PosTable: Table,
+{
+    /// Create new instance
+    pub fn new(
+        table_generators: &'a mut [PosTable::Generator],
+        erasure_coding: &'a ErasureCoding,
+        global_mutex: &'a AsyncMutex<()>,
+    ) -> Self {
+        Self {
+            table_generators,
+            erasure_coding,
+            global_mutex,
+        }
+    }
 }
 
 /// Options for encoding a sector.
@@ -330,63 +448,48 @@ where
 /// resized to correct size automatically) or correctly sized from the beginning or else error will
 /// be returned.
 #[derive(Debug)]
-pub struct EncodeSectorOptions<'a, PosTable>
+pub struct EncodeSectorOptions<'a, RE>
 where
-    PosTable: Table,
+    RE: RecordsEncoder,
 {
     /// Sector index
     pub sector_index: SectorIndex,
-    /// Erasure coding instance
-    pub erasure_coding: &'a ErasureCoding,
-    /// How many pieces should sector contain
-    pub pieces_in_sector: u16,
+    /// Records encoding instance
+    pub records_encoder: &'a mut RE,
     /// Where plotted sector should be written, vector must either be empty (in which case it'll be
     /// resized to correct size automatically) or correctly sized from the beginning
     pub sector_output: &'a mut Vec<u8>,
-    /// Proof of space table generators
-    pub table_generators: &'a mut [PosTable::Generator],
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
-    /// Global mutex that can restrict concurrency of resource-intensive operations and make sure
-    /// that those operations that are very sensitive (like proving) have all the resources
-    /// available to them for the highest probability of success
-    pub global_mutex: &'a AsyncMutex<()>,
 }
 
 /// Encode downloaded sector.
 ///
 /// This function encodes downloaded sector pieces into provided sector output and returns sector
 /// metadata.
-pub fn encode_sector<PosTable>(
+pub fn encode_sector<RE>(
     downloaded_sector: DownloadedSector,
-    encoding_options: EncodeSectorOptions<'_, PosTable>,
+    encoding_options: EncodeSectorOptions<'_, RE>,
 ) -> Result<PlottedSector, PlottingError>
 where
-    PosTable: Table,
+    RE: RecordsEncoder,
 {
     let DownloadedSector {
         sector_id,
         piece_indices,
         mut raw_sector,
-        farmer_protocol_info,
+        history_size,
     } = downloaded_sector;
     let EncodeSectorOptions {
         sector_index,
-        erasure_coding,
-        pieces_in_sector,
+        records_encoder,
         sector_output,
-        table_generators,
         abort_early,
-        global_mutex,
     } = encoding_options;
 
-    if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
-        return Err(PlottingError::InvalidErasureCodingInstance);
-    }
-
-    if table_generators.is_empty() {
-        return Err(PlottingError::NoTableGenerators);
-    }
+    let pieces_in_sector = raw_sector.records.len().try_into().expect(
+        "Raw sector can only be created in this crate and it is always done correctly; qed",
+    );
 
     let sector_size = sector_size(pieces_in_sector);
 
@@ -397,52 +500,14 @@ where
         });
     }
 
-    let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
-    {
-        let iter = Mutex::new(
-            (PieceOffset::ZERO..)
-                .zip(raw_sector.records.iter_mut())
-                .zip(sector_contents_map.iter_record_bitfields_mut()),
-        );
-
-        rayon::scope(|scope| {
-            for table_generator in table_generators {
-                scope.spawn(|_scope| {
-                    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
-
-                    loop {
-                        // Take mutex briefly to make sure encoding is allowed right now
-                        global_mutex.lock_blocking();
-
-                        // This instead of `while` above because otherwise mutex will be held for
-                        // the duration of the loop and will limit concurrency to 1 table generator
-                        let Some(((piece_offset, record), encoded_chunks_used)) =
-                            iter.lock().next()
-                        else {
-                            return;
-                        };
-                        let pos_seed = sector_id.derive_evaluation_seed(
-                            piece_offset,
-                            farmer_protocol_info.history_size,
-                        );
-
-                        record_encoding::<PosTable>(
-                            &pos_seed,
-                            record,
-                            encoded_chunks_used,
-                            table_generator,
-                            erasure_coding,
-                            &mut chunks_scratch,
-                        );
-
-                        if abort_early.load(Ordering::Relaxed) {
-                            return;
-                        }
-                    }
-                });
-            }
-        });
-    }
+    let sector_contents_map = records_encoder
+        .encode_records(
+            &sector_id,
+            &mut raw_sector.records,
+            history_size,
+            abort_early,
+        )
+        .map_err(|error| PlottingError::RecordsEncoderError { error })?;
 
     if abort_early.load(Ordering::Acquire) {
         return Err(PlottingError::AbortEarly);
@@ -517,7 +582,7 @@ where
         sector_index,
         pieces_in_sector,
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
-        history_size: farmer_protocol_info.history_size,
+        history_size,
     });
 
     Ok(PlottedSector {

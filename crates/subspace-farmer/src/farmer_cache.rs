@@ -30,7 +30,7 @@ use subspace_farmer_components::PieceGetter;
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
+use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::{block_in_place, yield_now};
@@ -115,7 +115,7 @@ impl CacheBackend {
 
 #[derive(Debug)]
 struct CacheState<CacheIndex> {
-    cache_stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
+    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
     cache_free_offsets: Vec<FarmerCacheOffset<CacheIndex>>,
     backend: CacheBackend,
 }
@@ -128,12 +128,6 @@ enum WorkerCommand {
     ForgetKey {
         key: RecordKey,
     },
-}
-
-#[derive(Debug)]
-struct CacheWorkerState {
-    heap: UniqueRecordBinaryHeap<KeyWrapper<PieceIndex>>,
-    last_segment_index: SegmentIndex,
 }
 
 /// Farmer cache worker used to drive the farmer cache backend
@@ -167,10 +161,7 @@ where
         PG: PieceGetter,
     {
         // Limit is dynamically set later
-        let mut worker_state = CacheWorkerState {
-            heap: UniqueRecordBinaryHeap::new(self.peer_id, 0),
-            last_segment_index: SegmentIndex::ZERO,
-        };
+        let mut last_segment_index_internal = SegmentIndex::ZERO;
 
         let mut worker_receiver = self
             .worker_receiver
@@ -180,8 +171,12 @@ where
         if let Some(WorkerCommand::ReplaceBackingCaches { new_piece_caches }) =
             worker_receiver.recv().await
         {
-            self.initialize(&piece_getter, &mut worker_state, new_piece_caches)
-                .await;
+            self.initialize(
+                &piece_getter,
+                &mut last_segment_index_internal,
+                new_piece_caches,
+            )
+            .await;
         } else {
             // Piece cache is dropped before backing caches were sent
             return;
@@ -199,7 +194,7 @@ where
         // Keep up with segment indices that were potentially created since reinitialization,
         // depending on the size of the diff this may pause block production for a while (due to
         // subscription we have created above)
-        self.keep_up_after_initial_sync(&piece_getter, &mut worker_state)
+        self.keep_up_after_initial_sync(&piece_getter, &mut last_segment_index_internal)
             .await;
 
         loop {
@@ -210,11 +205,11 @@ where
                         return;
                     };
 
-                    self.handle_command(command, &piece_getter, &mut worker_state).await;
+                    self.handle_command(command, &piece_getter, &mut last_segment_index_internal).await;
                 }
                 maybe_segment_header = segment_headers_notifications.next().fuse() => {
                     if let Some(segment_header) = maybe_segment_header {
-                        self.process_segment_header(segment_header, &mut worker_state).await;
+                        self.process_segment_header(segment_header, &mut last_segment_index_internal).await;
                     } else {
                         // Keep-up sync only ends with subscription, which lasts for duration of an
                         // instance
@@ -229,18 +224,19 @@ where
         &self,
         command: WorkerCommand,
         piece_getter: &PG,
-        worker_state: &mut CacheWorkerState,
+        last_segment_index_internal: &mut SegmentIndex,
     ) where
         PG: PieceGetter,
     {
         match command {
             WorkerCommand::ReplaceBackingCaches { new_piece_caches } => {
-                self.initialize(piece_getter, worker_state, new_piece_caches)
+                self.initialize(piece_getter, last_segment_index_internal, new_piece_caches)
                     .await;
             }
             // TODO: Consider implementing optional re-sync of the piece instead of just forgetting
             WorkerCommand::ForgetKey { key } => {
                 let mut caches = self.piece_caches.write().await;
+                let key = KeyWithDistance::new_with_record_key(self.peer_id, key);
                 let Some(offset) = caches.remove_stored_piece(&key) else {
                     // Key not exist
                     return;
@@ -256,7 +252,7 @@ where
                 caches.push_dangling_free_offset(offset);
                 match backend.read_piece_index(piece_offset).await {
                     Ok(Some(piece_index)) => {
-                        worker_state.heap.remove(KeyWrapper(piece_index));
+                        trace!(%piece_index, %cache_index, %piece_offset, "Forget piece");
                     }
                     Ok(None) => {
                         warn!(
@@ -283,7 +279,7 @@ where
     async fn initialize<PG>(
         &self,
         piece_getter: &PG,
-        worker_state: &mut CacheWorkerState,
+        last_segment_index_internal: &mut SegmentIndex,
         new_piece_caches: Vec<Arc<dyn PieceCache>>,
     ) where
         PG: PieceGetter,
@@ -300,6 +296,8 @@ where
             metrics.piece_cache_capacity_total.set(0);
             metrics.piece_cache_capacity_used.set(0);
         }
+
+        let peer_id = self.peer_id;
 
         // Build cache state of all backends
         let piece_caches_number = new_piece_caches.len();
@@ -368,8 +366,9 @@ where
                         match maybe_piece_index {
                             Some(piece_index) => {
                                 *used_capacity = piece_offset.0 + 1;
-                                cache_stored_pieces
-                                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                                let record_key = RecordKey::from(piece_index.to_multihash());
+                                let key = KeyWithDistance::new_with_record_key(peer_id, record_key);
+                                cache_stored_pieces.insert(key, offset);
                             }
                             None => {
                                 // TODO: Optimize to not store all free offsets, only dangling
@@ -469,26 +468,33 @@ where
 
         debug!(%last_segment_index, "Identified last segment index");
 
-        let limit = caches.total_capacity();
-        worker_state.heap.clear();
-        // Change limit to number of pieces
-        worker_state.heap.set_limit(limit);
-
-        for segment_index in SegmentIndex::ZERO..=last_segment_index {
-            for piece_index in segment_index.segment_piece_indexes() {
-                worker_state.heap.insert(KeyWrapper(piece_index));
-            }
-        }
-
-        // This hashset is faster than `heap`
-        // Clippy complains about `RecordKey`, but it is not changing here, so it is fine
-        #[allow(clippy::mutable_key_type)]
-        let mut piece_indices_to_store = worker_state
-            .heap
-            .keys()
-            .map(|KeyWrapper(piece_index)| {
-                (RecordKey::from(piece_index.to_multihash()), *piece_index)
+        // Collect all the piece indices that need to be stored, we will sort them later
+        let segment_indices = Vec::from_iter(SegmentIndex::ZERO..=last_segment_index);
+        // TODO: This may eventually be too much to store in memory, though right now it is a
+        //  non-issue in practice
+        let mut piece_indices_to_store = segment_indices
+            .into_par_iter()
+            .flat_map(|segment_index| {
+                segment_index
+                    .segment_piece_indexes()
+                    .into_par_iter()
+                    .map(|piece_index| {
+                        (
+                            KeyWithDistance::new(self.peer_id, piece_index.to_multihash()),
+                            piece_index,
+                        )
+                    })
             })
+            .collect::<Vec<_>>();
+
+        // Sort pieces by distance from peer to piece such that they are in ascending order
+        // and have higher chance of download
+        piece_indices_to_store.par_sort_unstable_by(|(a_key, _), (b_key, _)| a_key.cmp(b_key));
+
+        // `HashMap` is faster than `BTreeMap`
+        let mut piece_indices_to_store = piece_indices_to_store
+            .into_iter()
+            .take(caches.total_capacity())
             .collect::<HashMap<_, _>>();
 
         let mut piece_caches_capacity_used = vec![0u32; caches.backends().len()];
@@ -498,7 +504,7 @@ where
         caches.free_unneeded_stored_pieces(&mut piece_indices_to_store);
 
         if let Some(metrics) = &self.metrics {
-            for offset in caches.stored_pieces_offests() {
+            for offset in caches.stored_pieces_offsets() {
                 piece_caches_capacity_used[usize::from(offset.cache_index)] += 1;
             }
 
@@ -588,7 +594,9 @@ where
                 );
                 continue;
             }
-            caches.push_stored_piece(RecordKey::from(piece_index.to_multihash()), offset);
+
+            let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
+            caches.push_stored_piece(key, offset);
 
             downloaded_pieces_count += 1;
             // Do not print anything or send progress notification after last piece until piece
@@ -608,7 +616,7 @@ where
 
         *self.piece_caches.write().await = caches;
         self.handlers.progress.call_simple(&100.0);
-        worker_state.last_segment_index = last_segment_index;
+        *last_segment_index_internal = last_segment_index;
 
         info!("Finished piece cache synchronization");
     }
@@ -616,12 +624,12 @@ where
     async fn process_segment_header(
         &self,
         segment_header: SegmentHeader,
-        worker_state: &mut CacheWorkerState,
+        last_segment_index_internal: &mut SegmentIndex,
     ) {
         let segment_index = segment_header.segment_index();
         debug!(%segment_index, "Starting to process newly archived segment");
 
-        if worker_state.last_segment_index < segment_index {
+        if *last_segment_index_internal < segment_index {
             debug!(%segment_index, "Downloading potentially useful pieces");
 
             // We do not insert pieces into cache/heap yet, so we don't know if all of these pieces
@@ -630,51 +638,50 @@ where
             let pieces_to_maybe_include = segment_index
                 .segment_piece_indexes()
                 .into_iter()
-                .map(|piece_index| {
-                    let worker_state = &*worker_state;
+                .map(|piece_index| async move {
+                    let should_store_in_piece_cache = self
+                        .piece_caches
+                        .read()
+                        .await
+                        .should_include_key(self.peer_id, piece_index);
 
-                    async move {
-                        let should_store_in_piece_cache = worker_state
-                            .heap
-                            .should_include_key(KeyWrapper(piece_index));
-                        let key = RecordKey::from(piece_index.to_multihash());
-                        let should_store_in_plot_cache =
-                            self.plot_caches.should_store(piece_index, &key).await;
+                    let key = RecordKey::from(piece_index.to_multihash());
+                    let should_store_in_plot_cache =
+                        self.plot_caches.should_store(piece_index, &key).await;
 
-                        if !(should_store_in_piece_cache || should_store_in_plot_cache) {
-                            trace!(%piece_index, "Piece doesn't need to be cached #1");
+                    if !(should_store_in_piece_cache || should_store_in_plot_cache) {
+                        trace!(%piece_index, "Piece doesn't need to be cached #1");
 
-                            return None;
-                        }
+                        return None;
+                    }
 
-                        let maybe_piece = match self.node_client.piece(piece_index).await {
-                            Ok(maybe_piece) => maybe_piece,
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %segment_index,
-                                    %piece_index,
-                                    "Failed to retrieve piece from node right after archiving, \
-                                    this should never happen and is an implementation bug"
-                                );
-
-                                return None;
-                            }
-                        };
-
-                        let Some(piece) = maybe_piece else {
+                    let maybe_piece = match self.node_client.piece(piece_index).await {
+                        Ok(maybe_piece) => maybe_piece,
+                        Err(error) => {
                             error!(
+                                %error,
                                 %segment_index,
                                 %piece_index,
-                                "Failed to retrieve piece from node right after archiving, this \
-                                should never happen and is an implementation bug"
+                                "Failed to retrieve piece from node right after archiving, \
+                                this should never happen and is an implementation bug"
                             );
 
                             return None;
-                        };
+                        }
+                    };
 
-                        Some((piece_index, piece))
-                    }
+                    let Some(piece) = maybe_piece else {
+                        error!(
+                            %segment_index,
+                            %piece_index,
+                            "Failed to retrieve piece from node right after archiving, this \
+                            should never happen and is an implementation bug"
+                        );
+
+                        return None;
+                    };
+
+                    Some((piece_index, piece))
                 })
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|maybe_piece| async move { maybe_piece })
@@ -699,9 +706,11 @@ where
                     trace!(%piece_index, "Piece doesn't need to be cached in plot cache");
                 }
 
-                if !worker_state
-                    .heap
-                    .should_include_key(KeyWrapper(piece_index))
+                if !self
+                    .piece_caches
+                    .read()
+                    .await
+                    .should_include_key(self.peer_id, piece_index)
                 {
                     trace!(%piece_index, "Piece doesn't need to be cached #2");
 
@@ -710,11 +719,10 @@ where
 
                 trace!(%piece_index, "Piece needs to be cached #1");
 
-                self.persist_piece_in_cache(piece_index, piece, worker_state)
-                    .await;
+                self.persist_piece_in_cache(piece_index, piece).await;
             }
 
-            worker_state.last_segment_index = segment_index;
+            *last_segment_index_internal = segment_index;
         } else {
             self.acknowledge_archived_segment_processing(segment_index)
                 .await;
@@ -741,7 +749,7 @@ where
     async fn keep_up_after_initial_sync<PG>(
         &self,
         piece_getter: &PG,
-        worker_state: &mut CacheWorkerState,
+        last_segment_index_internal: &mut SegmentIndex,
     ) where
         PG: PieceGetter,
     {
@@ -757,7 +765,7 @@ where
             }
         };
 
-        if last_segment_index <= worker_state.last_segment_index {
+        if last_segment_index <= *last_segment_index_internal {
             return;
         }
 
@@ -767,13 +775,17 @@ where
         );
 
         // Keep up with segment indices that were potentially created since reinitialization
-        let piece_indices = (worker_state.last_segment_index..=last_segment_index)
+        let piece_indices = (*last_segment_index_internal..=last_segment_index)
             .flat_map(|segment_index| segment_index.segment_piece_indexes());
 
         // TODO: Can probably do concurrency here
         for piece_index in piece_indices {
-            let key = KeyWrapper(piece_index);
-            if !worker_state.heap.should_include_key(key) {
+            if !self
+                .piece_caches
+                .read()
+                .await
+                .should_include_key(self.peer_id, piece_index)
+            {
                 trace!(%piece_index, "Piece doesn't need to be cached #3");
 
                 continue;
@@ -799,42 +811,22 @@ where
                 }
             };
 
-            self.persist_piece_in_cache(piece_index, piece, worker_state)
-                .await;
+            self.persist_piece_in_cache(piece_index, piece).await;
         }
 
         info!("Finished syncing piece cache to the latest history size");
 
-        worker_state.last_segment_index = last_segment_index;
+        *last_segment_index_internal = last_segment_index;
     }
 
     /// This assumes it was already checked that piece needs to be stored, no verification for this
     /// is done internally and invariants will break if this assumption doesn't hold true
-    async fn persist_piece_in_cache(
-        &self,
-        piece_index: PieceIndex,
-        piece: Piece,
-        worker_state: &mut CacheWorkerState,
-    ) {
-        let record_key = RecordKey::from(piece_index.to_multihash());
-        let heap_key = KeyWrapper(piece_index);
-
+    async fn persist_piece_in_cache(&self, piece_index: PieceIndex, piece: Piece) {
+        let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
         let mut caches = self.piece_caches.write().await;
-        match worker_state.heap.insert(heap_key) {
+        match caches.should_replace(&key) {
             // Entry is already occupied, we need to find and replace old piece with new one
-            Some(KeyWrapper(old_piece_index)) => {
-                let old_record_key = RecordKey::from(old_piece_index.to_multihash());
-                let Some(offset) = caches.remove_stored_piece(&old_record_key) else {
-                    // Not this disk farm
-                    warn!(
-                        %old_piece_index,
-                        %piece_index,
-                        "Should have replaced cached piece, but it didn't happen, this is an \
-                        implementation bug"
-                    );
-                    return;
-                };
-
+            Some((old_key, offset)) => {
                 let cache_index = offset.cache_index;
                 let piece_offset = offset.piece_offset;
                 let Some(backend) = caches.get_backend(cache_index) else {
@@ -856,6 +848,7 @@ where
                         "Failed to write piece into cache"
                     );
                 } else {
+                    let old_piece_index = decode_piece_index_from_record_key(old_key.record_key());
                     trace!(
                         %cache_index,
                         %old_piece_index,
@@ -863,7 +856,7 @@ where
                         %piece_offset,
                         "Successfully replaced old cached piece"
                     );
-                    caches.push_stored_piece(record_key, offset);
+                    caches.push_stored_piece(key, offset);
                 }
             }
             // There is free space in cache, need to find a free spot and place piece there
@@ -907,7 +900,7 @@ where
                     if let Some(metrics) = &self.metrics {
                         metrics.piece_cache_capacity_used.inc();
                     }
-                    caches.push_stored_piece(record_key, offset);
+                    caches.push_stored_piece(key, offset);
                 }
             }
         };
@@ -1065,6 +1058,7 @@ where
     {
         let key = RecordKey::from(key);
         let maybe_piece_found = {
+            let key = KeyWithDistance::new_with_record_key(self.peer_id, key.clone());
             let caches = self.piece_caches.read().await;
 
             caches.get_stored_piece(&key).and_then(|offset| {
@@ -1141,7 +1135,7 @@ where
         &self,
         piece_index: PieceIndex,
     ) -> Option<(PieceCacheId, PieceCacheOffset)> {
-        let key = RecordKey::from(piece_index.to_multihash());
+        let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
 
         let caches = self.piece_caches.read().await;
         let Some(offset) = caches.get_stored_piece(&key) else {
@@ -1211,7 +1205,12 @@ where
     CacheIndex: TryFrom<usize>,
 {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
-        if self.piece_caches.try_read()?.contains_stored_piece(key) {
+        let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
+        if self
+            .piece_caches
+            .try_read()?
+            .contains_stored_piece(&distance_key)
+        {
             // Note: We store our own provider records locally without local addresses
             // to avoid redundant storage and outdated addresses. Instead, these are
             // acquired on demand when returning a `ProviderRecord` for the local node.
@@ -1261,4 +1260,15 @@ where
             addresses: Vec::new(),
         })
     }
+}
+
+/// Extracts the `PieceIndex` from a `RecordKey`.
+fn decode_piece_index_from_record_key(key: &RecordKey) -> PieceIndex {
+    let len = key.as_ref().len();
+    let s = len - PieceIndex::SIZE;
+
+    let mut piece_index_bytes = [0u8; PieceIndex::SIZE];
+    piece_index_bytes.copy_from_slice(&key.as_ref()[s..]);
+
+    PieceIndex::from_bytes(piece_index_bytes)
 }

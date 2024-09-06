@@ -176,7 +176,7 @@ fn valid_header(
         let mut plotted_sector_bytes = Vec::new();
         let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<PosTable, _>(
+        let plotted_sector = block_on(plot_sector(
             &public_key,
             sector_index,
             &archived_segment.pieces,
@@ -186,7 +186,11 @@ fn valid_header(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            &mut table_generator,
+            records_encoder: &mut CpuRecordsEncoder::<PosTable>::new(
+                slice::from_mut(&mut table_generator),
+                &erasure_coding,
+                &Default::default(),
+            ),
         ))
         .unwrap();
 

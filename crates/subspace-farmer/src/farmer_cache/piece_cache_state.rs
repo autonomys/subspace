@@ -1,15 +1,17 @@
 use crate::farmer_cache::{CacheBackend, FarmerCacheOffset};
-use std::collections::hash_map::Values;
-use std::collections::{HashMap, VecDeque};
+use std::collections::btree_map::Values;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::hash::Hash;
 use subspace_core_primitives::PieceIndex;
-use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::libp2p::PeerId;
+use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::KeyWithDistance;
 use tracing::{debug, trace};
 
 #[derive(Debug, Clone)]
 pub(super) struct PieceCachesState<CacheIndex> {
-    stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
+    stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
     dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
     backends: Vec<CacheBackend>,
 }
@@ -21,7 +23,7 @@ where
     CacheIndex: TryFrom<usize>,
 {
     pub(super) fn new(
-        stored_pieces: HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
+        stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
         dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
         backends: Vec<CacheBackend>,
     ) -> Self {
@@ -69,39 +71,39 @@ where
 
     pub(super) fn get_stored_piece(
         &self,
-        key: &RecordKey,
+        key: &KeyWithDistance,
     ) -> Option<&FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.get(key)
     }
 
-    pub(super) fn contains_stored_piece(&self, key: &RecordKey) -> bool {
+    pub(super) fn contains_stored_piece(&self, key: &KeyWithDistance) -> bool {
         self.stored_pieces.contains_key(key)
     }
 
     pub(super) fn push_stored_piece(
         &mut self,
-        key: RecordKey,
+        key: KeyWithDistance,
         cache_offset: FarmerCacheOffset<CacheIndex>,
     ) -> Option<FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.insert(key, cache_offset)
     }
 
-    pub(super) fn stored_pieces_offests(
+    pub(super) fn stored_pieces_offsets(
         &self,
-    ) -> Values<'_, RecordKey, FarmerCacheOffset<CacheIndex>> {
+    ) -> Values<'_, KeyWithDistance, FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.values()
     }
 
     pub(super) fn remove_stored_piece(
         &mut self,
-        key: &RecordKey,
+        key: &KeyWithDistance,
     ) -> Option<FarmerCacheOffset<CacheIndex>> {
         self.stored_pieces.remove(key)
     }
 
     pub(super) fn free_unneeded_stored_pieces(
         &mut self,
-        piece_indices_to_store: &mut HashMap<RecordKey, PieceIndex>,
+        piece_indices_to_store: &mut HashMap<KeyWithDistance, PieceIndex>,
     ) {
         self.stored_pieces
             .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
@@ -128,7 +130,7 @@ where
     pub(super) fn reuse(
         self,
     ) -> (
-        HashMap<RecordKey, FarmerCacheOffset<CacheIndex>>,
+        BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
         VecDeque<FarmerCacheOffset<CacheIndex>>,
     ) {
         let Self {
@@ -141,12 +143,58 @@ where
         dangling_free_offsets.clear();
         (stored_pieces, dangling_free_offsets)
     }
+
+    pub(super) fn should_replace(
+        &mut self,
+        key: &KeyWithDistance,
+    ) -> Option<(KeyWithDistance, FarmerCacheOffset<CacheIndex>)> {
+        if !self.should_include_key_internal(key) {
+            return None;
+        }
+
+        if !self.has_free_capacity() {
+            self.stored_pieces.pop_last()
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn should_include_key(&self, peer_id: PeerId, key: PieceIndex) -> bool {
+        let key = KeyWithDistance::new(peer_id, key.to_multihash());
+        self.should_include_key_internal(&key)
+    }
+
+    fn has_free_capacity(&self) -> bool {
+        if !self.dangling_free_offsets.is_empty() {
+            return true;
+        }
+
+        self.backends.iter().any(|backend| backend.free_size() > 0)
+    }
+
+    fn should_include_key_internal(&self, key: &KeyWithDistance) -> bool {
+        if self.stored_pieces.contains_key(key) {
+            return false;
+        }
+
+        if self.has_free_capacity() {
+            return true;
+        }
+
+        let top_key = self.stored_pieces.last_key_value().map(|(key, _)| key);
+
+        if let Some(top_key) = top_key {
+            top_key > key
+        } else {
+            false
+        }
+    }
 }
 
 impl<CacheIndex> Default for PieceCachesState<CacheIndex> {
     fn default() -> Self {
         Self {
-            stored_pieces: HashMap::default(),
+            stored_pieces: BTreeMap::default(),
             dangling_free_offsets: VecDeque::default(),
             backends: Vec::default(),
         }

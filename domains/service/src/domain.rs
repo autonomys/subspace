@@ -506,7 +506,7 @@ where
                 client.clone(),
                 // domain will use consensus chain sync oracle instead of domain sync oracle
                 // since domain sync oracle will always return `synced` due to force sync being set.
-                consensus_network_sync_oracle,
+                consensus_network_sync_oracle.clone(),
                 gossip_message_sink,
             );
 
@@ -518,16 +518,25 @@ where
     }
 
     // Start cross domain message listener for domain
-    let domain_listener =
-        cross_domain_message_gossip::start_cross_chain_message_listener::<_, _, _, _, _, Block, _>(
-            ChainId::Domain(domain_id),
-            consensus_client.clone(),
-            client.clone(),
-            params.transaction_pool.clone(),
-            consensus_network,
-            domain_message_receiver,
-            code_executor.clone(),
-        );
+    let domain_listener = cross_domain_message_gossip::start_cross_chain_message_listener::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        Block,
+        _,
+        _,
+    >(
+        ChainId::Domain(domain_id),
+        consensus_client.clone(),
+        client.clone(),
+        params.transaction_pool.clone(),
+        consensus_network,
+        domain_message_receiver,
+        code_executor.clone(),
+        consensus_network_sync_oracle,
+    );
 
     spawn_essential.spawn_essential_blocking(
         "domain-message-listener",

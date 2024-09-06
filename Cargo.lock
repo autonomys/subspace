@@ -1333,12 +1333,13 @@ dependencies = [
 
 [[package]]
 name = "blst"
-version = "0.3.11"
-source = "git+https://github.com/subspace/blst?rev=ab042e18cb3b62e131423380513964e4b2c7b445#ab042e18cb3b62e131423380513964e4b2c7b445"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4378725facc195f1a538864863f6de233b500a8862747e7f165078a419d5e874"
 dependencies = [
  "cc",
  "glob",
- "rayon",
+ "threadpool",
  "zeroize",
 ]
 
@@ -2069,6 +2070,7 @@ dependencies = [
  "sc-utils",
  "sp-api",
  "sp-blockchain",
+ "sp-consensus",
  "sp-core",
  "sp-domains",
  "sp-messenger",
@@ -5481,10 +5483,14 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
+source = "git+https://github.com/grandinetech/rust-kzg?rev=6c8fcc623df3d7e8c0f30951a49bfea764f90bf4#6c8fcc623df3d7e8c0f30951a49bfea764f90bf4"
 dependencies = [
  "blst",
+ "num_cpus",
+ "rayon",
  "sha2 0.10.8",
+ "siphasher 1.0.1",
+ "threadpool",
 ]
 
 [[package]]
@@ -8187,7 +8193,7 @@ dependencies = [
  "memmap2 0.5.10",
  "parking_lot 0.12.3",
  "rand",
- "siphasher",
+ "siphasher 0.3.11",
  "snap",
  "winapi",
 ]
@@ -9554,13 +9560,12 @@ dependencies = [
 [[package]]
 name = "rust-kzg-blst"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
+source = "git+https://github.com/grandinetech/rust-kzg?rev=6c8fcc623df3d7e8c0f30951a49bfea764f90bf4#6c8fcc623df3d7e8c0f30951a49bfea764f90bf4"
 dependencies = [
  "blst",
  "hex",
  "kzg",
  "libc",
- "num_cpus",
  "once_cell",
  "rand",
  "rayon",
@@ -11343,6 +11348,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
 
 [[package]]
+name = "siphasher"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12534,6 +12545,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "blst",
  "bytes",
  "criterion",
  "derive_more 1.0.0",

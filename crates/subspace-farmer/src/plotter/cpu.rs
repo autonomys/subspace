@@ -27,7 +27,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, DownloadSectorOptions, EncodeSectorOptions, PlottingError,
+    download_sector, encode_sector, CpuRecordsEncoder, DownloadSectorOptions, EncodeSectorOptions,
+    PlottingError,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_proof_of_space::Table;
@@ -353,27 +354,6 @@ where
                         metrics.plotting_capacity_used.inc();
                     }
 
-                    let plotting_fn = || {
-                        let mut sector = Vec::new();
-
-                        let plotted_sector = encode_sector::<PosTable>(
-                            downloaded_sector,
-                            EncodeSectorOptions {
-                                sector_index,
-                                erasure_coding: &erasure_coding,
-                                pieces_in_sector,
-                                sector_output: &mut sector,
-                                table_generators: &mut (0..record_encoding_concurrency.get())
-                                    .map(|_| PosTable::generator())
-                                    .collect::<Vec<_>>(),
-                                abort_early: &abort_early,
-                                global_mutex: &global_mutex,
-                            },
-                        )?;
-
-                        Ok((sector, plotted_sector))
-                    };
-
                     let thread_pool = if replotting {
                         &thread_pools.replotting
                     } else {
@@ -398,8 +378,31 @@ where
 
                     let encoding_start = Instant::now();
 
-                    let plotting_result =
-                        tokio::task::block_in_place(|| thread_pool.install(plotting_fn));
+                    let plotting_result = tokio::task::block_in_place(|| {
+                        thread_pool.install(|| {
+                            let mut sector = Vec::new();
+                            let mut generators = (0..record_encoding_concurrency.get())
+                                .map(|_| PosTable::generator())
+                                .collect::<Vec<_>>();
+                            let mut records_encoder = CpuRecordsEncoder::<PosTable>::new(
+                                &mut generators,
+                                &erasure_coding,
+                                &global_mutex,
+                            );
+
+                            let plotted_sector = encode_sector(
+                                downloaded_sector,
+                                EncodeSectorOptions {
+                                    sector_index,
+                                    sector_output: &mut sector,
+                                    records_encoder: &mut records_encoder,
+                                    abort_early: &abort_early,
+                                },
+                            )?;
+
+                            Ok((sector, plotted_sector))
+                        })
+                    });
                     drop(thread_pools);
                     if let Some(metrics) = &metrics {
                         metrics.plotting_capacity_used.dec();

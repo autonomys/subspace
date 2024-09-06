@@ -141,8 +141,3 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d
 staging-xcm = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 xcm-procedural = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
-
-# TODO: Importing https://github.com/supranational/blst/pull/203 to take advantage of optimizations introduced there,
-#  switch to upstream once merged or once similar performance improvements land upstream
-[patch."https://github.com/supranational/blst.git"]
-blst = { git = "https://github.com/subspace/blst", rev = "ab042e18cb3b62e131423380513964e4b2c7b445" }

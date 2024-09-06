@@ -6,7 +6,7 @@
     duration_constructors,
     exact_size_is_empty,
     fmt_helpers_for_derive,
-    hash_extract_if,
+    btree_extract_if,
     impl_trait_in_assoc_type,
     int_roundings,
     iter_collect_into,
@@ -52,6 +52,7 @@
 //! improving defaults, the goal is for default behavior to be already as optimal as efficient as
 //! possible.
 
+#[cfg(feature = "cluster")]
 pub mod cluster;
 pub mod disk_piece_cache;
 pub mod farm;
