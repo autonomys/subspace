@@ -19,10 +19,9 @@ use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{BlockBackend, ProofProvider};
-use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceiptFor};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -40,7 +39,6 @@ pub fn generate_protocol_config<
     B: BlockT,
     N: NetworkBackend<B, <B as BlockT>::Hash>,
 >(
-    _: &ProtocolId,
     genesis_hash: Hash,
     fork_id: Option<&str>,
     inbound_queue: async_channel::Sender<IncomingRequest>,
@@ -111,7 +109,6 @@ where
 {
     /// Create a new [`LastDomainBlockERRequestHandler`].
     pub fn new<NB>(
-        protocol_id: &ProtocolId,
         fork_id: Option<&str>,
         client: Arc<Client>,
         num_peer_hint: usize,
@@ -125,7 +122,6 @@ where
         let (tx, request_receiver) = async_channel::bounded(capacity);
 
         let protocol_config = generate_protocol_config::<_, Block, NB>(
-            protocol_id,
             client
                 .block_hash(0u32.into())
                 .ok()
@@ -181,6 +177,19 @@ where
                 let info = self.client.info();
                 info.best_hash
             };
+
+            let consensus_api_version = self
+                .client
+                .runtime_api()
+                .api_version::<dyn DomainsApi<Block, Block::Header>>(target_block_hash)
+                .map_err(sp_blockchain::Error::RuntimeApiError)?
+                .ok_or_else(|| HandleRequestError::ApiVersionNotSupported)?;
+
+            if consensus_api_version < 6 {
+                debug!("Incorrect API version to support the last confirmed block request: {consensus_api_version}");
+
+                return Err(HandleRequestError::ApiVersionNotSupported);
+            }
 
             let last_confirmed_block_receipt = self
                 .client
@@ -239,6 +248,9 @@ enum HandleRequestError {
 
     #[error("Failed to send response.")]
     SendResponse,
+
+    #[error("Api version is not supported.")]
+    ApiVersionNotSupported,
 
     #[error("Failed to decode request: {0}.")]
     Decode(#[from] codec::Error),

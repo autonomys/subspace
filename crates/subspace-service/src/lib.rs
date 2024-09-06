@@ -908,13 +908,11 @@ where
 
     // "Last confirmed domain block execution receipt" request handler
     {
-        let (handler, protocol_config) =
-            LastDomainBlockERRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
-                &config.base.protocol_id(),
-                fork_id.as_deref(),
-                client.clone(),
-                num_peer_hint,
-            );
+        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<
+            NetworkWorker<Block, <Block as BlockT>::Hash>,
+        >(
+            fork_id.as_deref(), client.clone(), num_peer_hint
+        );
         task_manager.spawn_handle().spawn(
             "last-domain-execution-receipt-request-handler",
             Some("networking"),
