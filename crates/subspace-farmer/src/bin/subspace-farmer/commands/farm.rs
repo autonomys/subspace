@@ -30,6 +30,12 @@ use subspace_farmer::node_client::caching_proxy_node_client::CachingProxyNodeCli
 use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
+#[cfg(feature = "cuda")]
+use subspace_farmer::plotter::gpu::cuda::CudaRecordsEncoder;
+#[cfg(feature = "_gpu")]
+use subspace_farmer::plotter::gpu::GpuPlotter;
+use subspace_farmer::plotter::pool::PoolPlotter;
+use subspace_farmer::plotter::Plotter;
 use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
@@ -58,6 +64,7 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 /// very long period of writing zeroes on Windows, see https://stackoverflow.com/q/78058306/3806795
 const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 * 1024;
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
+const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
 type CacheIndex = u8;
 
@@ -76,9 +83,9 @@ struct CpuPlottingOptions {
     /// `--cpu-sector-downloading-concurrency` and setting this option higher than
     /// `--cpu-sector-downloading-concurrency` will have no effect.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increase will result in higher memory usage, setting to 0 will disable CPU plotting.
     #[arg(long)]
-    cpu_sector_encoding_concurrency: Option<NonZeroUsize>,
+    cpu_sector_encoding_concurrency: Option<usize>,
     /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
@@ -129,7 +136,25 @@ struct CpuPlottingOptions {
     /// farming is successful and computer can be used comfortably for other things.  Can be set to
     /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
-    plotting_thread_priority: PlottingThreadPriority,
+    cpu_plotting_thread_priority: PlottingThreadPriority,
+}
+
+#[cfg(feature = "cuda")]
+#[derive(Debug, Parser)]
+struct CudaPlottingOptions {
+    /// Defines how many sectors farmer will download concurrently during plotting with CUDA GPU,
+    /// allows to limit memory usage of the plotting process, defaults to number of CUDA GPUs found
+    /// + 1 to download future sector ahead of time.
+    ///
+    /// Increase will result in higher memory usage.
+    #[arg(long)]
+    cuda_sector_downloading_concurrency: Option<NonZeroUsize>,
+    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    ///
+    /// GPUs are coma-separated: `--cuda-gpus 0,1,3`. Empty string can be specified to disable CUDA
+    /// GPU usage.
+    #[arg(long)]
+    cuda_gpus: Option<String>,
 }
 
 /// Arguments for farmer
@@ -201,6 +226,10 @@ pub(crate) struct FarmingArgs {
     /// Plotting options only used by CPU plotter
     #[clap(flatten)]
     cpu_plotting_options: CpuPlottingOptions,
+    /// Plotting options only used by CUDA GPU plotter
+    #[cfg(feature = "cuda")]
+    #[clap(flatten)]
+    cuda_plotting_options: CudaPlottingOptions,
     /// Enable plot cache.
     ///
     /// Plot cache uses unplotted space as additional cache improving plotting speeds, especially
@@ -258,6 +287,8 @@ where
         piece_getter_concurrency,
         farming_thread_pool_size,
         cpu_plotting_options,
+        #[cfg(feature = "cuda")]
+        cuda_plotting_options,
         plot_cache,
         disable_farm_locking,
         create,
@@ -435,16 +466,41 @@ where
         .unwrap_or_else(recommended_number_of_farming_threads);
     let global_mutex = Arc::default();
 
-    let (legacy_cpu_plotter, modern_cpu_plotter) = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
-        cpu_plotting_options,
-        piece_getter.clone(),
-        Arc::clone(&global_mutex),
-        kzg.clone(),
-        erasure_coding.clone(),
-        &mut registry,
-    )?;
-    let legacy_cpu_plotter = Arc::new(legacy_cpu_plotter);
-    let modern_cpu_plotter = Arc::new(modern_cpu_plotter);
+    let mut legacy_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
+    let mut modern_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
+
+    {
+        let maybe_cpu_plotters = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
+            cpu_plotting_options,
+            piece_getter.clone(),
+            Arc::clone(&global_mutex),
+            kzg.clone(),
+            erasure_coding.clone(),
+            &mut registry,
+        )?;
+
+        if let Some((legacy_cpu_plotter, modern_cpu_plotter)) = maybe_cpu_plotters {
+            legacy_plotters.push(Box::new(legacy_cpu_plotter));
+            modern_plotters.push(Box::new(modern_cpu_plotter));
+        }
+    }
+    #[cfg(feature = "cuda")]
+    {
+        let maybe_cuda_plotter = init_cuda_plotter(
+            cuda_plotting_options,
+            piece_getter.clone(),
+            Arc::clone(&global_mutex),
+            kzg.clone(),
+            erasure_coding.clone(),
+            &mut registry,
+        )?;
+
+        if let Some(cuda_plotter) = maybe_cuda_plotter {
+            modern_plotters.push(Box::new(cuda_plotter));
+        }
+    }
+    let legacy_plotter = Arc::new(PoolPlotter::new(legacy_plotters, PLOTTING_RETRY_INTERVAL));
+    let modern_plotter = Arc::new(PoolPlotter::new(modern_plotters, PLOTTING_RETRY_INTERVAL));
 
     let (farms, plotting_delay_senders) = {
         let info_mutex = &AsyncMutex::new(());
@@ -466,8 +522,8 @@ where
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
-                let plotter_legacy = Arc::clone(&legacy_cpu_plotter);
-                let plotter = Arc::clone(&modern_cpu_plotter);
+                let plotter_legacy = Arc::clone(&legacy_plotter);
+                let plotter = Arc::clone(&modern_plotter);
                 let global_mutex = Arc::clone(&global_mutex);
                 let faster_read_sector_record_chunks_mode_barrier =
                     Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
@@ -762,6 +818,7 @@ where
     anyhow::Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 fn init_cpu_plotters<PG, PosTableLegacy, PosTable>(
     cpu_plotting_options: CpuPlottingOptions,
     piece_getter: PG,
@@ -769,7 +826,7 @@ fn init_cpu_plotters<PG, PosTableLegacy, PosTable>(
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     registry: &mut Registry,
-) -> anyhow::Result<(CpuPlotter<PG, PosTableLegacy>, CpuPlotter<PG, PosTable>)>
+) -> anyhow::Result<Option<(CpuPlotter<PG, PosTableLegacy>, CpuPlotter<PG, PosTable>)>>
 where
     PG: PieceGetter + Clone + Send + Sync + 'static,
     PosTableLegacy: Table,
@@ -783,8 +840,21 @@ where
         cpu_plotting_cores,
         cpu_replotting_thread_pool_size,
         cpu_replotting_cores,
-        plotting_thread_priority,
+        cpu_plotting_thread_priority,
     } = cpu_plotting_options;
+
+    let cpu_sector_encoding_concurrency =
+        if let Some(cpu_sector_encoding_concurrency) = cpu_sector_encoding_concurrency {
+            match NonZeroUsize::new(cpu_sector_encoding_concurrency) {
+                Some(cpu_sector_encoding_concurrency) => Some(cpu_sector_encoding_concurrency),
+                None => {
+                    info!("CPU plotting was explicitly disabled");
+                    return Ok(None);
+                }
+            }
+        } else {
+            None
+        };
 
     let plotting_thread_pool_core_indices;
     let replotting_thread_pool_core_indices;
@@ -854,7 +924,7 @@ where
         plotting_thread_pool_core_indices
             .into_iter()
             .zip(replotting_thread_pool_core_indices),
-        plotting_thread_priority.into(),
+        cpu_plotting_thread_priority.into(),
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
 
@@ -879,5 +949,87 @@ where
         Some(registry),
     );
 
-    Ok((legacy_cpu_plotter, modern_cpu_plotter))
+    Ok(Some((legacy_cpu_plotter, modern_cpu_plotter)))
+}
+
+#[cfg(feature = "cuda")]
+fn init_cuda_plotter<PG>(
+    cuda_plotting_options: CudaPlottingOptions,
+    piece_getter: PG,
+    global_mutex: Arc<AsyncMutex<()>>,
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
+    registry: &mut Registry,
+) -> anyhow::Result<Option<GpuPlotter<PG, CudaRecordsEncoder>>>
+where
+    PG: PieceGetter + Clone + Send + Sync + 'static,
+{
+    use std::collections::BTreeSet;
+    use subspace_proof_of_space_gpu::cuda::cuda_devices;
+    use tracing::debug;
+
+    let CudaPlottingOptions {
+        cuda_sector_downloading_concurrency,
+        cuda_gpus,
+    } = cuda_plotting_options;
+
+    let mut cuda_devices = cuda_devices();
+    let mut used_cuda_devices = (0..cuda_devices.len()).collect::<Vec<_>>();
+
+    if let Some(cuda_gpus) = cuda_gpus {
+        if cuda_gpus.is_empty() {
+            info!("CUDA GPU plotting was explicitly disabled");
+            return Ok(None);
+        }
+
+        let mut cuda_gpus_to_use = cuda_gpus
+            .split(',')
+            .map(|gpu_index| gpu_index.parse())
+            .collect::<Result<BTreeSet<usize>, _>>()?;
+
+        (used_cuda_devices, cuda_devices) = cuda_devices
+            .into_iter()
+            .enumerate()
+            .filter(|(index, _cuda_device)| cuda_gpus_to_use.remove(index))
+            .unzip();
+
+        if !cuda_gpus_to_use.is_empty() {
+            warn!(
+                ?cuda_gpus_to_use,
+                "Some CUDA GPUs were not found on the system"
+            );
+        }
+    }
+
+    if cuda_devices.is_empty() {
+        debug!("No CUDA GPU devices found");
+        return Ok(None);
+    }
+
+    info!(?used_cuda_devices, "Using CUDA GPUs");
+
+    let cuda_downloading_semaphore = Arc::new(Semaphore::new(
+        cuda_sector_downloading_concurrency
+            .map(|cuda_sector_downloading_concurrency| cuda_sector_downloading_concurrency.get())
+            .unwrap_or(cuda_devices.len() + 1),
+    ));
+
+    Ok(Some(
+        GpuPlotter::new(
+            piece_getter,
+            cuda_downloading_semaphore,
+            cuda_devices
+                .into_iter()
+                .map(|cuda_device| CudaRecordsEncoder::new(cuda_device, Arc::clone(&global_mutex)))
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create CUDA records encoder: {error}")
+                })?,
+            global_mutex,
+            kzg,
+            erasure_coding,
+            Some(registry),
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to initialize CUDA plotter: {error}"))?,
+    ))
 }
