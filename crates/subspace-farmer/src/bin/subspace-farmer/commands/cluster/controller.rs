@@ -2,7 +2,7 @@ mod caches;
 mod farms;
 
 use crate::commands::cluster::controller::caches::maintain_caches;
-use crate::commands::cluster::controller::farms::{maintain_farms, FarmIndex};
+use crate::commands::cluster::controller::farms::maintain_farms;
 use crate::commands::shared::derive_libp2p_keypair;
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use anyhow::anyhow;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_farmer::cluster::controller::controller_service;
+use subspace_farmer::cluster::farmer::FarmIndex;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farmer_cache::FarmerCache;

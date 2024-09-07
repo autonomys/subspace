@@ -37,6 +37,8 @@ use tracing::{debug, error, trace, warn};
 const BROADCAST_NOTIFICATIONS_BUFFER: usize = 1000;
 const MIN_FARMER_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Type alias for farm index used by cluster.
+pub type FarmIndex = u16;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
 /// Broadcast with identification details by farmers

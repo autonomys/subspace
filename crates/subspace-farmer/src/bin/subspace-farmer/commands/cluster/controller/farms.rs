@@ -21,7 +21,9 @@ use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::{Blake3Hash, SectorIndex};
 use subspace_farmer::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
-use subspace_farmer::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBroadcast};
+use subspace_farmer::cluster::farmer::{
+    ClusterFarm, ClusterFarmerIdentifyFarmBroadcast, FarmIndex,
+};
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
@@ -31,8 +33,6 @@ use tracing::{error, info, trace, warn};
 
 type AddRemoveFuture<'a> =
     Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>> + 'a>>;
-
-pub(super) type FarmIndex = u16;
 
 #[derive(Debug)]
 struct KnownFarm {
