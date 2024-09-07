@@ -24,50 +24,50 @@ use tracing::info;
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
+    /// the plotting process, defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
     ///
     /// Increase will result in higher memory usage.
     #[arg(long)]
-    sector_downloading_concurrency: Option<NonZeroUsize>,
+    cpu_sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
     /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
     /// restricted by
-    /// `--sector-downloading-concurrency` and setting this option higher than
-    /// `--sector-downloading-concurrency` will have no effect.
+    /// `--cpu-sector-downloading-concurrency` and setting this option higher than
+    /// `--cpu-sector-downloading-concurrency` will have no effect.
     ///
     /// Increase will result in higher memory usage.
     #[arg(long)]
-    sector_encoding_concurrency: Option<NonZeroUsize>,
+    cpu_sector_encoding_concurrency: Option<NonZeroUsize>,
     /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
-    record_encoding_concurrency: Option<NonZeroUsize>,
+    cpu_record_encoding_concurrency: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
     /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
     /// groups on large CPUs.
     ///
-    /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
+    /// Number of thread pools is defined by `--cpu-sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
     ///
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
-    plotting_thread_pool_size: Option<NonZeroUsize>,
+    cpu_plotting_thread_pool_size: Option<NonZeroUsize>,
     /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
-    /// otherwise. It replaces both `--sector-encoding-concurrency` and
-    /// `--plotting-thread-pool-size` options if specified.
+    /// otherwise. It replaces both `--cpu-sector-encoding-concurrency` and
+    /// `--cpu-plotting-thread-pool-size` options if specified.
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
     /// each with a pair of CPU cores.
-    #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "plotting_thread_pool_size"])]
-    plotting_cpu_cores: Option<String>,
+    #[arg(long, conflicts_with_all = & ["cpu_sector_encoding_concurrency", "cpu_plotting_thread_pool_size"])]
+    cpu_plotting_cores: Option<String>,
     /// Plotting thread priority, by default de-prioritizes plotting threads in order to make sure
     /// farming is successful and computer can be used comfortably for other things. Can be set to
     /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
-    plotting_thread_priority: PlottingThreadPriority,
+    cpu_plotting_thread_priority: PlottingThreadPriority,
 }
 
 /// Arguments for plotter
@@ -104,12 +104,12 @@ where
     } = plotter_args;
 
     let CpuPlottingOptions {
-        sector_downloading_concurrency,
-        sector_encoding_concurrency,
-        record_encoding_concurrency,
-        plotting_thread_pool_size,
-        plotting_cpu_cores,
-        plotting_thread_priority,
+        cpu_sector_downloading_concurrency,
+        cpu_sector_encoding_concurrency,
+        cpu_record_encoding_concurrency,
+        cpu_plotting_thread_pool_size,
+        cpu_plotting_cores,
+        cpu_plotting_thread_priority,
     } = cpu_plotting_options;
 
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -121,12 +121,14 @@ where
     let piece_getter = ClusterPieceGetter::new(nats_client.clone(), piece_getter_concurrency);
 
     let plotting_thread_pool_core_indices;
-    if let Some(plotting_cpu_cores) = plotting_cpu_cores {
-        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
-            .map_err(|error| anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
+    if let Some(cpu_plotting_cores) = cpu_plotting_cores {
+        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&cpu_plotting_cores)
+            .map_err(|error| anyhow!("Failed to parse `--cpu-plotting-cpu-cores`: {error}"))?;
     } else {
-        plotting_thread_pool_core_indices =
-            thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
+        plotting_thread_pool_core_indices = thread_pool_core_indices(
+            cpu_plotting_thread_pool_size,
+            cpu_sector_encoding_concurrency,
+        );
 
         if plotting_thread_pool_core_indices.len() > 1 {
             info!(
@@ -137,12 +139,12 @@ where
     }
 
     let downloading_semaphore = Arc::new(Semaphore::new(
-        sector_downloading_concurrency
-            .map(|sector_downloading_concurrency| sector_downloading_concurrency.get())
+        cpu_sector_downloading_concurrency
+            .map(|cpu_sector_downloading_concurrency| cpu_sector_downloading_concurrency.get())
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
-    let record_encoding_concurrency = record_encoding_concurrency.unwrap_or_else(|| {
+    let cpu_record_encoding_concurrency = cpu_record_encoding_concurrency.unwrap_or_else(|| {
         let cpu_cores = plotting_thread_pool_core_indices
             .first()
             .expect("Guaranteed to have some CPU cores; qed");
@@ -168,7 +170,7 @@ where
         plotting_thread_pool_core_indices
             .into_iter()
             .zip(replotting_thread_pool_core_indices),
-        plotting_thread_priority.into(),
+        cpu_plotting_thread_priority.into(),
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let global_mutex = Arc::default();
@@ -176,7 +178,7 @@ where
         piece_getter.clone(),
         Arc::clone(&downloading_semaphore),
         plotting_thread_pool_manager.clone(),
-        record_encoding_concurrency,
+        cpu_record_encoding_concurrency,
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
@@ -186,7 +188,7 @@ where
         piece_getter.clone(),
         downloading_semaphore,
         plotting_thread_pool_manager,
-        record_encoding_concurrency,
+        cpu_record_encoding_concurrency,
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),

@@ -63,67 +63,67 @@ type CacheIndex = u8;
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
+    /// the plotting process, defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
     ///
     /// Increase will result in higher memory usage.
     #[arg(long)]
-    sector_downloading_concurrency: Option<NonZeroUsize>,
+    cpu_sector_downloading_concurrency: Option<NonZeroUsize>,
     /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
     /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
     /// restricted by
-    /// `--sector-downloading-concurrency` and setting this option higher than
-    /// `--sector-downloading-concurrency` will have no effect.
+    /// `--cpu-sector-downloading-concurrency` and setting this option higher than
+    /// `--cpu-sector-downloading-concurrency` will have no effect.
     ///
     /// Increase will result in higher memory usage.
     #[arg(long)]
-    sector_encoding_concurrency: Option<NonZeroUsize>,
+    cpu_sector_encoding_concurrency: Option<NonZeroUsize>,
     /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
-    record_encoding_concurrency: Option<NonZeroUsize>,
+    cpu_record_encoding_concurrency: Option<NonZeroUsize>,
     /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
     /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
     /// groups on large CPUs.
     ///
-    /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
+    /// Number of thread pools is defined by `--cpu-sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
     ///
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
-    plotting_thread_pool_size: Option<NonZeroUsize>,
+    cpu_plotting_thread_pool_size: Option<NonZeroUsize>,
     /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
-    /// otherwise. It replaces both `--sector-encoding-concurrency` and
-    /// `--plotting-thread-pool-size` options if specified. Requires `--replotting-cpu-cores` to be
-    /// specified with the same number of CPU cores groups (or not specified at all, in which case
-    /// it'll use the same thread pool as plotting).
+    /// otherwise. It replaces both `--cpu-sector-encoding-concurrency` and
+    /// `--cpu-plotting-thread-pool-size` options if specified. Requires `--cpu-replotting-cores` to
+    /// be specified with the same number of CPU cores groups (or not specified at all, in which
+    /// case it'll use the same thread pool as plotting).
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
     /// each with a pair of CPU cores.
-    #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "plotting_thread_pool_size"])]
-    plotting_cpu_cores: Option<String>,
+    #[arg(long, conflicts_with_all = & ["cpu_sector_encoding_concurrency", "cpu_plotting_thread_pool_size"])]
+    cpu_plotting_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
     /// to not affect farming as much, defaults to half of the number of logical CPUs available on
     /// UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
     /// groups on large CPUs.
     ///
-    /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
+    /// Number of thread pools is defined by `--cpu-sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
     ///
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
-    replotting_thread_pool_size: Option<NonZeroUsize>,
+    cpu_replotting_thread_pool_size: Option<NonZeroUsize>,
     /// Specify exact CPU cores to be used for replotting bypassing any custom logic farmer might
-    /// use otherwise. It replaces `--replotting-thread_pool_size` options if specified. Requires
-    /// `--plotting-cpu-cores` to be specified with the same number of CPU cores groups.
+    /// use otherwise. It replaces `--cpu-replotting-thread-pool-size` options if specified.
+    /// Requires `--cpu-plotting-cores` to be specified with the same number of CPU cores groups.
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
     /// each with a pair of CPU cores.
-    #[arg(long, conflicts_with_all = & ["sector_encoding_concurrency", "replotting_thread_pool_size"])]
-    replotting_cpu_cores: Option<String>,
+    #[arg(long, conflicts_with_all = & ["cpu_sector_encoding_concurrency", "cpu_replotting_thread_pool_size"])]
+    cpu_replotting_cores: Option<String>,
     /// Plotting thread priority, by default de-prioritizes plotting threads in order to make sure
     /// farming is successful and computer can be used comfortably for other things.  Can be set to
     /// "min", "max" or "default".
@@ -264,13 +264,13 @@ where
     } = farming_args;
 
     let CpuPlottingOptions {
-        sector_downloading_concurrency,
-        sector_encoding_concurrency,
-        record_encoding_concurrency,
-        plotting_thread_pool_size,
-        plotting_cpu_cores,
-        replotting_thread_pool_size,
-        replotting_cpu_cores,
+        cpu_sector_downloading_concurrency,
+        cpu_sector_encoding_concurrency,
+        cpu_record_encoding_concurrency,
+        cpu_plotting_thread_pool_size,
+        cpu_plotting_cores,
+        cpu_replotting_thread_pool_size,
+        cpu_replotting_cores,
         plotting_thread_priority,
     } = cpu_plotting_options;
 
@@ -442,12 +442,12 @@ where
 
     let plotting_thread_pool_core_indices;
     let replotting_thread_pool_core_indices;
-    if let Some(plotting_cpu_cores) = plotting_cpu_cores {
-        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&plotting_cpu_cores)
-            .map_err(|error| anyhow!("Failed to parse `--plotting-cpu-cores`: {error}"))?;
-        replotting_thread_pool_core_indices = match replotting_cpu_cores {
-            Some(replotting_cpu_cores) => parse_cpu_cores_sets(&replotting_cpu_cores)
-                .map_err(|error| anyhow!("Failed to parse `--replotting-cpu-cores`: {error}"))?,
+    if let Some(cpu_plotting_cores) = cpu_plotting_cores {
+        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&cpu_plotting_cores)
+            .map_err(|error| anyhow!("Failed to parse `--cpu-plotting-cores`: {error}"))?;
+        replotting_thread_pool_core_indices = match cpu_replotting_cores {
+            Some(cpu_replotting_cores) => parse_cpu_cores_sets(&cpu_replotting_cores)
+                .map_err(|error| anyhow!("Failed to parse `--cpu-replotting-cores`: {error}"))?,
             None => plotting_thread_pool_core_indices.clone(),
         };
         if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
@@ -458,12 +458,16 @@ where
             ));
         }
     } else {
-        plotting_thread_pool_core_indices =
-            thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
+        plotting_thread_pool_core_indices = thread_pool_core_indices(
+            cpu_plotting_thread_pool_size,
+            cpu_sector_encoding_concurrency,
+        );
         replotting_thread_pool_core_indices = {
-            let mut replotting_thread_pool_core_indices =
-                thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
-            if replotting_thread_pool_size.is_none() {
+            let mut replotting_thread_pool_core_indices = thread_pool_core_indices(
+                cpu_replotting_thread_pool_size,
+                cpu_sector_encoding_concurrency,
+            );
+            if cpu_replotting_thread_pool_size.is_none() {
                 // The default behavior is to use all CPU cores, but for replotting we just want half
                 replotting_thread_pool_core_indices
                     .iter_mut()
@@ -480,13 +484,13 @@ where
         }
     }
 
-    let downloading_semaphore = Arc::new(Semaphore::new(
-        sector_downloading_concurrency
-            .map(|sector_downloading_concurrency| sector_downloading_concurrency.get())
+    let cpu_downloading_semaphore = Arc::new(Semaphore::new(
+        cpu_sector_downloading_concurrency
+            .map(|cpu_sector_downloading_concurrency| cpu_sector_downloading_concurrency.get())
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
-    let record_encoding_concurrency = record_encoding_concurrency.unwrap_or_else(|| {
+    let cpu_record_encoding_concurrency = cpu_record_encoding_concurrency.unwrap_or_else(|| {
         let cpu_cores = plotting_thread_pool_core_indices
             .first()
             .expect("Guaranteed to have some CPU cores; qed");
@@ -513,9 +517,9 @@ where
     let global_mutex = Arc::default();
     let legacy_cpu_plotter = Arc::new(CpuPlotter::<_, PosTableLegacy>::new(
         piece_getter.clone(),
-        Arc::clone(&downloading_semaphore),
+        Arc::clone(&cpu_downloading_semaphore),
         plotting_thread_pool_manager.clone(),
-        record_encoding_concurrency,
+        cpu_record_encoding_concurrency,
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
@@ -523,9 +527,9 @@ where
     ));
     let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
         piece_getter.clone(),
-        downloading_semaphore,
+        cpu_downloading_semaphore,
         plotting_thread_pool_manager,
-        record_encoding_concurrency,
+        cpu_record_encoding_concurrency,
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
