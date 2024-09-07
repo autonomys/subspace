@@ -363,8 +363,8 @@ where
     // that can be used to respond to incoming requests
     let farms_details = farms
         .iter()
-        .map(|farm| {
-            let farm_id = *farm.id();
+        .map(|farm| (farm, *farm.id()))
+        .map(|(farm, farm_id)| {
             let nats_client = nats_client.clone();
 
             let background_tasks = if primary_instance {
@@ -480,7 +480,11 @@ where
     async move {
         if primary_instance {
             select! {
-                result = identify_responder(&nats_client, &farms_details, identification_broadcast_interval).fuse() => {
+                result = identify_responder(
+                    &nats_client,
+                    &farms_details,
+                    identification_broadcast_interval,
+                ).fuse() => {
                     result
                 },
                 result = plotted_sectors_responder(&nats_client, &farms_details).fuse() => {
@@ -540,14 +544,20 @@ async fn identify_responder(
                 }
 
                 last_identification = Instant::now();
-                send_identify_broadcast(nats_client, farms_details).await;
+                send_identify_broadcast(
+                    nats_client,
+                    farms_details,
+                ).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
                 last_identification = Instant::now();
                 trace!("Farmer self-identification");
 
-                send_identify_broadcast(nats_client, farms_details).await;
+                send_identify_broadcast(
+                    nats_client,
+                    farms_details,
+                ).await;
             }
         }
     }
@@ -555,34 +565,43 @@ async fn identify_responder(
     Ok(())
 }
 
-async fn send_identify_broadcast(nats_client: &NatsClient, farms_details: &[FarmDetails]) {
+async fn send_identify_broadcast(
+    nats_client: &NatsClient,
+    farms_details: &[FarmDetails],
+) {
+    if farms_details.is_empty() {
+        warn!("No farm, skip sending farmer identify notification");
+        return;
+    }
+
     farms_details
         .iter()
         .map(|farm_details| async move {
             if let Err(error) = nats_client
                 .broadcast(
-                    &ClusterFarmerIdentifyFarmBroadcast {
-                        farm_id: farm_details.farm_id,
-                        total_sectors_count: farm_details.total_sectors_count,
-                        fingerprint: blake3_hash_list(&[
-                            &farm_details.farm_id.encode(),
-                            &farm_details.total_sectors_count.to_le_bytes(),
-                        ]),
-                    },
+                    &new_identify_message(farm_details),
                     &farm_details.farm_id_string,
                 )
                 .await
             {
-                warn!(
-                    farm_id = %farm_details.farm_id,
-                    %error,
-                    "Failed to send farmer identify notification"
-                );
+                let farmer_id = farm_details.farm_id;
+                warn!(%farmer_id, %error, "Failed to send farmer identify notification");
             }
         })
         .collect::<FuturesUnordered<_>>()
         .collect::<Vec<_>>()
         .await;
+}
+
+fn new_identify_message(farm_details: &FarmDetails) -> ClusterFarmerIdentifyFarmBroadcast {
+    ClusterFarmerIdentifyFarmBroadcast {
+        farm_id: farm_details.farm_id,
+        total_sectors_count: farm_details.total_sectors_count,
+        fingerprint: blake3_hash_list(&[
+            &farm_details.farm_id.encode(),
+            &farm_details.total_sectors_count.to_le_bytes(),
+        ]),
+    }
 }
 
 async fn plotted_sectors_responder(

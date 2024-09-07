@@ -115,8 +115,9 @@ impl KnownFarms {
     }
 
     fn remove_expired(&mut self) -> impl Iterator<Item = (FarmIndex, KnownFarm)> + '_ {
-        self.known_farms.extract_if(|_farm_index, known_farm| {
-            known_farm.last_identification.elapsed() > FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2
+        let elapsed = FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2;
+        self.known_farms.extract_if(move |_farm_index, known_farm| {
+            known_farm.last_identification.elapsed() > elapsed
         })
     }
 
@@ -142,7 +143,7 @@ pub(super) async fn maintain_farms(
         Box::pin(pending()) as Pin<Box<dyn Future<Output = (FarmIndex, anyhow::Result<()>)>>>
     ]);
 
-    let farmer_identify_subscription = pin!(nats_client
+    let farm_identify_subscription = pin!(nats_client
         .subscribe_to_broadcasts::<ClusterFarmerIdentifyFarmBroadcast>(None, None)
         .await
         .map_err(|error| anyhow!(
@@ -157,7 +158,7 @@ pub(super) async fn maintain_farms(
         warn!(%error, "Failed to send farmer identification broadcast");
     }
 
-    let mut farmer_identify_subscription = farmer_identify_subscription.fuse();
+    let mut farm_identify_subscription = farm_identify_subscription.fuse();
     let mut farm_pruning_interval = tokio::time::interval_at(
         (Instant::now() + FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2).into(),
         FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2,
@@ -200,9 +201,9 @@ pub(super) async fn maintain_farms(
                     }
                 }
             }
-            maybe_identify_message = farmer_identify_subscription.next() => {
+            maybe_identify_message = farm_identify_subscription.next() => {
                 let Some(identify_message) = maybe_identify_message else {
-                    return Err(anyhow!("Farmer identify stream ended"));
+                    return Err(anyhow!("Farm identify stream ended"));
                 };
 
                 process_farm_identify_message(
