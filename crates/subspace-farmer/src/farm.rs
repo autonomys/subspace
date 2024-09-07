@@ -28,6 +28,8 @@ use thiserror::Error;
 use ulid::Ulid;
 
 pub mod plotted_pieces;
+#[cfg(test)]
+mod tests;
 
 /// Erased error type
 pub type FarmError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -498,6 +500,19 @@ impl FarmId {
     #[inline]
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
+    }
+
+    /// Derive sub IDs
+    #[inline]
+    pub fn derive_sub_ids(&self, n: usize) -> Vec<Self> {
+        match self {
+            FarmId::Ulid(ulid) => {
+                let ulid = ulid.0;
+                (0..n as u128)
+                    .map(|i| FarmId::Ulid(Ulid(ulid + i)))
+                    .collect()
+            }
+        }
     }
 }
 
