@@ -189,6 +189,14 @@ jobs:
           echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf # v0.2.16
+        with:
+          cuda: '12.4.1'
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+
       - name: Configure cache
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
@@ -202,6 +210,13 @@ jobs:
       - name: Build farmer
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+        if: runner.os == 'macOS' || !startsWith(matrix.build.target, 'x86_64')
+
+      - name: Build farmer
+        run: |
+          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features cuda
+        # TODO: We don't configure CUDA for cross-compilation purposes, hence only x86-64 for now
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && startsWith(matrix.build.target, 'x86_64')
 
       - name: Build node
         run: |
