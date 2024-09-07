@@ -1,5 +1,6 @@
 use crate::commands::shared::PlottingThreadPriority;
 use anyhow::anyhow;
+use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
 use futures::{select, FutureExt};
 use prometheus_client::registry::Registry;
@@ -17,6 +18,7 @@ use subspace_farmer::plotter::cpu::CpuPlotter;
 use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets, thread_pool_core_indices,
 };
+use subspace_farmer_components::PieceGetter;
 use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::info;
@@ -103,6 +105,52 @@ where
         additional_components: _,
     } = plotter_args;
 
+    let kzg = Kzg::new(embedded_kzg_settings());
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
+    )
+    .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
+    let piece_getter = ClusterPieceGetter::new(nats_client.clone(), piece_getter_concurrency);
+
+    let global_mutex = Arc::default();
+
+    let (legacy_cpu_plotter, modern_cpu_plotter) = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
+        cpu_plotting_options,
+        piece_getter,
+        global_mutex,
+        kzg,
+        erasure_coding,
+        registry,
+    )?;
+    let legacy_cpu_plotter = Arc::new(legacy_cpu_plotter);
+    let modern_cpu_plotter = Arc::new(modern_cpu_plotter);
+
+    Ok(Box::pin(async move {
+        select! {
+            result = plotter_service(&nats_client, &legacy_cpu_plotter, false).fuse() => {
+                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
+            }
+            result = plotter_service(&nats_client, &modern_cpu_plotter, true).fuse() => {
+                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
+            }
+        }
+    }))
+}
+
+fn init_cpu_plotters<PG, PosTableLegacy, PosTable>(
+    cpu_plotting_options: CpuPlottingOptions,
+    piece_getter: PG,
+    global_mutex: Arc<AsyncMutex<()>>,
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
+    registry: &mut Registry,
+) -> anyhow::Result<(CpuPlotter<PG, PosTableLegacy>, CpuPlotter<PG, PosTable>)>
+where
+    PG: PieceGetter + Clone + Send + Sync + 'static,
+    PosTableLegacy: Table,
+    PosTable: Table,
+{
     let CpuPlottingOptions {
         cpu_sector_downloading_concurrency,
         cpu_sector_encoding_concurrency,
@@ -111,14 +159,6 @@ where
         cpu_plotting_cores,
         cpu_plotting_thread_priority,
     } = cpu_plotting_options;
-
-    let kzg = Kzg::new(embedded_kzg_settings());
-    let erasure_coding = ErasureCoding::new(
-        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
-            .expect("Not zero; qed"),
-    )
-    .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let piece_getter = ClusterPieceGetter::new(nats_client.clone(), piece_getter_concurrency);
 
     let plotting_thread_pool_core_indices;
     if let Some(cpu_plotting_cores) = cpu_plotting_cores {
@@ -173,8 +213,8 @@ where
         cpu_plotting_thread_priority.into(),
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
-    let global_mutex = Arc::default();
-    let legacy_cpu_plotter = Arc::new(CpuPlotter::<_, PosTableLegacy>::new(
+
+    let legacy_cpu_plotter = CpuPlotter::<_, PosTableLegacy>::new(
         piece_getter.clone(),
         Arc::clone(&downloading_semaphore),
         plotting_thread_pool_manager.clone(),
@@ -183,26 +223,17 @@ where
         kzg.clone(),
         erasure_coding.clone(),
         Some(registry),
-    ));
-    let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
-        piece_getter.clone(),
+    );
+    let modern_cpu_plotter = CpuPlotter::<_, PosTable>::new(
+        piece_getter,
         downloading_semaphore,
         plotting_thread_pool_manager,
         cpu_record_encoding_concurrency,
-        Arc::clone(&global_mutex),
-        kzg.clone(),
-        erasure_coding.clone(),
+        global_mutex,
+        kzg,
+        erasure_coding,
         Some(registry),
-    ));
+    );
 
-    Ok(Box::pin(async move {
-        select! {
-            result = plotter_service(&nats_client, &legacy_cpu_plotter, false).fuse() => {
-                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
-            }
-            result = plotter_service(&nats_client, &modern_cpu_plotter, true).fuse() => {
-                result.map_err(|error| anyhow!("Plotter service failed: {error}"))
-            }
-        }
-    }))
+    Ok((legacy_cpu_plotter, modern_cpu_plotter))
 }

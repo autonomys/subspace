@@ -41,6 +41,7 @@ use subspace_farmer::utils::{
     thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
+use subspace_farmer_components::PieceGetter;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -263,17 +264,6 @@ where
         exit_on_farm_error,
     } = farming_args;
 
-    let CpuPlottingOptions {
-        cpu_sector_downloading_concurrency,
-        cpu_sector_encoding_concurrency,
-        cpu_record_encoding_concurrency,
-        cpu_plotting_thread_pool_size,
-        cpu_plotting_cores,
-        cpu_replotting_thread_pool_size,
-        cpu_replotting_cores,
-        plotting_thread_priority,
-    } = cpu_plotting_options;
-
     let plot_cache = plot_cache.unwrap_or_else(|| {
         !cfg!(windows)
             || disk_farms
@@ -440,101 +430,21 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool_core_indices;
-    let replotting_thread_pool_core_indices;
-    if let Some(cpu_plotting_cores) = cpu_plotting_cores {
-        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&cpu_plotting_cores)
-            .map_err(|error| anyhow!("Failed to parse `--cpu-plotting-cores`: {error}"))?;
-        replotting_thread_pool_core_indices = match cpu_replotting_cores {
-            Some(cpu_replotting_cores) => parse_cpu_cores_sets(&cpu_replotting_cores)
-                .map_err(|error| anyhow!("Failed to parse `--cpu-replotting-cores`: {error}"))?,
-            None => plotting_thread_pool_core_indices.clone(),
-        };
-        if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
-            return Err(anyhow!(
-                "Number of plotting thread pools ({}) is not the same as for replotting ({})",
-                plotting_thread_pool_core_indices.len(),
-                replotting_thread_pool_core_indices.len()
-            ));
-        }
-    } else {
-        plotting_thread_pool_core_indices = thread_pool_core_indices(
-            cpu_plotting_thread_pool_size,
-            cpu_sector_encoding_concurrency,
-        );
-        replotting_thread_pool_core_indices = {
-            let mut replotting_thread_pool_core_indices = thread_pool_core_indices(
-                cpu_replotting_thread_pool_size,
-                cpu_sector_encoding_concurrency,
-            );
-            if cpu_replotting_thread_pool_size.is_none() {
-                // The default behavior is to use all CPU cores, but for replotting we just want half
-                replotting_thread_pool_core_indices
-                    .iter_mut()
-                    .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
-            }
-            replotting_thread_pool_core_indices
-        };
-
-        if plotting_thread_pool_core_indices.len() > 1 {
-            info!(
-                l3_cache_groups = %plotting_thread_pool_core_indices.len(),
-                "Multiple L3 cache groups detected"
-            );
-        }
-    }
-
-    let cpu_downloading_semaphore = Arc::new(Semaphore::new(
-        cpu_sector_downloading_concurrency
-            .map(|cpu_sector_downloading_concurrency| cpu_sector_downloading_concurrency.get())
-            .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
-    ));
-
-    let cpu_record_encoding_concurrency = cpu_record_encoding_concurrency.unwrap_or_else(|| {
-        let cpu_cores = plotting_thread_pool_core_indices
-            .first()
-            .expect("Guaranteed to have some CPU cores; qed");
-
-        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).clamp(1, 8)).expect("Not zero; qed")
-    });
-
-    info!(
-        ?plotting_thread_pool_core_indices,
-        ?replotting_thread_pool_core_indices,
-        "Preparing plotting thread pools"
-    );
-
-    let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
-        plotting_thread_pool_core_indices
-            .into_iter()
-            .zip(replotting_thread_pool_core_indices),
-        plotting_thread_priority.into(),
-    )
-    .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(recommended_number_of_farming_threads);
     let global_mutex = Arc::default();
-    let legacy_cpu_plotter = Arc::new(CpuPlotter::<_, PosTableLegacy>::new(
+
+    let (legacy_cpu_plotter, modern_cpu_plotter) = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
+        cpu_plotting_options,
         piece_getter.clone(),
-        Arc::clone(&cpu_downloading_semaphore),
-        plotting_thread_pool_manager.clone(),
-        cpu_record_encoding_concurrency,
         Arc::clone(&global_mutex),
         kzg.clone(),
         erasure_coding.clone(),
-        Some(&mut registry),
-    ));
-    let modern_cpu_plotter = Arc::new(CpuPlotter::<_, PosTable>::new(
-        piece_getter.clone(),
-        cpu_downloading_semaphore,
-        plotting_thread_pool_manager,
-        cpu_record_encoding_concurrency,
-        Arc::clone(&global_mutex),
-        kzg.clone(),
-        erasure_coding.clone(),
-        Some(&mut registry),
-    ));
+        &mut registry,
+    )?;
+    let legacy_cpu_plotter = Arc::new(legacy_cpu_plotter);
+    let modern_cpu_plotter = Arc::new(modern_cpu_plotter);
 
     let (farms, plotting_delay_senders) = {
         let info_mutex = &AsyncMutex::new(());
@@ -850,4 +760,124 @@ where
     }
 
     anyhow::Ok(())
+}
+
+fn init_cpu_plotters<PG, PosTableLegacy, PosTable>(
+    cpu_plotting_options: CpuPlottingOptions,
+    piece_getter: PG,
+    global_mutex: Arc<AsyncMutex<()>>,
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
+    registry: &mut Registry,
+) -> anyhow::Result<(CpuPlotter<PG, PosTableLegacy>, CpuPlotter<PG, PosTable>)>
+where
+    PG: PieceGetter + Clone + Send + Sync + 'static,
+    PosTableLegacy: Table,
+    PosTable: Table,
+{
+    let CpuPlottingOptions {
+        cpu_sector_downloading_concurrency,
+        cpu_sector_encoding_concurrency,
+        cpu_record_encoding_concurrency,
+        cpu_plotting_thread_pool_size,
+        cpu_plotting_cores,
+        cpu_replotting_thread_pool_size,
+        cpu_replotting_cores,
+        plotting_thread_priority,
+    } = cpu_plotting_options;
+
+    let plotting_thread_pool_core_indices;
+    let replotting_thread_pool_core_indices;
+    if let Some(cpu_plotting_cores) = cpu_plotting_cores {
+        plotting_thread_pool_core_indices = parse_cpu_cores_sets(&cpu_plotting_cores)
+            .map_err(|error| anyhow!("Failed to parse `--cpu-plotting-cores`: {error}"))?;
+        replotting_thread_pool_core_indices = match cpu_replotting_cores {
+            Some(cpu_replotting_cores) => parse_cpu_cores_sets(&cpu_replotting_cores)
+                .map_err(|error| anyhow!("Failed to parse `--cpu-replotting-cores`: {error}"))?,
+            None => plotting_thread_pool_core_indices.clone(),
+        };
+        if plotting_thread_pool_core_indices.len() != replotting_thread_pool_core_indices.len() {
+            return Err(anyhow!(
+                "Number of plotting thread pools ({}) is not the same as for replotting ({})",
+                plotting_thread_pool_core_indices.len(),
+                replotting_thread_pool_core_indices.len()
+            ));
+        }
+    } else {
+        plotting_thread_pool_core_indices = thread_pool_core_indices(
+            cpu_plotting_thread_pool_size,
+            cpu_sector_encoding_concurrency,
+        );
+        replotting_thread_pool_core_indices = {
+            let mut replotting_thread_pool_core_indices = thread_pool_core_indices(
+                cpu_replotting_thread_pool_size,
+                cpu_sector_encoding_concurrency,
+            );
+            if cpu_replotting_thread_pool_size.is_none() {
+                // The default behavior is to use all CPU cores, but for replotting we just want half
+                replotting_thread_pool_core_indices
+                    .iter_mut()
+                    .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+            }
+            replotting_thread_pool_core_indices
+        };
+
+        if plotting_thread_pool_core_indices.len() > 1 {
+            info!(
+                l3_cache_groups = %plotting_thread_pool_core_indices.len(),
+                "Multiple L3 cache groups detected"
+            );
+        }
+    }
+
+    let cpu_downloading_semaphore = Arc::new(Semaphore::new(
+        cpu_sector_downloading_concurrency
+            .map(|cpu_sector_downloading_concurrency| cpu_sector_downloading_concurrency.get())
+            .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
+    ));
+
+    let cpu_record_encoding_concurrency = cpu_record_encoding_concurrency.unwrap_or_else(|| {
+        let cpu_cores = plotting_thread_pool_core_indices
+            .first()
+            .expect("Guaranteed to have some CPU cores; qed");
+
+        NonZeroUsize::new((cpu_cores.cpu_cores().len() / 2).clamp(1, 8)).expect("Not zero; qed")
+    });
+
+    info!(
+        ?plotting_thread_pool_core_indices,
+        ?replotting_thread_pool_core_indices,
+        "Preparing plotting thread pools"
+    );
+
+    let plotting_thread_pool_manager = create_plotting_thread_pool_manager(
+        plotting_thread_pool_core_indices
+            .into_iter()
+            .zip(replotting_thread_pool_core_indices),
+        plotting_thread_priority.into(),
+    )
+    .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
+
+    let legacy_cpu_plotter = CpuPlotter::<_, PosTableLegacy>::new(
+        piece_getter.clone(),
+        Arc::clone(&cpu_downloading_semaphore),
+        plotting_thread_pool_manager.clone(),
+        cpu_record_encoding_concurrency,
+        Arc::clone(&global_mutex),
+        kzg.clone(),
+        erasure_coding.clone(),
+        Some(registry),
+    );
+    let modern_cpu_plotter = CpuPlotter::<_, PosTable>::new(
+        piece_getter,
+        cpu_downloading_semaphore,
+        plotting_thread_pool_manager,
+        cpu_record_encoding_concurrency,
+        global_mutex,
+        kzg,
+        erasure_coding,
+        Some(registry),
+    );
+
+    Ok((legacy_cpu_plotter, modern_cpu_plotter))
 }
