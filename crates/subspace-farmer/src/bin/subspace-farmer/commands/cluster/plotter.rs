@@ -21,16 +21,8 @@ use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::info;
 
-/// Arguments for plotter
 #[derive(Debug, Parser)]
-pub(super) struct PlotterArgs {
-    /// Piece getter concurrency.
-    ///
-    /// Increase can result in NATS communication issues if too many messages arrive via NATS, but
-    /// are not processed quickly enough for some reason and might require increasing cluster-level
-    /// `--nats-pool-size` parameter.
-    #[arg(long, default_value = "32")]
-    piece_getter_concurrency: NonZeroUsize,
+struct CpuPlottingOptions {
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
     /// the plotting process, defaults to `--sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
@@ -76,6 +68,21 @@ pub(super) struct PlotterArgs {
     /// "min", "max" or "default".
     #[arg(long, default_value_t = PlottingThreadPriority::Min)]
     plotting_thread_priority: PlottingThreadPriority,
+}
+
+/// Arguments for plotter
+#[derive(Debug, Parser)]
+pub(super) struct PlotterArgs {
+    /// Piece getter concurrency.
+    ///
+    /// Increase can result in NATS communication issues if too many messages arrive via NATS, but
+    /// are not processed quickly enough for some reason and might require increasing cluster-level
+    /// `--nats-pool-size` parameter.
+    #[arg(long, default_value = "32")]
+    piece_getter_concurrency: NonZeroUsize,
+    /// Plotting options only used by CPU plotter
+    #[clap(flatten)]
+    cpu_plotting_options: CpuPlottingOptions,
     /// Additional cluster components
     #[clap(raw = true)]
     pub(super) additional_components: Vec<String>,
@@ -92,14 +99,18 @@ where
 {
     let PlotterArgs {
         piece_getter_concurrency,
+        cpu_plotting_options,
+        additional_components: _,
+    } = plotter_args;
+
+    let CpuPlottingOptions {
         sector_downloading_concurrency,
         sector_encoding_concurrency,
         record_encoding_concurrency,
         plotting_thread_pool_size,
         plotting_cpu_cores,
         plotting_thread_priority,
-        additional_components: _,
-    } = plotter_args;
+    } = cpu_plotting_options;
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
