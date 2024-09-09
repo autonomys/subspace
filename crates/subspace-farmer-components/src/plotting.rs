@@ -650,8 +650,8 @@ fn record_encoding<PosTable>(
         .drain(..)
         .zip(encoded_chunks_used.iter_mut())
         .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
-            // Last byte's bits all set to 1 represents missing proof, see above
-            if maybe_encoded_chunk[31] == u8::MAX {
+            // All bits set means no proof, see above
+            if maybe_encoded_chunk == [u8::MAX; Scalar::FULL_BYTES] {
                 None
             } else {
                 *encoded_chunk_used = true;

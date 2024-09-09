@@ -20,12 +20,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
+use subspace_core_primitives::{
+    HistorySize, PosSeed, PublicKey, Record, SectorIndex, SegmentIndex, Solution, SolutionRange,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
-use subspace_farmer_components::sector::SectorMetadataChecksummed;
+use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
@@ -257,6 +259,7 @@ where
         // Take mutex briefly to make sure farming is allowed right now
         global_mutex.lock().await;
 
+        let mut problematic_sectors = Vec::new();
         let result: Result<(), FarmingError> = try {
             let start = Instant::now();
             let sectors_metadata = sectors_metadata.read().await;
@@ -326,7 +329,13 @@ where
                                 metrics
                                     .observe_proving_time(&start.elapsed(), ProvingResult::Failed);
                             }
-                            error!(%slot, %sector_index, %error, "Failed to prove");
+                            error!(
+                                %slot,
+                                %sector_index,
+                                %error,
+                                "Failed to prove, scheduling sector for replotting"
+                            );
+                            problematic_sectors.push(sector_index);
                             // Do not error completely as disk corruption or other reasons why
                             // proving might fail
                             start = Instant::now();
@@ -423,6 +432,26 @@ where
             handlers
                 .farming_notification
                 .call_simple(&FarmingNotification::NonFatalError(Arc::new(error)));
+
+            for sector_index in problematic_sectors.drain(..) {
+                // Inform others that this sector is being modified
+                sectors_being_modified.write().await.insert(sector_index);
+                // Replace metadata with a dummy one, so it will be picked up for replotting next
+                if let Some(existing_sector_metadata) = sectors_metadata
+                    .write()
+                    .await
+                    .get_mut(sector_index as usize)
+                {
+                    *existing_sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
+                        sector_index,
+                        pieces_in_sector: existing_sector_metadata.pieces_in_sector,
+                        s_bucket_sizes: Box::new([0; Record::NUM_S_BUCKETS]),
+                        history_size: HistorySize::from(SegmentIndex::ZERO),
+                    });
+                }
+                // Inform others that this sector is no longer being modified
+                sectors_being_modified.write().await.remove(&sector_index);
+            }
         } else {
             non_fatal_errors = 0;
         }
