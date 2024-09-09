@@ -14,13 +14,13 @@ use tracing::{error, trace};
 /// This plotter implementation relies on retries and should only be used with local plotter
 /// implementations (like CPU and GPU).
 #[derive(Debug)]
-pub struct AggregatePlotter {
+pub struct PoolPlotter {
     plotters: Vec<Box<dyn Plotter + Send + Sync>>,
     retry_interval: Duration,
 }
 
 #[async_trait]
-impl Plotter for AggregatePlotter {
+impl Plotter for PoolPlotter {
     async fn has_free_capacity(&self) -> Result<bool, String> {
         for (index, plotter) in self.plotters.iter().enumerate() {
             match plotter.has_free_capacity().await {
@@ -106,7 +106,7 @@ impl Plotter for AggregatePlotter {
     }
 }
 
-impl AggregatePlotter {
+impl PoolPlotter {
     /// Create new instance
     pub fn new(plotters: Vec<Box<dyn Plotter + Send + Sync>>, retry_interval: Duration) -> Self {
         Self {
