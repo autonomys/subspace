@@ -138,7 +138,7 @@ where
                 if !peer_info.is_synced {
                     trace!("Domain data request skipped (not synced). peer = {peer_id}");
 
-                    continue;
+                    continue 'peers;
                 }
 
                 let request = LastConfirmedBlockRequest::<CBlock> {
