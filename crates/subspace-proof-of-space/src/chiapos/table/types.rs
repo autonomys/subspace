@@ -12,32 +12,38 @@ use derive_more::{Add, AddAssign, From, Into};
 pub(in super::super) struct X(u32);
 
 impl Step for X {
+    #[inline(always)]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u32::steps_between(&start.0, &end.0)
     }
 
+    #[inline(always)]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u32::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline(always)]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u32::backward_checked(start.0, count).map(Self)
     }
 }
 
 impl From<X> for u64 {
+    #[inline(always)]
     fn from(value: X) -> Self {
         Self::from(value.0)
     }
 }
 
 impl From<X> for u128 {
+    #[inline(always)]
     fn from(value: X) -> Self {
         Self::from(value.0)
     }
 }
 
 impl From<X> for usize {
+    #[inline(always)]
     fn from(value: X) -> Self {
         value.0 as Self
     }
@@ -56,12 +62,14 @@ impl X {
 pub(in super::super) struct Y(u32);
 
 impl From<Y> for u128 {
+    #[inline(always)]
     fn from(value: Y) -> Self {
         Self::from(value.0)
     }
 }
 
 impl From<Y> for usize {
+    #[inline(always)]
     fn from(value: Y) -> Self {
         value.0 as Self
     }
@@ -80,20 +88,24 @@ impl Y {
 pub(in super::super) struct Position(u32);
 
 impl Step for Position {
+    #[inline(always)]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u32::steps_between(&start.0, &end.0)
     }
 
+    #[inline(always)]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u32::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline(always)]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u32::backward_checked(start.0, count).map(Self)
     }
 }
 
 impl From<Position> for usize {
+    #[inline(always)]
     fn from(value: Position) -> Self {
         value.0 as Self
     }
@@ -117,6 +129,7 @@ impl<const K: u8, const TABLE_NUMBER: u8> Default for Metadata<K, TABLE_NUMBER>
 where
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
+    #[inline(always)]
     fn default() -> Self {
         Self([0; metadata_size_bytes(K, TABLE_NUMBER)])
     }
@@ -154,6 +167,7 @@ impl<const K: u8, const TABLE_NUMBER: u8> From<X> for Metadata<K, TABLE_NUMBER>
 where
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
+    #[inline(always)]
     fn from(value: X) -> Self {
         Self::from(u128::from(value))
     }
