@@ -25,9 +25,11 @@ use rayon::prelude::*;
 use seq_macro::seq;
 #[cfg(all(not(feature = "std"), any(feature = "parallel", test)))]
 use spin::Mutex;
+use static_assertions::const_assert;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
+pub(super) const HAS_MATCH_UNROLL_FACTOR: usize = 8;
 
 /// Compute the size of `y` in bits
 pub(super) const fn y_size_bits(k: u8) -> usize {
@@ -348,11 +350,22 @@ pub(super) fn has_match(left_y: Y, right_y: Y) -> bool {
     let parity = (u32::from(left_y) / u32::from(PARAM_BC)) % 2;
     let left_r = u32::from(left_y) % u32::from(PARAM_BC);
 
-    for m in 0..u32::from(PARAM_M) {
-        let r_target = calculate_left_target_on_demand(parity, left_r, m);
-        if r_target == right_r {
-            return true;
-        }
+    const_assert!(PARAM_M as usize % HAS_MATCH_UNROLL_FACTOR == 0);
+
+    for m in 0..u32::from(PARAM_M) / HAS_MATCH_UNROLL_FACTOR as u32 {
+        let _: [(); HAS_MATCH_UNROLL_FACTOR] = seq!(N in 0..8 {
+            [
+            #(
+            {
+                #[allow(clippy::identity_op)]
+                let r_target = calculate_left_target_on_demand(parity, left_r, m * HAS_MATCH_UNROLL_FACTOR as u32 + N);
+                if r_target == right_r {
+                    return true;
+                }
+            },
+            )*
+            ]
+        });
     }
 
     false
