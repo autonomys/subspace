@@ -195,18 +195,25 @@ where
         None => None,
     };
 
-    encode_sector(
+    let encoded_sector = encode_sector(
         download_sector_fut.await?,
         EncodeSectorOptions::<RE> {
             sector_index,
             records_encoder,
-            sector_output,
             abort_early,
         },
-    )
+    )?;
+
+    if abort_early.load(Ordering::Acquire) {
+        return Err(PlottingError::AbortEarly);
+    }
+
+    write_sector(&encoded_sector, sector_output)?;
+
+    Ok(encoded_sector.plotted_sector)
 }
 
-/// Opaque sector downloaded and ready for encoding
+/// Opaque sector downloading result and ready for writing
 #[derive(Debug)]
 pub struct DownloadedSector {
     sector_id: SectorId,
@@ -456,21 +463,27 @@ where
     pub sector_index: SectorIndex,
     /// Records encoding instance
     pub records_encoder: &'a mut RE,
-    /// Where plotted sector should be written, vector must either be empty (in which case it'll be
-    /// resized to correct size automatically) or correctly sized from the beginning
-    pub sector_output: &'a mut Vec<u8>,
     /// Whether encoding should be aborted early
     pub abort_early: &'a AtomicBool,
 }
 
+/// Mostly opaque sector encoding result ready for writing
+#[derive(Debug)]
+pub struct EncodedSector {
+    /// Information about sector that was plotted
+    pub plotted_sector: PlottedSector,
+    raw_sector: RawSector,
+    sector_contents_map: SectorContentsMap,
+}
+
 /// Encode downloaded sector.
 ///
-/// This function encodes downloaded sector pieces into provided sector output and returns sector
-/// metadata.
+/// This function encodes downloaded sector records and returns sector encoding result that can be
+/// written using [`write_sector`].
 pub fn encode_sector<RE>(
     downloaded_sector: DownloadedSector,
     encoding_options: EncodeSectorOptions<'_, RE>,
-) -> Result<PlottedSector, PlottingError>
+) -> Result<EncodedSector, PlottingError>
 where
     RE: RecordsEncoder,
 {
@@ -483,9 +496,51 @@ where
     let EncodeSectorOptions {
         sector_index,
         records_encoder,
-        sector_output,
         abort_early,
     } = encoding_options;
+
+    let pieces_in_sector = raw_sector.records.len().try_into().expect(
+        "Raw sector can only be created in this crate and it is always done correctly; qed",
+    );
+
+    let sector_contents_map = records_encoder
+        .encode_records(
+            &sector_id,
+            &mut raw_sector.records,
+            history_size,
+            abort_early,
+        )
+        .map_err(|error| PlottingError::RecordsEncoderError { error })?;
+
+    let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
+        sector_index,
+        pieces_in_sector,
+        s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
+        history_size,
+    });
+
+    Ok(EncodedSector {
+        plotted_sector: PlottedSector {
+            sector_id,
+            sector_index,
+            sector_metadata,
+            piece_indexes: piece_indices,
+        },
+        raw_sector,
+        sector_contents_map,
+    })
+}
+
+/// Write encoded sector into sector output
+pub fn write_sector(
+    encoded_sector: &EncodedSector,
+    sector_output: &mut Vec<u8>,
+) -> Result<(), PlottingError> {
+    let EncodedSector {
+        plotted_sector: _,
+        raw_sector,
+        sector_contents_map,
+    } = encoded_sector;
 
     let pieces_in_sector = raw_sector.records.len().try_into().expect(
         "Raw sector can only be created in this crate and it is always done correctly; qed",
@@ -498,19 +553,6 @@ where
             provided: sector_output.len(),
             expected: sector_size,
         });
-    }
-
-    let sector_contents_map = records_encoder
-        .encode_records(
-            &sector_id,
-            &mut raw_sector.records,
-            history_size,
-            abort_early,
-        )
-        .map_err(|error| PlottingError::RecordsEncoderError { error })?;
-
-    if abort_early.load(Ordering::Acquire) {
-        return Err(PlottingError::AbortEarly);
     }
 
     sector_output.resize(sector_size, 0);
@@ -567,7 +609,7 @@ where
 
         let metadata_chunks =
             metadata_region.array_chunks_mut::<{ RecordMetadata::encoded_size() }>();
-        for (record_metadata, output) in raw_sector.metadata.into_iter().zip(metadata_chunks) {
+        for (record_metadata, output) in raw_sector.metadata.iter().zip(metadata_chunks) {
             record_metadata.encode_to(&mut output.as_mut_slice());
         }
 
@@ -578,19 +620,7 @@ where
         sector_checksum.copy_from_slice(&blake3_hash_parallel(sector_contents));
     }
 
-    let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
-        sector_index,
-        pieces_in_sector,
-        s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
-        history_size,
-    });
-
-    Ok(PlottedSector {
-        sector_id,
-        sector_index,
-        sector_metadata,
-        piece_indexes: piece_indices,
-    })
+    Ok(())
 }
 
 fn record_encoding<PosTable>(

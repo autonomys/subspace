@@ -27,8 +27,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, CpuRecordsEncoder, DownloadSectorOptions, EncodeSectorOptions,
-    PlottingError,
+    download_sector, encode_sector, write_sector, CpuRecordsEncoder, DownloadSectorOptions,
+    EncodeSectorOptions, PlottingError,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_proof_of_space::Table;
@@ -354,12 +354,6 @@ where
                         metrics.plotting_capacity_used.inc();
                     }
 
-                    let thread_pool = if replotting {
-                        &thread_pools.replotting
-                    } else {
-                        &thread_pools.plotting
-                    };
-
                     // Give a chance to interrupt plotting if necessary
                     yield_now().await;
 
@@ -378,9 +372,14 @@ where
 
                     let encoding_start = Instant::now();
 
-                    let plotting_result = tokio::task::block_in_place(|| {
-                        thread_pool.install(|| {
-                            let mut sector = Vec::new();
+                    let plotting_result = tokio::task::block_in_place(move || {
+                        let thread_pool = if replotting {
+                            &thread_pools.replotting
+                        } else {
+                            &thread_pools.plotting
+                        };
+
+                        let encoded_sector = thread_pool.install(|| {
                             let mut generators = (0..record_encoding_concurrency.get())
                                 .map(|_| PosTable::generator())
                                 .collect::<Vec<_>>();
@@ -390,20 +389,29 @@ where
                                 &global_mutex,
                             );
 
-                            let plotted_sector = encode_sector(
+                            encode_sector(
                                 downloaded_sector,
                                 EncodeSectorOptions {
                                     sector_index,
-                                    sector_output: &mut sector,
                                     records_encoder: &mut records_encoder,
                                     abort_early: &abort_early,
                                 },
-                            )?;
+                            )
+                        })?;
 
-                            Ok((sector, plotted_sector))
-                        })
+                        if abort_early.load(Ordering::Acquire) {
+                            return Err(PlottingError::AbortEarly);
+                        }
+
+                        drop(thread_pools);
+
+                        let mut sector = Vec::new();
+
+                        write_sector(&encoded_sector, &mut sector)?;
+
+                        Ok((sector, encoded_sector.plotted_sector))
                     });
-                    drop(thread_pools);
+
                     if let Some(metrics) = &metrics {
                         metrics.plotting_capacity_used.dec();
                     }

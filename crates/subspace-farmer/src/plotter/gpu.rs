@@ -28,8 +28,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
-    download_sector, encode_sector, DownloadSectorOptions, EncodeSectorOptions, PlottingError,
-    RecordsEncoder,
+    download_sector, encode_sector, write_sector, DownloadSectorOptions, EncodeSectorOptions,
+    PlottingError, RecordsEncoder,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -375,22 +375,28 @@ where
 
                     let encoding_start = Instant::now();
 
-                    let plotting_result = tokio::task::block_in_place(|| {
-                        let mut sector = Vec::new();
-
-                        let plotted_sector = encode_sector(
+                    let plotting_result = tokio::task::block_in_place(move || {
+                        let encoded_sector = encode_sector(
                             downloaded_sector,
                             EncodeSectorOptions {
                                 sector_index,
-                                sector_output: &mut sector,
                                 records_encoder: &mut *records_encoder,
                                 abort_early: &abort_early,
                             },
                         )?;
 
-                        Ok((sector, plotted_sector))
+                        if abort_early.load(Ordering::Acquire) {
+                            return Err(PlottingError::AbortEarly);
+                        }
+
+                        drop(records_encoder);
+
+                        let mut sector = Vec::new();
+
+                        write_sector(&encoded_sector, &mut sector)?;
+
+                        Ok((sector, encoded_sector.plotted_sector))
                     });
-                    drop(records_encoder);
 
                     if let Some(metrics) = &metrics {
                         metrics.plotting_capacity_used.dec();
