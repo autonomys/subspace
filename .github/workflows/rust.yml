@@ -117,12 +117,13 @@ jobs:
       - name: cargo clippy
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks -- -D warnings
-        if: runner.os == 'macOS'
+        # TODO: Windows should be compiled with CUDA as well once compilation succeeds
+        if: runner.os == 'macOS' || runner.os == 'Windows'
 
       - name: cargo clippy
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks,cuda -- -D warnings
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+        if: runner.os == 'Linux'
 
   cargo-docs:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
