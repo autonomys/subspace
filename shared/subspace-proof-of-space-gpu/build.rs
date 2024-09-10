@@ -26,6 +26,9 @@ fn main() {
         hipcc.flag("--offload-arch=native,gfx1100,gfx1030,gfx942,gfx90a,gfx908");
         // 6 corresponds to the number of offload-arch
         hipcc.flag("-parallel-jobs=6");
+        // This controls how error strings get handled in the FFI. When defined error strings get
+        // returned from the FFI, and Rust must then free them. When not defined error strings are
+        // not returned.
         hipcc.define("TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE", None);
         if let Some(include) = env::var_os("DEP_SPPARK_ROOT") {
             hipcc.include(include);
@@ -41,6 +44,9 @@ fn main() {
         if target_env != "msvc" {
             nvcc.flag("-Xcompiler").flag("-Wno-unused-function");
         }
+        // This controls how error strings get handled in the FFI. When defined error strings get
+        // returned from the FFI, and Rust must then free them. When not defined error strings are
+        // not returned.
         nvcc.define("TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE", None);
         if let Some(include) = env::var_os("DEP_BLST_C_SRC") {
             nvcc.include(include);

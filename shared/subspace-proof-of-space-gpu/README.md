@@ -3,6 +3,8 @@
 This crate exposes some low-level primitives to accelerate proof of space implementation on Nvidia (CUDA, Volta+) and
 AMD (ROCm) GPUs.
 
+The implementation expects 64KB of shared memory and about 1.1GB of VRAM on GPU.
+
 ## Build requirements
 
 ### CUDA
