@@ -122,7 +122,10 @@ pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
     /// Total withdrawal amount requested by the nominator that are in unlocking state excluding withdrawal
     /// in shares and the storage fee
     pub(crate) total_withdrawal_amount: Balance,
+    /// Total amount of storage fee on withdraw (including withdrawal in shares)
+    pub(crate) total_storage_fee_withdrawal: Balance,
     /// Individual withdrawal amounts with their unlocking block for a given domain
+    // TODO: fixed number of withdrawal & uhlock all ready withdrawal at once
     pub(crate) withdrawals: VecDeque<WithdrawalInBalance<DomainBlockNumber, Balance>>,
     /// Withdrawal that was initiated by nominator and not converted to balance due to
     /// unfinished domain epoch.
@@ -952,6 +955,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     },
                 };
                 withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
+                withdrawal.total_storage_fee_withdrawal = withdrawal
+                    .total_storage_fee_withdrawal
+                    .checked_add(&withdraw_storage_fee)
+                    .ok_or(Error::BalanceOverflow)?;
 
                 *maybe_withdrawal = Some(withdrawal);
                 Ok(())
@@ -997,6 +1004,11 @@ pub(crate) fn do_unlock_funds<T: Config>(
             .checked_sub(&amount_to_unlock)
             .ok_or(Error::BalanceUnderflow)?;
 
+        withdrawal.total_storage_fee_withdrawal = withdrawal
+            .total_storage_fee_withdrawal
+            .checked_sub(&storage_fee_refund)
+            .ok_or(Error::BalanceUnderflow)?;
+
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
         let amount_to_release: BalanceOf<T> = {
@@ -1027,7 +1039,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         });
 
         // Release storage fund
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
         T::Currency::release(
             &storage_fund_hold_id,
             &nominator_id,
@@ -1104,7 +1116,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             operator_id,
             total_storage_fee_deposit,
         );
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
 
@@ -1117,19 +1128,23 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         // if the withdrawals has share price noted, then convert them to SSC
         // if no share price, then it must be intitated in the epoch before operator de-registered,
         // so get the shares as is and include them in the total staked shares.
-        let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-            Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                .map(|mut withdrawal| {
-                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
-                    Ok((
-                        withdrawal.total_withdrawal_amount,
-                        withdrawal
-                            .withdrawal_in_shares
-                            .map(|WithdrawalInShares { shares, .. }| shares)
-                            .unwrap_or_default(),
-                    ))
-                })
-                .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
+        let (
+            amount_ready_to_withdraw,
+            total_storage_fee_withdrawal,
+            shares_withdrew_in_current_epoch,
+        ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
+            .map(|mut withdrawal| {
+                do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                Ok((
+                    withdrawal.total_withdrawal_amount,
+                    withdrawal.total_storage_fee_withdrawal,
+                    withdrawal
+                        .withdrawal_in_shares
+                        .map(|WithdrawalInShares { shares, .. }| shares)
+                        .unwrap_or_default(),
+                ))
+            })
+            .unwrap_or(Ok((Zero::zero(), Zero::zero(), Zero::zero())))?;
 
         // include all the known shares and shares that were withdrawn in the current epoch
         let nominator_shares = deposit
@@ -1191,15 +1206,20 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         )
         .map_err(Error::BundleStorageFund)?;
 
-        // Release all storage fee that of the nominator.
-        let storage_fee_refund =
-            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
-                .map_err(|_| Error::RemoveLock)?;
+        // Release all storage fee on withdraw of the nominator
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
+        T::Currency::release(
+            &storage_fund_hold_id,
+            &nominator_id,
+            total_storage_fee_withdrawal,
+            Precision::Exact,
+        )
+        .map_err(|_| Error::RemoveLock)?;
 
         Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            storage_fee: storage_fee_refund,
+            storage_fee: total_storage_fee_withdrawal,
         });
 
         // reduce total storage fee deposit with nominator total fee deposit

@@ -976,7 +976,7 @@ pub enum MessengerHoldIdentifier {
 pub enum DomainsHoldIdentifier {
     Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
-    StorageFund(OperatorId),
+    StorageFund,
 }
 
 /// Domains specific digest item.

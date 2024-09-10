@@ -27,6 +27,7 @@ pub enum Error {
     FailToDeposit,
     WithdrawAndHold,
     BalanceTransfer,
+    FailToWithdraw,
 }
 
 /// The type of system account being created.
@@ -184,7 +185,7 @@ pub fn withdraw_and_hold<T: Config>(
     }
 
     let storage_fund_acc = storage_fund_account::<T>(operator_id);
-    let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+    let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
     T::Currency::transfer_and_hold(
         &storage_fund_hold_id,
         &storage_fund_acc,

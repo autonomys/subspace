@@ -366,7 +366,6 @@ pub(crate) fn do_slash_operator<T: Config>(
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
 
         // transfer all the staked funds to the treasury account
         // any gains will be minted to treasury account
@@ -378,19 +377,23 @@ pub(crate) fn do_slash_operator<T: Config>(
 
             // there maybe some withdrawals that are initiated in this epoch where operator was slashed
             // then collect and include them to find the final stake amount
-            let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-                Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                    .map(|mut withdrawal| {
-                        do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
-                        Ok((
-                            withdrawal.total_withdrawal_amount,
-                            withdrawal
-                                .withdrawal_in_shares
-                                .map(|WithdrawalInShares { shares, .. }| shares)
-                                .unwrap_or_default(),
-                        ))
-                    })
-                    .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
+            let (
+                amount_ready_to_withdraw,
+                withdraw_storage_fee_on_hold,
+                shares_withdrew_in_current_epoch,
+            ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                .map(|mut withdrawal| {
+                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                    Ok((
+                        withdrawal.total_withdrawal_amount,
+                        withdrawal.total_storage_fee_withdrawal,
+                        withdrawal
+                            .withdrawal_in_shares
+                            .map(|WithdrawalInShares { shares, .. }| shares)
+                            .unwrap_or_default(),
+                    ))
+                })
+                .unwrap_or(Ok((Zero::zero(), Zero::zero(), Zero::zero())))?;
 
             // include all the known shares and shares that were withdrawn in the current epoch
             let nominator_shares = deposit
@@ -459,11 +462,8 @@ pub(crate) fn do_slash_operator<T: Config>(
             }
 
             // Transfer all the storage fee on withdraw to the treasury
-            let withdraw_storage_fee_on_hold =
-                T::Currency::balance_on_hold(&storage_fund_hold_id, &nominator_id);
-
             T::Currency::transfer_on_hold(
-                &storage_fund_hold_id,
+                &T::HoldIdentifier::storage_fund_withdrawal(),
                 &nominator_id,
                 &T::TreasuryAccount::get(),
                 withdraw_storage_fee_on_hold,
