@@ -1504,12 +1504,13 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.1.10"
+version = "1.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9e8aabfac534be767c909e0690571677d49f41bd8465ae876fe043d52ba5292"
+checksum = "57b6a275aa2903740dc87da01c62040406b8812552e97129a63ea8850a17c6e6"
 dependencies = [
  "jobserver",
  "libc",
+ "shlex",
 ]
 
 [[package]]
@@ -11283,6 +11284,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "shlex"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12398,6 +12405,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sppark"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c55f3833d30846a26110dccb1d5366314c2c52516a9173b74238c16b24b1a9f9"
+dependencies = [
+ "cc",
+ "which",
+]
+
+[[package]]
 name = "ss58-registry"
 version = "1.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12655,6 +12672,7 @@ dependencies = [
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
+ "subspace-proof-of-space-gpu",
  "subspace-rpc-primitives",
  "substrate-bip39 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "supports-color",
@@ -12902,6 +12920,20 @@ dependencies = [
  "spin 0.9.8",
  "subspace-chiapos",
  "subspace-core-primitives",
+]
+
+[[package]]
+name = "subspace-proof-of-space-gpu"
+version = "0.1.0"
+dependencies = [
+ "blst",
+ "cc",
+ "rust-kzg-blst",
+ "sppark",
+ "subspace-core-primitives",
+ "subspace-erasure-coding",
+ "subspace-farmer-components",
+ "subspace-proof-of-space",
 ]
 
 [[package]]

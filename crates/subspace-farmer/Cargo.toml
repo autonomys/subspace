@@ -58,6 +58,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics", optional = true }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
+subspace-proof-of-space-gpu = { version = "0.1.0", path = "../../shared/subspace-proof-of-space-gpu", optional = true }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.6.0"
 supports-color = { version = "3.0.0", optional = true }
@@ -75,6 +76,10 @@ zeroize = "1.8.1"
 default = ["default-library", "binary"]
 cluster = ["dep:async-nats"]
 numa = ["dep:hwlocality"]
+# Only Volta+ architectures are supported (GeForce RTX 20xx consumer GPUs and newer)
+cuda = ["_gpu", "subspace-proof-of-space-gpu/cuda"]
+# Internal feature, shouldn't be used directly
+_gpu = []
 
 # TODO: This is a hack for https://github.com/rust-lang/cargo/issues/1982, `default-library` is what would essentially
 #  be default, but because binary compilation will require explicit feature to be specified without `binary` feature we

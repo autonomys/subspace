@@ -96,6 +96,14 @@ jobs:
         # Doesn't exist on self-hosted runners
         if: matrix.os == 'windows-2022'
 
+      - name: CUDA toolchain
+        uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf # v0.2.16
+        with:
+          cuda: '12.4.1'
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+
       - name: Configure cache
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
@@ -108,7 +116,14 @@ jobs:
 
       - name: cargo clippy
         run: |
-          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features "runtime-benchmarks" -- -D warnings
+          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks -- -D warnings
+        # TODO: Windows should be compiled with CUDA as well once compilation succeeds
+        if: runner.os == 'macOS' || runner.os == 'Windows'
+
+      - name: cargo clippy
+        run: |
+          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks,cuda -- -D warnings
+        if: runner.os == 'Linux'
 
   cargo-docs:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}

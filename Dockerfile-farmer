@@ -40,11 +40,24 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
+    CUDA_ARCH=$(uname -p | sed "s/aarch64/arm64/g") && \
+    curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/$CUDA_ARCH/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/$CUDA_ARCH/ /" | tee /etc/apt/sources.list.d/cuda-ubuntu2004-$CUDA_ARCH.list && \
+    curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/$CUDA_ARCH/cuda-ubuntu2004.pin && \
+    mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-minimal-build-12-4
+
+RUN \
+    export PATH=/usr/local/cuda/bin${PATH:+:${PATH}} && \
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}} && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-farmer \
+        --features cuda \
         --target $(uname -p)-unknown-linux-gnu && \
     mv target/*/*/subspace-farmer subspace-farmer && \
     rm -rf target

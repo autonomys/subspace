@@ -1,0 +1,42 @@
+[package]
+name = "subspace-proof-of-space-gpu"
+description = "Subspace proof of space implementation for GPU (low-level proving utilities)"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Supranational LLC"]
+edition = "2021"
+include = [
+    "/build.rs",
+    "/src",
+    "/Cargo.toml",
+    "/README.md",
+]
+
+[dependencies]
+blst = { version = "0.3.13", optional = true }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false, optional = true }
+# TODO: This is `rocm` branch, it is needed for ROCm support
+#sppark = { git = "https://github.com/dot-asm/sppark", rev = "8eeafe0f6cc0ca8211b1be93922df1b5a118bbd2", optional = true }
+sppark = { version = "0.1.8", optional = true }
+subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives", default-features = false, optional = true }
+
+[dev-dependencies]
+subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
+subspace-farmer-components = { version = "0.1.0", path = "../../crates/subspace-farmer-components" }
+subspace-proof-of-space = { version = "0.1.0", path = "../../crates/subspace-proof-of-space" }
+
+[build-dependencies]
+cc = "1.1.15"
+
+[features]
+# Only Volta+ architectures are supported (GeForce RTX 20xx consumer GPUs and newer)
+cuda = ["_gpu"]
+# TODO: ROCm can't be enabled at the same time as `cuda` feature at the moment and is not exposed on library level
+rocm = ["_gpu"]
+# Internal feature, shouldn't be used directly
+_gpu = [
+    "dep:blst",
+    "dep:rust-kzg-blst",
+    "dep:sppark",
+    "dep:subspace-core-primitives",
+]

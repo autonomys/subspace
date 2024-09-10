@@ -269,7 +269,7 @@ pub enum SectorContentsMapIterationError {
 /// encoded (meaning erasure coded and encoded with existing PoSpace quality) and unencoded chunks
 /// (just erasure coded) used at the same time both in records (before writing to plot) and
 /// s-buckets (written into the plot) format
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SectorContentsMap {
     /// Number of encoded chunks used in each record.
     ///
