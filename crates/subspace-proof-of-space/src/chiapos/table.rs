@@ -29,6 +29,7 @@ use static_assertions::const_assert;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
+pub(super) const FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR: usize = 8;
 pub(super) const HAS_MATCH_UNROLL_FACTOR: usize = 8;
 
 /// Compute the size of `y` in bits
@@ -269,22 +270,31 @@ pub(super) fn compute_f1_simd<const K: u8>(
 /// For verification purposes use [`has_match`] instead.
 ///
 /// Returns `None` if either of buckets is empty.
-fn find_matches<'a>(
-    left_bucket_ys: &'a [Y],
+#[allow(clippy::too_many_arguments)]
+fn find_matches<T, Map>(
+    left_bucket_ys: &[Y],
     left_bucket_start_position: Position,
-    right_bucket_ys: &'a [Y],
+    right_bucket_ys: &[Y],
     right_bucket_start_position: Position,
-    rmap_scratch: &'a mut Vec<RmapItem>,
-    left_targets: &'a LeftTargets,
-) -> Option<impl Iterator<Item = Match> + 'a> {
+    rmap_scratch: &mut Vec<RmapItem>,
+    left_targets: &LeftTargets,
+    map: Map,
+    output: &mut Vec<T>,
+) where
+    Map: Fn(Match) -> T,
+{
     // Clear and set to correct size with zero values
     rmap_scratch.clear();
     rmap_scratch.resize_with(usize::from(PARAM_BC), RmapItem::default);
     let rmap = rmap_scratch;
 
     // Both left and right buckets can be empty
-    let first_left_bucket_y = *left_bucket_ys.first()?;
-    let first_right_bucket_y = *right_bucket_ys.first()?;
+    let Some(&first_left_bucket_y) = left_bucket_ys.first() else {
+        return;
+    };
+    let Some(&first_right_bucket_y) = right_bucket_ys.first() else {
+        return;
+    };
     // Since all entries in a bucket are obtained after division by `PARAM_BC`, we can compute
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
@@ -317,31 +327,41 @@ fn find_matches<'a>(
         }
     };
 
-    Some(
-        left_bucket_ys
-            .iter()
-            .zip(left_bucket_start_position..)
-            .flat_map(move |(&y, left_position)| {
-                let r = usize::from(y) - base;
-                let left_targets_r = left_targets_parity
-                    .chunks_exact(left_targets_parity.len() / usize::from(PARAM_BC))
-                    .nth(r)
-                    .expect("r is valid");
+    for (&y, left_position) in left_bucket_ys.iter().zip(left_bucket_start_position..) {
+        let r = usize::from(y) - base;
+        let left_targets_r = left_targets_parity
+            .chunks_exact(left_targets_parity.len() / usize::from(PARAM_BC))
+            .nth(r)
+            .expect("r is valid");
 
-                (0..usize::from(PARAM_M)).flat_map(move |m| {
-                    let r_target = left_targets_r[m];
-                    let rmap_item = rmap[usize::from(r_target)];
+        const_assert!(PARAM_M as usize % FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR == 0);
 
-                    (rmap_item.start_position..rmap_item.start_position + rmap_item.count).map(
-                        move |right_position| Match {
+        for r_targets in left_targets_r
+            .array_chunks::<{ FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR }>()
+            .take(usize::from(PARAM_M) / FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR)
+        {
+            let _: [(); FIND_MATCHES_AND_COMPUTE_UNROLL_FACTOR] = seq!(N in 0..8 {
+                [
+                #(
+                {
+                    let rmap_item = rmap[usize::from(r_targets[N])];
+
+                    for right_position in
+                        rmap_item.start_position..rmap_item.start_position + rmap_item.count
+                    {
+                        let m = Match {
                             left_position,
                             left_y: y,
                             right_position,
-                        },
-                    )
-                })
-            }),
-    )
+                        };
+                        output.push(map(m));
+                    }
+                },
+                )*
+                ]
+            });
+        }
+    }
 }
 
 /// Simplified version of [`find_matches`] for verification purposes.
@@ -491,7 +511,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
-    let Some(matches) = find_matches(
+    find_matches(
         &last_table.ys()[usize::from(left_bucket.start_position)..]
             [..usize::from(left_bucket.size)],
         left_bucket.start_position,
@@ -500,13 +520,9 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
         right_bucket.start_position,
         rmap_scratch,
         left_targets,
-    ) else {
-        return;
-    };
-
-    matches.for_each(|m| {
-        results_table.push(match_to_result(last_table, m));
-    });
+        |m| match_to_result(last_table, m),
+        results_table,
+    )
 }
 
 #[derive(Debug)]
