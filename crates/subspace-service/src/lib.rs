@@ -27,6 +27,7 @@
 )]
 
 pub mod config;
+pub(crate) mod domains;
 pub mod dsn;
 mod metrics;
 pub(crate) mod mmr;
@@ -36,6 +37,7 @@ mod task_spawner;
 pub mod transaction_pool;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
+use crate::domains::request_handler::LastDomainBlockERRequestHandler;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
@@ -880,14 +882,14 @@ where
     net_config.add_notification_protocol(pot_gossip_notification_config);
     let pause_sync = Arc::clone(&net_config.network_config.pause_sync);
 
-    if let Some(offchain_storage) = backend.offchain_storage() {
-        let num_peer_hint = net_config.network_config.default_peers_set_num_full as usize
-            + net_config
-                .network_config
-                .default_peers_set
-                .reserved_nodes
-                .len();
+    let num_peer_hint = net_config.network_config.default_peers_set_num_full as usize
+        + net_config
+            .network_config
+            .default_peers_set
+            .reserved_nodes
+            .len();
 
+    if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
         let (handler, protocol_config) =
             MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>, _>(
@@ -900,6 +902,22 @@ where
         task_manager
             .spawn_handle()
             .spawn("mmr-request-handler", Some("networking"), handler.run());
+
+        net_config.add_request_response_protocol(protocol_config);
+    }
+
+    // "Last confirmed domain block execution receipt" request handler
+    {
+        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<
+            NetworkWorker<Block, <Block as BlockT>::Hash>,
+        >(
+            fork_id.as_deref(), client.clone(), num_peer_hint
+        );
+        task_manager.spawn_handle().spawn(
+            "last-domain-execution-receipt-request-handler",
+            Some("networking"),
+            handler.run(),
+        );
 
         net_config.add_request_response_protocol(protocol_config);
     }

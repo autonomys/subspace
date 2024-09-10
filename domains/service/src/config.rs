@@ -147,7 +147,9 @@ impl From<SubstrateConfiguration> for Configuration {
                 max_blocks_per_request: 64,
                 // Substrate's default, full mode
                 sync_mode: SyncMode::Full,
-                pause_sync: Arc::new(AtomicBool::new(false)),
+                // Disable syncing engine because domain blocks are only created from local
+                // consensus blocks, not synced blocks from remote peers.
+                pause_sync: Arc::new(AtomicBool::new(true)),
                 // Substrate's default
                 enable_dht_random_walk: true,
                 // Substrate's default

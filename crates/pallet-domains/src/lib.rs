@@ -672,7 +672,8 @@ mod pallet {
 
     /// Storage to hold all the domain's latest confirmed block.
     #[pallet::storage]
-    pub(super) type LatestConfirmedDomainExecutionReceipt<T: Config> =
+    #[pallet::getter(fn latest_confirmed_domain_execution_receipt)]
+    pub type LatestConfirmedDomainExecutionReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, ExecutionReceiptOf<T>, OptionQuery>;
 
     /// The latest ER submitted by the operator for a given domain. It is used to determine if the operator
