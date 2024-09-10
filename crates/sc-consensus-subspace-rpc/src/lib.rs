@@ -911,7 +911,7 @@ where
                 let objects = archived_segment_notification
                     .archived_segment
                     .global_object_mappings()
-                    .filter(|object| hashes.remove(&object.hash))
+                    .filter(|object| hashes.remove(&*object.hash))
                     .collect::<Vec<_>>();
 
                 stream::iter(objects)

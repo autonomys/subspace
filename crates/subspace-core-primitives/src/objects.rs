@@ -137,7 +137,7 @@ pub struct PieceObjectMapping {
 pub struct GlobalObject {
     /// Object hash.
     /// We order by hash, so object hash lookups can be performed efficiently.
-    pub hash: Blake3Hash,
+    pub hash: Blake3HashHex,
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     pub piece_index: PieceIndex,
     /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
@@ -147,7 +147,7 @@ pub struct GlobalObject {
 impl From<CompactGlobalObject> for GlobalObject {
     fn from(object: CompactGlobalObject) -> Self {
         Self {
-            hash: *object.0,
+            hash: object.0,
             piece_index: object.1,
             offset: object.2,
         }
@@ -155,8 +155,8 @@ impl From<CompactGlobalObject> for GlobalObject {
 }
 
 impl From<GlobalObject> for CompactGlobalObject {
-    fn from(object: GlobalObject) -> CompactGlobalObject {
-        Self(object.hash.into(), object.piece_index, object.offset)
+    fn from(object: GlobalObject) -> Self {
+        Self(object.hash, object.piece_index, object.offset)
     }
 }
 
@@ -164,7 +164,7 @@ impl GlobalObject {
     /// Returns a newly created GlobalObject from a piece index and object.
     pub fn new(piece_index: PieceIndex, piece_object: &PieceObject) -> Self {
         Self {
-            hash: piece_object.hash(),
+            hash: piece_object.hash().into(),
             piece_index,
             offset: piece_object.offset(),
         }
