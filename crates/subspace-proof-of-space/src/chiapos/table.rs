@@ -151,7 +151,7 @@ impl<const K: u8> Default for TablesCache<K> {
 }
 
 #[derive(Debug)]
-pub(super) struct Match {
+struct Match {
     left_position: Position,
     left_y: Y,
     right_position: Position,
