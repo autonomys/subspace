@@ -447,20 +447,12 @@ pub(crate) fn do_slash_operator<T: Config>(
                     total_storage_fee_deposit,
                 );
 
-                let storage_fee_deposit = bundle_storage_fund::withdraw_and_hold::<T>(
+                bundle_storage_fund::withdraw_to::<T>(
                     operator_id,
                     &nominator_id,
                     storage_fund_redeem_price.redeem(pending_deposit.storage_fee_deposit),
                 )
                 .map_err(TransitionError::BundleStorageFund)?;
-
-                T::Currency::release(
-                    &storage_fund_hold_id,
-                    &nominator_id,
-                    storage_fee_deposit,
-                    Precision::Exact,
-                )
-                .map_err(|_| TransitionError::RemoveLock)?;
 
                 total_storage_fee_deposit =
                     total_storage_fee_deposit.saturating_sub(pending_deposit.storage_fee_deposit);

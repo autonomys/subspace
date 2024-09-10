@@ -1184,7 +1184,7 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .checked_add(&deposit.known.storage_fee_deposit)
             .ok_or(Error::BalanceOverflow)?;
 
-        bundle_storage_fund::withdraw_and_hold::<T>(
+        bundle_storage_fund::withdraw_to::<T>(
             operator_id,
             &nominator_id,
             storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
