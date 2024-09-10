@@ -267,7 +267,7 @@ pub enum Error {
     PendingOperatorSwitch,
     InsufficientBalance,
     InsufficientShares,
-    ZeroWithdrawShares,
+    ZeroWithdraw,
     BalanceFreeze,
     MinimumOperatorStake,
     UnknownOperator,
@@ -711,10 +711,62 @@ pub(crate) fn do_deregister_operator<T: Config>(
     })
 }
 
+/// Different type of withdrawal
+///
+/// NOTE: if the deposit was made in the current epoch, the user may not be able to withdraw it
+/// until the current epoch ends
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub enum WithdrawStake<Balance, Share> {
+    /// Withdraw all stake
+    All,
+    /// Withdraw a given percentage of the stake
+    Percent(Percent),
+    /// Withdraw a given amount of stake, calculated by the share price at
+    /// this instant, it may not be accurate and may withdraw a bit more
+    /// stake if a reward happens later in this epoch
+    Stake(Balance),
+    /// Withdraw a given amount of share
+    Share(Share),
+}
+
+impl<Balance: Zero, Share: Zero> WithdrawStake<Balance, Share> {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Self::All => false,
+            Self::Percent(p) => p.is_zero(),
+            Self::Stake(s) => s.is_zero(),
+            Self::Share(s) => s.is_zero(),
+        }
+    }
+}
+
+// A helper function used to calculate the share price at this instant
+fn current_share_price<T: Config>(
+    operator_id: OperatorId,
+    operator: &Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
+    domain_stake_summary: &StakingSummary<OperatorId, BalanceOf<T>>,
+) -> SharePrice {
+    // Total stake including any reward within this epoch.
+    let total_stake = domain_stake_summary
+        .current_epoch_rewards
+        .get(&operator_id)
+        .and_then(|rewards| {
+            let operator_tax = operator.nomination_tax.mul_floor(*rewards);
+            operator
+                .current_total_stake
+                .checked_add(rewards)?
+                // deduct operator tax
+                .checked_sub(&operator_tax)
+        })
+        .unwrap_or(operator.current_total_stake);
+
+    SharePrice::new::<T>(operator.current_total_shares, total_stake)
+}
+
 pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-    shares_withdrew: T::Share,
+    to_withdraw: WithdrawStake<BalanceOf<T>, T::Share>,
 ) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
@@ -723,7 +775,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             Error::OperatorNotRegistered
         );
 
-        ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
+        ensure!(!to_withdraw.is_zero(), Error::ZeroWithdraw);
 
         // If the this is the first staking request of this operator `note_pending_staking_operation` for it
         if operator.deposits_in_epoch.is_zero() && operator.withdrawals_in_epoch.is_zero() {
@@ -739,11 +791,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         )
             .into();
 
-        Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
-            let deposit = maybe_deposit.as_mut().ok_or(Error::InsufficientShares)?;
-            do_convert_previous_epoch_deposits::<T>(operator_id, deposit)?;
-            Ok(())
-        })?;
+        let known_share =
+            Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
+                let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
+                do_convert_previous_epoch_deposits::<T>(operator_id, deposit)?;
+                Ok(deposit.known.shares)
+            })?;
 
         Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawal| {
             if let Some(withdrawal) = maybe_withdrawal {
@@ -757,6 +810,17 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
         let is_operator_owner = operator_owner == nominator_id;
+
+        let shares_withdrew = match to_withdraw {
+            WithdrawStake::All => known_share,
+            WithdrawStake::Percent(p) => p.mul_floor(known_share),
+            WithdrawStake::Stake(s) => {
+                let share_price =
+                    current_share_price::<T>(operator_id, operator, &domain_stake_summary);
+                share_price.stake_to_shares::<T>(s)
+            }
+            WithdrawStake::Share(s) => s,
+        };
 
         Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
             let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
@@ -775,23 +839,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
                     (remaining_shares, shares_withdrew)
                 } else {
-                    // total stake including any reward within this epoch.
-                    // used to calculate the share price at this instant.
-                    let total_stake = domain_stake_summary
-                        .current_epoch_rewards
-                        .get(&operator_id)
-                        .and_then(|rewards| {
-                            let operator_tax = operator.nomination_tax.mul_floor(*rewards);
-                            operator
-                                .current_total_stake
-                                .checked_add(rewards)?
-                                // deduct operator tax
-                                .checked_sub(&operator_tax)
-                        })
-                        .unwrap_or(operator.current_total_stake);
-
                     let share_price =
-                        SharePrice::new::<T>(operator.current_total_shares, total_stake);
+                        current_share_price::<T>(operator_id, operator, &domain_stake_summary);
 
                     let remaining_storage_fee =
                         Perbill::from_rational(remaining_shares, known_shares)
@@ -1349,6 +1398,7 @@ pub(crate) mod tests {
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
         do_reward_operators, do_unlock_funds, do_withdraw_stake, Error as StakingError, Operator,
         OperatorConfig, OperatorSigningKeyProofOfOwnershipData, OperatorStatus, StakingSummary,
+        WithdrawStake,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
@@ -1980,7 +2030,7 @@ pub(crate) mod tests {
                 let res = Domains::withdraw_stake(
                     RuntimeOrigin::signed(nominator_id),
                     operator_id,
-                    withdraw_share_amount,
+                    WithdrawStake::Share(withdraw_share_amount),
                 );
                 assert_eq!(
                     res,
@@ -2447,7 +2497,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(0, Err(StakingError::ZeroWithdrawShares))],
+            withdraws: vec![(0, Err(StakingError::ZeroWithdraw))],
             maybe_deposit: None,
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
@@ -2600,7 +2650,8 @@ pub(crate) mod tests {
             );
 
             for unlock in &unlocking {
-                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
+                do_withdraw_stake::<Test>(operator_id, unlock.0, WithdrawStake::Share(unlock.1))
+                    .unwrap();
             }
 
             do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)
@@ -2758,7 +2809,8 @@ pub(crate) mod tests {
             );
 
             for unlock in &unlocking {
-                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
+                do_withdraw_stake::<Test>(operator_id, unlock.0, WithdrawStake::Share(unlock.1))
+                    .unwrap();
             }
 
             do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)

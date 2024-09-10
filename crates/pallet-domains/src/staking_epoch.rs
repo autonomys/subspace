@@ -533,7 +533,7 @@ mod tests {
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_nominator,
-        do_withdraw_stake,
+        do_withdraw_stake, WithdrawStake,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
@@ -609,7 +609,8 @@ mod tests {
             }
 
             for (nominator_id, shares) in withdrawals {
-                do_withdraw_stake::<Test>(operator_id, nominator_id, shares).unwrap();
+                do_withdraw_stake::<Test>(operator_id, nominator_id, WithdrawStake::Share(shares))
+                    .unwrap();
             }
 
             if !rewards.is_zero() {
