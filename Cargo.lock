@@ -12918,6 +12918,7 @@ dependencies = [
  "seq-macro",
  "sha2 0.10.8",
  "spin 0.9.8",
+ "static_assertions",
  "subspace-chiapos",
  "subspace-core-primitives",
 ]

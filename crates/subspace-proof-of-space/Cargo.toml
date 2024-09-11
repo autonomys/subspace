@@ -24,6 +24,7 @@ seq-macro = "0.3.5"
 sha2 = { version = "0.10.7", default-features = false }
 # Replacement for `parking_lot` in `no_std` environment
 spin = "0.9.7"
+static_assertions = "1.1.0"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]

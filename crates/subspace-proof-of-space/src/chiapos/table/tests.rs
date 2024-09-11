@@ -139,15 +139,18 @@ fn test_matches() {
         right_bucket_ys.sort_unstable();
         right_bucket_ys.reverse();
 
-        let matches = find_matches(
+        let mut matches = Vec::new();
+        find_matches(
             &left_bucket_ys,
             Position::ZERO,
             &right_bucket_ys,
             Position::ZERO,
             &mut rmap_scratch,
             &left_targets,
+            |m| m,
+            &mut matches,
         );
-        for m in matches.unwrap() {
+        for m in matches {
             let yl = usize::from(*left_bucket_ys.get(usize::from(m.left_position)).unwrap());
             let yr = usize::from(*right_bucket_ys.get(usize::from(m.right_position)).unwrap());
 
