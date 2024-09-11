@@ -10,7 +10,7 @@ use pallet_messenger::HoldIdentifier;
 use sp_core::U256;
 use sp_domains::{DomainId, MessengerHoldIdentifier};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
-use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId};
+use sp_messenger::messages::{ChainId, FeeModel, MessageId};
 use sp_runtime::traits::{Convert, IdentityLookup};
 use sp_runtime::{BuildStorage, DispatchError, Perbill};
 
@@ -77,8 +77,8 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
 }
 
 impl HoldIdentifier<MockRuntime> for MockHoldIdentifer {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+    fn messenger_channel() -> Self {
+        MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel)
     }
 }
 

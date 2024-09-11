@@ -957,7 +957,7 @@ pub type ChannelId = sp_core::U256;
 )]
 pub enum MessengerHoldIdentifier {
     /// Holds the current reserved balance for channel opening
-    Channel((ChainId, ChannelId)),
+    Channel,
 }
 
 /// Domains specific Identifier for Balances holds.

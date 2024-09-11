@@ -32,7 +32,6 @@ macro_rules! impl_runtime {
         use sp_runtime::traits::Convert;
         use sp_runtime::BuildStorage;
         use crate::HoldIdentifier;
-        use sp_domains::ChannelId;
         use scale_info::TypeInfo;
         use codec::MaxEncodedLen;
         use sp_domains::MessengerHoldIdentifier;
@@ -77,8 +76,8 @@ macro_rules! impl_runtime {
         }
 
         impl HoldIdentifier<$runtime> for MockHoldIdentifer {
-            fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-                MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+            fn messenger_channel() -> Self {
+                MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel)
             }
         }
 
