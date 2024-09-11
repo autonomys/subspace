@@ -35,6 +35,7 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 pub use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -354,15 +355,9 @@ impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
 }
 
 impl VariantCount for HoldIdentifier {
-    // TODO: revist this value, it is used as the max number of hold an account can
-    // create. Currently, nomination an operator will create 2 holds and opening an
-    // XDM channel will create 1 hold, so this value also used as the limit of how
-    // many operator/channel an account can nominate/open.
-    //
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 100;
+    const VARIANT_COUNT: u32 = 1
+        + mem::variant_count::<DomainsHoldIdentifier>() as u32
+        + mem::variant_count::<MessengerHoldIdentifier>() as u32;
 }
 
 impl pallet_balances::Config for Runtime {
