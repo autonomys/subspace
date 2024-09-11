@@ -11,11 +11,11 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
+    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
     OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
 };
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{Inspect, InspectHold, MutateHold};
+use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
@@ -663,7 +663,14 @@ pub(crate) fn hold_deposit<T: Config>(
         Error::InsufficientBalance
     );
 
-    let pending_deposit_hold_id = T::HoldIdentifier::staking_staked(operator_id);
+    DepositOnHold::<T>::try_mutate((operator_id, who), |deposit_on_hold| {
+        *deposit_on_hold = deposit_on_hold
+            .checked_add(&amount)
+            .ok_or(Error::BalanceOverflow)?;
+        Ok(())
+    })?;
+
+    let pending_deposit_hold_id = T::HoldIdentifier::staking_staked();
     T::Currency::hold(&pending_deposit_hold_id, who, amount).map_err(|_| Error::BalanceFreeze)?;
 
     Ok(())
@@ -1009,28 +1016,35 @@ pub(crate) fn do_unlock_funds<T: Config>(
             .checked_sub(&storage_fee_refund)
             .ok_or(Error::BalanceUnderflow)?;
 
-        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
-        let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
-        let amount_to_release: BalanceOf<T> = {
-            // if the amount to release is more than currently locked,
-            // mint the diff and release the rest
-            if let Some(amount_to_mint) = amount_to_unlock.checked_sub(&locked_amount) {
-                // mint any gains
-                mint_funds::<T>(&nominator_id, amount_to_mint)?;
-                locked_amount
-            } else {
-                amount_to_unlock
-            }
-        };
+        // If the amount to release is more than currently locked,
+        // mint the diff and release the rest
+        let (amount_to_mint, amount_to_release) = DepositOnHold::<T>::try_mutate(
+            (operator_id, nominator_id.clone()),
+            |deposit_on_hold| {
+                let amount_to_release = amount_to_unlock.min(*deposit_on_hold);
+                let amount_to_mint = amount_to_unlock.saturating_sub(*deposit_on_hold);
 
+                *deposit_on_hold = deposit_on_hold.saturating_sub(amount_to_release);
+
+                Ok((amount_to_mint, amount_to_release))
+            },
+        )?;
+
+        // Mint any gains
+        if !amount_to_mint.is_zero() {
+            mint_funds::<T>(&nominator_id, amount_to_mint)?;
+        }
         // Release staking fund
-        T::Currency::release(
-            &staked_hold_id,
-            &nominator_id,
-            amount_to_release,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
+        if !amount_to_release.is_zero() {
+            let staked_hold_id = T::HoldIdentifier::staking_staked();
+            T::Currency::release(
+                &staked_hold_id,
+                &nominator_id,
+                amount_to_release,
+                Precision::Exact,
+            )
+            .map_err(|_| Error::RemoveLock)?;
+        }
 
         Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
             operator_id,
@@ -1109,8 +1123,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
-        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
-
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
         let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
             operator_id,
@@ -1121,8 +1133,6 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 
         // convert any deposits from the previous epoch to shares
         do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
-
-        let current_locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
         // if there are any withdrawals from this operator, account for them
         // if the withdrawals has share price noted, then convert them to SSC
@@ -1167,20 +1177,21 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .and_then(|amount| amount.checked_add(&amount_deposited_in_epoch))
             .ok_or(Error::BalanceOverflow)?;
 
-        let amount_to_mint = total_amount_to_unlock
-            .checked_sub(&current_locked_amount)
-            .unwrap_or(Zero::zero());
-
-        // remove the lock and mint any gains
-        mint_funds::<T>(&nominator_id, amount_to_mint)?;
-
-        T::Currency::release(
-            &staked_hold_id,
-            &nominator_id,
-            current_locked_amount,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
+        // Remove the lock and mint any gains
+        let current_locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
+        if let Some(amount_to_mint) = total_amount_to_unlock.checked_sub(&current_locked_amount) {
+            mint_funds::<T>(&nominator_id, amount_to_mint)?;
+        }
+        if !current_locked_amount.is_zero() {
+            let staked_hold_id = T::HoldIdentifier::staking_staked();
+            T::Currency::release(
+                &staked_hold_id,
+                &nominator_id,
+                current_locked_amount,
+                Precision::Exact,
+            )
+            .map_err(|_| Error::RemoveLock)?;
+        }
 
         Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
             operator_id,

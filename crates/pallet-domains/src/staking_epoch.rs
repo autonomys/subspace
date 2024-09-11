@@ -10,13 +10,13 @@ use crate::staking::{
     DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
 };
 use crate::{
-    bundle_storage_fund, BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier,
-    OperatorEpochSharePrice, Pallet,
+    bundle_storage_fund, BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event,
+    HoldIdentifier, OperatorEpochSharePrice, Pallet,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec;
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{Inspect, InspectHold, Mutate, MutateHold};
+use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
     DepositConsequence, Fortitude, Precision, Provenance, Restriction,
 };
@@ -333,7 +333,7 @@ pub(crate) fn do_slash_operator<T: Config>(
     domain_id: DomainId,
     max_nominator_count: u32,
 ) -> Result<u32, TransitionError> {
-    let mut slashed_nominators = vec![];
+    let mut slashed_nominator_count = 0u32;
     let (operator_id, slashed_operators) = match PendingSlashes::<T>::get(domain_id) {
         None => return Ok(0),
         Some(mut slashed_operators) => match slashed_operators.pop_first() {
@@ -354,7 +354,7 @@ pub(crate) fn do_slash_operator<T: Config>(
         let operator_owner =
             OperatorIdOwner::<T>::get(operator_id).ok_or(TransitionError::UnknownOperator)?;
 
-        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
+        let staked_hold_id = T::HoldIdentifier::staking_staked();
 
         let mut total_stake = operator
             .current_total_stake
@@ -369,8 +369,8 @@ pub(crate) fn do_slash_operator<T: Config>(
 
         // transfer all the staked funds to the treasury account
         // any gains will be minted to treasury account
-        for (nominator_id, mut deposit) in Deposits::<T>::iter_prefix(operator_id) {
-            let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+        for (nominator_id, mut deposit) in Deposits::<T>::drain_prefix(operator_id) {
+            let locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
 
             // convert any previous epoch deposits
             do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
@@ -405,14 +405,14 @@ pub(crate) fn do_slash_operator<T: Config>(
             // current staked amount
             let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
 
+            let pedning_deposit = deposit
+                .pending
+                .map(|pending_deposit| pending_deposit.amount)
+                .unwrap_or_default();
+
             // do not slash the deposit that is not staked yet
             let amount_to_slash_in_holding = locked_amount
-                .checked_sub(
-                    &deposit
-                        .pending
-                        .map(|pending_deposit| pending_deposit.amount)
-                        .unwrap_or_default(),
-                )
+                .checked_sub(&pedning_deposit)
                 .ok_or(TransitionError::BalanceUnderflow)?;
 
             T::Currency::transfer_on_hold(
@@ -423,6 +423,15 @@ pub(crate) fn do_slash_operator<T: Config>(
                 Precision::Exact,
                 Restriction::Free,
                 Fortitude::Force,
+            )
+            .map_err(|_| TransitionError::RemoveLock)?;
+
+            // release rest of the deposited un staked amount back to nominator
+            T::Currency::release(
+                &staked_hold_id,
+                &nominator_id,
+                pedning_deposit,
+                Precision::BestEffort,
             )
             .map_err(|_| TransitionError::RemoveLock)?;
 
@@ -438,10 +447,6 @@ pub(crate) fn do_slash_operator<T: Config>(
 
             total_stake = total_stake.saturating_sub(nominator_staked_amount);
             total_shares = total_shares.saturating_sub(nominator_shares);
-
-            // release rest of the deposited un staked amount back to nominator
-            T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
-                .map_err(|_| TransitionError::RemoveLock)?;
 
             // Transfer the deposited non-staked storage fee back to nominator
             if let Some(pending_deposit) = deposit.pending {
@@ -479,17 +484,11 @@ pub(crate) fn do_slash_operator<T: Config>(
                 NominatorCount::<T>::set(operator_id, nominator_count - 1);
             }
 
-            slashed_nominators.push(nominator_id);
-            if slashed_nominators.len() as u32 >= max_nominator_count {
+            slashed_nominator_count += 1;
+            if slashed_nominator_count >= max_nominator_count {
                 break;
             }
         }
-
-        // for all slashed nominators, remove their deposits
-        let slashed_nominator_count = slashed_nominators.len() as u32;
-        slashed_nominators.into_iter().for_each(|nominator_id| {
-            Deposits::<T>::remove(operator_id, nominator_id);
-        });
 
         let nominator_count = NominatorCount::<T>::get(operator_id);
         let cleanup_operator =
@@ -661,7 +660,7 @@ mod tests {
 
             assert_ok!(do_unlock_nominator::<Test>(operator_id, operator_account));
 
-            let hold_id = crate::tests::HoldIdentifier::staking_staked(operator_id);
+            let hold_id = crate::tests::HoldIdentifier::staking_staked();
             for (nominator_id, mut expected_usable_balance) in expected_usable_balances {
                 expected_usable_balance += minimum_free_balance;
                 assert_eq!(Deposits::<Test>::get(operator_id, nominator_id), None);

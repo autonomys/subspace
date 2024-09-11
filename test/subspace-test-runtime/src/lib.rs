@@ -60,8 +60,7 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
     ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER,
-    INITIAL_DOMAIN_TX_RANGE,
+    OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -336,10 +335,8 @@ pub enum HoldIdentifier {
 }
 
 impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn staking_staked(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::Staked(operator_id),
-        ))
+    fn staking_staked() -> Self {
+        Self::Domains(DomainsHoldIdentifier::Staking)
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {

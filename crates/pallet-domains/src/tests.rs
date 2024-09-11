@@ -28,7 +28,7 @@ use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
     OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId,
-    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    RuntimeType, SealedBundleHeader,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{
@@ -105,10 +105,8 @@ pub enum HoldIdentifier {
 }
 
 impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
-    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::Staked(operator_id),
-        ))
+    fn staking_staked() -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::Staking)
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {

@@ -97,7 +97,7 @@ pub(crate) type FungibleHoldId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
-    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_staked() -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
     fn storage_fund_withdrawal() -> FungibleHoldId<T>;
 }
@@ -544,6 +544,11 @@ mod pallet {
         Withdrawal<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
         OptionQuery,
     >;
+
+    /// The amount of balance the nominator hold for a given operator
+    #[pallet::storage]
+    pub(super) type DepositOnHold<T: Config> =
+        StorageMap<_, Identity, (OperatorId, NominatorId<T>), BalanceOf<T>, ValueQuery>;
 
     /// Tracks the nominator count under given operator.
     /// This storage is necessary since CountedStorageNMap does not support prefix key count, so
