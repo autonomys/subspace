@@ -39,6 +39,9 @@ __global__ __launch_bounds__(1024)
 void find_matches(uint2* out, const uint2* ys, const uint2* histogram,
                   uint32_t* global_match_count)
 {
+    // This constant is based on the likely number of elements in each bucket. Generally it will not exceed 512, which
+    // means a single call will process the bucket. When it does exceed 512 the remaining elements are processed in the
+    // next pass. This is a heuristic and not expected to impact performance significantly either way.
     const uint32_t right_bucket_step = 512;
     const uint32_t warp_count = block_sz / WARP_SZ;
     const uint32_t warp_match_threshold = 4 * WARP_SZ;
