@@ -98,7 +98,7 @@ pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
     fn staking_staked() -> FungibleHoldId<T>;
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
+    fn domain_instantiation_id() -> FungibleHoldId<T>;
     fn storage_fund_withdrawal() -> FungibleHoldId<T>;
 }
 

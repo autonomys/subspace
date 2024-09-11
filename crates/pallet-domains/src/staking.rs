@@ -1495,6 +1495,7 @@ pub(crate) mod tests {
                 genesis_receipt_hash: Default::default(),
                 domain_config,
                 domain_runtime_info: Default::default(),
+                domain_instantiation_deposit: Default::default(),
             };
 
             DomainRegistry::<Test>::insert(domain_id, domain_obj);
@@ -1891,6 +1892,7 @@ pub(crate) mod tests {
                 genesis_receipt_hash: Default::default(),
                 domain_config,
                 domain_runtime_info: Default::default(),
+                domain_instantiation_deposit: Default::default(),
             };
 
             DomainRegistry::<Test>::insert(new_domain_id, domain_obj);

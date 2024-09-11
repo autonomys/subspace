@@ -109,8 +109,8 @@ impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
         Self::Domains(DomainsHoldIdentifier::Staking)
     }
 
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
+    fn domain_instantiation_id() -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::DomainInstantiation)
     }
 
     fn storage_fund_withdrawal() -> Self {
@@ -643,6 +643,7 @@ fn test_bundle_fromat_verification() {
             genesis_receipt_hash: Default::default(),
             domain_config,
             domain_runtime_info: Default::default(),
+            domain_instantiation_deposit: Default::default(),
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 

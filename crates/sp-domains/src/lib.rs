@@ -966,7 +966,7 @@ pub enum MessengerHoldIdentifier {
 )]
 pub enum DomainsHoldIdentifier {
     Staking,
-    DomainInstantiation(DomainId),
+    DomainInstantiation,
     StorageFund,
 }
 
