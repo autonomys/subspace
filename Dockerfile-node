@@ -59,7 +59,7 @@ RUN \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-HEALTHCHECK CMD curl -v localhost:9944/health
+HEALTHCHECK CMD curl -v http://localhost:9944/health
 
 COPY --from=0 /code/subspace-node /subspace-node
 
