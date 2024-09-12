@@ -670,9 +670,8 @@ fn record_encoding<PosTable>(
             if let Some(proof) = pos_table.find_proof(s_bucket.into()) {
                 (Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array()
             } else {
-                // We represent missing proof as invalid set of bits of Scalar (Scalar is 254-bit
-                // and must have two bits set to 0)
-                [u8::MAX; Scalar::FULL_BYTES]
+                // Dummy value indicating no proof
+                [0; Scalar::FULL_BYTES]
             }
         })
         .collect_into_vec(chunks_scratch);
@@ -680,8 +679,8 @@ fn record_encoding<PosTable>(
         .drain(..)
         .zip(encoded_chunks_used.iter_mut())
         .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
-            // All bits set means no proof, see above
-            if maybe_encoded_chunk == [u8::MAX; Scalar::FULL_BYTES] {
+            // No proof, see above
+            if maybe_encoded_chunk == [0; Scalar::FULL_BYTES] {
                 None
             } else {
                 *encoded_chunk_used = true;
