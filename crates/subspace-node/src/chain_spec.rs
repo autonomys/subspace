@@ -214,6 +214,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                     ],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
+                // TODO: Proper value here
                 sudo_account.clone(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,

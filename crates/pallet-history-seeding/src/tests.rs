@@ -1,5 +1,5 @@
-use super::*;
-use crate::{self as pallet_history_seeding};
+use crate::{self as pallet_history_seeding, Error};
+use frame_support::traits::BuildGenesisConfig;
 use frame_support::{assert_noop, assert_ok, construct_runtime, derive_impl};
 use frame_system as system;
 use sp_runtime::BuildStorage;
@@ -9,7 +9,6 @@ type Block = frame_system::mocking::MockBlock<Test>;
 construct_runtime!(
     pub struct Test {
         System: frame_system,
-        Sudo: pallet_sudo,
         HistorySeeding: pallet_history_seeding,
     }
 );
@@ -19,14 +18,8 @@ impl frame_system::Config for Test {
     type Block = Block;
 }
 
-impl pallet_sudo::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
+impl pallet_history_seeding::Config for Test {
     type WeightInfo = ();
-}
-
-impl pallet::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
@@ -39,7 +32,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn genesis_config_works() {
     new_test_ext().execute_with(|| {
-        let genesis_config = pallet::GenesisConfig::<Test> {
+        let genesis_config = pallet_history_seeding::GenesisConfig::<Test> {
             history_seeder: Some(1),
         };
         genesis_config.build();
@@ -75,12 +68,6 @@ fn seed_history_works() {
             RuntimeOrigin::signed(1),
             remark.clone()
         ));
-
-        // Check if the event was emitted
-        System::assert_has_event(RuntimeEvent::HistorySeeding(Event::HistorySeeded {
-            who: 1,
-            remark_size: 3,
-        }));
 
         // Ensure unauthorized account cannot seed history
         assert_noop!(

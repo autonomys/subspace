@@ -589,7 +589,7 @@ impl pallet_democracy::Config for Runtime {
 }
 
 impl pallet_history_seeding::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {
@@ -970,7 +970,6 @@ construct_runtime!(
         Democracy: pallet_democracy = 83,
         Preimage: pallet_preimage = 84,
 
-        // history seeding
         HistorySeeding: pallet_history_seeding = 91,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
@@ -1119,6 +1118,7 @@ mod benches {
         [pallet_timestamp, Timestamp]
         [pallet_messenger, Messenger]
         [pallet_transporter, Transporter]
+        [pallet_history_seeding, HistorySeeding]
     );
 }
 

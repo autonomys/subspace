@@ -150,6 +150,7 @@ runtime-benchmarks = [
     "pallet-balances/runtime-benchmarks",
     "pallet-collective/runtime-benchmarks",
     "pallet-domains/runtime-benchmarks",
+    "pallet-history-seeding/runtime-benchmarks",
     "pallet-mmr/runtime-benchmarks",
     "pallet-messenger/runtime-benchmarks",
     "pallet-rewards/runtime-benchmarks",
