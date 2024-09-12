@@ -13,10 +13,8 @@ const uint32_t NUM_TABLES = 7;
 // computing size in bits, and bitwise shift operations.
 class __align__(16) metadata {
 public:
-    union {
-        unsigned __int128 ull;
-        uint64_t data[2];
-    };
+    uint64_t data[2];
+    static const uint32_t limb_bits = sizeof(uint64_t) * 8;
     static const uint32_t bits = sizeof(data) * 8;
 
     __device__
@@ -47,14 +45,34 @@ public:
     __device__
     metadata operator>>(uint32_t shift_amount) const {
         metadata out;
-        out.ull = ull >> shift_amount;
+
+        if (shift_amount < limb_bits) {
+            out.data[0] = (data[0] >> shift_amount) | (data[1] << (limb_bits - shift_amount));
+            out.data[1] = data[1] >> shift_amount;
+        } else if (shift_amount < bits) {
+            out.data[0] = data[1] >> (shift_amount - limb_bits);
+            out.data[1] = 0;
+        } else {
+            out.data[1] = out.data[0] = 0;
+        }
+
         return out;
     }
 
     __device__
     metadata operator<<(uint32_t shift_amount) const {
         metadata out;
-        out.ull = ull << shift_amount;
+
+        if (shift_amount < limb_bits) {
+            out.data[1] = (data[1] << shift_amount) | (data[0] >> (limb_bits - shift_amount));
+            out.data[0] = data[0] << shift_amount;
+        } else if (shift_amount < bits) {
+            out.data[1] = data[0] << (shift_amount - limb_bits);
+            out.data[0] = 0;
+        } else {
+            out.data[1] = out.data[0] = 0;
+        }
+
         return out;
     }
 };
