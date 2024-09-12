@@ -210,14 +210,13 @@ jobs:
       - name: Build farmer
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
-        # TODO: Windows should be compiled with CUDA as well once compilation succeeds
-        if: runner.os == 'macOS' || runner.os == 'Windows' || !startsWith(matrix.build.target, 'x86_64')
+        if: runner.os == 'macOS' || !startsWith(matrix.build.target, 'x86_64')
 
       - name: Build farmer
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features cuda
         # TODO: We don't configure CUDA for cross-compilation purposes, hence only x86-64 for now
-        if: (runner.os == 'Linux') && startsWith(matrix.build.target, 'x86_64')
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && startsWith(matrix.build.target, 'x86_64')
 
       - name: Build node
         run: |
