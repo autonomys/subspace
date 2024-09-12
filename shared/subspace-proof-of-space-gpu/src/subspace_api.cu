@@ -154,6 +154,9 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
     });
 
     try {
+        // An object to help us sync different asynchronous streams
+        event_t sync_event;
+
         // Allocates and initializes various data on the GPU.
 
         // Initializes the GPU state.
@@ -199,8 +202,8 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
                           NTT::InputOutputOrder::RN, NTT::Direction::forward,
                           NTT::Type::standard);
 
-        // Creates parity record chunks by transferring odd-indexed elements.
-        gpu.DtoH(parity_record_chunks, &d_record[1], record_size, 2*sizeof(fr_t));
+        // Record a list of pending operations submitted to the stream
+        sync_event.record(gpu);
 
         // Creates all NUM_TABLES tables
         create_tables<K>(gpu_state, state, output_block_count, table_size,
@@ -214,6 +217,14 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
 
         CUDA_OK(cudaGetLastError());
 
+        // Wait for the list of operations which were recorded to complete
+        // before launching any operations on stream gpu[0]
+        // The goal is to overlap the next memory copy with create table and find proof kernels
+        sync_event.wait(gpu[0]);
+
+        // Creates parity record chunks by transferring odd-indexed elements.
+        gpu[0].DtoH(parity_record_chunks, &d_record[1], record_size, 2*sizeof(fr_t));
+
         // Transfers the proof count from the GPU to the host.
         gpu.DtoH(&proof_count[0], &d_proof_counter[0], 1);
 
@@ -223,6 +234,7 @@ RustError::by_value generate_and_encode_pospace(const uint8_t* key,
         // Transfers the chunks scratch data from the GPU to the host.
         gpu.DtoH((uint32_t*)chunks_scratch, d_chunks_scratch, proof_count[0] * 8);
 
+        // Automatically syncs gpu[0] as well
         gpu.sync();
         complete.wait();
     } catch (const cuda_error& e) {
