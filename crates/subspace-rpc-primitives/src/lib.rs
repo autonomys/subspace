@@ -32,7 +32,7 @@ pub const MAX_SEGMENT_HEADERS_PER_REQUEST: usize = 1000;
 #[serde(rename_all = "camelCase")]
 pub struct FarmerAppInfo {
     /// Genesis hash of the chain
-    #[serde(with = "hex::serde")]
+    #[serde(with = "hex")]
     pub genesis_hash: [u8; 32],
     /// Bootstrap nodes for DSN
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
@@ -138,10 +138,10 @@ pub struct SolutionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct RewardSigningInfo {
     /// Hash to be signed.
-    #[serde(with = "hex::serde")]
+    #[serde(with = "hex")]
     pub hash: [u8; 32],
     /// Public key of the plot identity that should create signature.
-    #[serde(with = "hex::serde")]
+    #[serde(with = "hex")]
     pub public_key: [u8; 32],
 }
 
@@ -150,7 +150,7 @@ pub struct RewardSigningInfo {
 #[serde(rename_all = "camelCase")]
 pub struct RewardSignatureResponse {
     /// Hash that was signed.
-    #[serde(with = "hex::serde")]
+    #[serde(with = "hex")]
     pub hash: [u8; 32],
     /// Pre-header or vote hash signature.
     pub signature: Option<RewardSignature>,

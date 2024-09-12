@@ -124,9 +124,7 @@ pub struct Blake3HashHex(#[cfg_attr(feature = "serde", serde(with = "hex"))] Bla
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Randomness(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RANDOMNESS_LENGTH],
-);
+pub struct Randomness(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RANDOMNESS_LENGTH]);
 
 impl AsRef<[u8]> for Randomness {
     #[inline]
@@ -304,7 +302,7 @@ impl PosProof {
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Display for PotKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -349,7 +347,7 @@ impl PotKey {
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Display for PotSeed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -399,7 +397,7 @@ impl PotSeed {
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Display for PotOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -481,9 +479,7 @@ impl PotCheckpoints {
     Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
-);
+pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PUBLIC_KEY_LENGTH]);
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1006,7 +1002,7 @@ impl SectorSlotChallenge {
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake3Hash);
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
 
 impl AsRef<[u8]> for SectorId {
     #[inline]

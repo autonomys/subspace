@@ -681,7 +681,7 @@ impl Record {
 #[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RecordCommitment(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RecordCommitment::SIZE],
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RecordCommitment::SIZE],
 );
 
 impl Default for RecordCommitment {
@@ -800,7 +800,7 @@ impl TryFrom<RecordCommitment> for Commitment {
 #[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RecordWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RecordWitness::SIZE],
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RecordWitness::SIZE],
 );
 
 impl Default for RecordWitness {
@@ -919,7 +919,7 @@ impl TryFrom<RecordWitness> for Witness {
 #[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ChunkWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; ChunkWitness::SIZE],
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
 );
 
 impl Default for ChunkWitness {
