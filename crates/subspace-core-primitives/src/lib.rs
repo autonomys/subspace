@@ -124,9 +124,7 @@ pub struct Blake3HashHex(#[cfg_attr(feature = "serde", serde(with = "hex"))] Bla
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Randomness(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RANDOMNESS_LENGTH],
-);
+pub struct Randomness(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RANDOMNESS_LENGTH]);
 
 impl AsRef<[u8]> for Randomness {
     #[inline]
@@ -481,9 +479,7 @@ impl PotCheckpoints {
     Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PUBLIC_KEY_LENGTH],
-);
+pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PUBLIC_KEY_LENGTH]);
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
