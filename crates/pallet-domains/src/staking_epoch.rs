@@ -405,14 +405,14 @@ pub(crate) fn do_slash_operator<T: Config>(
             // current staked amount
             let nominator_staked_amount = share_price.shares_to_stake::<T>(nominator_shares);
 
-            let pedning_deposit = deposit
+            let pending_deposit = deposit
                 .pending
                 .map(|pending_deposit| pending_deposit.amount)
                 .unwrap_or_default();
 
             // do not slash the deposit that is not staked yet
             let amount_to_slash_in_holding = locked_amount
-                .checked_sub(&pedning_deposit)
+                .checked_sub(&pending_deposit)
                 .ok_or(TransitionError::BalanceUnderflow)?;
 
             T::Currency::transfer_on_hold(
@@ -430,7 +430,7 @@ pub(crate) fn do_slash_operator<T: Config>(
             T::Currency::release(
                 &staked_hold_id,
                 &nominator_id,
-                pedning_deposit,
+                pending_deposit,
                 Precision::BestEffort,
             )
             .map_err(|_| TransitionError::RemoveLock)?;
