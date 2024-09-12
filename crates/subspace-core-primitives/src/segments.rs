@@ -144,7 +144,7 @@ impl SegmentIndex {
 #[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SegmentCommitment(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; SegmentCommitment::SIZE],
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; SegmentCommitment::SIZE],
 );
 
 impl Default for SegmentCommitment {

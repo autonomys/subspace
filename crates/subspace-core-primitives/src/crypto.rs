@@ -156,7 +156,7 @@ mod scalar_serde {
 
     // Custom wrapper so we don't have to write serialization/deserialization code manually
     #[derive(Serialize, Deserialize)]
-    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::FULL_BYTES]);
+    struct Scalar(#[serde(with = "hex")] pub(super) [u8; super::Scalar::FULL_BYTES]);
 
     impl Serialize for super::Scalar {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

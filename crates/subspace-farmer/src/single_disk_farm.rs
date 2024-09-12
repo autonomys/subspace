@@ -120,7 +120,7 @@ pub enum SingleDiskFarmInfo {
         /// ID of the farm
         id: FarmId,
         /// Genesis hash of the chain used for farm creation
-        #[serde(with = "hex::serde")]
+        #[serde(with = "hex")]
         genesis_hash: [u8; 32],
         /// Public key of identity used for farm creation
         public_key: PublicKey,
@@ -135,7 +135,7 @@ pub enum SingleDiskFarmInfo {
         /// ID of the farm
         id: FarmId,
         /// Genesis hash of the chain used for farm creation
-        #[serde(with = "hex::serde")]
+        #[serde(with = "hex")]
         genesis_hash: [u8; 32],
         /// Public key of identity used for farm creation
         public_key: PublicKey,
