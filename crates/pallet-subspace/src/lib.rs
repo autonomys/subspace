@@ -618,7 +618,7 @@ pub mod pallet {
 
         /// Enable rewards for blocks and votes at specified block height.
         #[pallet::call_index(4)]
-        #[pallet::weight(< T as Config >::WeightInfo::enable_rewards())]
+        #[pallet::weight(< T as Config >::WeightInfo::enable_rewards_at())]
         pub fn enable_rewards_at(
             origin: OriginFor<T>,
             enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,

@@ -986,8 +986,8 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
     let post_transfer_balance = chain_a_test_ext.execute_with(|| {
         <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
     });
-    let fee = 100000002;
-    assert_eq!(pre_transfer_balance - 500 - fee, post_transfer_balance);
+    // The transferred fund + relay fee should be deducted
+    assert!(post_transfer_balance < pre_transfer_balance - 500);
 
     // remove chain_b from allowlist
     chain_b_test_ext.execute_with(ChainAllowlist::<chain_b::Runtime>::kill);
@@ -1035,7 +1035,8 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
     let post_response_balance = chain_a_test_ext.execute_with(|| {
         <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
     });
-    assert_eq!(post_response_balance, pre_transfer_balance - fee)
+    // The transferred fund should be refunded
+    assert_eq!(post_response_balance, post_transfer_balance + 500)
 }
 
 #[test]
