@@ -2,7 +2,6 @@ use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -51,7 +50,8 @@ use subspace_farmer_components::PieceGetter;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::{Barrier, Semaphore};
+use tokio::sync::{Barrier, Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
+use tokio::task;
 use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
@@ -713,7 +713,8 @@ where
                 {
                     let _span_guard = span.enter();
 
-                    let mut plotted_pieces = plotted_pieces.write_blocking();
+                    let mut plotted_pieces =
+                        task::block_in_place(|| plotted_pieces.blocking_write());
 
                     if let Some(old_plotted_sector) = &old_plotted_sector {
                         plotted_pieces.delete_sector(farm_index, old_plotted_sector);

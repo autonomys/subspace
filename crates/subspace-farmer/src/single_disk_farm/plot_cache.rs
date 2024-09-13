@@ -7,7 +7,6 @@ use crate::farm::{FarmError, MaybePieceStoredResult, PlotCache};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::utils::AsyncJoinOnDrop;
-use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
 use bytes::BytesMut;
 use parking_lot::RwLock;
@@ -23,6 +22,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
 use thiserror::Error;
+use tokio::sync::RwLock as AsyncRwLock;
 use tokio::task;
 use tracing::{debug, info, warn};
 
@@ -92,7 +92,7 @@ impl DiskPlotCache {
     ) -> Self {
         info!("Checking plot cache contents, this can take a while");
         let cached_pieces = {
-            let sectors_metadata = sectors_metadata.read_blocking();
+            let sectors_metadata = task::block_in_place(|| sectors_metadata.blocking_read());
             let mut element = vec![0; Self::element_size() as usize];
             // Clippy complains about `RecordKey`, but it is not changing here, so it is fine
             #[allow(clippy::mutable_key_type)]
@@ -170,7 +170,8 @@ impl DiskPlotCache {
 
         let element_offset = u64::from(offset) * u64::from(Self::element_size());
         // Blocking read is fine because writes in farmer are very rare and very brief
-        let plotted_bytes = self.sector_size * sectors_metadata.read_blocking().len() as u64;
+        let plotted_bytes = self.sector_size
+            * task::block_in_place(|| sectors_metadata.blocking_read()).len() as u64;
 
         // Make sure offset is after anything that is already plotted
         if element_offset < plotted_bytes {

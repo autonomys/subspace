@@ -14,7 +14,6 @@ use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use anyhow::anyhow;
-use async_lock::Semaphore;
 use async_nats::HeaderValue;
 use async_trait::async_trait;
 use futures::{select, FutureExt, Stream, StreamExt};
@@ -29,6 +28,7 @@ use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
+use tokio::sync::Semaphore;
 use tracing::{debug, trace, warn};
 
 /// Broadcast sent by controllers requesting farmers to identify themselves

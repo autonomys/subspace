@@ -12,7 +12,6 @@ use crate::sector::{
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, PieceGetter};
-use async_lock::Mutex as AsyncMutex;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
@@ -34,7 +33,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::{AcquireError, Semaphore};
+use tokio::sync::{AcquireError, Mutex as AsyncMutex, Semaphore};
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
@@ -397,7 +396,7 @@ where
 
                         loop {
                             // Take mutex briefly to make sure encoding is allowed right now
-                            global_mutex.lock_blocking();
+                            let _ = global_mutex.blocking_lock();
 
                             // This instead of `while` above because otherwise mutex will be held
                             // for the duration of the loop and will limit concurrency to 1 record

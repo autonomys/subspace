@@ -3,9 +3,6 @@
 use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use async_lock::{
-    Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
-};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
@@ -22,6 +19,9 @@ use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
+use tokio::sync::{
+    Mutex as AsyncMutex, OwnedMutexGuard as AsyncOwnedMutexGuard, RwLock as AsyncRwLock, Semaphore,
+};
 use tracing::{debug, error, trace};
 
 pub mod piece_validator;
@@ -30,7 +30,7 @@ const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
 struct InProgressPieceGetting<'a> {
     piece_index: PieceIndex,
-    in_progress_piece: AsyncMutexGuardArc<Option<Piece>>,
+    in_progress_piece: AsyncOwnedMutexGuard<Option<Piece>>,
     in_progress_pieces: &'a Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
 }
 
@@ -63,8 +63,8 @@ impl<'a> InProgressPiece<'a> {
         // Take lock before anything else, set to `None` when another piece getting is already in
         // progress
         let mut local_in_progress_piece_guard = Some(
-            in_progress_piece_mutex
-                .try_lock_arc()
+            Arc::clone(&in_progress_piece_mutex)
+                .try_lock_owned()
                 .expect("Just created; qed"),
         );
         let in_progress_piece_mutex = in_progress_pieces
@@ -282,6 +282,7 @@ where
         let maybe_read_piece_fut = inner
             .plotted_pieces
             .try_read()
+            .ok()
             .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {

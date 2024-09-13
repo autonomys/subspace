@@ -7,7 +7,6 @@ use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -29,7 +28,7 @@ use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use thiserror::Error;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tokio::task;
 use tracing::{debug, info, info_span, trace, warn, Instrument};
 
@@ -588,7 +587,7 @@ async fn plot_single_sector_internal(
 
     {
         // Take mutex briefly to make sure writing is allowed right now
-        global_mutex.lock().await;
+        let _ = global_mutex.lock().await;
 
         if let Some(metrics) = metrics {
             metrics.sector_writing.inc();

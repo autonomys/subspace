@@ -1,6 +1,5 @@
 use crate::commands::shared::PlottingThreadPriority;
 use anyhow::anyhow;
-use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
 use futures::{select, FutureExt};
 use prometheus_client::registry::Registry;
@@ -27,7 +26,7 @@ use subspace_farmer::utils::{
 };
 use subspace_farmer_components::PieceGetter;
 use subspace_proof_of_space::Table;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 use tracing::info;
 
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);

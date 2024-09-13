@@ -3,7 +3,6 @@
 use crate::farm::{FarmError, PieceReader};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
@@ -18,6 +17,7 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::{reading, ReadAt, ReadAtAsync, ReadAtSync};
 use subspace_proof_of_space::Table;
+use tokio::sync::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tracing::{error, warn};
 
 #[derive(Debug)]
@@ -194,7 +194,7 @@ async fn read_pieces<PosTable, S>(
         let sector = plot_file.offset(u64::from(sector_index) * sector_size as u64);
 
         // Take mutex briefly to make sure piece reading is allowed right now
-        global_mutex.lock().await;
+        let _ = global_mutex.lock().await;
 
         let maybe_piece = read_piece::<PosTable, _, _>(
             &public_key,

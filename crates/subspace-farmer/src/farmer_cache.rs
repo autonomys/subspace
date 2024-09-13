@@ -13,7 +13,6 @@ use crate::farmer_cache::metrics::FarmerCacheMetrics;
 use crate::farmer_cache::piece_cache_state::PieceCachesState;
 use crate::node_client::NodeClient;
 use crate::utils::run_future_in_dedicated_thread;
-use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
@@ -32,7 +31,7 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock as AsyncRwLock};
 use tokio::task::{block_in_place, yield_now};
 use tracing::{debug, error, info, trace, warn};
 
@@ -1208,7 +1207,8 @@ where
         let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
         if self
             .piece_caches
-            .try_read()?
+            .try_read()
+            .ok()?
             .contains_stored_piece(&distance_key)
         {
             // Note: We store our own provider records locally without local addresses
@@ -1225,7 +1225,8 @@ where
         let found_fut = self
             .plot_caches
             .caches
-            .try_read()?
+            .try_read()
+            .ok()?
             .iter()
             .map(|plot_cache| {
                 let plot_cache = Arc::clone(plot_cache);

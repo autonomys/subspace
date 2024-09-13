@@ -9,7 +9,6 @@ use crate::plotter::gpu::gpu_encoders_manager::GpuRecordsEncoderManager;
 use crate::plotter::gpu::metrics::GpuPlotterMetrics;
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::utils::AsyncJoinOnDrop;
-use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
@@ -32,7 +31,7 @@ use subspace_farmer_components::plotting::{
     PlottingError, RecordsEncoder,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{warn, Instrument};
 
@@ -305,7 +304,7 @@ where
                     }
 
                     // Take mutex briefly to make sure plotting is allowed right now
-                    global_mutex.lock().await;
+                    let _ = global_mutex.lock().await;
 
                     let downloading_start = Instant::now();
 

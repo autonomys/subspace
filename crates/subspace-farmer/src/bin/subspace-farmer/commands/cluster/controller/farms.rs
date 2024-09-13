@@ -6,7 +6,6 @@
 
 use crate::commands::cluster::farmer::FARMER_IDENTIFICATION_BROADCAST_INTERVAL;
 use anyhow::anyhow;
-use async_lock::RwLock as AsyncRwLock;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
@@ -25,6 +24,7 @@ use subspace_farmer::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBro
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
 use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
+use tokio::sync::RwLock as AsyncRwLock;
 use tokio::task;
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, warn};
@@ -178,7 +178,7 @@ pub(super) async fn maintain_farms(
                     let plotted_pieces = Arc::clone(plotted_pieces);
 
                     let delete_farm_fut = task::spawn_blocking(move || {
-                        plotted_pieces.write_blocking().delete_farm(farm_index);
+                        plotted_pieces.blocking_write().delete_farm(farm_index);
                     });
                     if let Err(error) = delete_farm_fut.await {
                         error!(
@@ -235,7 +235,7 @@ pub(super) async fn maintain_farms(
                         let plotted_pieces = Arc::clone(plotted_pieces);
 
                         let delete_farm_fut = task::spawn_blocking(move || {
-                            plotted_pieces.write_blocking().delete_farm(farm_index);
+                            plotted_pieces.blocking_write().delete_farm(farm_index);
                         });
                         if let Err(error) = delete_farm_fut.await {
                             error!(
@@ -322,7 +322,7 @@ fn process_farm_identify_message<'a>(
             let plotted_pieces = Arc::clone(plotted_pieces);
 
             let delete_farm_fut = task::spawn_blocking(move || {
-                plotted_pieces.write_blocking().delete_farm(farm_index);
+                plotted_pieces.blocking_write().delete_farm(farm_index);
             });
             if let Err(error) = delete_farm_fut.await {
                 error!(
@@ -434,7 +434,7 @@ async fn initialize_farm(
     drop(sector_update_handler);
     let plotted_sectors_buffer = mem::take(&mut *plotted_sectors_buffer.lock());
     let add_buffered_sectors_fut = task::spawn_blocking(move || {
-        let mut plotted_pieces = plotted_pieces.write_blocking();
+        let mut plotted_pieces = plotted_pieces.blocking_write();
 
         for (plotted_sector, old_plotted_sector) in plotted_sectors_buffer {
             if let Some(old_plotted_sector) = old_plotted_sector {

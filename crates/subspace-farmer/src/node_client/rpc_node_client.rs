@@ -1,7 +1,6 @@
 //! Node client implementation that connects to node via RPC (WebSockets)
 
 use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
-use async_lock::Semaphore;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::{ClientT, Error as JsonError, SubscriptionClientT};
@@ -13,6 +12,7 @@ use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
+use tokio::sync::Semaphore;
 
 /// TODO: Node is having a hard time responding for many piece requests, specifically this results
 ///  in subscriptions become broken on the node: https://github.com/paritytech/jsonrpsee/issues/1409

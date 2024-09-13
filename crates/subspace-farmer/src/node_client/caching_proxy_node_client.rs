@@ -3,7 +3,6 @@
 
 use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::{select, FutureExt, Stream, StreamExt};
 use std::pin::Pin;
@@ -14,7 +13,7 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tokio_stream::wrappers::WatchStream;
 use tracing::{info, trace, warn};
 

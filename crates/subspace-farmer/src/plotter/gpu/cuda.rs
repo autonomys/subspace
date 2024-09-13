@@ -1,7 +1,6 @@
 //! CUDA GPU records encoder
 
 use crate::plotter::gpu::GpuRecordsEncoder;
-use async_lock::Mutex as AsyncMutex;
 use parking_lot::Mutex;
 use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,6 +9,7 @@ use subspace_core_primitives::{HistorySize, PieceOffset, Record, SectorId};
 use subspace_farmer_components::plotting::RecordsEncoder;
 use subspace_farmer_components::sector::SectorContentsMap;
 use subspace_proof_of_space_gpu::cuda::CudaDevice;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// CUDA implementation of [`GpuRecordsEncoder`]
 #[derive(Debug)]
@@ -48,7 +48,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             rayon::scope(|scope| {
                 scope.spawn_broadcast(|_scope, _ctx| loop {
                     // Take mutex briefly to make sure encoding is allowed right now
-                    self.global_mutex.lock_blocking();
+                    let _ = self.global_mutex.blocking_lock();
 
                     // This instead of `while` above because otherwise mutex will be held for the
                     // duration of the loop and will limit concurrency to 1 record

@@ -16,7 +16,6 @@ include = [
 bench = false
 
 [dependencies]
-async-lock = "3.3.0"
 async-trait = "0.1.81"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"

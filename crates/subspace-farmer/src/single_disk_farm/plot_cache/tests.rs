@@ -92,7 +92,7 @@ async fn basic() {
     );
 
     // Can't store pieces when all sectors are plotted
-    sectors_metadata.write_blocking().resize(
+    sectors_metadata.write().await.resize(
         usize::from(TARGET_SECTOR_COUNT),
         dummy_sector_metadata.clone(),
     );
@@ -106,7 +106,7 @@ async fn basic() {
     );
 
     // Clear plotted sectors and reopen
-    sectors_metadata.write_blocking().clear();
+    sectors_metadata.write().await.clear();
     let disk_plot_cache = DiskPlotCache::new(
         &file,
         &sectors_metadata,
@@ -177,7 +177,8 @@ async fn basic() {
         MaybePieceStoredResult::Yes
     );
     sectors_metadata
-        .write_blocking()
+        .write()
+        .await
         .resize(usize::from(TARGET_SECTOR_COUNT - 1), dummy_sector_metadata);
     assert_matches!(
         disk_plot_cache.is_piece_maybe_stored(&record_key_1),

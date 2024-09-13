@@ -1,5 +1,4 @@
 use crate::farm::{FarmError, PlottedSectors};
-use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
 use futures::{stream, Stream};
 use std::sync::Arc;
@@ -7,6 +6,7 @@ use subspace_core_primitives::{PieceOffset, PublicKey, SectorId};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::FarmerProtocolInfo;
+use tokio::sync::RwLock as AsyncRwLock;
 
 /// Getter for single disk plotted sectors
 #[derive(Debug)]
