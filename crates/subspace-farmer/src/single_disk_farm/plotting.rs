@@ -7,7 +7,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::Mutex as AsyncMutex;
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -29,7 +29,7 @@ use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use thiserror::Error;
-use tokio::sync::watch;
+use tokio::sync::{watch, RwLock as AsyncRwLock};
 use tokio::task;
 use tracing::{debug, info, info_span, trace, warn, Instrument};
 

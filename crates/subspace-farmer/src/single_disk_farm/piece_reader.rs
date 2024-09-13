@@ -3,7 +3,7 @@
 use crate::farm::{FarmError, PieceReader};
 #[cfg(windows)]
 use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
@@ -18,6 +18,7 @@ use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::{reading, ReadAt, ReadAtAsync, ReadAtSync};
 use subspace_proof_of_space::Table;
+use tokio::sync::RwLock as AsyncRwLock;
 use tracing::{error, warn};
 
 #[derive(Debug)]

@@ -6,7 +6,6 @@ use crate::commands::cluster::controller::farms::{maintain_farms, FarmIndex};
 use crate::commands::shared::derive_libp2p_keypair;
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use anyhow::anyhow;
-use async_lock::RwLock as AsyncRwLock;
 use backoff::ExponentialBackoff;
 use clap::{Parser, ValueHint};
 use futures::stream::FuturesUnordered;
@@ -31,6 +30,7 @@ use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use subspace_networking::utils::piece_provider::PieceProvider;
+use tokio::sync::RwLock as AsyncRwLock;
 use tracing::info;
 
 /// Get piece retry attempts number.

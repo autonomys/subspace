@@ -3,9 +3,7 @@
 use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use async_lock::{
-    Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
-};
+use async_lock::{Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, Semaphore};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
@@ -22,6 +20,7 @@ use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
+use tokio::sync::RwLock as AsyncRwLock;
 use tracing::{debug, error, trace};
 
 pub mod piece_validator;
@@ -282,6 +281,7 @@ where
         let maybe_read_piece_fut = inner
             .plotted_pieces
             .try_read()
+            .ok()
             .and_then(|plotted_pieces| plotted_pieces.read_piece(piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {

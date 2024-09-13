@@ -1,4 +1,3 @@
-use async_lock::RwLock as AsyncRwLock;
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;
@@ -22,6 +21,7 @@ use subspace_networking::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
+use tokio::sync::RwLock as AsyncRwLock;
 use tracing::{debug, error, info, Instrument};
 
 /// How many segment headers can be requested at a time.
@@ -139,7 +139,8 @@ where
 
                         let read_piece_fut = match weak_plotted_pieces.upgrade() {
                             Some(plotted_pieces) => plotted_pieces
-                                .try_read()?
+                                .try_read()
+                                .ok()?
                                 .read_piece(piece_index)?
                                 .in_current_span(),
                             None => {

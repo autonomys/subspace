@@ -11,7 +11,7 @@ use crate::farm::{
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::metrics::SingleDiskFarmMetrics;
 use crate::single_disk_farm::Handlers;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::Mutex as AsyncMutex;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::Mutex;
@@ -31,6 +31,7 @@ use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksumm
 use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
+use tokio::sync::RwLock as AsyncRwLock;
 use tracing::{debug, error, info, trace, warn, Span};
 
 /// How many non-fatal errors should happen in a row before farm is considered non-operational

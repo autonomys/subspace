@@ -42,7 +42,7 @@ use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows
 use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -85,7 +85,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Barrier, Semaphore};
+use tokio::sync::{broadcast, Barrier, RwLock as AsyncRwLock, Semaphore};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
@@ -958,7 +958,9 @@ impl SingleDiskFarm {
                 *registry.lock(),
                 single_disk_farm_info.id(),
                 target_sector_count,
-                sectors_metadata.read_blocking().len() as SectorIndex,
+                // TODO: switch to async-lock's `read_blocking` once https://github.com/smol-rs/async-lock/issues/91 is fixed
+                futures::executor::block_on(sectors_metadata.read()).len() as SectorIndex,
+                // sectors_metadata.read_blocking().len() as SectorIndex,
             ))
         });
 

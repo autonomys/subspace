@@ -2,7 +2,7 @@ use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::Mutex as AsyncMutex;
 use backoff::ExponentialBackoff;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -51,7 +51,7 @@ use subspace_farmer_components::PieceGetter;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::{Barrier, Semaphore};
+use tokio::sync::{Barrier, RwLock as AsyncRwLock, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};
 
 /// Get piece retry attempts number.
@@ -713,7 +713,9 @@ where
                 {
                     let _span_guard = span.enter();
 
-                    let mut plotted_pieces = plotted_pieces.write_blocking();
+                    // TODO: switch to async-lock's `write_blocking` once https://github.com/smol-rs/async-lock/issues/91 is fixed
+                    let mut plotted_pieces = futures::executor::block_on(plotted_pieces.write());
+                    // let mut plotted_pieces = plotted_pieces.write_blocking();
 
                     if let Some(old_plotted_sector) = &old_plotted_sector {
                         plotted_pieces.delete_sector(farm_index, old_plotted_sector);
