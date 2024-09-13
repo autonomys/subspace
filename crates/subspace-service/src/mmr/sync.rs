@@ -13,6 +13,7 @@ use sp_mmr_primitives::utils::NodesUtils;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::BlockNumber;
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
@@ -25,7 +26,9 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
     network_service: NR,
     sync_service: Arc<SyncingService<Block>>,
     offchain_storage: OS,
-) where
+    target_block: Option<BlockNumber>,
+) -> Result<(), sp_blockchain::Error>
+where
     Block: BlockT,
     NR: NetworkRequest,
     Client: HeaderBackend<Block>,
@@ -54,7 +57,9 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
         match starting_position {
             None => {
                 error!("Can't get starting MMR position - MMR storage is corrupted.");
-                return;
+                return Err(sp_blockchain::Error::Application(
+                    "Can't get starting MMR position - MMR storage is corrupted.".into(),
+                ));
             }
             Some(last_processed_position) => {
                 debug!("MMR-sync last processed position: {last_processed_position}");
@@ -88,34 +93,28 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
             // Request MMR until target block reached.
             loop {
                 let target_position = {
-                    let best_block = sync_service.best_seen_block().await;
+                    let best_block = if let Some(target_block) = target_block {
+                        target_block
+                    } else {
+                        let best_block: u32 = peer_info.best_number.try_into().map_err(|_| {
+                            sp_blockchain::Error::Application(
+                                "Can't convert best block from peer info.".into(),
+                            )
+                        })?;
 
-                    match best_block {
-                        Ok(Some(block)) => {
-                            let block_number: u32 = block
-                                .try_into()
-                                .map_err(|_| "Can't convert block number to u32")
-                                .expect("We convert BlockNumber which is defined as u32.");
-                            let nodes = NodesUtils::new(block_number.into());
+                        best_block
+                    };
 
-                            let target_position = nodes.size().saturating_sub(1);
+                    let nodes = NodesUtils::new(best_block.into());
 
-                            debug!(
-                                "MMR-sync. Best seen block={}, Node target position={}",
-                                block_number, target_position
-                            );
+                    let target_position = nodes.size().saturating_sub(1);
 
-                            target_position
-                        }
-                        Ok(None) => {
-                            debug!("Can't obtain best sync block for MMR-sync.");
-                            break 'peers;
-                        }
-                        Err(err) => {
-                            error!("Can't obtain best sync block for MMR-sync. Error={err}");
-                            break 'peers;
-                        }
-                    }
+                    debug!(
+                        "MMR-sync. Best block={}, Node target position={}",
+                        best_block, target_position
+                    );
+
+                    target_position
                 };
 
                 let request = MmrRequest {
@@ -173,6 +172,8 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
     }
 
     debug!("MMR sync finished.");
+
+    Ok(())
 }
 
 /// MMR-sync error
