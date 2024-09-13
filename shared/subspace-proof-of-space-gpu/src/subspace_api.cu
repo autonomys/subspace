@@ -57,7 +57,7 @@ void create_tables(gpu_specific_state& gpu_state, const chacha_state& state,
     CUDA_OK(cudaGetLastError());
 
     // Sorts the first table.
-    gpu.launch_coop(sort15113, {gpu.sm_count(), SORT_BLOCKDIM, shared_sz},
+    gpu.launch_coop(sort15113, launch_params_t{gpu.sm_count(), SORT_BLOCKDIM, shared_sz},
                     &gpu_state.tables[0].ys[0],
                     (const uint32_t*)gpu_state.tables[0].y,
                     table_size, &gpu_state.temp_sort[0],
@@ -86,7 +86,7 @@ void create_tables(gpu_specific_state& gpu_state, const chacha_state& state,
         CUDA_OK(cudaGetLastError());
 
         // Sorts the current table.
-        gpu.launch_coop(sort15113, {gpu.sm_count(), SORT_BLOCKDIM, shared_sz},
+        gpu.launch_coop(sort15113, launch_params_t{gpu.sm_count(), SORT_BLOCKDIM, shared_sz},
                         &gpu_state.tables[i].ys[0], (const uint32_t*)gpu_state.tables[i].y,
                         (const uint32_t*)&d_match_counter[0],
                         &gpu_state.temp_sort[0], &gpu_state.histogram[0],
