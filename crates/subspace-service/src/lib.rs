@@ -27,7 +27,7 @@
 )]
 
 pub mod config;
-pub(crate) mod domains;
+pub mod domains;
 pub mod dsn;
 mod metrics;
 pub(crate) mod mmr;
@@ -51,6 +51,7 @@ use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
+pub use mmr::sync::mmr_sync;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;

@@ -60,6 +60,7 @@
 
 #![feature(array_windows)]
 #![feature(const_option)]
+#![feature(duration_constructors)]
 #![feature(extract_if)]
 
 mod aux_schema;
@@ -72,6 +73,7 @@ mod domain_worker;
 mod fetch_domain_bootstrap_info;
 mod fraud_proof;
 mod operator;
+mod snap_sync;
 #[cfg(test)]
 mod tests;
 mod utils;
