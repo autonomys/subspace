@@ -58,7 +58,10 @@
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
-#![feature(array_windows, extract_if)]
+#![feature(array_windows)]
+#![feature(const_option)]
+#![feature(duration_constructors)]
+#![feature(extract_if)]
 
 mod aux_schema;
 mod bundle_processor;
@@ -70,6 +73,7 @@ mod domain_worker;
 mod fetch_domain_bootstrap_info;
 mod fraud_proof;
 mod operator;
+mod snap_sync;
 #[cfg(test)]
 mod tests;
 mod utils;
