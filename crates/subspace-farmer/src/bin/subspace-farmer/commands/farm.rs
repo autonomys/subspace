@@ -32,6 +32,8 @@ use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::plotter::cpu::CpuPlotter;
 #[cfg(feature = "cuda")]
 use subspace_farmer::plotter::gpu::cuda::CudaRecordsEncoder;
+#[cfg(feature = "rocm")]
+use subspace_farmer::plotter::gpu::rocm::RocmRecordsEncoder;
 #[cfg(feature = "_gpu")]
 use subspace_farmer::plotter::gpu::GpuPlotter;
 use subspace_farmer::plotter::pool::PoolPlotter;
@@ -159,6 +161,24 @@ struct CudaPlottingOptions {
     cuda_gpus: Option<String>,
 }
 
+#[cfg(feature = "rocm")]
+#[derive(Debug, Parser)]
+struct RocmPlottingOptions {
+    /// Defines how many sectors farmer will download concurrently during plotting with ROCm GPU,
+    /// allows to limit memory usage of the plotting process, defaults to number of ROCm GPUs found
+    /// + 1 to download future sector ahead of time.
+    ///
+    /// Increase will result in higher memory usage.
+    #[arg(long)]
+    rocm_sector_downloading_concurrency: Option<NonZeroUsize>,
+    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    ///
+    /// GPUs are coma-separated: `--rocm-gpus 0,1,3`. Empty string can be specified to disable ROCm
+    /// GPU usage.
+    #[arg(long)]
+    rocm_gpus: Option<String>,
+}
+
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 pub(crate) struct FarmingArgs {
@@ -232,6 +252,10 @@ pub(crate) struct FarmingArgs {
     #[cfg(feature = "cuda")]
     #[clap(flatten)]
     cuda_plotting_options: CudaPlottingOptions,
+    /// Plotting options only used by ROCm GPU plotter
+    #[cfg(feature = "rocm")]
+    #[clap(flatten)]
+    rocm_plotting_options: RocmPlottingOptions,
     /// Enable plot cache.
     ///
     /// Plot cache uses unplotted space as additional cache improving plotting speeds, especially
@@ -291,6 +315,8 @@ where
         cpu_plotting_options,
         #[cfg(feature = "cuda")]
         cuda_plotting_options,
+        #[cfg(feature = "rocm")]
+        rocm_plotting_options,
         plot_cache,
         disable_farm_locking,
         create,
@@ -484,6 +510,21 @@ where
 
         if let Some(cuda_plotter) = maybe_cuda_plotter {
             modern_plotters.push(Box::new(cuda_plotter));
+        }
+    }
+    #[cfg(feature = "rocm")]
+    {
+        let maybe_rocm_plotter = init_rocm_plotter(
+            rocm_plotting_options,
+            piece_getter.clone(),
+            Arc::clone(&global_mutex),
+            kzg.clone(),
+            erasure_coding.clone(),
+            &mut registry,
+        )?;
+
+        if let Some(rocm_plotter) = maybe_rocm_plotter {
+            modern_plotters.push(Box::new(rocm_plotter));
         }
     }
     {
@@ -1041,5 +1082,87 @@ where
             Some(registry),
         )
         .map_err(|error| anyhow::anyhow!("Failed to initialize CUDA plotter: {error}"))?,
+    ))
+}
+
+#[cfg(feature = "rocm")]
+fn init_rocm_plotter<PG>(
+    rocm_plotting_options: RocmPlottingOptions,
+    piece_getter: PG,
+    global_mutex: Arc<AsyncMutex<()>>,
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
+    registry: &mut Registry,
+) -> anyhow::Result<Option<GpuPlotter<PG, RocmRecordsEncoder>>>
+where
+    PG: PieceGetter + Clone + Send + Sync + 'static,
+{
+    use std::collections::BTreeSet;
+    use subspace_proof_of_space_gpu::rocm::rocm_devices;
+    use tracing::debug;
+
+    let RocmPlottingOptions {
+        rocm_sector_downloading_concurrency,
+        rocm_gpus,
+    } = rocm_plotting_options;
+
+    let mut rocm_devices = rocm_devices();
+    let mut used_rocm_devices = (0..rocm_devices.len()).collect::<Vec<_>>();
+
+    if let Some(rocm_gpus) = rocm_gpus {
+        if rocm_gpus.is_empty() {
+            info!("ROCm GPU plotting was explicitly disabled");
+            return Ok(None);
+        }
+
+        let mut rocm_gpus_to_use = rocm_gpus
+            .split(',')
+            .map(|gpu_index| gpu_index.parse())
+            .collect::<Result<BTreeSet<usize>, _>>()?;
+
+        (used_rocm_devices, rocm_devices) = rocm_devices
+            .into_iter()
+            .enumerate()
+            .filter(|(index, _rocm_device)| rocm_gpus_to_use.remove(index))
+            .unzip();
+
+        if !rocm_gpus_to_use.is_empty() {
+            warn!(
+                ?rocm_gpus_to_use,
+                "Some ROCm GPUs were not found on the system"
+            );
+        }
+    }
+
+    if rocm_devices.is_empty() {
+        debug!("No ROCm GPU devices found");
+        return Ok(None);
+    }
+
+    info!(?used_rocm_devices, "Using ROCm GPUs");
+
+    let rocm_downloading_semaphore = Arc::new(Semaphore::new(
+        rocm_sector_downloading_concurrency
+            .map(|rocm_sector_downloading_concurrency| rocm_sector_downloading_concurrency.get())
+            .unwrap_or(rocm_devices.len() + 1),
+    ));
+
+    Ok(Some(
+        GpuPlotter::new(
+            piece_getter,
+            rocm_downloading_semaphore,
+            rocm_devices
+                .into_iter()
+                .map(|rocm_device| RocmRecordsEncoder::new(rocm_device, Arc::clone(&global_mutex)))
+                .collect::<Result<_, _>>()
+                .map_err(|error| {
+                    anyhow::anyhow!("Failed to create ROCm records encoder: {error}")
+                })?,
+            global_mutex,
+            kzg,
+            erasure_coding,
+            Some(registry),
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to initialize ROCm plotter: {error}"))?,
     ))
 }

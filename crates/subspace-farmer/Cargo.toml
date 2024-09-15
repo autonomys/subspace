@@ -78,6 +78,7 @@ cluster = ["dep:async-nats"]
 numa = ["dep:hwlocality"]
 # Only Volta+ architectures are supported (GeForce RTX 20xx consumer GPUs and newer)
 cuda = ["_gpu", "subspace-proof-of-space-gpu/cuda"]
+rocm = ["_gpu", "subspace-proof-of-space-gpu/rocm"]
 # Internal feature, shouldn't be used directly
 _gpu = []
 

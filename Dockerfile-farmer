@@ -46,11 +46,39 @@ RUN \
     curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/$CUDA_ARCH/cuda-ubuntu2004.pin && \
     mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
     apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-minimal-build-12-4
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-minimal-build-12-4 && \
+    echo "/usr/local/cuda/lib64" > /etc/ld.so.conf.d/cuda.conf && \
+    ldconfig
 
+# ROCm is only used on x86-64 since they don't have other packages
+ARG ROCM_VERSION=6.2.1
+RUN \
+    if [ $(uname -p) = "x86_64" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gpg && \
+      mkdir -p --mode=0755 /etc/apt/keyrings && \
+      curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg && \
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION focal main" > /etc/apt/sources.list.d/rocm.list && \
+      echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" > /etc/apt/preferences.d/rocm-pin-600 && \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends rocm-hip-runtime-dev && \
+      echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf && \
+      ldconfig \
+    ; fi
+
+# TODO: Remove `NVCC=off` hack once `sppark` has proper features for CUDA and ROCm
+# ROCm is only used on x86-64 since they don't have other packages
 RUN \
     export PATH=/usr/local/cuda/bin${PATH:+:${PATH}} && \
-    export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}} && \
+    if [ $(uname -p) = "x86_64" ]; then \
+      NVCC=off /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
+          --locked \
+          -Z build-std \
+          --profile $PROFILE \
+          --bin subspace-farmer \
+          --features rocm \
+          --target $(uname -p)-unknown-linux-gnu && \
+      mv target/*/*/subspace-farmer subspace-farmer-rocm \
+    ; fi && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
@@ -63,7 +91,26 @@ RUN \
 
 FROM ubuntu:20.04
 
-COPY --from=0 /code/subspace-farmer /subspace-farmer
+# Next block is for ROCm support
+# ROCm is only used on x86-64 since they don't have other packages
+ARG ROCM_VERSION=6.2.1
+RUN \
+    if [ $(uname -p) = "x86_64" ]; then \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates gpg && \
+      mkdir -p --mode=0755 /etc/apt/keyrings && \
+      curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg && \
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION focal main" > /etc/apt/sources.list.d/rocm.list && \
+      echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" > /etc/apt/preferences.d/rocm-pin-600 && \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends hip-runtime-amd && \
+      DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge --autoremove curl ca-certificates gpg && \
+      rm -rf /var/lib/apt/lists/* && \
+      echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf && \
+      ldconfig \
+    ; fi
+
+COPY --from=0 /code/subspace-farmer* /
 
 RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
 

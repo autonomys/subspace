@@ -54,7 +54,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-20.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -104,6 +104,35 @@ jobs:
           sub-packages: '["nvcc", "cudart"]'
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
+      - name: Configure ROCm cache (Windows)
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        id: rocm-cache
+        with:
+          path: C:\Program Files\AMD\ROCm
+          key: ${{ runner.os }}-rocm
+        if: runner.os == 'Windows'
+
+      - name: ROCm toolchain
+        run: |
+          ROCM_VERSION=6.2.1
+          sudo mkdir -p --mode=0755 /etc/apt/keyrings
+          curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION focal main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+          echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
+          sudo apt-get update
+          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
+          echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null
+          sudo ldconfig
+        if: runner.os == 'Linux'
+
+      - name: ROCm toolchain
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe -OutFile "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
+          Start-Process "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe" -ArgumentList '-install' -NoNewWindow -Wait
+          Remove-Item "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
+        if: runner.os == 'Windows' && steps.rocm-cache.outputs.cache-hit != 'true'
+
       - name: Configure cache
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
@@ -123,6 +152,22 @@ jobs:
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features runtime-benchmarks,cuda -- -D warnings
         if: runner.os == 'Linux' || runner.os == 'Windows'
+
+      - name: cargo clippy (ROCm)
+        env:
+          NVCC: off
+        run: |
+          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
+        if: runner.os == 'Linux'
+
+      - name: cargo clippy (ROCm)
+        env:
+          NVCC: off
+          # Why `PROGRA~1` instead of `Program Files`? Because Windows!
+          HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
+        run: |
+          cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
+        if: runner.os == 'Windows'
 
   cargo-docs:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}

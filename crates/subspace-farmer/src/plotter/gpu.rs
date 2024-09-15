@@ -4,6 +4,8 @@
 pub mod cuda;
 mod gpu_encoders_manager;
 pub mod metrics;
+#[cfg(feature = "rocm")]
+pub mod rocm;
 
 use crate::plotter::gpu::gpu_encoders_manager::GpuRecordsEncoderManager;
 use crate::plotter::gpu::metrics::GpuPlotterMetrics;
