@@ -47,6 +47,8 @@ struct CpuPlottingOptions {
     /// `--cpu-sector-downloading-concurrency` and setting this option higher than
     /// `--cpu-sector-downloading-concurrency` will have no effect.
     ///
+    /// CPU plotting is disabled by default if GPU plotting is detected.
+    ///
     /// Increase will result in higher memory usage, setting to 0 will disable CPU plotting.
     #[arg(long)]
     cpu_sector_encoding_concurrency: Option<usize>,
@@ -151,9 +153,10 @@ where
     let mut legacy_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
     let mut modern_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
 
+    #[cfg(feature = "cuda")]
     {
-        let maybe_cpu_plotters = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
-            cpu_plotting_options,
+        let maybe_cuda_plotter = init_cuda_plotter(
+            cuda_plotting_options,
             piece_getter.clone(),
             Arc::clone(&global_mutex),
             kzg.clone(),
@@ -161,15 +164,14 @@ where
             registry,
         )?;
 
-        if let Some((legacy_cpu_plotter, modern_cpu_plotter)) = maybe_cpu_plotters {
-            legacy_plotters.push(Box::new(legacy_cpu_plotter));
-            modern_plotters.push(Box::new(modern_cpu_plotter));
+        if let Some(cuda_plotter) = maybe_cuda_plotter {
+            modern_plotters.push(Box::new(cuda_plotter));
         }
     }
-    #[cfg(feature = "cuda")]
     {
-        let maybe_cuda_plotter = init_cuda_plotter(
-            cuda_plotting_options,
+        let cpu_sector_encoding_concurrency = cpu_plotting_options.cpu_sector_encoding_concurrency;
+        let maybe_cpu_plotters = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
+            cpu_plotting_options,
             piece_getter,
             global_mutex,
             kzg,
@@ -177,8 +179,16 @@ where
             registry,
         )?;
 
-        if let Some(cuda_plotter) = maybe_cuda_plotter {
-            modern_plotters.push(Box::new(cuda_plotter));
+        if let Some((legacy_cpu_plotter, modern_cpu_plotter)) = maybe_cpu_plotters {
+            legacy_plotters.push(Box::new(legacy_cpu_plotter));
+            if !modern_plotters.is_empty() && cpu_sector_encoding_concurrency.is_none() {
+                info!(
+                    "CPU plotting for v1 farms was disabled due to detected faster plotting with \
+                    GPU"
+                );
+            } else {
+                modern_plotters.push(Box::new(modern_cpu_plotter));
+            }
         }
     }
     let legacy_plotter = Arc::new(PoolPlotter::new(legacy_plotters, PLOTTING_RETRY_INTERVAL));
