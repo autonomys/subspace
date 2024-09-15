@@ -669,7 +669,7 @@ pub mod pallet {
             }
 
             PotSlotIterationsUpdate::<T>::put(PotSlotIterationsUpdateValue {
-                // Slot will be known later next entropy injection happens place
+                // Slot will be known later when next entropy injection takes place
                 target_slot: None,
                 slot_iterations,
             });
