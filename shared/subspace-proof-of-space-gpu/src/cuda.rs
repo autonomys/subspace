@@ -112,7 +112,7 @@ impl CudaDevice {
         let mut challenge_index_gpu = Vec::<u32>::with_capacity(challenge_len);
         let mut parity_record_chunks = Vec::<Scalar>::with_capacity(Record::NUM_CHUNKS);
 
-        let err = unsafe {
+        let error = unsafe {
             generate_and_encode_pospace_dispatch(
                 u32::from(PosProof::K),
                 &**seed,
@@ -126,8 +126,15 @@ impl CudaDevice {
             )
         };
 
-        if err.code != 0 {
-            return Err(String::from(err));
+        if error.code != 0 {
+            let error = error.to_string();
+            if error.contains("the provided PTX was compiled with an unsupported toolchain.") {
+                return Err(format!(
+                    "Nvidia driver is likely too old, make sure install version 550 or newer: \
+                    {error}"
+                ));
+            }
+            return Err(error);
         }
 
         let proof_count = proof_count as usize;
