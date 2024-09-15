@@ -102,6 +102,19 @@ impl PieceCacheId {
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
     }
+
+    /// Derive sub IDs
+    #[inline]
+    pub fn derive_sub_ids(&self, n: usize) -> Vec<Self> {
+        match self {
+            PieceCacheId::Ulid(ulid) => {
+                let ulid = ulid.0;
+                (0..n as u128)
+                    .map(|i| PieceCacheId::Ulid(Ulid(ulid + i)))
+                    .collect()
+            }
+        }
+    }
 }
 
 /// Offset wrapper for pieces in [`PieceCache`]
