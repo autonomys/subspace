@@ -15,7 +15,7 @@ use std::num::NonZeroU32;
 use subspace_runtime::{
     AllowAuthoringBy, CouncilConfig, DemocracyConfig, DomainsConfig, EnableRewardsAt,
     HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
-    RuntimeConfigsConfig, SubspaceConfig, VestingConfig,
+    RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
@@ -172,7 +172,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
                 ],
-                vec![],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
@@ -206,8 +205,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
 fn subspace_genesis_config(
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
-    // who, start, period, period_count, per_period
-    vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
 ) -> subspace_runtime::RuntimeGenesisConfig {
@@ -238,7 +235,6 @@ fn subspace_genesis_config(
             phantom: PhantomData,
         },
         rewards: rewards_config,
-        vesting: VestingConfig { vesting },
         council: CouncilConfig::default(),
         democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {

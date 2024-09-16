@@ -5,11 +5,10 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
+use subspace_runtime_primitives::{AccountId, Balance, Signature};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
-    WASM_BINARY,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, SSC, WASM_BINARY,
 };
 
 /// Generate a crypto pair from seed.
@@ -55,7 +54,6 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
                 (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
                 (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
             ],
-            vec![],
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
     ))
@@ -67,8 +65,6 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
 fn create_genesis_config(
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
-    // who, start, period, period_count, per_period
-    vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> Result<RuntimeGenesisConfig, String> {
     Ok(RuntimeGenesisConfig {
         system: SystemConfig::default(),
@@ -89,7 +85,6 @@ fn create_genesis_config(
             proposer_subsidy_points: Default::default(),
             voter_subsidy_points: Default::default(),
         },
-        vesting: VestingConfig { vesting },
         domains: DomainsConfig {
             permissioned_action_allowed_by: Some(sp_domains::PermissionedActionAllowedBy::Anyone),
             genesis_domains: vec![

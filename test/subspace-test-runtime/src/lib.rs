@@ -42,7 +42,6 @@ use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECO
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
@@ -805,21 +804,6 @@ impl pallet_rewards::Config for Runtime {
     type OnReward = ();
 }
 
-parameter_types! {
-    // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
-    pub const MinVestedTransfer: Balance = 0;
-}
-
-impl orml_vesting::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type MinVestedTransfer = MinVestedTransfer;
-    type VestedTransferOrigin = EnsureNever<AccountId>;
-    type WeightInfo = ();
-    type MaxVestingSchedules = ConstU32<2>;
-    type BlockNumberProvider = System;
-}
-
 mod mmr {
     use super::Runtime;
     pub use pallet_mmr::primitives::*;
@@ -876,8 +860,6 @@ construct_runtime!(
 
         Domains: pallet_domains = 11,
         RuntimeConfigs: pallet_runtime_configs = 14,
-
-        Vesting: orml_vesting = 7,
 
         Mmr: pallet_mmr = 30,
         SubspaceMmr: pallet_subspace_mmr = 31,
