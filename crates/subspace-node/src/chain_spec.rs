@@ -33,8 +33,9 @@ use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
-    EnableRewardsAt, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig, RuntimeConfigsConfig,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, WASM_BINARY,
+    EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
+    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, WASM_BINARY,
 };
 use subspace_runtime_primitives::time::MILLISECS_PER_BLOCK;
 use subspace_runtime_primitives::{
@@ -206,10 +207,15 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                     ]),
                     genesis_domains: vec![
                         evm_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
-                        auto_id_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account)?,
+                        auto_id_chain_spec::get_genesis_domain(
+                            SpecId::Gemini,
+                            sudo_account.clone(),
+                        )?,
                     ],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
+                // TODO: Proper value here
+                sudo_account.clone(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -316,10 +322,11 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                     ]),
                     genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
                         SpecId::DevNet,
-                        sudo_account,
+                        sudo_account.clone(),
                     )?],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+                sudo_account.clone(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -330,6 +337,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
 pub fn dev_config() -> Result<GenericChainSpec, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
     let sudo_account = get_account_id_from_seed("Alice");
+    let history_seeder = get_account_id_from_seed("Bob");
 
     Ok(GenericChainSpec::builder(wasm_binary, None)
         .with_name("Subspace development")
@@ -380,6 +388,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     )?],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+                history_seeder,
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         ))
@@ -395,6 +404,7 @@ fn subspace_genesis_config(
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
     council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumber>,
+    history_seeder_account: AccountId,
 ) -> Result<RuntimeGenesisConfig, String> {
     let GenesisParams {
         enable_rewards_at,
@@ -468,6 +478,9 @@ fn subspace_genesis_config(
             permissioned_action_allowed_by: enable_domains
                 .then_some(genesis_domain_params.permissioned_action_allowed_by),
             genesis_domains,
+        },
+        history_seeding: HistorySeedingConfig {
+            history_seeder: Some(history_seeder_account),
         },
     })
 }
