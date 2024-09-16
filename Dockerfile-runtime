@@ -33,7 +33,6 @@ COPY rust-toolchain.toml /code/rust-toolchain.toml
 
 COPY crates /code/crates
 COPY domains /code/domains
-COPY orml /code/orml
 COPY shared /code/shared
 COPY test /code/test
 

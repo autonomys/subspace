@@ -16,7 +16,6 @@ The structure of this repository is the following:
   - `subspace-node` is an implementation of the node for Subspace protocol
   - `subspace-farmer` is a CLI farmer app
 - `domains` contains client and runtime code for decoupled execution and domains
-- `orml` contains a fork of orml vesting pallet with modified dependencies
 
 ## How to run
 
