@@ -16,7 +16,7 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_farmer::cluster::cache::{
-    ClusterCacheIdentifyBroadcast, ClusterCacheIndex, ClusterPieceCache,
+    ClusterCacheIdentifySignalCacheBroadcast, ClusterCacheIndex, ClusterPieceCache,
 };
 use subspace_farmer::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
 use subspace_farmer::cluster::nats_client::NatsClient;
@@ -28,60 +28,66 @@ use tracing::{info, trace, warn};
 const SCHEDULE_REINITIALIZATION_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
-struct KnownCache {
-    cache_id: PieceCacheId,
+struct KnownSingleCache {
+    single_cache_id: PieceCacheId,
     last_identification: Instant,
     piece_cache: Arc<ClusterPieceCache>,
 }
 
 #[derive(Debug, Default)]
 struct KnownCaches {
-    known_caches: Vec<KnownCache>,
+    known_single_caches: Vec<KnownSingleCache>,
 }
 
 impl KnownCaches {
     fn get_all(&self) -> Vec<Arc<dyn PieceCache>> {
-        self.known_caches
+        self.known_single_caches
             .iter()
             .map(|known_cache| Arc::clone(&known_cache.piece_cache) as Arc<_>)
             .collect()
     }
 
     /// Return `true` if farmer cache reinitialization is required
-    fn update(
+    fn update_single(
         &mut self,
-        cache_id: PieceCacheId,
+        single_cache_id: PieceCacheId,
         max_num_elements: u32,
         nats_client: &NatsClient,
     ) -> bool {
-        if self.known_caches.iter_mut().any(|known_cache| {
-            if known_cache.cache_id == cache_id {
-                known_cache.last_identification = Instant::now();
-                true
-            } else {
-                false
-            }
-        }) {
+        if self
+            .known_single_caches
+            .iter_mut()
+            .any(|known_single_cache| {
+                if known_single_cache.single_cache_id == single_cache_id {
+                    known_single_cache.last_identification = Instant::now();
+                    true
+                } else {
+                    false
+                }
+            })
+        {
             return false;
         }
 
         let piece_cache = Arc::new(ClusterPieceCache::new(
-            cache_id,
+            single_cache_id,
             max_num_elements,
             nats_client.clone(),
         ));
-        self.known_caches.push(KnownCache {
-            cache_id,
+        self.known_single_caches.push(KnownSingleCache {
+            single_cache_id,
             last_identification: Instant::now(),
             piece_cache,
         });
         true
     }
 
-    fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
-        self.known_caches.extract_if(|known_cache| {
-            known_cache.last_identification.elapsed() > CACHE_IDENTIFICATION_BROADCAST_INTERVAL * 2
-        })
+    fn remove_expired(&mut self) -> impl Iterator<Item = KnownSingleCache> + '_ {
+        let elapsed = CACHE_IDENTIFICATION_BROADCAST_INTERVAL * 2;
+        self.known_single_caches
+            .extract_if(move |known_single_cache| {
+                known_single_cache.last_identification.elapsed() > elapsed
+            })
     }
 }
 
@@ -98,7 +104,10 @@ pub(super) async fn maintain_caches(
         (Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()>>>).fuse();
 
     let cache_identify_subscription = pin!(nats_client
-        .subscribe_to_broadcasts::<ClusterCacheIdentifyBroadcast>(Some(cache_group), None)
+        .subscribe_to_broadcasts::<ClusterCacheIdentifySignalCacheBroadcast>(
+            Some(cache_group),
+            None
+        )
         .await
         .map_err(|error| anyhow!("Failed to subscribe to cache identify broadcast: {error}"))?);
 
@@ -157,11 +166,11 @@ pub(super) async fn maintain_caches(
                     return Err(anyhow!("Cache identify stream ended"));
                 };
 
-                let ClusterCacheIdentifyBroadcast {
+                let ClusterCacheIdentifySignalCacheBroadcast {
                     cache_id,
                     max_num_elements,
                 } = identify_message;
-                if known_caches.update(cache_id, max_num_elements, nats_client) {
+                if known_caches.update_single(cache_id, max_num_elements, nats_client) {
                     info!(
                         %cache_id,
                         "New cache discovered, scheduling reinitialization"

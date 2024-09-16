@@ -31,14 +31,14 @@ pub type ClusterCacheIndex = u16;
 
 /// Broadcast with identification details by caches
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct ClusterCacheIdentifyBroadcast {
+pub struct ClusterCacheIdentifySignalCacheBroadcast {
     /// Cache ID
     pub cache_id: PieceCacheId,
     /// Max number of elements in this cache
     pub max_num_elements: u32,
 }
 
-impl GenericBroadcast for ClusterCacheIdentifyBroadcast {
+impl GenericBroadcast for ClusterCacheIdentifySignalCacheBroadcast {
     /// `*` here stands for cache group
     const SUBJECT: &'static str = "subspace.cache.*.identify";
 }
@@ -211,9 +211,8 @@ where
 {
     let caches_details = caches
         .iter()
-        .map(|cache| {
-            let cache_id = *cache.id();
-
+        .map(|cache| (cache, *cache.id()))
+        .map(|(cache, cache_id)| {
             if primary_instance {
                 info!(%cache_id, max_num_elements = %cache.max_num_elements(), "Created cache");
             }
@@ -228,7 +227,12 @@ where
 
     if primary_instance {
         select! {
-            result = identify_responder(&nats_client, &caches_details, cache_group, identification_broadcast_interval).fuse() => {
+            result = identify_responder(
+                &nats_client,
+                &caches_details,
+                cache_group,
+                identification_broadcast_interval
+            ).fuse() => {
                 result
             },
             result = write_piece_responder(&nats_client, &caches_details).fuse() => {
@@ -306,14 +310,22 @@ where
                 }
 
                 last_identification = Instant::now();
-                send_identify_broadcast(nats_client, caches_details, cache_group).await;
+                send_identify_broadcast(
+                    nats_client,
+                    caches_details,
+                    cache_group
+                ).await;
                 interval.reset();
             }
             _ = interval.tick().fuse() => {
                 last_identification = Instant::now();
                 trace!("Cache self-identification");
 
-                send_identify_broadcast(nats_client, caches_details, cache_group).await;
+                send_identify_broadcast(
+                    nats_client,
+                    caches_details,
+                    cache_group
+                ).await;
             }
         }
     }
@@ -333,7 +345,7 @@ async fn send_identify_broadcast<C>(
         .map(|cache| async move {
             if let Err(error) = nats_client
                 .broadcast(
-                    &ClusterCacheIdentifyBroadcast {
+                    &ClusterCacheIdentifySignalCacheBroadcast {
                         cache_id: cache.cache_id,
                         max_num_elements: cache.cache.max_num_elements(),
                     },
