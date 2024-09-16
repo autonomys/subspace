@@ -1,14 +1,22 @@
-// Remove after adding domain snap-sync
-#![allow(dead_code)]
+//! This module provides features for domains integration: snap sync syncrhonization primitives,
+//! custom protocols for last confirmed block execution receipts, etc..
+
+#![warn(missing_docs)]
+
+pub(crate) mod request_handler;
 pub mod snap_sync_orchestrator;
 
 use crate::domains::request_handler::{
     generate_protocol_name, LastConfirmedBlockRequest, LastConfirmedBlockResponse,
 };
+use crate::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
+use crate::FullBackend;
 use async_trait::async_trait;
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
 use parity_scale_codec::{Decode, Encode};
+use sc_client_api::AuxStore;
+use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
@@ -21,28 +29,56 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
-pub(crate) mod request_handler;
-
 const REQUEST_PAUSE: Duration = Duration::from_secs(5);
 
-/// Last confirmed domain block info error
+/// Provides parameters for domain snap sync synchronization with the consensus chain snap sync.
+pub struct ConsensusChainSyncParams<Block, CBlock, CNR, AS>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    CNR: NetworkRequest + Sync + Send,
+    AS: AuxStore,
+{
+    /// Synchronizes consensus snap sync stages.
+    pub snap_sync_orchestrator: Arc<SnapSyncOrchestrator>,
+    /// Provides execution receipts for the last confirmed domain block.
+    pub execution_receipt_provider: Box<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
+    /// Consensus chain fork ID
+    pub fork_id: Option<String>,
+    /// Consensus chain network service
+    pub network_service: CNR,
+    /// Consensus chain sync service
+    pub sync_service: Arc<SyncingService<CBlock>>,
+    /// Consensus chain backend (for obtaining offchain storage)
+    pub backend: Arc<FullBackend>,
+    /// Provides segment headers.
+    pub segment_headers_store: SegmentHeadersStore<AS>,
+}
+
+/// Last confirmed domain block info error.
 #[derive(Debug, thiserror::Error)]
 pub enum LastConfirmedDomainBlockResponseError {
+    /// Last confirmed domain block info request failed.
     #[error("Last confirmed domain block info request failed: {0}")]
     RequestFailed(#[from] RequestFailure),
 
+    /// Last confirmed domain block info request canceled.
     #[error("Last confirmed domain block info request canceled")]
     RequestCanceled,
 
+    /// "Last confirmed domain block info request failed: invalid protocol.
     #[error("Last confirmed domain block info request failed: invalid protocol")]
     InvalidProtocol,
 
+    /// Failed to decode response.
     #[error("Failed to decode response: {0}")]
     DecodeFailed(String),
 }
 
 #[async_trait]
+/// Provides execution receipts for the last confirmed domain block.
 pub trait LastDomainBlockReceiptProvider<Block: BlockT, CBlock: BlockT>: Send {
+    /// Returns execution receipts for the last confirmed domain block.
     async fn get_execution_receipt(
         &self,
         block_hash: Option<CBlock::Hash>,
@@ -77,6 +113,7 @@ where
     }
 }
 
+/// Provides execution receipts for the last confirmed domain block.
 pub struct LastDomainBlockInfoReceiver<Block, Client, NR>
 where
     Block: BlockT,
@@ -96,6 +133,7 @@ where
     NR: NetworkRequest,
     Client: HeaderBackend<Block>,
 {
+    /// Constructor.
     pub fn new(
         domain_id: DomainId,
         fork_id: Option<String>,
@@ -111,6 +149,8 @@ where
             sync_service,
         }
     }
+
+    /// Returns execution receipts for the last confirmed domain block.
     pub async fn get_last_confirmed_domain_block_receipt<CBlock: BlockT>(
         &self,
         block_hash: Option<CBlock::Hash>,
