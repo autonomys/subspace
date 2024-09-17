@@ -104,7 +104,7 @@ async fn get_last_confirmed_block<Block: BlockT>(
             let now = SystemTime::now();
             let duration_since_epoch = now
                 .duration_since(UNIX_EPOCH)
-                .expect("Time usually goes forward");
+                .expect("Subspace needs a clock set to 2021 or later");
 
             duration_since_epoch.as_nanos() as u64
         };
