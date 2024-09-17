@@ -107,8 +107,7 @@ pub(super) struct PlotterArgs {
     /// Piece getter concurrency.
     ///
     /// Increase can result in NATS communication issues if too many messages arrive via NATS, but
-    /// are not processed quickly enough for some reason and might require increasing cluster-level
-    /// `--nats-pool-size` parameter.
+    /// are not processed quickly enough for some reason.
     #[arg(long, default_value = "32")]
     piece_getter_concurrency: NonZeroUsize,
     /// Plotting options only used by CPU plotter
