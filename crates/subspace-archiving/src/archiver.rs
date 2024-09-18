@@ -686,7 +686,7 @@ impl Archiver {
             let mut tmp_source_shards_scalars =
                 Vec::<Scalar>::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
-            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+            for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 raw_record_shards
                     .array_chunks::<{ RawRecord::SIZE }>()

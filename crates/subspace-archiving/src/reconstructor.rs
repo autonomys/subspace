@@ -110,7 +110,7 @@ impl Reconstructor {
             let mut tmp_shards_scalars =
                 Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
-            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+            for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 for maybe_piece in segment_pieces.iter() {
                     let maybe_scalar = maybe_piece
