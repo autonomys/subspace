@@ -1,4 +1,4 @@
-use crate::{PosTable, PosTableLegacy};
+use crate::PosTable;
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use criterion::{black_box, BatchSize, Criterion, Throughput};
@@ -131,9 +131,6 @@ fn audit(audit_options: AuditOptions) -> anyhow::Result<()> {
 
     match single_disk_farm_info {
         SingleDiskFarmInfo::V0 { .. } => {
-            audit_inner::<PosTableLegacy>(audit_options, single_disk_farm_info)
-        }
-        SingleDiskFarmInfo::V1 { .. } => {
             audit_inner::<PosTable>(audit_options, single_disk_farm_info)
         }
     }
@@ -314,9 +311,6 @@ fn prove(prove_options: ProveOptions) -> anyhow::Result<()> {
 
     match single_disk_farm_info {
         SingleDiskFarmInfo::V0 { .. } => {
-            prove_inner::<PosTableLegacy>(prove_options, single_disk_farm_info)
-        }
-        SingleDiskFarmInfo::V1 { .. } => {
             prove_inner::<PosTable>(prove_options, single_disk_farm_info)
         }
     }

@@ -268,9 +268,8 @@ fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
-pub(crate) async fn farm<PosTableLegacy, PosTable>(farming_args: FarmingArgs) -> anyhow::Result<()>
+pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> anyhow::Result<()>
 where
-    PosTableLegacy: Table,
     PosTable: Table,
 {
     let signal = shutdown_signal();
@@ -468,8 +467,7 @@ where
         .unwrap_or_else(recommended_number_of_farming_threads);
     let global_mutex = Arc::default();
 
-    let mut legacy_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
-    let mut modern_plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
+    let mut plotters = Vec::<Box<dyn Plotter + Send + Sync>>::new();
 
     #[cfg(feature = "cuda")]
     {
@@ -483,12 +481,12 @@ where
         )?;
 
         if let Some(cuda_plotter) = maybe_cuda_plotter {
-            modern_plotters.push(Box::new(cuda_plotter));
+            plotters.push(Box::new(cuda_plotter));
         }
     }
     {
         let cpu_sector_encoding_concurrency = cpu_plotting_options.cpu_sector_encoding_concurrency;
-        let maybe_cpu_plotters = init_cpu_plotters::<_, PosTableLegacy, PosTable>(
+        let maybe_cpu_plotter = init_cpu_plotter::<_, PosTable>(
             cpu_plotting_options,
             piece_getter.clone(),
             Arc::clone(&global_mutex),
@@ -497,20 +495,15 @@ where
             &mut registry,
         )?;
 
-        if let Some((legacy_cpu_plotter, modern_cpu_plotter)) = maybe_cpu_plotters {
-            legacy_plotters.push(Box::new(legacy_cpu_plotter));
-            if !modern_plotters.is_empty() && cpu_sector_encoding_concurrency.is_none() {
-                info!(
-                    "CPU plotting for v1 farms was disabled due to detected faster plotting with \
-                    GPU"
-                );
+        if let Some(cpu_plotter) = maybe_cpu_plotter {
+            if !plotters.is_empty() && cpu_sector_encoding_concurrency.is_none() {
+                info!("CPU plotting was disabled due to detected faster plotting with GPU");
             } else {
-                modern_plotters.push(Box::new(modern_cpu_plotter));
+                plotters.push(Box::new(cpu_plotter));
             }
         }
     }
-    let legacy_plotter = Arc::new(PoolPlotter::new(legacy_plotters, PLOTTING_RETRY_INTERVAL));
-    let modern_plotter = Arc::new(PoolPlotter::new(modern_plotters, PLOTTING_RETRY_INTERVAL));
+    let plotter = Arc::new(PoolPlotter::new(plotters, PLOTTING_RETRY_INTERVAL));
 
     let (farms, plotting_delay_senders) = {
         let info_mutex = &AsyncMutex::new(());
@@ -532,8 +525,7 @@ where
                 let farmer_app_info = farmer_app_info.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
-                let plotter_legacy = Arc::clone(&legacy_plotter);
-                let plotter = Arc::clone(&modern_plotter);
+                let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
                 let faster_read_sector_record_chunks_mode_barrier =
                     Arc::clone(&faster_read_sector_record_chunks_mode_barrier);
@@ -541,7 +533,7 @@ where
                     Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
-                    let farm_fut = SingleDiskFarm::new::<_, PosTableLegacy, PosTable>(
+                    let farm_fut = SingleDiskFarm::new::<_, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
                             farmer_app_info,
@@ -549,7 +541,6 @@ where
                             max_pieces_in_sector,
                             node_client,
                             reward_address,
-                            plotter_legacy,
                             plotter,
                             kzg,
                             erasure_coding,
@@ -829,17 +820,16 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn init_cpu_plotters<PG, PosTableLegacy, PosTable>(
+fn init_cpu_plotter<PG, PosTable>(
     cpu_plotting_options: CpuPlottingOptions,
     piece_getter: PG,
     global_mutex: Arc<AsyncMutex<()>>,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     registry: &mut Registry,
-) -> anyhow::Result<Option<(CpuPlotter<PG, PosTableLegacy>, CpuPlotter<PG, PosTable>)>>
+) -> anyhow::Result<Option<CpuPlotter<PG, PosTable>>>
 where
     PG: PieceGetter + Clone + Send + Sync + 'static,
-    PosTableLegacy: Table,
     PosTable: Table,
 {
     let CpuPlottingOptions {
@@ -938,17 +928,7 @@ where
     )
     .map_err(|error| anyhow!("Failed to create thread pool manager: {error}"))?;
 
-    let legacy_cpu_plotter = CpuPlotter::<_, PosTableLegacy>::new(
-        piece_getter.clone(),
-        Arc::clone(&cpu_downloading_semaphore),
-        plotting_thread_pool_manager.clone(),
-        cpu_record_encoding_concurrency,
-        Arc::clone(&global_mutex),
-        kzg.clone(),
-        erasure_coding.clone(),
-        Some(registry),
-    );
-    let modern_cpu_plotter = CpuPlotter::<_, PosTable>::new(
+    let cpu_plotter = CpuPlotter::<_, PosTable>::new(
         piece_getter,
         cpu_downloading_semaphore,
         plotting_thread_pool_manager,
@@ -959,7 +939,7 @@ where
         Some(registry),
     );
 
-    Ok(Some((legacy_cpu_plotter, modern_cpu_plotter)))
+    Ok(Some(cpu_plotter))
 }
 
 #[cfg(feature = "cuda")]

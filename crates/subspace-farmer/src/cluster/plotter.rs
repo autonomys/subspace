@@ -65,7 +65,7 @@ impl ClusterPlotterId {
 struct ClusterPlotterFreeInstanceRequest;
 
 impl GenericRequest for ClusterPlotterFreeInstanceRequest {
-    const SUBJECT: &'static str = "subspace.plotter.*.free-instance";
+    const SUBJECT: &'static str = "subspace.plotter.free-instance";
     /// Might be `None` if instance had to respond, but turned out it was fully occupied already
     type Response = Option<String>;
 }
@@ -127,7 +127,6 @@ pub struct ClusterPlotter {
     nats_client: NatsClient,
     handlers: Arc<Handlers>,
     tasks_sender: mpsc::Sender<AsyncJoinOnDrop<()>>,
-    modern: bool,
     _background_tasks: AsyncJoinOnDrop<()>,
 }
 
@@ -240,7 +239,6 @@ impl ClusterPlotter {
         nats_client: NatsClient,
         sector_encoding_concurrency: NonZeroUsize,
         retry_backoff_policy: ExponentialBackoff,
-        modern: bool,
     ) -> Self {
         let sector_encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
 
@@ -278,7 +276,6 @@ impl ClusterPlotter {
             nats_client,
             handlers: Arc::default(),
             tasks_sender,
-            modern,
             _background_tasks: background_tasks,
         }
     }
@@ -317,13 +314,11 @@ impl ClusterPlotter {
         retry_backoff_policy.reset();
 
         // Try to get plotter instance here first as a backpressure measure
-        let modern = self.modern;
         let free_plotter_instance_fut = get_free_plotter_instance(
             &self.nats_client,
             &progress_updater,
             &mut progress_sender,
             &mut retry_backoff_policy,
-            modern,
         );
         let mut maybe_free_instance = free_plotter_instance_fut.await;
         if maybe_free_instance.is_none() {
@@ -345,7 +340,6 @@ impl ClusterPlotter {
                             &progress_updater,
                             &mut progress_sender,
                             &mut retry_backoff_policy,
-                            modern,
                         );
                         let Some(free_instance) = free_plotter_instance_fut.await else {
                             break;
@@ -461,7 +455,6 @@ async fn get_free_plotter_instance<PS>(
     progress_updater: &ProgressUpdater,
     progress_sender: &mut PS,
     retry_backoff_policy: &mut ExponentialBackoff,
-    modern: bool,
 ) -> Option<String>
 where
     PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
@@ -469,10 +462,7 @@ where
 {
     loop {
         match nats_client
-            .request(
-                &ClusterPlotterFreeInstanceRequest,
-                Some(if modern { "modern" } else { "legacy" }),
-            )
+            .request(&ClusterPlotterFreeInstanceRequest, None)
             .await
         {
             Ok(Some(free_instance)) => {
@@ -687,18 +677,14 @@ impl ProgressUpdater {
 ///
 /// Implementation is using concurrency with multiple tokio tasks, but can be started multiple times
 /// per controller instance in order to parallelize more work across threads if needed.
-pub async fn plotter_service<P>(
-    nats_client: &NatsClient,
-    plotter: &P,
-    modern: bool,
-) -> anyhow::Result<()>
+pub async fn plotter_service<P>(nats_client: &NatsClient, plotter: &P) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
 {
     let plotter_id = ClusterPlotterId::new();
 
     select! {
-        result = free_instance_responder(&plotter_id, nats_client, plotter, modern).fuse() => {
+        result = free_instance_responder(&plotter_id, nats_client, plotter).fuse() => {
             result
         }
         result = plot_sector_responder(&plotter_id, nats_client, plotter).fuse() => {
@@ -711,7 +697,6 @@ async fn free_instance_responder<P>(
     plotter_id: &ClusterPlotterId,
     nats_client: &NatsClient,
     plotter: &P,
-    modern: bool,
 ) -> anyhow::Result<()>
 where
     P: Plotter + Sync,
@@ -723,8 +708,7 @@ where
 
         let mut subscription = nats_client
             .queue_subscribe(
-                ClusterPlotterFreeInstanceRequest::SUBJECT
-                    .replace('*', if modern { "modern" } else { "legacy" }),
+                ClusterPlotterFreeInstanceRequest::SUBJECT,
                 "subspace.plotter".to_string(),
             )
             .await

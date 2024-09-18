@@ -26,25 +26,6 @@ fn test_against_chiapos() {
             .map(|quality| quality.create_proof());
 
         {
-            let found_proofs = tables.find_proof_legacy(&challenge).collect::<Vec<_>>();
-
-            // Due to bugs (https://github.com/Chia-Network/chiapos/issues/352) in C++ chiapos doesn't
-            // find as many proofs, and they are in different order due to compression, so we just
-            // verify reference proofs with our verification function
-            if let Some(original_proof) = maybe_original_proof {
-                assert!(Tables::<K>::verify(chia_seed, &challenge, &original_proof).is_some());
-
-                assert!(!found_proofs.is_empty());
-            }
-
-            // All the proofs we produce must be valid according to C++ chiapos as well, even those that
-            // C++ chiapos can't find after compression
-            for proof in &found_proofs {
-                assert!(subspace_chiapos::is_proof_valid(&seed, challenge_index, proof).is_some());
-            }
-        }
-
-        {
             let found_proofs = tables.find_proof(&challenge).collect::<Vec<_>>();
 
             // Due to bugs (https://github.com/Chia-Network/chiapos/issues/352) in C++ chiapos doesn't

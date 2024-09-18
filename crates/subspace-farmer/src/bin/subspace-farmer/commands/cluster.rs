@@ -82,11 +82,8 @@ impl ClusterSubcommand {
     }
 }
 
-pub(crate) async fn cluster<PosTableLegacy, PosTable>(
-    cluster_args: ClusterArgs,
-) -> anyhow::Result<()>
+pub(crate) async fn cluster<PosTable>(cluster_args: ClusterArgs) -> anyhow::Result<()>
 where
-    PosTableLegacy: Table,
     PosTable: Table,
 {
     let signal = shutdown_signal();
@@ -123,11 +120,10 @@ where
                 controller(nats_client, &mut registry, controller_args).await?
             }
             ClusterSubcommand::Farmer(farmer_args) => {
-                farmer::<PosTableLegacy, PosTable>(nats_client, &mut registry, farmer_args).await?
+                farmer::<PosTable>(nats_client, &mut registry, farmer_args).await?
             }
             ClusterSubcommand::Plotter(plotter_args) => {
-                plotter::<PosTableLegacy, PosTable>(nats_client, &mut registry, plotter_args)
-                    .await?
+                plotter::<PosTable>(nats_client, &mut registry, plotter_args).await?
             }
             ClusterSubcommand::Cache(cache_args) => {
                 cache(nats_client, &mut registry, cache_args).await?
