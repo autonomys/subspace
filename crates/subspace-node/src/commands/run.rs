@@ -16,7 +16,6 @@ use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
-use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
 use sc_service::{BlocksPruning, PruningMode};
 use sc_storage_monitor::StorageMonitorService;
@@ -86,7 +85,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
-        mut subspace_configuration,
+        subspace_configuration,
         dev,
         pot_external_entropy,
         storage_monitor,
@@ -139,56 +138,20 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         let consensus_chain_node = {
             let span = info_span!("Consensus");
             let _enter = span.enter();
-            let mut snap_sync_success = true;
 
-            let partial_components = match subspace_service::new_partial::<PosTable, RuntimeApi>(
+            let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
                 &subspace_configuration,
                 match subspace_configuration.sync {
                     ChainSyncMode::Full => false,
                     ChainSyncMode::Snap => true,
                 },
                 &pot_external_entropy,
-            ) {
-                Ok(partial_components) => partial_components,
-                Err(sc_service::Error::Client(sp_blockchain::Error::StateDatabase(error)))
-                    if error.to_string().contains(
-                        "Incompatible pruning modes [stored: ArchiveCanonical; requested: \
-                        Constrained",
-                    ) =>
-                {
-                    subspace_configuration.base.state_pruning = Some(PruningMode::ArchiveCanonical);
-                    snap_sync_success = false;
-
-                    subspace_service::new_partial::<PosTable, RuntimeApi>(
-                        &subspace_configuration,
-                        false,
-                        &pot_external_entropy,
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to build a full subspace node 1: {error:?}"
-                        ))
-                    })?
-                }
-                Err(error) => {
-                    return Err(Error::Other(format!(
-                        "Failed to build a full subspace node 2: {error:?}"
-                    )));
-                }
-            };
-
-            let info = partial_components.client.info();
-            // TODO: This is a temporary upgrade note that should be removed after Gemini 3h
-            if matches!(subspace_configuration.sync, ChainSyncMode::Snap)
-                && (!snap_sync_success
-                    || (info.best_number >= 1_000_000 && info.finalized_number == 0))
-            {
-                warn!(
-                    "Blockchain database is not working optimally, it is recommended to delete \
-                    `db` and re-sync node for lower disk usage and optimal performance after \
-                    segment archiving"
-                );
-            }
+            )
+            .map_err(|error| {
+                sc_service::Error::Other(format!(
+                    "Failed to build a full subspace node 1: {error:?}"
+                ))
+            })?;
 
             let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
