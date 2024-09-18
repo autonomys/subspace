@@ -22,7 +22,7 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, GEMINI_3H_CHAIN_SPEC};
+use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -139,7 +139,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
 }
 
 pub fn gemini_3h_config() -> Result<GenericChainSpec, String> {
-    GenericChainSpec::from_json_bytes(GEMINI_3H_CHAIN_SPEC.as_bytes())
+    Err("Gemini 3h is not supported".to_string())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec, String> {

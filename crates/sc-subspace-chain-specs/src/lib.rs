@@ -18,5 +18,3 @@
 
 /// Devnet chain spec
 pub const DEVNET_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-devnet.json");
-/// Gemini 3h chain spec
-pub const GEMINI_3H_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-gemini-3h.json");
