@@ -86,7 +86,7 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     recursion_depth_left: u16,
     successful_calls: &mut Peekable<I>,
 ) {
-    // Add enum variant to the base offset.
+    // Add RuntimeCall enum variant to the base offset.
     base_offset += 1;
 
     match call {
@@ -94,7 +94,8 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
         RuntimeCall::System(frame_system::Call::remark { remark }) => {
             objects.push(BlockObject::V0 {
                 hash: crypto::blake3_hash(remark),
-                offset: base_offset,
+                // Add frame_system::Call enum variant to the base offset.
+                offset: base_offset + 1,
             });
         }
         // Recursively extract object mappings for the call.

@@ -85,7 +85,6 @@ pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
 /// BLAKE3 hash output wrapper, which serializes it as a hex string
 // TODO: rename this type to Blake3Hash into a newtype, after checking for any breaking changes
 #[derive(
-    Debug,
     Default,
     Copy,
     Clone,
@@ -106,6 +105,12 @@ pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Blake3HashHex(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
+
+impl fmt::Debug for Blake3HashHex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 /// Type of randomness.
 #[derive(

@@ -845,6 +845,8 @@ where
     //   To avoid RPC connection failures, limit the number of mappings returned in each response,
     //   or the number of in-flight responses.
     fn subscribe_archived_object_mappings(&self, pending: PendingSubscriptionSink) {
+        // TODO: deny unsafe subscriptions?
+
         // The genesis segment isn't included in this stream. In other methods we recreate is as the first segment,
         // but there aren't any mappings in it, so we don't need to recreate it as part of this subscription.
 
@@ -873,6 +875,8 @@ where
         pending: PendingSubscriptionSink,
         hashes: Vec<Blake3HashHex>,
     ) {
+        // TODO: deny unsafe subscriptions?
+
         if hashes.len() > MAX_OBJECT_HASHES_PER_SUBSCRIPTION {
             error!(
                 "Request hash count ({}) exceed the server limit: {} ",
@@ -907,7 +911,7 @@ where
                 let objects = archived_segment_notification
                     .archived_segment
                     .global_object_mappings()
-                    .filter(|object| hashes.remove(&object.hash))
+                    .filter(|object| hashes.remove(&*object.hash))
                     .collect::<Vec<_>>();
 
                 stream::iter(objects)
