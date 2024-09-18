@@ -22,7 +22,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::poll_fn;
 use std::num::NonZeroU32;
 use std::pin::pin;
-use std::sync::{atomic, Arc};
+use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use tracing::{debug, error, trace, warn};
 
@@ -208,7 +208,7 @@ where
     }
 
     async fn handle_proof_candidate(&mut self, sender: PeerId, proof: GossipProof) {
-        let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
+        let next_slot_input = self.state.next_slot_input();
 
         match proof.slot.cmp(&next_slot_input.slot) {
             cmp::Ordering::Less => {
@@ -568,7 +568,7 @@ where
 
         match GossipProof::decode(&mut data) {
             Ok(proof) => {
-                let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
+                let next_slot_input = self.state.next_slot_input();
                 let current_slot = next_slot_input.slot - Slot::from(1);
 
                 if proof.slot < current_slot {
@@ -643,8 +643,7 @@ where
     }
 
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-        let current_slot =
-            u64::from(self.state.next_slot_input(atomic::Ordering::Relaxed).slot) - 1;
+        let current_slot = u64::from(self.state.next_slot_input().slot) - 1;
         Box::new(move |_topic, mut data| {
             if let Ok(proof) = GossipProof::decode(&mut data) {
                 // Slot is the only meaningful expiration policy here
