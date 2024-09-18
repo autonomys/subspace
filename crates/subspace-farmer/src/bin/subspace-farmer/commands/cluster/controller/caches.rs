@@ -65,6 +65,7 @@ impl KnownCaches {
                 self.known_single_caches
                     .iter_mut()
                     .for_each(|known_single_cache| {
+                        debug!(single_cache_id = %known_single_cache.single_cache_id, "Updating last identification for single cache");
                         known_single_cache.last_identification = last_identification;
                     });
                 true

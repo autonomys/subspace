@@ -77,6 +77,7 @@ impl KnownFarms {
                 self.known_farms.iter_mut().for_each(|(_, known_farm)| {
                     // All farms in farmer use the same fingerprint
                     if known_farm.fingerprint == fingerprint {
+                        debug!(farm_id = %known_farm.farm_id, "Updating last identification for farm");
                         known_farm.last_identification = last_identification;
                     }
                 });
