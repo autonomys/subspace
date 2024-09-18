@@ -25,6 +25,21 @@ pub struct CreateDomainKeyOptions {
     keystore_options: KeystoreOptions,
 }
 
+pub fn create_reward_key() -> Result<(), Error> {
+    init_logger();
+
+    let mnemonic = Mnemonic::generate(12)
+        .map_err(|error| Error::Input(format!("Mnemonic generation failed: {error}")))?;
+    let phrase = SecretString::from(mnemonic.to_string());
+
+    let public_key = derive_keypair(&phrase, &None)?.public();
+
+    info!("Public key: {}", public_key);
+    info!("Seed: \"{}\"", phrase.expose_secret());
+
+    Ok(())
+}
+
 pub fn create_domain_key(options: CreateDomainKeyOptions) -> Result<(), Error> {
     init_logger();
 

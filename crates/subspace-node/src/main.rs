@@ -327,6 +327,9 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
+        Cli::GenerateKey => {
+            commands::create_reward_key()?;
+        }
         Cli::Domain(domain_cmd) => match domain_cmd {
             DomainSubcommand::Key(DomainKey::Create(create_domain_key_options)) => {
                 commands::create_domain_key(create_domain_key_options)?;

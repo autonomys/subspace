@@ -53,6 +53,9 @@ pub enum Cli {
     /// Db meta columns information.
     ChainInfo(sc_cli::ChainInfoCmd),
 
+    /// Generate key
+    GenerateKey,
+
     /// Run domain sub-commands.
     #[clap(subcommand)]
     Domain(crate::domain::cli::Subcommand),

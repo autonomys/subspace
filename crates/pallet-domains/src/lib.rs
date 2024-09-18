@@ -232,7 +232,7 @@ mod pallet {
     use sp_domains::{
         BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
         EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
-        OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId, RuntimeObject, RuntimeType,
+        OperatorId, OperatorPublicKey, RuntimeId, RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};

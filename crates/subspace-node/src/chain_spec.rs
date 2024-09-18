@@ -198,7 +198,10 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                     ]),
                     genesis_domains: vec![
                         evm_chain_spec::get_genesis_domain(SpecId::DevNet, sudo_account.clone())?,
-                        auto_id_chain_spec::get_genesis_domain(SpecId::DevNet, sudo_account.clone())?,
+                        auto_id_chain_spec::get_genesis_domain(
+                            SpecId::DevNet,
+                            sudo_account.clone(),
+                        )?,
                     ],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
