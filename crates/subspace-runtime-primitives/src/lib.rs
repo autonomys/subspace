@@ -39,7 +39,7 @@ pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
-pub const MIN_REPLICATION_FACTOR: u16 = 50;
+pub const MIN_REPLICATION_FACTOR: u16 = 25;
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;
