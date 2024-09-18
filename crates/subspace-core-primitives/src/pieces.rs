@@ -651,13 +651,14 @@ impl Record {
         unsafe { mem::transmute(value) }
     }
 
-    /// Convert from a record to its raw bytes. Used for object reconstruction.
-    pub fn to_raw_record_bytes(&self) -> impl Iterator<Item = u8> + '_ {
+    /// Convert from a record to its raw bytes, assumes dealing with source record that only stores
+    /// safe bytes in its chunks.
+    #[inline]
+    pub fn to_raw_record_chunks(&self) -> impl Iterator<Item = &'_ [u8; Scalar::SAFE_BYTES]> + '_ {
         // We have zero byte padding from [`Scalar::SAFE_BYTES`] to [`Scalar::FULL_BYTES`] that we need
         // to skip
         self.iter()
-            .flat_map(|bytes| &bytes[..Scalar::SAFE_BYTES])
-            .copied()
+            .map(|bytes| bytes[1..].try_into().expect("Correct length; qed"))
     }
 }
 

@@ -90,11 +90,13 @@ impl Reconstructor {
             .zip(segment_data.iter_mut())
             .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
-                    piece.record().iter().zip(raw_record.iter_mut()).for_each(
-                        |(source, target)| {
-                            target.copy_from_slice(&source[..Scalar::SAFE_BYTES]);
-                        },
-                    );
+                    piece
+                        .record()
+                        .to_raw_record_chunks()
+                        .zip(raw_record.iter_mut())
+                        .for_each(|(source, target)| {
+                            target.copy_from_slice(source);
+                        });
                     true
                 } else {
                     false
@@ -138,10 +140,11 @@ impl Reconstructor {
                             .expect("Statically guaranteed to exist in a piece; qed")
                     }))
                     .for_each(|(source_scalar, segment_data)| {
-                        // Source scalar only contains payload data within first
-                        // [`Scalar::SAFE_BYTES`]
-                        segment_data
-                            .copy_from_slice(&source_scalar.to_bytes()[..Scalar::SAFE_BYTES]);
+                        segment_data.copy_from_slice(
+                            &source_scalar
+                                .try_to_safe_bytes()
+                                .expect("Source scalar has only safe bytes; qed"),
+                        );
                     });
 
                 tmp_shards_scalars.clear();

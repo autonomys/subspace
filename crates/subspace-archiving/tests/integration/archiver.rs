@@ -26,7 +26,9 @@ fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> 
     let offset: u64 = offset.into();
     let Compact(size) = Compact::<u64>::decode(
         &mut record
-            .to_raw_record_bytes()
+            .to_raw_record_chunks()
+            .flatten()
+            .copied()
             .skip(offset as usize)
             .take(8)
             .collect::<Vec<_>>()
@@ -34,7 +36,9 @@ fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> 
     )
     .unwrap();
     record
-        .to_raw_record_bytes()
+        .to_raw_record_chunks()
+        .flatten()
+        .copied()
         .skip(offset as usize + Compact::compact_len(&size))
         .take(size as usize)
         .collect()
@@ -680,7 +684,9 @@ fn object_on_the_edge_of_segment() {
     assert_eq!(
         archived_segments[1].pieces[0]
             .record()
-            .to_raw_record_bytes()
+            .to_raw_record_chunks()
+            .flatten()
+            .copied()
             .skip(archived_segments[1].object_mapping[0].objects[0].offset() as usize)
             .take(mapped_bytes.len())
             .collect::<Vec<_>>(),
