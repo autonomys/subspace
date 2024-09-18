@@ -114,24 +114,9 @@ pub struct SingleDiskFarmInfoLock {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SingleDiskFarmInfo {
-    /// Legacy V0 of the info
+    /// V0 of the info
     #[serde(rename_all = "camelCase")]
     V0 {
-        /// ID of the farm
-        id: FarmId,
-        /// Genesis hash of the chain used for farm creation
-        #[serde(with = "hex")]
-        genesis_hash: [u8; 32],
-        /// Public key of identity used for farm creation
-        public_key: PublicKey,
-        /// How many pieces does one sector contain.
-        pieces_in_sector: u16,
-        /// How much space in bytes is allocated for this farm
-        allocated_space: u64,
-    },
-    /// V1 of the info
-    #[serde(rename_all = "camelCase")]
-    V1 {
         /// ID of the farm
         id: FarmId,
         /// Genesis hash of the chain used for farm creation
@@ -157,7 +142,7 @@ impl SingleDiskFarmInfo {
         pieces_in_sector: u16,
         allocated_space: u64,
     ) -> Self {
-        Self::V1 {
+        Self::V0 {
             id,
             genesis_hash,
             public_key,
@@ -207,19 +192,19 @@ impl SingleDiskFarmInfo {
 
     /// ID of the farm
     pub fn id(&self) -> &FarmId {
-        let (Self::V0 { id, .. } | Self::V1 { id, .. }) = self;
+        let Self::V0 { id, .. } = self;
         id
     }
 
     /// Genesis hash of the chain used for farm creation
     pub fn genesis_hash(&self) -> &[u8; 32] {
-        let (Self::V0 { genesis_hash, .. } | Self::V1 { genesis_hash, .. }) = self;
+        let Self::V0 { genesis_hash, .. } = self;
         genesis_hash
     }
 
     /// Public key of identity used for farm creation
     pub fn public_key(&self) -> &PublicKey {
-        let (Self::V0 { public_key, .. } | Self::V1 { public_key, .. }) = self;
+        let Self::V0 { public_key, .. } = self;
         public_key
     }
 
@@ -229,9 +214,6 @@ impl SingleDiskFarmInfo {
             SingleDiskFarmInfo::V0 {
                 pieces_in_sector, ..
             } => *pieces_in_sector,
-            SingleDiskFarmInfo::V1 {
-                pieces_in_sector, ..
-            } => *pieces_in_sector,
         }
     }
 
@@ -239,9 +221,6 @@ impl SingleDiskFarmInfo {
     pub fn allocated_space(&self) -> u64 {
         match self {
             SingleDiskFarmInfo::V0 {
-                allocated_space, ..
-            } => *allocated_space,
-            SingleDiskFarmInfo::V1 {
                 allocated_space, ..
             } => *allocated_space,
         }
@@ -308,8 +287,6 @@ where
     pub node_client: NC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
-    /// Plotter
-    pub plotter_legacy: Arc<dyn Plotter + Send + Sync>,
     /// Plotter
     pub plotter: Arc<dyn Plotter + Send + Sync>,
     /// Kzg instance to use.
@@ -854,13 +831,12 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    pub async fn new<NC, PosTableLegacy, PosTable>(
+    pub async fn new<NC, PosTable>(
         options: SingleDiskFarmOptions<'_, NC>,
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient + Clone,
-        PosTableLegacy: Table,
         PosTable: Table,
     {
         let span = Span::current();
@@ -872,7 +848,6 @@ impl SingleDiskFarm {
             max_pieces_in_sector,
             node_client,
             reward_address,
-            plotter_legacy,
             plotter,
             kzg,
             erasure_coding,
@@ -1059,11 +1034,6 @@ impl SingleDiskFarm {
             move || {
                 let _span_guard = span.enter();
 
-                let plotter = match single_disk_farm_info {
-                    SingleDiskFarmInfo::V0 { .. } => plotter_legacy,
-                    SingleDiskFarmInfo::V1 { .. } => plotter,
-                };
-
                 let plotting_options = PlottingOptions {
                     metadata_header,
                     sectors_metadata: &sectors_metadata,
@@ -1196,14 +1166,7 @@ impl SingleDiskFarm {
                         global_mutex,
                         metrics,
                     };
-                    match single_disk_farm_info {
-                        SingleDiskFarmInfo::V0 { .. } => {
-                            farming::<PosTableLegacy, _, _>(farming_options).await
-                        }
-                        SingleDiskFarmInfo::V1 { .. } => {
-                            farming::<PosTable, _, _>(farming_options).await
-                        }
-                    }
+                    farming::<PosTable, _, _>(farming_options).await
                 };
 
                 Handle::current().block_on(async {
@@ -1237,72 +1200,34 @@ impl SingleDiskFarm {
             })
         }));
 
-        let (piece_reader, reading_join_handle) = match single_disk_farm_info {
-            SingleDiskFarmInfo::V0 { .. } => {
-                let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTableLegacy>(
-                    public_key,
-                    pieces_in_sector,
-                    plot_file,
-                    Arc::clone(&sectors_metadata),
-                    erasure_coding,
-                    sectors_being_modified,
-                    read_sector_record_chunks_mode,
-                    global_mutex,
-                );
+        let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            plot_file,
+            Arc::clone(&sectors_metadata),
+            erasure_coding,
+            sectors_being_modified,
+            read_sector_record_chunks_mode,
+            global_mutex,
+        );
 
-                let reading_join_handle = task::spawn_blocking({
-                    let mut stop_receiver = stop_sender.subscribe();
-                    let reading_fut = reading_fut.instrument(span.clone());
+        let reading_join_handle = task::spawn_blocking({
+            let mut stop_receiver = stop_sender.subscribe();
+            let reading_fut = reading_fut.instrument(span.clone());
 
-                    move || {
-                        Handle::current().block_on(async {
-                            select! {
-                                _ = reading_fut.fuse() => {
-                                    // Nothing, just exit
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    // Nothing, just exit
-                                }
-                            }
-                        });
+            move || {
+                Handle::current().block_on(async {
+                    select! {
+                        _ = reading_fut.fuse() => {
+                            // Nothing, just exit
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
                     }
                 });
-
-                (piece_reader, reading_join_handle)
             }
-            SingleDiskFarmInfo::V1 { .. } => {
-                let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
-                    public_key,
-                    pieces_in_sector,
-                    plot_file,
-                    Arc::clone(&sectors_metadata),
-                    erasure_coding,
-                    sectors_being_modified,
-                    read_sector_record_chunks_mode,
-                    global_mutex,
-                );
-
-                let reading_join_handle = task::spawn_blocking({
-                    let mut stop_receiver = stop_sender.subscribe();
-                    let reading_fut = reading_fut.instrument(span.clone());
-
-                    move || {
-                        Handle::current().block_on(async {
-                            select! {
-                                _ = reading_fut.fuse() => {
-                                    // Nothing, just exit
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    // Nothing, just exit
-                                }
-                            }
-                        });
-                    }
-                });
-
-                (piece_reader, reading_join_handle)
-            }
-        };
+        });
 
         let reading_join_handle = AsyncJoinOnDrop::new(reading_join_handle, false);
 
@@ -1417,19 +1342,12 @@ impl SingleDiskFarm {
                         "Farm size has changed"
                     );
 
-                    {
-                        let new_allocated_space = allocated_space;
-                        match &mut single_disk_farm_info {
-                            SingleDiskFarmInfo::V0 {
-                                allocated_space, ..
-                            } => {
-                                *allocated_space = new_allocated_space;
-                            }
-                            SingleDiskFarmInfo::V1 {
-                                allocated_space, ..
-                            } => {
-                                *allocated_space = new_allocated_space;
-                            }
+                    let new_allocated_space = allocated_space;
+                    match &mut single_disk_farm_info {
+                        SingleDiskFarmInfo::V0 {
+                            allocated_space, ..
+                        } => {
+                            *allocated_space = new_allocated_space;
                         }
                     }
 

@@ -670,7 +670,6 @@ impl SegmentHeader {
 /// Sector index in consensus
 pub type SectorIndex = u16;
 
-// TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

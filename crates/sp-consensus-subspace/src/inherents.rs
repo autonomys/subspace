@@ -22,7 +22,6 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use sp_consensus_slots::Slot;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
 use subspace_core_primitives::SegmentHeader;
 
@@ -53,9 +52,6 @@ impl IsFatalError for InherentError {
 /// The type of the Subspace inherent data.
 #[derive(Debug, Encode, Decode)]
 pub struct InherentType {
-    /// Slot at which block was created.
-    // TODO: Remove slot when breaking protocol and probably change the whole data structure to an enum
-    slot: Slot,
     /// Segment headers expected to be included in the block.
     pub segment_headers: Vec<SegmentHeader>,
 }
@@ -90,11 +86,7 @@ impl InherentDataProvider {
     /// Create new inherent data provider from the given `segment_headers`.
     pub fn new(segment_headers: Vec<SegmentHeader>) -> Self {
         Self {
-            data: InherentType {
-                // TODO: Remove slot when breaking protocol
-                slot: Default::default(),
-                segment_headers,
-            },
+            data: InherentType { segment_headers },
         }
     }
 

@@ -15,7 +15,6 @@ use std::fs;
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_proof_of_space::chia_legacy::ChiaTableLegacy;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
@@ -24,7 +23,6 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type PosTableLegacy = ChiaTableLegacy;
 type PosTable = ChiaTable;
 
 #[allow(clippy::large_enum_variant)]
@@ -100,10 +98,10 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         Command::Farm(farming_args) => {
-            commands::farm::farm::<PosTableLegacy, PosTable>(farming_args).await?;
+            commands::farm::farm::<PosTable>(farming_args).await?;
         }
         Command::Cluster(cluster_args) => {
-            commands::cluster::cluster::<PosTableLegacy, PosTable>(cluster_args).await?;
+            commands::cluster::cluster::<PosTable>(cluster_args).await?;
         }
         Command::Benchmark(benchmark_args) => {
             commands::benchmark::benchmark(benchmark_args)?;
