@@ -21,12 +21,11 @@ extern crate alloc;
 pub mod kzg;
 
 use crate::Blake3Hash;
+use ::kzg::Fr;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
-#[cfg(not(feature = "std"))]
-use alloc::string::ToString;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -67,8 +66,8 @@ pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
 /// BLAKE3 hashing of a single value truncated to 254 bits as Scalar for usage with KZG.
 pub fn blake3_254_hash_to_scalar(data: &[u8]) -> Scalar {
     let mut hash = blake3_hash(data);
-    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
-    hash[31] &= 0b00111111;
+    // Erase first 2 bits to effectively truncate the hash (number is interpreted as big-endian)
+    hash[0] &= 0b00111111;
     Scalar::try_from(hash)
         .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed")
 }
@@ -182,7 +181,7 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
     #[inline]
     fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
         let mut bytes = [0u8; Self::FULL_BYTES];
-        bytes[..Self::SAFE_BYTES].copy_from_slice(value);
+        bytes[1..].copy_from_slice(value);
         Self::try_from(bytes).expect("Safe bytes always fit into scalar and thus succeed; qed")
     }
 }
@@ -208,36 +207,14 @@ impl TryFrom<[u8; Self::FULL_BYTES]> for Scalar {
 
     #[inline]
     fn try_from(value: [u8; Self::FULL_BYTES]) -> Result<Self, Self::Error> {
-        // TODO: The whole method should have been just the following line, but upstream `rust-kzg`
-        //  switched to big-endian and we have to maintain little-endian version for now
-        // FsFr::from_bytes(&value).map(Scalar)
-        let mut bls_scalar = blst::blst_scalar::default();
-        let mut fr = blst::blst_fr::default();
-        unsafe {
-            blst::blst_scalar_from_lendian(&mut bls_scalar, value.as_ptr());
-            if !blst::blst_scalar_fr_check(&bls_scalar) {
-                return Err("Invalid scalar".to_string());
-            }
-            blst::blst_fr_from_scalar(&mut fr, &bls_scalar);
-        }
-        Ok(Self(FsFr(fr)))
+        FsFr::from_bytes(&value).map(Scalar)
     }
 }
 
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
     #[inline]
     fn from(value: &Scalar) -> Self {
-        // TODO: The whole method should have been just the following line, but upstream `rust-kzg`
-        //  switched to big-endian and we have to maintain little-endian version for now
-        // value.0.to_bytes()
-        let mut scalar = blst::blst_scalar::default();
-        let mut bytes = [0u8; 32];
-        unsafe {
-            blst::blst_scalar_from_fr(&mut scalar, &value.0 .0);
-            blst::blst_lendian_from_scalar(bytes.as_mut_ptr(), &scalar);
-        }
-
-        bytes
+        value.0.to_bytes()
     }
 }
 
@@ -262,6 +239,17 @@ impl Scalar {
     /// Convert scalar into bytes
     pub fn to_bytes(&self) -> [u8; Scalar::FULL_BYTES] {
         self.into()
+    }
+
+    /// Convert scalar into safe bytes, returns `None` if not possible to convert due to larger
+    /// internal value
+    pub fn try_to_safe_bytes(&self) -> Option<[u8; Scalar::SAFE_BYTES]> {
+        let bytes = self.to_bytes();
+        if bytes[0] == 0 {
+            Some(bytes[1..].try_into().expect("Correct length; qed"))
+        } else {
+            None
+        }
     }
 
     /// Convenient conversion from slice of scalar to underlying representation for efficiency
