@@ -85,7 +85,6 @@ use sp_runtime::{
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
@@ -942,12 +941,11 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
     }
 }
 
-fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
+fn extract_utility_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -965,13 +963,7 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                extract_call_block_object_mapping(
-                    base_offset,
-                    objects,
-                    call,
-                    recursion_depth_left,
-                    successful_calls,
-                );
+                extract_call_block_object_mapping(base_offset, objects, call, recursion_depth_left);
 
                 base_offset += call.encoded_size() as u32;
             }
@@ -984,7 +976,6 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::dispatch_as { as_origin, call } => {
@@ -995,7 +986,6 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::with_weight { call, .. } => {
@@ -1004,7 +994,6 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::__Ignore(_, _) => {
@@ -1013,30 +1002,22 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     }
 }
 
-fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
+fn extract_call_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &RuntimeCall,
     recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
     // Add enum variant to the base offset.
     base_offset += 1;
 
     if let RuntimeCall::Utility(call) = call {
-        extract_utility_block_object_mapping(
-            base_offset,
-            objects,
-            call,
-            recursion_depth_left,
-            successful_calls,
-        );
+        extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left);
     }
 }
 
-fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
+fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = successful_calls.into_iter().peekable();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
@@ -1059,7 +1040,6 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
             &mut block_object_mapping.objects,
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
-            &mut successful_calls,
         );
 
         base_offset += extrinsic.encoded_size();
@@ -1224,13 +1204,8 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, successful_calls)
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
-            // No pallets produce objects right now
-            Vec::new()
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+            extract_block_object_mapping(block)
         }
     }
 

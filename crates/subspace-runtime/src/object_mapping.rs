@@ -1,19 +1,16 @@
 use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
-use sp_std::iter::Peekable;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_runtime_primitives::Hash;
 
 const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
 
-pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
+pub(crate) fn extract_utility_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -31,13 +28,7 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                extract_call_block_object_mapping(
-                    base_offset,
-                    objects,
-                    call,
-                    recursion_depth_left,
-                    successful_calls,
-                );
+                extract_call_block_object_mapping(base_offset, objects, call, recursion_depth_left);
 
                 base_offset += call.encoded_size() as u32;
             }
@@ -50,7 +41,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::dispatch_as { as_origin, call } => {
@@ -61,7 +51,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::with_weight { call, .. } => {
@@ -70,7 +59,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::__Ignore(_, _) => {
@@ -79,12 +67,11 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     }
 }
 
-pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
+pub(crate) fn extract_call_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &RuntimeCall,
     recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
     // Add RuntimeCall enum variant to the base offset.
     base_offset += 1;
@@ -99,24 +86,16 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
             });
         }
         // Recursively extract object mappings for the call.
-        RuntimeCall::Utility(call) => extract_utility_block_object_mapping(
-            base_offset,
-            objects,
-            call,
-            recursion_depth_left,
-            successful_calls,
-        ),
+        RuntimeCall::Utility(call) => {
+            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left)
+        }
         // Other calls don't contain object mappings.
         _ => {}
     }
 }
 
-pub(crate) fn extract_block_object_mapping(
-    block: Block,
-    successful_calls: Vec<Hash>,
-) -> BlockObjectMapping {
+pub(crate) fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = successful_calls.into_iter().peekable();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
@@ -139,7 +118,6 @@ pub(crate) fn extract_block_object_mapping(
             &mut block_object_mapping.objects,
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
-            &mut successful_calls,
         );
 
         base_offset += extrinsic.encoded_size();

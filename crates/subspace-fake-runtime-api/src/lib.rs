@@ -46,7 +46,7 @@ use subspace_core_primitives::{
     HistorySize, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
 };
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Hash, Moment, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Moment, Nonce};
 
 mod mmr {
     pub use pallet_mmr::primitives::*;
@@ -125,11 +125,7 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(_block: Block, _successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            unreachable!()
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
+        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
             unreachable!()
         }
     }

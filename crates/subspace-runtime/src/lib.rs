@@ -1178,13 +1178,8 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, successful_calls)
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
-            // No pallets produce objects right now
-            Vec::new()
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+            extract_block_object_mapping(block)
         }
     }
 
