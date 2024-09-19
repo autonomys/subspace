@@ -3,19 +3,44 @@
 use crate::mmr::get_offchain_key;
 use crate::mmr::request_handler::{generate_protocol_name, MmrRequest, MmrResponse, MAX_MMR_ITEMS};
 use futures::channel::oneshot;
+use mmr_lib::util::MemStore;
 use parity_scale_codec::{Decode, Encode};
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::{DbExternalities, OffchainStorage, StorageKind};
+use sp_core::{Hasher, H256};
 use sp_mmr_primitives::utils::NodesUtils;
-use sp_runtime::traits::Block as BlockT;
+use sp_mmr_primitives::{mmr_lib, DataOrHash, MmrApi};
+use sp_runtime::traits::{Block as BlockT, Keccak256, NumberFor};
+use sp_subspace_mmr::MmrLeaf;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{BlockHash, BlockNumber};
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
+
+type Node<H, L> = DataOrHash<H, L>;
+type MmrLeafOf = MmrLeaf<BlockNumber, BlockHash>;
+type NodeOf = Node<Keccak256, MmrLeafOf>;
+type MemStoreOf = MemStore<NodeOf>;
+type MmrRef<'a> = mmr_lib::MMR<NodeOf, MmrHasher, &'a MemStoreOf>;
+
+/// Default Merging & Hashing behavior for MMR.
+pub struct MmrHasher;
+
+impl mmr_lib::Merge for MmrHasher {
+    type Item = NodeOf;
+
+    fn merge(left: &Self::Item, right: &Self::Item) -> mmr_lib::Result<Self::Item> {
+        let mut concat = left.hash().as_ref().to_vec();
+        concat.extend_from_slice(right.hash().as_ref());
+
+        Ok(Node::Hash(Keccak256::hash(&concat)))
+    }
+}
 
 const SYNC_PAUSE: Duration = Duration::from_secs(5);
 
@@ -31,14 +56,15 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
 where
     Block: BlockT,
     NR: NetworkRequest,
-    Client: HeaderBackend<Block>,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: MmrApi<Block, H256, NumberFor<Block>>,
     OS: OffchainStorage,
 {
     debug!("MMR sync started.");
     let info = client.info();
     let protocol_name = generate_protocol_name(info.genesis_hash, fork_id.as_deref());
 
-    let mut offchain_db = OffchainDb::new(offchain_storage);
+    let mut offchain_db = OffchainDb::new(offchain_storage.clone());
 
     // Look for existing local MMR-nodes
     let mut starting_position = {
@@ -163,6 +189,13 @@ where
                 // when we sync the remaining data (consensus and domain chains).
                 if target_position <= starting_position.into() {
                     debug!("Target position reached: {target_position}");
+
+                    if !verify_mmr_data(client, offchain_storage, target_position) {
+                        return Err(sp_blockchain::Error::Application(
+                            "Can't get starting MMR position - data verification failed.".into(),
+                        ));
+                    }
+
                     break 'outer;
                 }
             }
@@ -174,6 +207,81 @@ where
     debug!("MMR sync finished.");
 
     Ok(())
+}
+
+pub(crate) fn verify_mmr_data<Block, OS, Client>(
+    client: Arc<Client>,
+    offchain_storage: OS,
+    target_position: u64,
+) -> bool
+where
+    Block: BlockT,
+    OS: OffchainStorage,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: MmrApi<Block, H256, NumberFor<Block>>,
+{
+    let store = MemStoreOf::default();
+    let mut mmr = MmrRef::new(0, &store);
+    let mut leaves_num = 0u32;
+
+    debug!("Verifying MMR data...");
+
+    let mut offchain_db = OffchainDb::new(offchain_storage);
+
+    for position in 0..=target_position {
+        let canon_key = get_offchain_key(position);
+        let Some(data) = offchain_db.local_storage_get(StorageKind::PERSISTENT, &canon_key) else {
+            error!(%target_position, %position, "Can't get MMR data.");
+
+            return false;
+        };
+
+        let node = match NodeOf::decode(&mut data.as_slice()) {
+            Ok(node) => node,
+            Err(err) => {
+                error!(%position, ?err, "MMR data verification: error during leaf acquiring");
+                return false;
+            }
+        };
+
+        if matches!(node, NodeOf::Data(_),) {
+            if let Err(err) = mmr.push(node) {
+                error!(%position, ?err, "MMR data verification: error during adding the node.");
+                return false;
+            }
+            leaves_num += 1;
+        }
+    }
+
+    let block_number = leaves_num;
+    let Ok(Some(hash)) = client.hash(block_number.into()) else {
+        error!(%target_position, %block_number, "MMR data verification: error during hash acquisition");
+        return false;
+    };
+
+    let mmr_root = mmr.get_root();
+    trace!("MMR root: {:?}", mmr_root);
+    let api_root = client.runtime_api().mmr_root(hash);
+    trace!("API root: {:?}", api_root);
+
+    let Ok(Node::Hash(mmr_root_hash)) = mmr_root.clone() else {
+        error!(%target_position, %block_number, ?mmr_root, "Can't get MMR root from local storage.");
+        return false;
+    };
+
+    let Ok(Ok(api_root_hash)) = api_root else {
+        error!(%target_position, %block_number, ?mmr_root, "Can't get MMR root from API.");
+        return false;
+    };
+
+    if api_root_hash != mmr_root_hash {
+        error!(?api_root_hash, ?mmr_root_hash, "MMR data hashes differ.");
+        return false;
+    }
+
+    debug!("MMR data verified");
+
+    true
 }
 
 /// MMR-sync error

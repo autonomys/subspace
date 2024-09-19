@@ -13,8 +13,11 @@ use sc_network_common::sync::message::{
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::SyncingService;
 use sc_service::ClientExt;
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
+use sp_core::H256;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -28,6 +31,8 @@ use tracing::{debug, error, trace};
 
 pub struct SyncParams<DomainClient, CClient, NR, Block, CBlock, CNR, AS>
 where
+    CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
+    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
     NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync + 'static,
     Block: BlockT,
@@ -200,7 +205,13 @@ where
     NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync,
     CBlock: BlockT,
-    CClient: HeaderBackend<CBlock> + ProofProvider<CBlock> + Send + Sync + 'static,
+    CClient: ProvideRuntimeApi<CBlock>
+        + HeaderBackend<CBlock>
+        + ProofProvider<CBlock>
+        + Send
+        + Sync
+        + 'static,
+    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
     AS: AuxStore,
 {
     let execution_receipt_result = sync_params
