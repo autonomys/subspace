@@ -92,7 +92,7 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     match call {
         // Extract the actual object mappings.
         RuntimeCall::System(frame_system::Call::remark { remark }) => {
-            objects.push(BlockObject::V0 {
+            objects.push(BlockObject {
                 hash: crypto::blake3_hash(remark),
                 // Add frame_system::Call enum variant to the base offset.
                 offset: base_offset + 1,
@@ -136,7 +136,7 @@ pub(crate) fn extract_block_object_mapping(
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,
-            &mut block_object_mapping.objects,
+            block_object_mapping.objects_mut(),
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
             &mut successful_calls,

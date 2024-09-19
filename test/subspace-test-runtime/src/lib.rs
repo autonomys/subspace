@@ -1056,7 +1056,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,
-            &mut block_object_mapping.objects,
+            block_object_mapping.objects_mut(),
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
             &mut successful_calls,
