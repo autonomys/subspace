@@ -439,7 +439,7 @@ where
                 };
 
                 // Create background task for concurrent processing
-                processing.push(Box::pin(process_caches_deatils_request(
+                processing.push(Box::pin(process_caches_details_request(
                     nats_client,
                     caches_details,
                     message,
@@ -454,7 +454,7 @@ where
     Ok(())
 }
 
-async fn process_caches_deatils_request<C>(
+async fn process_caches_details_request<C>(
     nats_client: &NatsClient,
     caches_details: &[CacheDetails<'_, C>],
     request: StreamRequest<ClusterCacheDetailsRequest>,

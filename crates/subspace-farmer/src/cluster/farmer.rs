@@ -691,7 +691,7 @@ async fn farms_details_responder(
                 };
 
                 // Create background task for concurrent processing
-                processing.push(Box::pin(process_farms_deatils_request(
+                processing.push(Box::pin(process_farms_details_request(
                     nats_client,
                     farms_details,
                     message,
@@ -706,7 +706,7 @@ async fn farms_details_responder(
     Ok(())
 }
 
-async fn process_farms_deatils_request(
+async fn process_farms_details_request(
     nats_client: &NatsClient,
     farms_details: &[FarmDetails],
     request: StreamRequest<ClusterFarmerFarmDetailsRequest>,
