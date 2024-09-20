@@ -49,7 +49,7 @@ unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_code
 void = "1.0.2"
 
 [dependencies.libp2p]
-version = "0.54.0"
+version = "0.54.1"
 default-features = false
 features = [
     "autonat",
