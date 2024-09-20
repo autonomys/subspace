@@ -167,12 +167,12 @@ where
         }
     };
 
-    // Skip the snap sync if there is just one segment header built on top of genesis, it is
-    // more efficient to sync it regularly
+    // We don't have the genesis state when we choose to snap sync.
     if target_segment_index <= SegmentIndex::ONE {
-        debug!("Snap sync was skipped due to too early chain history");
-
-        return Ok(None);
+        panic!(
+            "Snap sync is impossible - not enough archived history: \
+          wipe the DB folder and rerun with --sync=full"
+        );
     }
 
     // Identify all segment headers that would need to be reconstructed in order to get first
