@@ -22,7 +22,7 @@ use std::pin::{pin, Pin};
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 const MIN_CACHE_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -458,7 +458,8 @@ where
 {
     caches_details
         .iter()
-        .map(|cache_details| async move {
+        .enumerate()
+        .map(|(cache_index, cache_details)| async move {
             // Initialize with pending future so it never ends
             let mut processing = FuturesUnordered::from_iter([
                 Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
@@ -486,11 +487,14 @@ where
                         };
 
                         // Create background task for concurrent processing
-                        processing.push(Box::pin(process_contents_request(
-                            nats_client,
-                            cache_details,
-                            message,
-                        )));
+                        processing.push(Box::pin(
+                            process_contents_request(
+                                nats_client,
+                                cache_details,
+                                message,
+                            )
+                            .instrument(info_span!("", %cache_index))
+                        ));
                     }
                     _ = processing.next() => {
                         // Nothing to do here
