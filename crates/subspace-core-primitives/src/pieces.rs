@@ -218,6 +218,27 @@ impl PieceIndex {
         // Position is statically guaranteed to fit into u32
         (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
     }
+
+    /// Is this piece index a source piece?
+    #[inline]
+    pub const fn is_source(&self) -> bool {
+        // Source pieces are interleaved with parity pieces, source first
+        self.0 % Self::source_ratio() == 0
+    }
+
+    /// Returns the next source piece index
+    #[inline]
+    pub const fn next_source_index(&self) -> PieceIndex {
+        PieceIndex(self.0.next_multiple_of(Self::source_ratio()))
+    }
+
+    /// The ratio of source pieces to all pieces
+    #[inline]
+    const fn source_ratio() -> u64 {
+        // Assumes the result is an integer
+        (RecordedHistorySegment::ERASURE_CODING_RATE.1
+            / RecordedHistorySegment::ERASURE_CODING_RATE.0) as u64
+    }
 }
 
 /// Piece offset in sector
