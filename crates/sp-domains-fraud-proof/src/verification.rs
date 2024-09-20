@@ -233,14 +233,14 @@ where
 pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
-        <CBlock as BlockT>::Hash,
+        CBlock::Hash,
         DomainHeader::Number,
         DomainHeader::Hash,
         Balance,
     >,
     bad_receipt_parent: ExecutionReceipt<
         NumberFor<CBlock>,
-        <CBlock as BlockT>::Hash,
+        CBlock::Hash,
         DomainHeader::Number,
         DomainHeader::Hash,
         Balance,
@@ -532,7 +532,7 @@ pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, MmrHash, Balance
     >,
     invalid_bundles_fraud_proof: &InvalidBundlesProof<
         NumberFor<CBlock>,
-        <CBlock as BlockT>::Hash,
+        CBlock::Hash,
         MmrHash,
         DomainHeader,
     >,

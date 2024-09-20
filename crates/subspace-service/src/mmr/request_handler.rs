@@ -47,11 +47,7 @@ mod rep {
 
 /// Generates a `RequestResponseProtocolConfig` for the state request protocol, refusing incoming
 /// requests.
-pub fn generate_protocol_config<
-    Hash: AsRef<[u8]>,
-    B: BlockT,
-    N: NetworkBackend<B, <B as BlockT>::Hash>,
->(
+pub fn generate_protocol_config<Hash: AsRef<[u8]>, B: BlockT, N: NetworkBackend<B, B::Hash>>(
     _: &ProtocolId,
     genesis_hash: Hash,
     fork_id: Option<&str>,
@@ -142,7 +138,7 @@ where
         offchain_storage: OS,
     ) -> (Self, NB::RequestResponseProtocolConfig)
     where
-        NB: NetworkBackend<Block, <Block as BlockT>::Hash>,
+        NB: NetworkBackend<Block, Block::Hash>,
         Client: BlockBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
     {
         // Reserve enough request slots for one request per peer when we are at the maximum

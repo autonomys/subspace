@@ -96,7 +96,7 @@ where
         + ConvertTransactionRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     Client::Api: EthereumRuntimeRPCApi<Block>,
-    CT: ConvertTransaction<<Block as BlockT>::Extrinsic> + Clone + Default + Send + Sync + 'static,
+    CT: ConvertTransaction<Block::Extrinsic> + Clone + Default + Send + Sync + 'static,
     EC: EthConfig<Block, Client>,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
     CA: ChainApi<Block = Block> + 'static,

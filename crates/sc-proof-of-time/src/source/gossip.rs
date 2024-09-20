@@ -143,7 +143,7 @@ where
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
-        let topic = <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"proofs");
+        let topic = <Block::Header as HeaderT>::Hashing::hash(b"proofs");
 
         let validator = Arc::new(PotGossipValidator::new(
             Arc::clone(&state),

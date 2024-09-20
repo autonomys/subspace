@@ -46,7 +46,7 @@ where
 {
     fn __runtime_api_internal_call_api_at(
         &self,
-        _at: <Block as BlockT>::Hash,
+        _at: Block::Hash,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -62,7 +62,7 @@ where
 {
     fn __runtime_api_internal_call_api_at(
         &self,
-        _at: <Block as BlockT>::Hash,
+        _at: Block::Hash,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -80,7 +80,7 @@ where
 {
     fn __runtime_api_internal_call_api_at(
         &self,
-        _at: <Block as BlockT>::Hash,
+        _at: Block::Hash,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -98,7 +98,7 @@ where
 {
     fn __runtime_api_internal_call_api_at(
         &self,
-        _at: <Block as BlockT>::Hash,
+        _at: Block::Hash,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -115,7 +115,7 @@ where
 {
     fn __runtime_api_internal_call_api_at(
         &self,
-        _at: <Block as BlockT>::Hash,
+        _at: Block::Hash,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -241,7 +241,7 @@ where
 
     pub fn extract_signer(
         &self,
-        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        extrinsics: Vec<Block::Extrinsic>,
     ) -> Result<ExtractSignerResult<Block>, ApiError> {
         <Self as DomainCoreApi<Block>>::extract_signer(self, Default::default(), extrinsics)
     }
@@ -287,16 +287,13 @@ where
         )
     }
 
-    pub fn is_inherent_extrinsic(
-        &self,
-        extrinsic: &<Block as BlockT>::Extrinsic,
-    ) -> Result<bool, ApiError> {
+    pub fn is_inherent_extrinsic(&self, extrinsic: &Block::Extrinsic) -> Result<bool, ApiError> {
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
     }
 
     pub fn is_xdm_mmr_proof_valid(
         &self,
-        extrinsic: &<Block as BlockT>::Extrinsic,
+        extrinsic: &Block::Extrinsic,
     ) -> Result<Option<bool>, ApiError> {
         <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::is_xdm_mmr_proof_valid(
             self,
@@ -307,7 +304,7 @@ where
 
     pub fn extract_xdm_mmr_proof(
         &self,
-        extrinsic: &<Block as BlockT>::Extrinsic,
+        extrinsic: &Block::Extrinsic,
     ) -> Result<Option<Vec<u8>>, ApiError> {
         <Self as MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>::extract_xdm_mmr_proof(
             self,
@@ -320,13 +317,13 @@ where
     pub fn decode_extrinsic(
         &self,
         opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
-    ) -> Result<Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError>, ApiError> {
+    ) -> Result<Result<Block::Extrinsic, DecodeExtrinsicError>, ApiError> {
         <Self as DomainCoreApi<Block>>::decode_extrinsic(self, Default::default(), opaque_extrinsic)
     }
 
     pub fn is_within_tx_range(
         &self,
-        extrinsic: &<Block as BlockT>::Extrinsic,
+        extrinsic: &Block::Extrinsic,
         bundle_vrf_hash: &U256,
         tx_range: &U256,
     ) -> Result<bool, ApiError> {
@@ -342,9 +339,9 @@ where
     /// This is stateful runtime api call and require setting of storage keys.
     pub fn check_extrinsics_and_do_pre_dispatch(
         &self,
-        uxts: Vec<<Block as BlockT>::Extrinsic>,
+        uxts: Vec<Block::Extrinsic>,
         block_number: NumberFor<Block>,
-        block_hash: <Block as BlockT>::Hash,
+        block_hash: Block::Hash,
     ) -> Result<Result<(), CheckExtrinsicsValidityError>, ApiError> {
         <Self as DomainCoreApi<Block>>::check_extrinsics_and_do_pre_dispatch(
             self,
@@ -387,10 +384,7 @@ where
         }
     }
 
-    pub fn extrinsic_weight(
-        &self,
-        extrinsic: &<Block as BlockT>::Extrinsic,
-    ) -> Result<Weight, ApiError> {
+    pub fn extrinsic_weight(&self, extrinsic: &Block::Extrinsic) -> Result<Weight, ApiError> {
         <Self as DomainCoreApi<Block>>::extrinsic_weight(self, Default::default(), extrinsic)
     }
 

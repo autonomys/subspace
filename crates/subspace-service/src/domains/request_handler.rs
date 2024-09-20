@@ -34,11 +34,7 @@ use tracing::{debug, error, trace};
 
 /// Generates a `RequestResponseProtocolConfig` for the state request protocol, refusing incoming
 /// requests.
-pub fn generate_protocol_config<
-    Hash: AsRef<[u8]>,
-    B: BlockT,
-    N: NetworkBackend<B, <B as BlockT>::Hash>,
->(
+pub fn generate_protocol_config<Hash: AsRef<[u8]>, B: BlockT, N: NetworkBackend<B, B::Hash>>(
     genesis_hash: Hash,
     fork_id: Option<&str>,
     inbound_queue: async_channel::Sender<IncomingRequest>,
@@ -114,7 +110,7 @@ where
         num_peer_hint: usize,
     ) -> (Self, NB::RequestResponseProtocolConfig)
     where
-        NB: NetworkBackend<Block, <Block as BlockT>::Hash>,
+        NB: NetworkBackend<Block, Block::Hash>,
     {
         // Reserve enough request slots for one request per peer when we are at the maximum
         // number of peers.

@@ -114,7 +114,7 @@ where
     BE: Backend<Block> + 'static,
     TxPool: TransactionPool<Block = Block> + 'static,
     CA: ChainApi<Block = Block> + 'static,
-    CT: ConvertTransaction<<Block as BlockT>::Extrinsic> + Send + Sync + 'static,
+    CT: ConvertTransaction<Block::Extrinsic> + Send + Sync + 'static,
     EC: EthConfig<Block, Client>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
 {

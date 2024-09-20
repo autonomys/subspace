@@ -397,8 +397,7 @@ where
         domain_stateless_runtime.set_storage(domain_initial_state);
 
         let encoded_extrinsic = opaque_extrinsic.encode();
-        let extrinsic =
-            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+        let extrinsic = DomainBlock::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
         domain_stateless_runtime
             .is_xdm_mmr_proof_valid(&extrinsic)
             .expect("Runtime api must not fail. This is an unrecoverable error")
@@ -645,10 +644,8 @@ where
     ) -> Option<H256> {
         let mut extrinsics = Vec::with_capacity(bundle_body.len());
         for opaque_extrinsic in bundle_body {
-            let ext = <<DomainBlock as BlockT>::Extrinsic>::decode(
-                &mut opaque_extrinsic.encode().as_slice(),
-            )
-            .ok()?;
+            let ext =
+                DomainBlock::Extrinsic::decode(&mut opaque_extrinsic.encode().as_slice()).ok()?;
             extrinsics.push(ext);
         }
 
@@ -844,8 +841,7 @@ where
             } => {
                 let encoded_extrinsic = opaque_extrinsic.encode();
                 let extrinsic =
-                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                        .ok()?;
+                    DomainBlock::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
                 domain_stateless_runtime
                     .is_within_tx_range(&extrinsic, &bundle_vrf_hash, &domain_tx_range)
                     .ok()
@@ -853,8 +849,7 @@ where
             StatelessDomainRuntimeCall::IsInherentExtrinsic(opaque_extrinsic) => {
                 let encoded_extrinsic = opaque_extrinsic.encode();
                 let extrinsic =
-                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                        .ok()?;
+                    DomainBlock::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
                 domain_stateless_runtime
                     .is_inherent_extrinsic(&extrinsic)
                     .ok()
@@ -884,8 +879,7 @@ where
         for opaque_extrinsic in bundle_body {
             let encoded_extrinsic = opaque_extrinsic.encode();
             let extrinsic =
-                <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                    .ok()?;
+                DomainBlock::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
             let tx_weight = domain_stateless_runtime.extrinsic_weight(&extrinsic).ok()?;
             estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
         }
@@ -901,8 +895,7 @@ where
             self.domain_executor.clone(),
             domain_runtime_code.into(),
         );
-        let extrinsic =
-            <DomainBlock as BlockT>::Extrinsic::decode(&mut opaque_extrinsic.as_slice()).ok()?;
+        let extrinsic = DomainBlock::Extrinsic::decode(&mut opaque_extrinsic.as_slice()).ok()?;
         domain_stateless_runtime
             .extract_xdm_mmr_proof(&extrinsic)
             .ok()

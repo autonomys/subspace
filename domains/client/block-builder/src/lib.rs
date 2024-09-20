@@ -160,7 +160,7 @@ where
         maybe_inherent_data: Option<sp_inherents::InherentData>,
         is_gemini_3h: bool,
     ) -> Result<Self, Error> {
-        let header = <<Block as BlockT>::Header as HeaderT>::new(
+        let header = <Block::Header as HeaderT>::new(
             parent_number + One::one(),
             Default::default(),
             Default::default(),
@@ -317,7 +317,7 @@ where
         let storage_changes = self.collect_storage_changes()?;
 
         Ok(BuiltBlock {
-            block: <Block as BlockT>::new(header, self.extrinsics.into()),
+            block: Block::new(header, self.extrinsics.into()),
             storage_changes,
             proof,
         })

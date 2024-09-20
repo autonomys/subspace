@@ -107,8 +107,7 @@ where
         + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
-    TransactionPool:
-        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

@@ -159,7 +159,7 @@ pub fn xdm_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn Notificati
 
 /// Cross chain message topic.
 fn topic<Block: BlockT>() -> Block::Hash {
-    <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"cross-chain-messages")
+    <Block::Header as HeaderT>::Hashing::hash(b"cross-chain-messages")
 }
 
 impl<Block: BlockT, Network, SO: SyncOracle> GossipWorker<Block, Network, SO> {

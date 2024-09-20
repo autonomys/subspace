@@ -21,10 +21,10 @@ sp_api::decl_runtime_apis! {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)>;
+        ) -> Vec<(Option<opaque::AccountId>, Block::Extrinsic)>;
 
         fn is_within_tx_range(
-            extrinsic: &<Block as BlockT>::Extrinsic,
+            extrinsic: &Block::Extrinsic,
             bundle_vrf_hash: &U256,
             tx_range: &U256,
         ) -> bool;
@@ -33,10 +33,10 @@ sp_api::decl_runtime_apis! {
         fn intermediate_roots() -> Vec<[u8; 32]>;
 
         /// Returns the storage root after initializing the block.
-        fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8>;
+        fn initialize_block_with_post_state_root(header: &Block::Header) -> Vec<u8>;
 
         /// Returns the storage root after applying the extrinsic.
-        fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
+        fn apply_extrinsic_with_post_state_root(extrinsic: Block::Extrinsic) -> Vec<u8>;
 
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
@@ -51,22 +51,22 @@ sp_api::decl_runtime_apis! {
         fn construct_domain_update_chain_allowlist_extrinsic(updates: DomainAllowlistUpdates) -> Block::Extrinsic;
 
         /// Returns true if the extrinsic is an inherent extrinsic.
-        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
+        fn is_inherent_extrinsic(extrinsic: &Block::Extrinsic) -> bool;
 
         /// Checks the validity of array of extrinsics + pre_dispatch
         /// returning failure on first extrinsic that fails runtime call.
         /// IMPORTANT: Change `CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME` constant when this method name is changed
-        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError>;
+        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<Block::Extrinsic>, block_number: NumberFor<Block>,
+            block_hash: Block::Hash) -> Result<(), CheckExtrinsicsValidityError>;
 
         /// Decodes the domain specific extrinsic from the opaque extrinsic.
         fn decode_extrinsic(
             opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
-        ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError>;
+        ) -> Result<Block::Extrinsic, DecodeExtrinsicError>;
 
         /// Returns extrinsic Era if present.
         fn extrinsic_era(
-          extrinsic: &<Block as BlockT>::Extrinsic
+          extrinsic: &Block::Extrinsic
         ) -> Option<Era>;
 
         /// Returns the extrinsic weight.

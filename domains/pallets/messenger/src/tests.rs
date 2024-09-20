@@ -7,7 +7,7 @@ use crate::mock::{
     storage_proof_of_outbox_messages, AccountId, Balance, TestExternalities,
 };
 use crate::{
-    BalanceOf, ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
+    ChainAllowlist, ChainAllowlistUpdate, Channel, ChannelId, ChannelState, Channels,
     CloseChannelBy, Error, FeeModel, Inbox, InboxResponses, InitiateChannelParams, Nonce, Outbox,
     OutboxMessageResult, OutboxResponses, Pallet, U256,
 };
@@ -667,7 +667,7 @@ fn close_init_channels_between_chains() {
     let chain_b_id = chain_b::SelfChainId::get();
 
     let pre_user_account_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+        chain_a::Balances::reducible_balance(
             &USER_ACCOUNT,
             Preservation::Protect,
             Fortitude::Polite,
@@ -687,7 +687,7 @@ fn close_init_channels_between_chains() {
     });
 
     let post_channel_init_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+        chain_a::Balances::reducible_balance(
             &USER_ACCOUNT,
             Preservation::Protect,
             Fortitude::Polite,
@@ -729,7 +729,7 @@ fn close_init_channels_between_chains() {
     });
 
     let post_channel_close_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::reducible_balance(
+        chain_a::Balances::reducible_balance(
             &USER_ACCOUNT,
             Preservation::Protect,
             Fortitude::Polite,
@@ -977,15 +977,13 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
 
     // initiate transfer
     let account_id = 1;
-    let pre_transfer_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
-    });
+    let pre_transfer_balance =
+        chain_a_test_ext.execute_with(|| chain_a::Balances::total_balance(&account_id));
 
     initiate_transfer_on_chain(&mut chain_a_test_ext);
 
-    let post_transfer_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
-    });
+    let post_transfer_balance =
+        chain_a_test_ext.execute_with(|| chain_a::Balances::total_balance(&account_id));
     // The transferred fund + relay fee should be deducted
     assert!(post_transfer_balance < pre_transfer_balance - 500);
 
@@ -1032,9 +1030,8 @@ fn test_transport_funds_between_chains_if_dst_chain_disallows_after_message_is_s
         }));
     });
 
-    let post_response_balance = chain_a_test_ext.execute_with(|| {
-        <chain_a::Balances as Inspect<BalanceOf<chain_a::Runtime>>>::total_balance(&account_id)
-    });
+    let post_response_balance =
+        chain_a_test_ext.execute_with(|| chain_a::Balances::total_balance(&account_id));
     // The transferred fund should be refunded
     assert_eq!(post_response_balance, post_transfer_balance + 500)
 }

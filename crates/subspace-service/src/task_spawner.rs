@@ -49,7 +49,7 @@ where
         + CallApiAt<TBl>
         + Send
         + 'static,
-    <TCl as ProvideRuntimeApi<TBl>>::Api: sp_api::Metadata<TBl>
+    TCl::Api: sp_api::Metadata<TBl>
         + sp_transaction_pool::runtime_api::TaggedTransactionQueue<TBl>
         + sp_session::SessionKeys<TBl>
         + sp_api::ApiExt<TBl>,
@@ -57,7 +57,7 @@ where
     TBl::Hash: Unpin,
     TBl::Header: Unpin,
     TBackend: 'static + sc_client_api::backend::Backend<TBl> + Send,
-    TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
+    TExPool: MaintainedTransactionPool<Block = TBl, Hash = TBl::Hash> + 'static,
 {
     let SpawnTasksParams {
         // TODO: Stop using `Configuration` once

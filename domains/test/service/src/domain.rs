@@ -69,14 +69,14 @@ where
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
+        + AccountNonceApi<Block, Runtime::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>,
 {
     /// The domain id
     pub domain_id: DomainId,
     /// The node's account key
-    pub key: <Runtime as DomainRuntime>::Keyring,
+    pub key: Runtime::Keyring,
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -129,7 +129,7 @@ where
     async fn build(
         domain_id: DomainId,
         tokio_handle: tokio::runtime::Handle,
-        key: <Runtime as DomainRuntime>::Keyring,
+        key: Runtime::Keyring,
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
@@ -146,7 +146,7 @@ where
             .await
             .expect("Failed to get domain instance data");
         let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
-        let key_seed = <Runtime as DomainRuntime>::to_seed(key);
+        let key_seed = Runtime::to_seed(key);
         let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),

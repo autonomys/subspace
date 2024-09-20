@@ -271,19 +271,17 @@ pub mod tests_utils {
         }
 
         fn min_multiplier() -> Multiplier {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::min()
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::min()
         }
 
         fn target() -> Weight {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::target() * Self::max_normal()
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::target()
+                * Self::max_normal()
         }
 
         // update based on runtime impl.
         fn runtime_multiplier_update(fm: Multiplier) -> Multiplier {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as Convert<
-                Multiplier,
-                Multiplier,
-            >>::convert(fm)
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::convert(fm)
         }
 
         fn run_with_system_weight<F>(w: Weight, assertions: F)

@@ -62,7 +62,7 @@ use sp_consensus_subspace::{FarmerPublicKey, PotExtension, SubspaceApi};
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_core::{Get, H256};
+use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, ChainId, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -1301,12 +1301,10 @@ where
     let current_block_hash = client.as_ref().info().best_hash;
     let current_block = client.as_ref().info().best_number.saturated_into();
     let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
-    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount as Get<
-        u32,
-    >>::get())
-    .checked_next_power_of_two()
-    .map(|c| c / 2)
-    .unwrap_or(2);
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2);
     let extra: SignedExtra = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),

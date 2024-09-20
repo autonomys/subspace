@@ -1013,11 +1013,11 @@ mod benchmarks {
 
     fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
         if let Some(parent_block_number) = block_number.checked_sub(&One::one()) {
-            <Domains<T> as Hooks<BlockNumberFor<T>>>::on_finalize(parent_block_number);
+            Domains::<T>::on_finalize(parent_block_number);
         }
         System::<T>::set_block_number(block_number);
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
-        <Domains<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
+        Domains::<T>::on_initialize(block_number);
         System::<T>::finalize();
     }
 

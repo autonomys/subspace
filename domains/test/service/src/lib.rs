@@ -302,7 +302,7 @@ impl DomainRuntime for auto_id_domain_test_runtime::Runtime {
 pub fn construct_extrinsic_generic<Runtime, Client>(
     client: impl AsRef<Client>,
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
-    caller: <Runtime as DomainRuntime>::Keyring,
+    caller: Runtime::Keyring,
     immortal: bool,
     nonce: u32,
     tip: BalanceOf<Runtime>,
@@ -322,8 +322,8 @@ where
     let function = function.into();
     let (raw_payload, extra) =
         construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
-    let signature = raw_payload.using_encoded(|e| <Runtime as DomainRuntime>::sign(caller, e));
-    let address = <Runtime as DomainRuntime>::address(caller);
+    let signature = raw_payload.using_encoded(|e| Runtime::sign(caller, e));
+    let address = Runtime::address(caller);
     UncheckedExtrinsicFor::<Runtime>::new_signed(function, address, signature, extra)
 }
 
