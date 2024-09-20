@@ -12578,6 +12578,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-data-retrieval"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-erasure-coding",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-erasure-coding"
 version = "0.1.0"
 dependencies = [

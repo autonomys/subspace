@@ -92,8 +92,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber,
-    SolutionRange, U256,
+    crypto, HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex,
+    SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
@@ -1008,11 +1008,24 @@ fn extract_call_block_object_mapping(
     call: &RuntimeCall,
     recursion_depth_left: u16,
 ) {
-    // Add enum variant to the base offset.
+    // Add RuntimeCall enum variant to the base offset.
     base_offset += 1;
 
-    if let RuntimeCall::Utility(call) = call {
-        extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left);
+    match call {
+        // Extract the actual object mappings.
+        RuntimeCall::System(frame_system::Call::remark { remark }) => {
+            objects.push(BlockObject {
+                hash: crypto::blake3_hash(remark),
+                // Add frame_system::Call enum variant to the base offset.
+                offset: base_offset + 1,
+            });
+        }
+        // Recursively extract object mappings for the call.
+        RuntimeCall::Utility(call) => {
+            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left)
+        }
+        // Other calls don't contain object mappings.
+        _ => {}
     }
 }
 
@@ -1037,7 +1050,7 @@ fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,
-            &mut block_object_mapping.objects,
+            block_object_mapping.objects_mut(),
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
         );

@@ -36,95 +36,116 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum BlockObject {
-    /// V0 of object mapping data structure
-    // TODO: move the enum and accessor method to BlockObjectMapping
-    #[codec(index = 0)]
-    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-    V0 {
-        /// Object hash
-        #[cfg_attr(feature = "serde", serde(with = "hex"))]
-        hash: Blake3Hash,
-        /// Offset of object in the encoded block.
-        offset: u32,
-    },
-}
-
-impl BlockObject {
+pub struct BlockObject {
     /// Object hash
-    pub fn hash(&self) -> Blake3Hash {
-        match self {
-            Self::V0 { hash, .. } => *hash,
-        }
-    }
-
+    #[cfg_attr(feature = "serde", serde(with = "hex"))]
+    pub hash: Blake3Hash,
     /// Offset of object in the encoded block.
-    pub fn offset(&self) -> u32 {
-        match self {
-            Self::V0 { offset, .. } => *offset,
-        }
-    }
-
-    /// Sets new offset.
-    pub fn set_offset(&mut self, new_offset: u32) {
-        match self {
-            Self::V0 { offset, .. } => {
-                *offset = new_offset;
-            }
-        }
-    }
+    pub offset: u32,
 }
 
 /// Mapping of objects stored inside of the block
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct BlockObjectMapping {
-    /// Objects stored inside of the block
-    pub objects: Vec<BlockObject>,
+#[cfg_attr(feature = "serde", serde(rename_all_fields = "camelCase"))]
+pub enum BlockObjectMapping {
+    /// V0 of object mapping data structure
+    #[codec(index = 0)]
+    V0 {
+        /// Objects stored inside of the block
+        objects: Vec<BlockObject>,
+    },
+}
+
+impl Default for BlockObjectMapping {
+    fn default() -> Self {
+        Self::V0 {
+            objects: Vec::new(),
+        }
+    }
+}
+
+impl BlockObjectMapping {
+    /// Returns a newly created BlockObjectMapping from a list of object mappings
+    #[inline]
+    pub fn from_objects(objects: impl IntoIterator<Item = BlockObject>) -> Self {
+        Self::V0 {
+            objects: objects.into_iter().collect(),
+        }
+    }
+
+    /// Returns the object mappings
+    pub fn objects(&self) -> &[BlockObject] {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
+
+    /// Returns the object mappings as a mutable slice
+    pub fn objects_mut(&mut self) -> &mut Vec<BlockObject> {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
 }
 
 /// Object stored inside of the piece
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum PieceObject {
-    /// V0 of object mapping data structure
-    // TODO: move the enum and accessor method to PieceObjectMapping
-    #[codec(index = 0)]
-    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-    V0 {
-        /// Object hash
-        #[cfg_attr(feature = "serde", serde(with = "hex"))]
-        hash: Blake3Hash,
-        /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
-        offset: u32,
-    },
-}
-
-impl PieceObject {
+pub struct PieceObject {
     /// Object hash
-    pub fn hash(&self) -> Blake3Hash {
-        match self {
-            Self::V0 { hash, .. } => *hash,
-        }
-    }
-
+    #[cfg_attr(feature = "serde", serde(with = "hex"))]
+    pub hash: Blake3Hash,
     /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
-    pub fn offset(&self) -> u32 {
-        match self {
-            Self::V0 { offset, .. } => *offset,
-        }
-    }
+    pub offset: u32,
 }
 
 /// Mapping of objects stored inside of the piece
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct PieceObjectMapping {
-    /// Objects stored inside of the piece
-    pub objects: Vec<PieceObject>,
+#[cfg_attr(feature = "serde", serde(rename_all_fields = "camelCase"))]
+pub enum PieceObjectMapping {
+    /// V0 of object mapping data structure
+    #[codec(index = 0)]
+    V0 {
+        /// Objects stored inside of the piece
+        objects: Vec<PieceObject>,
+    },
+}
+
+impl Default for PieceObjectMapping {
+    fn default() -> Self {
+        Self::V0 {
+            objects: Vec::new(),
+        }
+    }
+}
+
+impl PieceObjectMapping {
+    /// Returns a newly created PieceObjectMapping from a list of object mappings
+    #[inline]
+    pub fn from_objects(objects: impl IntoIterator<Item = PieceObject>) -> Self {
+        Self::V0 {
+            objects: objects.into_iter().collect(),
+        }
+    }
+
+    /// Returns the object mappings as a read-only slice
+    pub fn objects(&self) -> &[PieceObject] {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
+
+    /// Returns the object mappings as a mutable slice
+    pub fn objects_mut(&mut self) -> &mut Vec<PieceObject> {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
 }
 
 /// Object stored in the history of the blockchain
@@ -164,9 +185,9 @@ impl GlobalObject {
     /// Returns a newly created GlobalObject from a piece index and object.
     pub fn new(piece_index: PieceIndex, piece_object: &PieceObject) -> Self {
         Self {
-            hash: piece_object.hash().into(),
+            hash: piece_object.hash.into(),
             piece_index,
-            offset: piece_object.offset(),
+            offset: piece_object.offset,
         }
     }
 }
@@ -209,6 +230,13 @@ impl GlobalObjectMapping {
 
     /// Returns the object mappings
     pub fn objects(&self) -> &[GlobalObject] {
+        match self {
+            Self::V0 { objects, .. } => objects,
+        }
+    }
+
+    /// Returns the object mappings as a mutable slice
+    pub fn objects_mut(&mut self) -> &mut Vec<GlobalObject> {
         match self {
             Self::V0 { objects, .. } => objects,
         }
