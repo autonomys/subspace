@@ -193,16 +193,16 @@ impl NewArchivedSegment {
             .segment_piece_indexes_source_first();
 
         // Iterate through the object mapping vector for each piece
-        object_mapping
-            .into_iter()
-            .zip(piece_indexes)
-            .flat_map(|(piece_mappings, piece_index)| {
+        object_mapping.into_iter().zip(piece_indexes).flat_map(
+            move |(piece_mappings, piece_index)| {
                 // And then through each individual object mapping in the piece
+                let piece_mappings = piece_mappings.objects().to_vec();
+
                 piece_mappings
-                    .objects
                     .into_iter()
                     .map(move |piece_object| GlobalObject::new(piece_index, &piece_object))
-            })
+            },
+        )
     }
 }
 
@@ -316,11 +316,10 @@ impl Archiver {
                     // Take part of the encoded block that wasn't archived yet and push to the
                     // buffer and block continuation
                     object_mapping
-                        .objects
+                        .objects_mut()
                         .retain_mut(|block_object: &mut BlockObject| {
-                            let current_offset = block_object.offset();
-                            if current_offset >= archived_block_bytes {
-                                block_object.set_offset(current_offset - archived_block_bytes);
+                            if block_object.offset >= archived_block_bytes {
+                                block_object.offset -= archived_block_bytes;
                                 true
                             } else {
                                 false
@@ -509,13 +508,12 @@ impl Archiver {
 
                     bytes.truncate(split_point);
 
-                    let continuation_object_mapping = BlockObjectMapping {
+                    let continuation_object_mapping = BlockObjectMapping::V0 {
                         objects: object_mapping
-                            .objects
+                            .objects_mut()
                             .extract_if(|block_object: &mut BlockObject| {
-                                let current_offset = block_object.offset();
-                                if current_offset >= split_point as u32 {
-                                    block_object.set_offset(current_offset - split_point as u32);
+                                if block_object.offset >= split_point as u32 {
+                                    block_object.offset -= split_point as u32;
                                     true
                                 } else {
                                     false
@@ -553,13 +551,12 @@ impl Archiver {
 
                     bytes.truncate(split_point);
 
-                    let continuation_object_mapping = BlockObjectMapping {
+                    let continuation_object_mapping = BlockObjectMapping::V0 {
                         objects: object_mapping
-                            .objects
+                            .objects_mut()
                             .extract_if(|block_object: &mut BlockObject| {
-                                let current_offset = block_object.offset();
-                                if current_offset >= split_point as u32 {
-                                    block_object.set_offset(current_offset - split_point as u32);
+                                if block_object.offset >= split_point as u32 {
+                                    block_object.offset -= split_point as u32;
                                     true
                                 } else {
                                     false
@@ -640,12 +637,12 @@ impl Archiver {
                         bytes,
                         object_mapping,
                     } => {
-                        for block_object in &object_mapping.objects {
+                        for block_object in object_mapping.objects() {
                             // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
                             let offset_in_segment = base_offset_in_segment
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32))
-                                + block_object.offset() as usize;
+                                + block_object.offset as usize;
                             let raw_piece_offset =
                                 (offset_in_segment % RawRecord::SIZE).try_into().expect(
                                     "Offset within piece should always fit in 32-bit integer; qed",
@@ -653,8 +650,8 @@ impl Archiver {
                             if let Some(piece_object_mapping) = corrected_object_mapping
                                 .get_mut(offset_in_segment / RawRecord::SIZE)
                             {
-                                piece_object_mapping.objects.push(PieceObject::V0 {
-                                    hash: block_object.hash(),
+                                piece_object_mapping.objects_mut().push(PieceObject {
+                                    hash: block_object.hash,
                                     offset: raw_piece_offset,
                                 });
                             }
