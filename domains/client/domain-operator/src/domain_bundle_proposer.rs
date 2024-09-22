@@ -32,8 +32,8 @@ const BUNDLE_UTILIZATION_THRESHOLD: Percent = Percent::from_percent(95);
 // `PreviousBundledTx` used to keep track of tx that have included in previous bundle and avoid
 // to re-including these transactions in the next bundle if the consensus hash did not change.
 struct PreviousBundledTx<Block: BlockT, CBlock: BlockT> {
-    bundled_at: <CBlock as BlockT>::Hash,
-    tx_hashes: HashSet<<Block as BlockT>::Hash>,
+    bundled_at: CBlock::Hash,
+    tx_hashes: HashSet<Block::Hash>,
 }
 
 impl<Block: BlockT, CBlock: BlockT> PreviousBundledTx<Block, CBlock> {
@@ -44,18 +44,18 @@ impl<Block: BlockT, CBlock: BlockT> PreviousBundledTx<Block, CBlock> {
         }
     }
 
-    fn already_bundled(&self, tx_hash: &<Block as BlockT>::Hash) -> bool {
+    fn already_bundled(&self, tx_hash: &Block::Hash) -> bool {
         self.tx_hashes.contains(tx_hash)
     }
 
-    fn maybe_clear(&mut self, consensus_hash: <CBlock as BlockT>::Hash) {
+    fn maybe_clear(&mut self, consensus_hash: CBlock::Hash) {
         if self.bundled_at != consensus_hash {
             self.bundled_at = consensus_hash;
             self.tx_hashes.clear();
         }
     }
 
-    fn add_bundled(&mut self, tx_hash: <Block as BlockT>::Hash) {
+    fn add_bundled(&mut self, tx_hash: Block::Hash) {
         self.tx_hashes.insert(tx_hash);
     }
 }
@@ -102,8 +102,7 @@ where
         + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header>,
-    TransactionPool:
-        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
 {
     pub fn new(
         domain_id: DomainId,

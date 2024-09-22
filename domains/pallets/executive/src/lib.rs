@@ -425,20 +425,14 @@ where
         let remaining_weight = max_weight.saturating_sub(weight.total());
 
         if remaining_weight.all_gt(Weight::zero()) {
-            let used_weight =
-                <AllPalletsWithSystem as OnIdle<BlockNumberFor<ExecutiveConfig>>>::on_idle(
-                    block_number,
-                    remaining_weight,
-                );
+            let used_weight = AllPalletsWithSystem::on_idle(block_number, remaining_weight);
             <frame_system::Pallet<ExecutiveConfig>>::register_extra_weight_unchecked(
                 used_weight,
                 DispatchClass::Mandatory,
             );
         }
 
-        <AllPalletsWithSystem as OnFinalize<BlockNumberFor<ExecutiveConfig>>>::on_finalize(
-            block_number,
-        );
+        AllPalletsWithSystem::on_finalize(block_number);
     }
 
     /// Wrapped `frame_executive::Executive::apply_extrinsic`.

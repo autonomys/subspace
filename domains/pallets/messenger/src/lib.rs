@@ -1362,7 +1362,7 @@ mod pallet {
 
                     Ok(())
                 }
-                call => <Self as ValidateUnsigned>::pre_dispatch(call),
+                call => Self::pre_dispatch(call),
             }
         }
     }

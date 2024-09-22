@@ -43,18 +43,12 @@ pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 // TODO: Struct for returned value
 #[allow(clippy::type_complexity)]
 pub fn build_network<TBl, TExPool, TImpQu, TCl>(
-    params: BuildNetworkParams<
-        TBl,
-        NetworkWorker<TBl, <TBl as BlockT>::Hash>,
-        TExPool,
-        TImpQu,
-        TCl,
-    >,
+    params: BuildNetworkParams<TBl, NetworkWorker<TBl, TBl::Hash>, TExPool, TImpQu, TCl>,
 ) -> Result<
     (
-        Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
+        Arc<NetworkService<TBl, TBl::Hash>>,
         TracingUnboundedSender<sc_rpc::system::Request<TBl>>,
-        sc_network_transactions::TransactionsHandlerController<<TBl as BlockT>::Hash>,
+        sc_network_transactions::TransactionsHandlerController<TBl::Hash>,
         NetworkStarter,
         Arc<SyncingService<TBl>>,
         Arc<dyn BlockDownloader<TBl>>,
@@ -72,7 +66,7 @@ where
         + HeaderBackend<TBl>
         + BlockchainEvents<TBl>
         + 'static,
-    TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
+    TExPool: MaintainedTransactionPool<Block = TBl, Hash = TBl::Hash> + 'static,
     TImpQu: ImportQueue<TBl> + 'static,
 {
     let BuildNetworkParams {
@@ -114,7 +108,7 @@ where
         ),
         None => {
             // Custom protocol was not specified, use the default block handler.
-            let params = BlockRequestHandler::new::<NetworkWorker<TBl, <TBl as BlockT>::Hash>>(
+            let params = BlockRequestHandler::new::<NetworkWorker<TBl, TBl::Hash>>(
                 chain_sync_network_handle.clone(),
                 &protocol_id,
                 config.chain_spec.fork_id(),
@@ -139,7 +133,7 @@ where
         sc_network_transactions::TransactionsHandlerPrototype::new::<
             _,
             _,
-            NetworkWorker<TBl, <TBl as BlockT>::Hash>,
+            NetworkWorker<TBl, TBl::Hash>,
         >(
             protocol_id.clone(),
             genesis_hash,
@@ -155,13 +149,12 @@ where
 
     let state_request_protocol_config = {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) =
-            StateRequestHandler::new::<NetworkWorker<TBl, <TBl as BlockT>::Hash>>(
-                &protocol_id,
-                config.chain_spec.fork_id(),
-                client.clone(),
-                config.network.default_peers_set_num_full as usize,
-            );
+        let (handler, protocol_config) = StateRequestHandler::new::<NetworkWorker<TBl, TBl::Hash>>(
+            &protocol_id,
+            config.chain_spec.fork_id(),
+            client.clone(),
+            config.network.default_peers_set_num_full as usize,
+        );
         spawn_handle.spawn("state-request-handler", Some("networking"), handler.run());
         protocol_config
     };
@@ -263,7 +256,7 @@ where
     spawn_handle.spawn(
         "system-rpc-handler",
         Some("networking"),
-        build_system_rpc_future::<_, _, <TBl as BlockT>::Hash>(
+        build_system_rpc_future::<_, _, TBl::Hash>(
             config.role.clone(),
             network_mut.service().clone(),
             sync_service.clone(),

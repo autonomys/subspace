@@ -18,7 +18,6 @@ use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::UncheckedFrom;
-use sp_core::Get;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
@@ -413,12 +412,10 @@ pub fn construct_signed_extrinsic(
     caller: AccountId,
     nonce: Nonce,
 ) -> Result<UncheckedExtrinsic, Box<dyn Error>> {
-    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount as Get<
-        u32,
-    >>::get())
-    .checked_next_power_of_two()
-    .map(|c| c / 2)
-    .unwrap_or(2);
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2);
     let extra: SignedExtra = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),

@@ -186,10 +186,8 @@ where
             consensus_block_hash,
         )?;
 
-        let extrinsics = deduplicate_and_shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(
-            extrinsics,
-            shuffling_seed,
-        );
+        let extrinsics =
+            deduplicate_and_shuffle_extrinsics::<Block::Extrinsic>(extrinsics, shuffling_seed);
 
         Ok(Some(PreprocessResult {
             extrinsics,

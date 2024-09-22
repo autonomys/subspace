@@ -96,8 +96,8 @@ where
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
-        + 'static,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash> + 'static,
     E: CodeExecutor,
 {
     /// Create a new instance.

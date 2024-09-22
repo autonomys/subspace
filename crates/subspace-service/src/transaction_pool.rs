@@ -102,7 +102,7 @@ pub type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<Transaction
 impl<Client, Block, DomainHeader> ChainApi for FullChainApiWrapper<Client, Block, DomainHeader>
 where
     Block: BlockT,
-    <<<Block as BlockT>::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
+    <<Block::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
     Client: ProvideRuntimeApi<Block>
         + AuxStore
         + BlockBackend<Block>
@@ -120,7 +120,7 @@ where
     type Block = Block;
     type Error = sc_transaction_pool::error::Error;
     type ValidationFuture = ValidationFuture;
-    type BodyFuture = Ready<TxPoolResult<Option<Vec<<Self::Block as BlockT>::Extrinsic>>>>;
+    type BodyFuture = Ready<TxPoolResult<Option<Vec<Block::Extrinsic>>>>;
 
     fn validate_transaction(
         &self,
@@ -149,21 +149,18 @@ where
         self.inner.hash_and_length(ex)
     }
 
-    fn block_body(&self, id: <Self::Block as BlockT>::Hash) -> Self::BodyFuture {
+    fn block_body(&self, id: Block::Hash) -> Self::BodyFuture {
         self.inner.block_body(id)
     }
 
-    fn block_header(
-        &self,
-        hash: <Self::Block as BlockT>::Hash,
-    ) -> Result<Option<<Self::Block as BlockT>::Header>, Self::Error> {
+    fn block_header(&self, hash: Block::Hash) -> Result<Option<Block::Header>, Self::Error> {
         self.inner.block_header(hash)
     }
 
     fn tree_route(
         &self,
-        from: <Self::Block as BlockT>::Hash,
-        to: <Self::Block as BlockT>::Hash,
+        from: Block::Hash,
+        to: Block::Hash,
     ) -> Result<TreeRoute<Self::Block>, Self::Error> {
         sp_blockchain::tree_route::<Block, Client>(&*self.client, from, to).map_err(Into::into)
     }
@@ -223,7 +220,7 @@ impl<Block, Client, DomainHeader> LocalTransactionPool
     for BasicPoolWrapper<Block, FullChainApiWrapper<Client, Block, DomainHeader>>
 where
     Block: BlockT,
-    <<<Block as BlockT>::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
+    <<Block::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
     DomainHeader: HeaderT,
     Client: ProvideRuntimeApi<Block>
         + AuxStore
@@ -374,7 +371,7 @@ pub fn new_full<Client, Block, DomainHeader>(
 ) -> sp_blockchain::Result<Arc<FullPool<Client, Block, DomainHeader>>>
 where
     Block: BlockT,
-    <<<Block as BlockT>::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
+    <<Block::Header as HeaderT>::Number as TryInto<u32>>::Error: std::fmt::Debug,
     Client: ProvideRuntimeApi<Block>
         + AuxStore
         + BlockBackend<Block>

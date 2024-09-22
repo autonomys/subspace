@@ -95,8 +95,8 @@ pub(super) async fn start_worker<
         + BundleProducerElectionApi<CBlock, Balance>
         + FraudProofApi<CBlock, Block::Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>
-        + 'static,
+    TransactionPool:
+        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,

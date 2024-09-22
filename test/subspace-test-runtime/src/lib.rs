@@ -461,12 +461,8 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
             WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
         };
 
-        let withdraw_result = <Balances as Currency<AccountId>>::withdraw(
-            who,
-            fee,
-            withdraw_reason,
-            ExistenceRequirement::KeepAlive,
-        );
+        let withdraw_result =
+            Balances::withdraw(who, fee, withdraw_reason, ExistenceRequirement::KeepAlive);
         let imbalance = withdraw_result.map_err(|_error| InvalidTransaction::Payment)?;
 
         // Separate storage fee while we have access to the call data structure to calculate it.

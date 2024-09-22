@@ -155,10 +155,8 @@ where
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-    ) -> Result<
-        Option<DomainRuntimeCodeAt<NumberFor<CBlock>, <CBlock as BlockT>::Hash, H256>>,
-        FraudProofError,
-    > {
+    ) -> Result<Option<DomainRuntimeCodeAt<NumberFor<CBlock>, CBlock::Hash, H256>>, FraudProofError>
+    {
         // NOTE: domain runtime code is take affect in the next block, so we need to get
         // the doamin runtime code of the parent block, which is what used to derived the
         // ER.
@@ -491,12 +489,10 @@ where
 
             let mut exts = Vec::with_capacity(bundle.extrinsics.len());
             for opaque_extrinsic in &bundle.extrinsics {
-                let extrinsic = <<Block as BlockT>::Extrinsic>::decode(
-                    &mut opaque_extrinsic.encode().as_slice(),
-                )
-                .map_err(|_| FraudProofError::InvalidBundleExtrinsic {
-                    bundle_index: bundle_index as usize,
-                })?;
+                let extrinsic = Block::Extrinsic::decode(&mut opaque_extrinsic.encode().as_slice())
+                    .map_err(|_| FraudProofError::InvalidBundleExtrinsic {
+                        bundle_index: bundle_index as usize,
+                    })?;
 
                 exts.push(extrinsic)
             }
@@ -629,13 +625,14 @@ where
                     {
                         let encoded_extrinsic = extrinsic.encode();
                         block_extrinsics.push(
-                            <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                                .map_err(|decoding_error| {
+                            Block::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).map_err(
+                                |decoding_error| {
                                     FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
                                         extrinsic_index,
                                         decoding_error,
                                     }
-                                })?,
+                                },
+                            )?,
                         );
                     }
 
@@ -725,14 +722,13 @@ where
                         })?;
 
                     let encoded_extrinsic = bundle.extrinsics[extrinsic_index as usize].encode();
-                    let extrinsic =
-                        <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                            .map_err(|decoding_error| {
-                                FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
-                                    extrinsic_index: extrinsic_index as usize,
-                                    decoding_error,
-                                }
-                            })?;
+                    let extrinsic = Block::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                        .map_err(|decoding_error| {
+                            FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
+                                extrinsic_index: extrinsic_index as usize,
+                                decoding_error,
+                            }
+                        })?;
 
                     let maybe_xdm_mmr_proof = if messenger_api_version >= 4 {
                         self.client
@@ -926,7 +922,7 @@ where
 
     fn generate_execution_phase(
         &self,
-        local_receipt_domain_block_hash: <Block as BlockT>::Hash,
+        local_receipt_domain_block_hash: Block::Hash,
         local_trace_length: usize,
         mismatch: (TraceDiffType, u32),
     ) -> Result<ExecutionPhase, FraudProofError> {
@@ -987,9 +983,9 @@ where
     /// to prove that it is valid, so that means execution should stop here.
     pub(crate) fn find_mismatched_execution_phase(
         &self,
-        local_receipt_domain_block_hash: <Block as BlockT>::Hash,
-        local_trace: &[<Block as BlockT>::Hash],
-        other_trace: &[<Block as BlockT>::Hash],
+        local_receipt_domain_block_hash: Block::Hash,
+        local_trace: &[Block::Hash],
+        other_trace: &[Block::Hash],
     ) -> Result<Option<ExecutionPhase>, FraudProofError> {
         let state_root_mismatch = local_trace
             .iter()
