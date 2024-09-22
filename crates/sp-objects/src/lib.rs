@@ -19,20 +19,11 @@
 // TODO: Suppression because of https://github.com/paritytech/polkadot-sdk/issues/3533
 #![allow(clippy::multiple_bound_locations)]
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_runtime_primitives::Hash;
 
 sp_api::decl_runtime_apis! {
     pub trait ObjectsApi {
-        /// Returns all the validated object call hashes for a given block
-        fn validated_object_call_hashes() -> Vec<Hash>;
-
         /// Extract block object mapping for a given block
-        fn extract_block_object_mapping(block: Block, validated_object_calls: Vec<Hash>) -> BlockObjectMapping;
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping;
     }
 }

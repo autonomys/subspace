@@ -389,14 +389,10 @@ where
 
         let block_object_mappings = client
             .runtime_api()
-            .validated_object_call_hashes(last_archived_block_hash)
-            .and_then(|calls| {
-                client.runtime_api().extract_block_object_mapping(
-                    *last_archived_block.block.header().parent_hash(),
-                    last_archived_block.block.clone(),
-                    calls,
-                )
-            })
+            .extract_block_object_mapping(
+                *last_archived_block.block.header().parent_hash(),
+                last_archived_block.block.clone(),
+            )
             .unwrap_or_default();
 
         return Ok(Some((
@@ -427,14 +423,10 @@ where
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(genesis_hash)
-        .and_then(|calls| {
-            client.runtime_api().extract_block_object_mapping(
-                *signed_block.block.header().parent_hash(),
-                signed_block.block.clone(),
-                calls,
-            )
-        })
+        .extract_block_object_mapping(
+            *signed_block.block.header().parent_hash(),
+            signed_block.block.clone(),
+        )
         .unwrap_or_default();
 
     let encoded_block = encode_block(signed_block);
@@ -648,14 +640,10 @@ where
                                 .expect("All blocks since last archived must be present; qed");
 
                             let block_object_mappings = runtime_api
-                                .validated_object_call_hashes(block_hash)
-                                .and_then(|calls| {
-                                    client.runtime_api().extract_block_object_mapping(
-                                        *block.block.header().parent_hash(),
-                                        block.block.clone(),
-                                        calls,
-                                    )
-                                })
+                                .extract_block_object_mapping(
+                                    *block.block.header().parent_hash(),
+                                    block.block.clone(),
+                                )
                                 .unwrap_or_default();
 
                             Ok((block, block_object_mappings))
@@ -979,14 +967,7 @@ where
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(block_hash_to_archive)
-        .and_then(|calls| {
-            client.runtime_api().extract_block_object_mapping(
-                parent_block_hash,
-                block.block.clone(),
-                calls,
-            )
-        })
+        .extract_block_object_mapping(parent_block_hash, block.block.clone())
         .map_err(|error| {
             sp_blockchain::Error::Application(
                 format!("Failed to retrieve block object mappings: {error}").into(),
