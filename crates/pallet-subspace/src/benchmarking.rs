@@ -8,9 +8,9 @@ use frame_benchmarking::v2::*;
 #[benchmarks]
 mod benchmarks {
     use crate::{
-        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards, EnableRewardsAt,
+        AllowAuthoringByAnyone, Call, Config, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
-        PotSlotIterationsUpdateValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
+        PotSlotIterationsValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -45,7 +45,7 @@ mod benchmarks {
             Default::default(),
         );
         let proof = EquivocationProof {
-            slot: CurrentSlot::<T>::get(),
+            slot: Pallet::<T>::current_slot(),
             offender,
             first_header: header.clone(),
             second_header: header,
@@ -108,7 +108,7 @@ mod benchmarks {
         let unsigned_vote: Vote<BlockNumberFor<T>, T::Hash, T::AccountId> = Vote::V0 {
             height: System::<T>::block_number(),
             parent_hash: System::<T>::parent_hash(),
-            slot: CurrentSlot::<T>::get(),
+            slot: Pallet::<T>::current_slot(),
             solution: Solution::genesis_solution(
                 FarmerPublicKey::unchecked_from([1u8; 32]),
                 account("user1", 1, SEED),
@@ -156,16 +156,22 @@ mod benchmarks {
             .checked_mul(NonZeroU32::new(2).expect("2 is non-zero"))
             .expect("Not overflow");
 
-        PotSlotIterations::<T>::set(Some(slot_iterations));
+        PotSlotIterations::<T>::put(PotSlotIterationsValue {
+            slot_iterations,
+            update: None,
+        });
 
         #[extrinsic_call]
         _(RawOrigin::Root, next_slot_iterations);
 
         assert_eq!(
-            PotSlotIterationsUpdate::<T>::get(),
-            Some(PotSlotIterationsUpdateValue {
-                target_slot: None,
-                slot_iterations: next_slot_iterations,
+            PotSlotIterations::<T>::get(),
+            Some(PotSlotIterationsValue {
+                slot_iterations,
+                update: Some(PotSlotIterationsUpdate {
+                    target_slot: None,
+                    slot_iterations: next_slot_iterations,
+                }),
             })
         );
     }

@@ -24,8 +24,8 @@ use crate::mock::{
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
-    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, EnableRewardsAt,
-    ParentBlockAuthorInfo, ParentBlockVoters, PotSlotIterations, SegmentCommitment,
+    CurrentBlockAuthorInfo, CurrentBlockVoters, EnableRewardsAt, ParentBlockAuthorInfo,
+    ParentBlockVoters, PotSlotIterations, PotSlotIterationsValue, SegmentCommitment,
     SubspaceEquivocationOffence,
 };
 use codec::Encode;
@@ -49,17 +49,6 @@ use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
-
-#[test]
-fn genesis_slot_is_correct() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        // this sets the genesis slot to 6;
-        go_to_block(&keypair, 1, 6, 1);
-        assert_eq!(*Subspace::genesis_slot(), 6);
-    })
-}
 
 #[test]
 fn can_update_solution_range_on_era_change() {
@@ -260,7 +249,7 @@ fn report_equivocation_current_session_works() {
 
         // generate an equivocation proof. it creates two headers at the given
         // slot with different block hashes and signed by the given key
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+        let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
 
         assert!(!Subspace::is_in_block_list(&farmer_public_key));
 
@@ -284,7 +273,7 @@ fn report_equivocation_old_session_works() {
         let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
         // generate an equivocation proof at the current slot
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+        let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
 
         // create new block and report the equivocation
         // from the previous block
@@ -323,32 +312,32 @@ fn report_equivocation_invalid_equivocation_proof() {
 
         // both headers have the same hash, no equivocation.
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+            generate_equivocation_proof(&keypair, Subspace::current_slot());
         equivocation_proof.second_header = equivocation_proof.first_header.clone();
         assert_invalid_equivocation(equivocation_proof);
 
         // missing preruntime digest from one header
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+            generate_equivocation_proof(&keypair, Subspace::current_slot());
         equivocation_proof.first_header.digest_mut().logs.remove(0);
         assert_invalid_equivocation(equivocation_proof);
 
         // missing seal from one header
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+            generate_equivocation_proof(&keypair, Subspace::current_slot());
         equivocation_proof.first_header.digest_mut().logs.remove(1);
         assert_invalid_equivocation(equivocation_proof);
 
         // invalid slot number in proof compared to runtime digest
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+            generate_equivocation_proof(&keypair, Subspace::current_slot());
         equivocation_proof.slot = Slot::from(0);
         assert_invalid_equivocation(equivocation_proof.clone());
 
         // different slot numbers in headers
         let h1 = equivocation_proof.first_header;
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get() + 1);
+            generate_equivocation_proof(&keypair, Subspace::current_slot() + 1);
 
         // use the header from the previous equivocation generated
         // at the previous slot
@@ -358,7 +347,7 @@ fn report_equivocation_invalid_equivocation_proof() {
 
         // invalid seal signature
         let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get() + 1);
+            generate_equivocation_proof(&keypair, Subspace::current_slot() + 1);
 
         // replace the seal digest with the digest from the
         // previous header at the previous slot
@@ -381,7 +370,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+        let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
 
         let inner = Call::report_equivocation {
             equivocation_proof: Box::new(equivocation_proof.clone()),
@@ -397,7 +386,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
         );
 
         // The transaction is valid when passed as local
-        let tx_tag = (farmer_public_key, CurrentSlot::<Test>::get());
+        let tx_tag = (farmer_public_key, Subspace::current_slot());
         assert_eq!(
             <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
                 TransactionSource::Local,
@@ -443,7 +432,7 @@ fn valid_equivocation_reports_dont_pay_fees() {
         progress_to_block(&keypair, 1, 1);
 
         // generate an equivocation proof.
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
+        let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
 
         // check the dispatch info for the call.
         let info = Call::<Test>::report_equivocation {
@@ -1738,7 +1727,10 @@ fn allow_authoring_by_anyone_works() {
 #[test]
 fn set_pot_slot_iterations_works() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        PotSlotIterations::<Test>::put(NonZeroU32::new(100_000_000).unwrap());
+        PotSlotIterations::<Test>::put(PotSlotIterationsValue {
+            slot_iterations: NonZeroU32::new(100_000_000).unwrap(),
+            update: None,
+        });
 
         // Only root can do this
         assert_err!(
@@ -1782,8 +1774,15 @@ fn set_pot_slot_iterations_works() {
         .unwrap();
 
         // Unless update is already scheduled to be applied
-        pallet::PotSlotIterationsUpdate::<Test>::mutate(|update| {
-            update.as_mut().unwrap().target_slot.replace(Slot::from(1));
+        pallet::PotSlotIterations::<Test>::mutate(|pot_slot_iterations| {
+            pot_slot_iterations
+                .as_mut()
+                .unwrap()
+                .update
+                .as_mut()
+                .unwrap()
+                .target_slot
+                .replace(Slot::from(1));
         });
         assert_matches!(
             Subspace::set_pot_slot_iterations(
