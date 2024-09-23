@@ -384,14 +384,6 @@ pub mod pallet {
         PotSlotIterationsUpdateAlreadyScheduled,
     }
 
-    // TODO: Consider removing genesis slot when breaking compatibility with previous networks since
-    //  slots are no longer measured in timestamp, but rather in proof of time slots, which starts
-    //  with 0.
-    /// The slot at which the first block was created. This is 0 until the first block of the chain.
-    #[pallet::storage]
-    #[pallet::getter(fn genesis_slot)]
-    pub type GenesisSlot<T> = StorageValue<_, Slot, ValueQuery>;
-
     // TODO: Replace `CurrentSlot` with `BlockSlots`
     /// Current slot number.
     #[pallet::storage]
@@ -801,7 +793,7 @@ impl<T: Config> Pallet<T> {
             } else {
                 next_solution_range = derive_next_solution_range(
                     // If Era start slot is not found it means we have just finished the first era
-                    u64::from(EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get)),
+                    u64::from(EraStartSlot::<T>::get().unwrap_or_default()),
                     u64::from(current_slot),
                     slot_probability,
                     solution_ranges.current,
@@ -839,13 +831,6 @@ impl<T: Config> Pallet<T> {
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
             .expect("Block must always have pre-digest");
         let current_slot = pre_digest.slot();
-
-        // On the first non-zero block (i.e. block #1) we need to adjust internal storage
-        // accordingly.
-        if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(current_slot);
-            debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
-        }
 
         // The slot number of the current block being initialized.
         CurrentSlot::<T>::put(current_slot);

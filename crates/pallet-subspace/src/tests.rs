@@ -51,17 +51,6 @@ use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRan
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
-fn genesis_slot_is_correct() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        // this sets the genesis slot to 6;
-        go_to_block(&keypair, 1, 6, 1);
-        assert_eq!(*Subspace::genesis_slot(), 6);
-    })
-}
-
-#[test]
 fn can_update_solution_range_on_era_change() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
