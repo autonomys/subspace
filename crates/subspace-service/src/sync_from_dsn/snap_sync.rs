@@ -171,7 +171,7 @@ where
     if target_segment_index <= SegmentIndex::ONE {
         panic!(
             "Snap sync is impossible - not enough archived history: \
-          wipe the DB folder and rerun with --sync=full"
+            wipe the DB folder and rerun with --sync=full"
         );
     }
 
