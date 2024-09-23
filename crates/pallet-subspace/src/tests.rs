@@ -25,7 +25,8 @@ use crate::mock::{
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, EnableRewardsAt, ParentBlockAuthorInfo,
-    ParentBlockVoters, PotSlotIterations, SegmentCommitment, SubspaceEquivocationOffence,
+    ParentBlockVoters, PotSlotIterations, PotSlotIterationsValue, SegmentCommitment,
+    SubspaceEquivocationOffence,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
@@ -1726,7 +1727,10 @@ fn allow_authoring_by_anyone_works() {
 #[test]
 fn set_pot_slot_iterations_works() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        PotSlotIterations::<Test>::put(NonZeroU32::new(100_000_000).unwrap());
+        PotSlotIterations::<Test>::put(PotSlotIterationsValue {
+            slot_iterations: NonZeroU32::new(100_000_000).unwrap(),
+            update: None,
+        });
 
         // Only root can do this
         assert_err!(
@@ -1770,8 +1774,15 @@ fn set_pot_slot_iterations_works() {
         .unwrap();
 
         // Unless update is already scheduled to be applied
-        pallet::PotSlotIterationsUpdate::<Test>::mutate(|update| {
-            update.as_mut().unwrap().target_slot.replace(Slot::from(1));
+        pallet::PotSlotIterations::<Test>::mutate(|pot_slot_iterations| {
+            pot_slot_iterations
+                .as_mut()
+                .unwrap()
+                .update
+                .as_mut()
+                .unwrap()
+                .target_slot
+                .replace(Slot::from(1));
         });
         assert_matches!(
             Subspace::set_pot_slot_iterations(

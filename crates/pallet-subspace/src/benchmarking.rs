@@ -10,7 +10,7 @@ mod benchmarks {
     use crate::{
         AllowAuthoringByAnyone, Call, Config, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
-        PotSlotIterationsUpdateValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
+        PotSlotIterationsValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -156,16 +156,22 @@ mod benchmarks {
             .checked_mul(NonZeroU32::new(2).expect("2 is non-zero"))
             .expect("Not overflow");
 
-        PotSlotIterations::<T>::set(Some(slot_iterations));
+        PotSlotIterations::<T>::put(PotSlotIterationsValue {
+            slot_iterations,
+            update: None,
+        });
 
         #[extrinsic_call]
         _(RawOrigin::Root, next_slot_iterations);
 
         assert_eq!(
-            PotSlotIterationsUpdate::<T>::get(),
-            Some(PotSlotIterationsUpdateValue {
-                target_slot: None,
-                slot_iterations: next_slot_iterations,
+            PotSlotIterations::<T>::get(),
+            Some(PotSlotIterationsValue {
+                slot_iterations,
+                update: Some(PotSlotIterationsUpdate {
+                    target_slot: None,
+                    slot_iterations: next_slot_iterations,
+                }),
             })
         );
     }
