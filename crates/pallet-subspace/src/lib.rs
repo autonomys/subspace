@@ -144,11 +144,11 @@ pub mod pallet {
 
     /// Override for next solution range adjustment
     #[derive(Debug, Encode, Decode, TypeInfo)]
-    pub struct SolutionRangeOverride {
+    pub(super) struct SolutionRangeOverride {
         /// Value that should be set as solution range
-        pub solution_range: SolutionRange,
+        pub(super) solution_range: SolutionRange,
         /// Value that should be set as voting solution range
-        pub voting_solution_range: SolutionRange,
+        pub(super) voting_solution_range: SolutionRange,
     }
 
     /// The Subspace Pallet
@@ -387,7 +387,7 @@ pub mod pallet {
     /// Bounded mapping from block number to slot
     #[pallet::storage]
     #[pallet::getter(fn block_slots)]
-    pub type BlockSlots<T: Config> =
+    pub(super) type BlockSlots<T: Config> =
         StorageValue<_, BoundedBTreeMap<BlockNumberFor<T>, Slot, T::BlockSlotCount>, ValueQuery>;
 
     /// Solution ranges used for challenges.
@@ -403,16 +403,16 @@ pub mod pallet {
     /// Storage to check if the solution range is to be adjusted for next era
     #[pallet::storage]
     #[pallet::getter(fn should_adjust_solution_range)]
-    pub type ShouldAdjustSolutionRange<T: Config> =
+    pub(super) type ShouldAdjustSolutionRange<T: Config> =
         StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
 
     /// Override solution range during next update
     #[pallet::storage]
-    pub type NextSolutionRangeOverride<T> = StorageValue<_, SolutionRangeOverride>;
+    pub(super) type NextSolutionRangeOverride<T> = StorageValue<_, SolutionRangeOverride>;
 
     /// Slot at which current era started.
     #[pallet::storage]
-    pub type EraStartSlot<T> = StorageValue<_, Slot>;
+    pub(super) type EraStartSlot<T> = StorageValue<_, Slot>;
 
     /// A set of blocked farmers keyed by their public key.
     #[pallet::storage]
