@@ -493,8 +493,8 @@ pub(super) fn create_consensus_chain_configuration(
         });
     }
 
-    // Full sync is the default mode.
-    let sync = sync.unwrap_or(ChainSyncMode::Full);
+    // Snap sync is the default mode.
+    let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
     let chain_spec = match chain.as_deref() {
         Some("gemini-3h-compiled") => chain_spec::gemini_3h_compiled()?,
