@@ -30,7 +30,7 @@ enum Command {
     /// Start bootstrap node
     Start {
         /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
-        #[arg(long, alias = "bootstrap-node")]
+        #[arg(long = "bootstrap-node")]
         bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
         #[clap(long)]
@@ -44,7 +44,7 @@ enum Command {
         ])]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
-        #[arg(long, alias = "reserved-peer")]
+        #[arg(long = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
         /// Defines max established incoming connections limit for the peer.
         #[arg(long, default_value_t = 300)]
@@ -66,7 +66,7 @@ enum Command {
         #[arg(long)]
         protocol_version: String,
         /// Known external addresses
-        #[arg(long, alias = "external-address")]
+        #[arg(long = "external-address")]
         external_addresses: Vec<Multiaddr>,
         /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
         /// one specified endpoint. Format: 127.0.0.1:8080

@@ -22,7 +22,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Debug, Parser)]
 struct Args {
     /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long, alias = "bootstrap-node", required = true)]
+    #[arg(long = "bootstrap-node", required = true)]
     bootstrap_nodes: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
