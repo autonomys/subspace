@@ -64,7 +64,7 @@ pub(in super::super) struct NetworkArgs {
     #[arg(long, default_value_t = 100)]
     pub(in super::super) pending_out_connections: u32,
     /// Known external addresses
-    #[arg(long, alias = "external-address")]
+    #[arg(long = "external-address")]
     pub(in super::super) external_addresses: Vec<Multiaddr>,
 }
 

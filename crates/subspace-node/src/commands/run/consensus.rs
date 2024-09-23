@@ -154,7 +154,7 @@ struct DsnOptions {
     dsn_pending_out_connections: u32,
 
     /// Known external addresses
-    #[arg(long, alias = "dsn-external-address")]
+    #[arg(long = "dsn-external-address")]
     dsn_external_addresses: Vec<Multiaddr>,
 }
 

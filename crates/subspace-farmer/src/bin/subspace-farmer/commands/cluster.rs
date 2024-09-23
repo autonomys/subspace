@@ -50,7 +50,7 @@ struct SharedArgs {
     ///
     /// NOTE: NATS must be configured for message sizes of 2MiB or larger (1MiB is the default),
     /// which can be done by starting NATS server with config file containing `max_payload = 2MB`.
-    #[arg(long, alias = "nats-server", required = true)]
+    #[arg(long = "nats-server", required = true)]
     nats_servers: Vec<ServerAddr>,
     /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
