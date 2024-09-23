@@ -5561,9 +5561,9 @@ dependencies = [
 
 [[package]]
 name = "libp2p"
-version = "0.54.0"
+version = "0.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b06a2ceb55591d19a194956ce541329007b4e4ee87c5fdd59d64dc439286a36"
+checksum = "bbbe80f9c7e00526cd6b838075b9c171919404a4732cb2fa8ece0a093223bfc4"
 dependencies = [
  "bytes",
  "either",
@@ -5578,9 +5578,9 @@ dependencies = [
  "libp2p-gossipsub",
  "libp2p-identify 0.45.0",
  "libp2p-identity",
- "libp2p-kad 0.46.0",
+ "libp2p-kad 0.46.2",
  "libp2p-mdns 0.46.0",
- "libp2p-metrics 0.14.2",
+ "libp2p-metrics 0.15.0",
  "libp2p-noise 0.45.0",
  "libp2p-ping 0.45.0",
  "libp2p-plaintext",
@@ -5888,9 +5888,9 @@ dependencies = [
 
 [[package]]
 name = "libp2p-kad"
-version = "0.46.0"
+version = "0.46.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3fd4d149f0539e608d178b7cd1cfb0c1c6a8dc367eda2bc1cc81a28a1552161"
+checksum = "ced237d0bd84bbebb7c2cad4c073160dacb4fe40534963c32ed6d4c6bb7702a3"
 dependencies = [
  "arrayvec",
  "asynchronous-codec 0.7.0",
@@ -5977,16 +5977,16 @@ dependencies = [
 
 [[package]]
 name = "libp2p-metrics"
-version = "0.14.2"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a70afa7692c81ee03e89c40d1e8638d634f18baef6aeeea30fd245edfae4d3fd"
+checksum = "77ebafa94a717c8442d8db8d3ae5d1c6a15e30f2d347e0cd31d057ca72e42566"
 dependencies = [
  "futures",
  "libp2p-core 0.42.0",
  "libp2p-gossipsub",
  "libp2p-identify 0.45.0",
  "libp2p-identity",
- "libp2p-kad 0.46.0",
+ "libp2p-kad 0.46.2",
  "libp2p-ping 0.45.0",
  "libp2p-swarm 0.45.1",
  "pin-project",
@@ -12816,7 +12816,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "hex",
- "libp2p 0.54.0",
+ "libp2p 0.54.1",
  "libp2p-swarm-test",
  "memmap2 0.9.4",
  "nohash-hasher",
