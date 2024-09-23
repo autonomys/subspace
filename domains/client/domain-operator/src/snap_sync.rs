@@ -257,6 +257,7 @@ where
 
     let domain_block_number =
         convert_block_number::<Block>(last_confirmed_block_receipt.domain_block_number);
+
     let domain_block_hash = last_confirmed_block_receipt.domain_block_hash;
     let domain_block = get_last_confirmed_block(
         sync_params.domain_block_downloader,
@@ -301,18 +302,6 @@ where
             })?;
     }
 
-    crate::aux_schema::track_domain_hash_and_consensus_hash(
-        sync_params.domain_client.as_ref(),
-        domain_block_hash,
-        consensus_block_hash,
-    )?;
-
-    crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(
-        sync_params.domain_client.as_ref(),
-        None,
-        &last_confirmed_block_receipt,
-    )?;
-
     wait_for_block_import(
         sync_params.domain_client.as_ref(),
         domain_block_number.into(),
@@ -325,6 +314,45 @@ where
         sync_params.domain_client.info()
     );
 
+    // Verify domain state block creation.
+    if let Ok(Some(created_domain_block_hash)) =
+        sync_params.domain_client.hash(domain_block_number.into())
+    {
+        if created_domain_block_hash == domain_block_hash {
+            trace!(
+                ?created_domain_block_hash,
+                ?domain_block_hash,
+                "Created hash matches after the domain block import with state",
+            );
+        } else {
+            debug!(
+                ?created_domain_block_hash,
+                ?domain_block_hash,
+                "Created hash doesn't match after the domain block import with state",
+            );
+
+            return Err(sp_blockchain::Error::Backend(
+                "Created hash doesn't match after the domain block import with state".to_string(),
+            ));
+        }
+    } else {
+        return Err(sp_blockchain::Error::Backend(
+            "Can't obtain domain block hash after state importing for snap sync".to_string(),
+        ));
+    }
+
+    crate::aux_schema::track_domain_hash_and_consensus_hash(
+        sync_params.domain_client.as_ref(),
+        domain_block_hash,
+        consensus_block_hash,
+    )?;
+
+    crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(
+        sync_params.domain_client.as_ref(),
+        None,
+        &last_confirmed_block_receipt,
+    )?;
+
     // Clear the block gap that arises from first block import with a much higher number than
     // previously (resulting in a gap)
     // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
@@ -335,12 +363,6 @@ where
         .backend
         .offchain_storage()
     {
-        // let target_block = sync_params
-        //     .consensus_chain_sync_params
-        //     .segment_headers_store
-        //     .last_segment_header()
-        //     .map(|header| header.last_archived_block().number);
-
         let target_block = sync_params
             .consensus_chain_sync_params
             .segment_headers_store
