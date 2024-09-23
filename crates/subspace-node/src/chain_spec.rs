@@ -169,7 +169,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
     })
     .with_genesis_config({
         let sudo_account =
-            AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+            AccountId::from_ss58check("5H6ai5VAt6Sw2qZGkEVGvLvNqTCPv6fZRN2KN2kp5qMQKBUD")
                 .expect("Wrong root account address");
 
         let balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
