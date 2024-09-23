@@ -238,7 +238,7 @@ where
                             .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                         record_chunk =
-                            Simd::to_array(Simd::from(record_chunk) ^ Simd::from(proof.hash()));
+                            Simd::to_array(Simd::from(record_chunk) ^ Simd::from(*proof.hash()));
                     }
 
                     maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
@@ -296,7 +296,7 @@ where
                                 .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                             record_chunk = Simd::to_array(
-                                Simd::from(record_chunk) ^ Simd::from(proof.hash()),
+                                Simd::from(record_chunk) ^ Simd::from(*proof.hash()),
                             );
                         }
 

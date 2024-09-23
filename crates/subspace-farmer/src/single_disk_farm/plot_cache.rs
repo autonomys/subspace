@@ -234,7 +234,7 @@ impl DiskPlotCache {
                 file.write_all_at(&piece_index_bytes, element_offset)?;
                 file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
                 file.write_all_at(
-                    &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
+                    blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]).as_ref(),
                     element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
                 )
             }
@@ -320,7 +320,7 @@ impl DiskPlotCache {
 
         // Verify checksum
         let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece_bytes]);
-        if actual_checksum != expected_checksum {
+        if actual_checksum.as_ref() != expected_checksum {
             if element.iter().all(|&byte| byte == 0) {
                 return Ok(None);
             }

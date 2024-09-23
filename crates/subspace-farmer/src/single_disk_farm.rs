@@ -2384,7 +2384,7 @@ impl SingleDiskFarm {
                 let (index_and_piece_bytes, expected_checksum) =
                     element.split_at(element_size as usize - mem::size_of::<Blake3Hash>());
                 let actual_checksum = blake3_hash(index_and_piece_bytes);
-                if actual_checksum != expected_checksum && element != &dummy_element {
+                if actual_checksum.as_ref() != expected_checksum && element != &dummy_element {
                     warn!(
                         %cache_offset,
                         actual_checksum = %hex::encode(actual_checksum),

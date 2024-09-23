@@ -320,7 +320,7 @@ where
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
         let bundle_vrf_hash =
-            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
         let mut estimated_bundle_weight = Weight::default();

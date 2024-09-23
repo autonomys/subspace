@@ -233,7 +233,7 @@ where
         self.previous_bundled_tx
             .maybe_clear(self.consensus_client.info().best_hash);
 
-        let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
+        let bundle_vrf_hash = U256::from_be_bytes(*proof_of_election.vrf_hash());
 
         let domain_bundle_limit = self.fetch_domain_bundle_limit()?;
 

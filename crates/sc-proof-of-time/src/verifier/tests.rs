@@ -128,7 +128,7 @@ fn test_basic() {
 fn parameters_change() {
     let genesis_seed = PotSeed::from(SEED);
     let slot_iterations_1 = NonZeroU32::new(512).unwrap();
-    let entropy = [1; mem::size_of::<Blake3Hash>()];
+    let entropy: Blake3Hash = [1; mem::size_of::<Blake3Hash>()].into();
     let checkpoints_1 = subspace_proof_of_time::prove(genesis_seed, slot_iterations_1).unwrap();
     let slot_iterations_2 = slot_iterations_1.saturating_mul(NonZeroU32::new(2).unwrap());
     let checkpoints_2 = subspace_proof_of_time::prove(

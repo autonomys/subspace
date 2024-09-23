@@ -177,7 +177,7 @@ impl KnownPeersSlots {
         encoded_bytes.copy_from_slice(&known_peers_bytes);
         // Write checksum
         remaining_bytes[..mem::size_of::<Blake3Hash>()]
-            .copy_from_slice(&blake3_hash(&known_peers_bytes));
+            .copy_from_slice(blake3_hash(&known_peers_bytes).as_ref());
         if let Err(error) = self.a.flush() {
             warn!(%error, "Failed to flush known peers to disk");
         }
@@ -373,7 +373,7 @@ impl KnownPeersManager {
                     // Verify checksum
                     let actual_checksum = blake3_hash(encoded_bytes);
                     let expected_checksum = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
-                    if actual_checksum != expected_checksum {
+                    if actual_checksum.as_ref() != expected_checksum {
                         debug!(
                             encoded_bytes_len = %encoded_bytes.len(),
                             actual_checksum = %hex::encode(actual_checksum),

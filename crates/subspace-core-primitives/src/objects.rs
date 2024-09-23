@@ -23,7 +23,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::{Blake3Hash, Blake3HashHex, PieceIndex};
+use crate::{Blake3Hash, PieceIndex};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::default::Default;
@@ -158,7 +158,7 @@ impl PieceObjectMapping {
 pub struct GlobalObject {
     /// Object hash.
     /// We order by hash, so object hash lookups can be performed efficiently.
-    pub hash: Blake3HashHex,
+    pub hash: Blake3Hash,
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     pub piece_index: PieceIndex,
     /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
@@ -185,7 +185,7 @@ impl GlobalObject {
     /// Returns a newly created GlobalObject from a piece index and object.
     pub fn new(piece_index: PieceIndex, piece_object: &PieceObject) -> Self {
         Self {
-            hash: piece_object.hash.into(),
+            hash: piece_object.hash,
             piece_index,
             offset: piece_object.offset,
         }
@@ -195,7 +195,7 @@ impl GlobalObject {
 /// Space-saving serialization of an object stored in the history of the blockchain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CompactGlobalObject(Blake3HashHex, PieceIndex, u32);
+pub struct CompactGlobalObject(Blake3Hash, PieceIndex, u32);
 
 /// Mapping of objects stored in the history of the blockchain
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]

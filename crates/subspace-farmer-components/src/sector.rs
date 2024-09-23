@@ -313,7 +313,7 @@ impl SectorContentsMap {
             bytes.split_at(bytes.len() - mem::size_of::<Blake3Hash>());
         // Verify checksum
         let actual_checksum = blake3_hash(single_records_bit_arrays);
-        if actual_checksum != expected_checksum {
+        if actual_checksum.as_ref() != expected_checksum {
             debug!(
                 actual_checksum = %hex::encode(actual_checksum),
                 expected_checksum = %hex::encode(expected_checksum),
@@ -378,7 +378,7 @@ impl SectorContentsMap {
 
         // Write data and checksum
         output[..slice.len()].copy_from_slice(slice);
-        output[slice.len()..].copy_from_slice(&blake3_hash(slice));
+        output[slice.len()..].copy_from_slice(blake3_hash(slice).as_ref());
 
         Ok(())
     }

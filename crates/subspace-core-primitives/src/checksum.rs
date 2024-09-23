@@ -91,7 +91,7 @@ where
     fn finish(self) -> (Blake3Hash, &'a mut I) {
         // Compute checksum at the very end of decoding
         let hash = *self.hasher.finalize().as_bytes();
-        (hash, self.input)
+        (hash.into(), self.input)
     }
 }
 

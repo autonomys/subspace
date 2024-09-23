@@ -309,7 +309,7 @@ where
                 .validation_mode(ValidationMode::None)
                 // To content-address message, we can take the hash of message and use it as an ID.
                 .message_id_fn(|message: &GossipsubMessage| {
-                    MessageId::from(crypto::blake3_hash(&message.data))
+                    MessageId::from(*crypto::blake3_hash(&message.data))
                 })
                 .max_transmit_size(2 * 1024 * 1024) // 2MB
                 .build()

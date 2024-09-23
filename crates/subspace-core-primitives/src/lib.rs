@@ -50,11 +50,13 @@ use alloc::boxed::Box;
 use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::array::TryFromSliceError;
 use core::fmt;
 use core::num::{NonZeroU64, NonZeroU8};
 use core::simd::Simd;
 use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
+use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
@@ -79,11 +81,7 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 /// Size of BLAKE3 hash output (in bytes).
 pub const BLAKE3_HASH_SIZE: usize = 32;
 
-/// BLAKE3 hash output
-pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
-
-/// BLAKE3 hash output wrapper, which serializes it as a hex string
-// TODO: rename this type to Blake3Hash into a newtype, after checking for any breaking changes
+/// BLAKE3 hash output transparent wrapper
 #[derive(
     Default,
     Copy,
@@ -95,6 +93,8 @@ pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
     Hash,
     From,
     Into,
+    AsRef,
+    AsMut,
     Deref,
     DerefMut,
     Encode,
@@ -102,13 +102,43 @@ pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
     TypeInfo,
     MaxEncodedLen,
 )]
+#[as_ref(forward)]
+#[as_mut(forward)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3HashHex(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
+pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; BLAKE3_HASH_SIZE]);
 
-impl fmt::Debug for Blake3HashHex {
+impl fmt::Debug for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl FromHex for Blake3Hash {
+    type Error = hex::FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let data = hex::decode(hex)?
+            .try_into()
+            .map_err(|_| hex::FromHexError::InvalidStringLength)?;
+
+        Ok(Self(data))
+    }
+}
+
+impl From<&[u8; BLAKE3_HASH_SIZE]> for Blake3Hash {
+    #[inline]
+    fn from(value: &[u8; BLAKE3_HASH_SIZE]) -> Self {
+        Self(*value)
+    }
+}
+
+impl TryFrom<&[u8]> for Blake3Hash {
+    type Error = TryFromSliceError;
+
+    #[inline]
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(value.try_into()?))
     }
 }
 
@@ -411,7 +441,7 @@ impl PotOutput {
     /// Derives the global randomness from the output
     #[inline]
     pub fn derive_global_randomness(&self) -> Randomness {
-        Randomness::from(blake3_hash(&self.0))
+        Randomness::from(*blake3_hash(&self.0))
     }
 
     /// Derive seed from proof of time in case entropy injection is not needed
@@ -423,7 +453,7 @@ impl PotOutput {
     /// Derive seed from proof of time with entropy injection
     #[inline]
     pub fn seed_with_entropy(&self, entropy: &Blake3Hash) -> PotSeed {
-        let hash = blake3_hash_list(&[entropy, &self.0]);
+        let hash = blake3_hash_list(&[entropy.as_ref(), &self.0]);
         let mut seed = PotSeed::default();
         seed.copy_from_slice(&hash[..Self::SIZE]);
         seed
@@ -1009,7 +1039,7 @@ pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Ha
 impl AsRef<[u8]> for SectorId {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0.as_ref()
     }
 }
 
@@ -1042,7 +1072,7 @@ impl SectorId {
             let piece_offset_bytes = piece_offset.to_bytes();
             let mut key = [0; 32];
             key[..piece_offset_bytes.len()].copy_from_slice(&piece_offset_bytes);
-            U256::from_le_bytes(blake3_hash_with_key(&key, &self.0))
+            U256::from_le_bytes(*blake3_hash_with_key(&key, self.as_ref()))
         };
         let history_size_in_pieces = history_size.in_pieces().get();
         let num_interleaved_pieces = 1.max(
@@ -1073,8 +1103,8 @@ impl SectorId {
         &self,
         global_challenge: &Blake3Hash,
     ) -> SectorSlotChallenge {
-        let sector_slot_challenge = Simd::from(self.0) ^ Simd::from(*global_challenge);
-        SectorSlotChallenge(sector_slot_challenge.to_array())
+        let sector_slot_challenge = Simd::from(*self.0) ^ Simd::from(**global_challenge);
+        SectorSlotChallenge(sector_slot_challenge.to_array().into())
     }
 
     /// Derive evaluation seed
@@ -1084,12 +1114,12 @@ impl SectorId {
         history_size: HistorySize,
     ) -> PosSeed {
         let evaluation_seed = blake3_hash_list(&[
-            &self.0,
+            self.as_ref(),
             &piece_offset.to_bytes(),
             &history_size.get().to_le_bytes(),
         ]);
 
-        PosSeed::from(evaluation_seed)
+        PosSeed::from(*evaluation_seed)
     }
 
     /// Derive history size when sector created at `history_size` expires.
@@ -1104,8 +1134,8 @@ impl SectorId {
         let sector_expiration_check_history_size =
             history_size.sector_expiration_check(min_sector_lifetime)?;
 
-        let input_hash = U256::from_le_bytes(blake3_hash_list(&[
-            &self.0,
+        let input_hash = U256::from_le_bytes(*blake3_hash_list(&[
+            self.as_ref(),
             sector_expiration_check_segment_commitment.as_ref(),
         ]));
 

@@ -608,7 +608,7 @@ where
 
             let domain_tx_range = U256::MAX / INITIAL_DOMAIN_TX_RANGE;
             let bundle_vrf_hash =
-                U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+                U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
 
             let is_tx_in_range = fraud_proof_runtime_interface::domain_runtime_call(
                 domain_runtime_code,

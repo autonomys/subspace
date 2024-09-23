@@ -48,7 +48,7 @@ impl Table for ShimTable {
 
 fn find_proof(seed: &PosSeed, challenge_index: u32) -> Option<PosProof> {
     let quality = blake3_hash(&challenge_index.to_le_bytes());
-    if U256::from_le_bytes(quality) % U256::from(3u32) > U256::zero() {
+    if U256::from_le_bytes(*quality) % U256::from(3u32) > U256::zero() {
         let mut proof = PosProof::default();
         proof
             .iter_mut()

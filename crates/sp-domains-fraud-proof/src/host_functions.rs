@@ -345,7 +345,7 @@ where
 
         let bundle = bundles.get(bundle_index as usize)?;
         let bundle_vrf_hash =
-            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
 
         self.domain_runtime_call(
             runtime_code,
