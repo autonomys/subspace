@@ -18,8 +18,8 @@
 
 use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, EnableRewardsAt,
-    FarmerPublicKey, NormalEraChange,
+    self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, FarmerPublicKey,
+    NormalEraChange,
 };
 use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
@@ -284,7 +284,7 @@ pub fn generate_equivocation_proof(
     slot: Slot,
 ) -> sp_consensus_subspace::EquivocationProof<Header> {
     let current_block = System::block_number();
-    let current_slot = CurrentSlot::<Test>::get();
+    let current_slot = Subspace::current_slot();
 
     let chunk = {
         let mut chunk_bytes = [0; Scalar::SAFE_BYTES];

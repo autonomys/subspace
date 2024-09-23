@@ -8,7 +8,7 @@ use frame_benchmarking::v2::*;
 #[benchmarks]
 mod benchmarks {
     use crate::{
-        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards, EnableRewardsAt,
+        AllowAuthoringByAnyone, Call, Config, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
         PotSlotIterationsUpdateValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
     };
@@ -45,7 +45,7 @@ mod benchmarks {
             Default::default(),
         );
         let proof = EquivocationProof {
-            slot: CurrentSlot::<T>::get(),
+            slot: Pallet::<T>::current_slot(),
             offender,
             first_header: header.clone(),
             second_header: header,
@@ -108,7 +108,7 @@ mod benchmarks {
         let unsigned_vote: Vote<BlockNumberFor<T>, T::Hash, T::AccountId> = Vote::V0 {
             height: System::<T>::block_number(),
             parent_hash: System::<T>::parent_hash(),
-            slot: CurrentSlot::<T>::get(),
+            slot: Pallet::<T>::current_slot(),
             solution: Solution::genesis_solution(
                 FarmerPublicKey::unchecked_from([1u8; 32]),
                 account("user1", 1, SEED),

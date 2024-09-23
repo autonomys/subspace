@@ -384,12 +384,6 @@ pub mod pallet {
         PotSlotIterationsUpdateAlreadyScheduled,
     }
 
-    // TODO: Replace `CurrentSlot` with `BlockSlots`
-    /// Current slot number.
-    #[pallet::storage]
-    #[pallet::getter(fn current_slot)]
-    pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
-
     /// Bounded mapping from block number to slot
     #[pallet::storage]
     #[pallet::getter(fn block_slots)]
@@ -831,9 +825,6 @@ impl<T: Config> Pallet<T> {
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
             .expect("Block must always have pre-digest");
         let current_slot = pre_digest.slot();
-
-        // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(current_slot);
 
         BlockSlots::<T>::mutate(|block_slots| {
             if let Some(to_remove) = block_number.checked_sub(&T::BlockSlotCount::get().into()) {
@@ -1296,6 +1287,14 @@ impl<T: Config> Pallet<T> {
         }
     }
 
+    /// Current slot number
+    pub fn current_slot() -> Slot {
+        BlockSlots::<T>::get()
+            .last_key_value()
+            .map(|(_block, slot)| *slot)
+            .unwrap_or_default()
+    }
+
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
@@ -1415,6 +1414,7 @@ impl<T: Config> Pallet<T> {
 /// block initialization didn't happen yet).
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
     let solution_ranges = SolutionRanges::<T>::get();
+
     VoteVerificationData {
         solution_range: if is_block_initialized {
             solution_ranges.current
