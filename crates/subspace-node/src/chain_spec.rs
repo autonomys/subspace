@@ -26,15 +26,15 @@ use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
-use sp_runtime::Percent;
+use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::{PotKey, PublicKey};
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
-    EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
-    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    WASM_BINARY,
+    EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardPoint,
+    RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig,
+    SystemConfig, WASM_BINARY,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
@@ -110,9 +110,101 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                     confirmation_depth_k: 100,
                     // TODO: Proper value here
                     rewards_config: RewardsConfig {
-                        remaining_issuance: 1_000_000_000 * SSC,
-                        proposer_subsidy_points: Default::default(),
-                        voter_subsidy_points: Default::default(),
+                        remaining_issuance: 360_000_000 * SSC,
+                        proposer_subsidy_points: BoundedVec::try_from(vec![
+                            RewardPoint {
+                                block: 0,
+                                subsidy: 454545454545455000,
+                            },
+                            RewardPoint {
+                                block: 10512000,
+                                subsidy: 423672207997007000,
+                            },
+                            RewardPoint {
+                                block: 26280000,
+                                subsidy: 333635878252228000,
+                            },
+                            RewardPoint {
+                                block: 42048000,
+                                subsidy: 262825353875519000,
+                            },
+                            RewardPoint {
+                                block: 57816000,
+                                subsidy: 207116053874914000,
+                            },
+                            RewardPoint {
+                                block: 73584000,
+                                subsidy: 163272262877830000,
+                            },
+                            RewardPoint {
+                                block: 94608000,
+                                subsidy: 118963574070561000,
+                            },
+                            RewardPoint {
+                                block: 120888000,
+                                subsidy: 80153245846642200,
+                            },
+                            RewardPoint {
+                                block: 149796000,
+                                subsidy: 51971522998131200,
+                            },
+                            RewardPoint {
+                                block: 183960000,
+                                subsidy: 31192714495359900,
+                            },
+                            RewardPoint {
+                                block: 220752000,
+                                subsidy: 18033114698427300,
+                            },
+                        ])
+                        .expect("Number of elements is below configured MaxRewardPoints; qed"),
+                        voter_subsidy_points: BoundedVec::try_from(vec![
+                            RewardPoint {
+                                block: 0,
+                                subsidy: 454545454545455000,
+                            },
+                            RewardPoint {
+                                block: 10512000,
+                                subsidy: 423672207997007000,
+                            },
+                            RewardPoint {
+                                block: 26280000,
+                                subsidy: 333635878252228000,
+                            },
+                            RewardPoint {
+                                block: 42048000,
+                                subsidy: 262825353875519000,
+                            },
+                            RewardPoint {
+                                block: 57816000,
+                                subsidy: 207116053874914000,
+                            },
+                            RewardPoint {
+                                block: 73584000,
+                                subsidy: 163272262877830000,
+                            },
+                            RewardPoint {
+                                block: 94608000,
+                                subsidy: 118963574070561000,
+                            },
+                            RewardPoint {
+                                block: 120888000,
+                                subsidy: 80153245846642200,
+                            },
+                            RewardPoint {
+                                block: 149796000,
+                                subsidy: 51971522998131200,
+                            },
+                            RewardPoint {
+                                block: 183960000,
+                                subsidy: 31192714495359900,
+                            },
+                            RewardPoint {
+                                block: 220752000,
+                                subsidy: 18033114698427300,
+                            },
+                        ])
+                        .expect("Number of elements is below configured MaxRewardPoints; qed"),
                     },
                 },
                 GenesisDomainParams {
