@@ -220,12 +220,6 @@ const_assert!(
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
 
-/// Length of public key in bytes.
-pub const PUBLIC_KEY_LENGTH: usize = 32;
-
-/// Length of signature in bytes
-pub const REWARD_SIGNATURE_LENGTH: usize = 64;
-
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
 pub struct PosSeed([u8; Self::SIZE]);
@@ -481,14 +475,20 @@ impl PotCheckpoints {
     TypeInfo,
     Deref,
     From,
-    Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PUBLIC_KEY_LENGTH]);
+pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl From<PublicKey> for [u8; PublicKey::SIZE] {
+    #[inline]
+    fn from(value: PublicKey) -> Self {
+        value.0
     }
 }
 
@@ -500,6 +500,9 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 impl PublicKey {
+    /// Public key size in bytes
+    pub const SIZE: usize = 32;
+
     /// Public key hash.
     pub fn hash(&self) -> Blake3Hash {
         blake3_hash(&self.0)
@@ -508,31 +511,28 @@ impl PublicKey {
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Deref,
-    From,
-    Into,
+    Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RewardSignature(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; REWARD_SIGNATURE_LENGTH],
-);
+pub struct RewardSignature(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+
+impl From<RewardSignature> for [u8; RewardSignature::SIZE] {
+    #[inline]
+    fn from(value: RewardSignature) -> Self {
+        value.0
+    }
+}
 
 impl AsRef<[u8]> for RewardSignature {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
+}
+
+impl RewardSignature {
+    /// Reward signature size in bytes
+    pub const SIZE: usize = 64;
 }
 
 /// Progress of an archived block.
