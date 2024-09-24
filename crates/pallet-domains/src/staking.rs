@@ -1429,8 +1429,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, ExecutionReceiptOf, NominatorId, SlashedReason,
-        MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, DomainBlockNumberFor, Error, ExecutionReceiptOf,
+        NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
     };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
@@ -2616,6 +2616,162 @@ pub(crate) mod tests {
             expected_withdraw: Some((20 * SSC - 2 * SSC - 33331097576, false)),
             expected_nominator_count_reduced_by: 0,
         })
+    }
+
+    fn dummy_receipt(domain_block_number: DomainBlockNumberFor<Test>) -> ExecutionReceiptOf<Test> {
+        ExecutionReceiptOf::<Test> {
+            domain_block_number,
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_number: Default::default(),
+            consensus_block_hash: Default::default(),
+            inboxed_bundles: vec![],
+            final_state_root: Default::default(),
+            execution_trace: vec![],
+            execution_trace_root: Default::default(),
+            block_fees: BlockFees::default(),
+            transfers: Transfers::default(),
+        }
+    }
+
+    #[test]
+    fn unlock_multiple_withdrawals() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let data = OperatorSigningKeyProofOfOwnershipData {
+            operator_owner: operator_account,
+        };
+        let signature = pair.sign(&data.encode());
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let nominators = vec![
+            (operator_account, (operator_free_balance, operator_stake)),
+            (nominator_account, (nominator_free_balance, nominator_stake)),
+        ];
+
+        let total_deposit = 300 * SSC;
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
+        let init_total_storage_fund = STORAGE_FEE_RESERVE * total_deposit;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                signature,
+                BTreeMap::from_iter(nominators),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, init_total_stake);
+            assert_eq!(operator.total_storage_fee_deposit, init_total_storage_fund);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
+
+            let amount_per_withdraw = init_total_stake / 100;
+            let latest_confirmed_block_number =
+                Domains::latest_confirmed_domain_block_number(domain_id);
+
+            // Request `WithdrawalLimit - 1` number of withdrawal
+            for _ in 1..<Test as crate::Config>::WithdrawalLimit::get() {
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                )
+                .unwrap();
+                do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            }
+            // Increase the latest confirmed domain block by 1
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(latest_confirmed_block_number + 1),
+            );
+
+            // All withdrawals of a given nominator submitted in the same epoch will merge into one,
+            // so we submit can submit as many as we want even though the withdrawal limit is met
+            for _ in 0..5 {
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                )
+                .unwrap();
+            }
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            // After the withdrawal limit is met, any new withdraw will be rejected in the next epoch
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                ),
+                StakingError::TooManayWithdrawal
+            );
+            Withdrawals::<Test>::try_mutate(operator_id, nominator_account, |maybe_withdrawal| {
+                let withdrawal = maybe_withdrawal.as_mut().unwrap();
+                do_convert_previous_epoch_withdrawal::<Test>(operator_id, withdrawal).unwrap();
+                assert_eq!(
+                    withdrawal.withdrawals.len() as u32,
+                    <Test as crate::Config>::WithdrawalLimit::get()
+                );
+                Ok::<(), StakingError>(())
+            })
+            .unwrap();
+
+            // Make the first set of withdrawals pass the unlock period then unlock fund
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(
+                    latest_confirmed_block_number
+                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
+                ),
+            );
+            let total_balance = Balances::usable_balance(nominator_account);
+            assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
+            assert_eq!(
+                Balances::usable_balance(nominator_account) + 60246126106, // `60246126106` is a minior rounding dust
+                total_balance
+                    + (<Test as crate::Config>::WithdrawalLimit::get() as u128 - 1) * total_deposit
+                        / 100
+            );
+            let withdrawal = Withdrawals::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(withdrawal.withdrawals.len(), 1);
+
+            // Make the second set of withdrawals pass the unlock period then unlock funds
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(
+                    latest_confirmed_block_number
+                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
+                        + 1,
+                ),
+            );
+            let total_balance = Balances::usable_balance(nominator_account);
+            assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
+            assert_eq!(
+                Balances::usable_balance(nominator_account) + 18473897451, // `18473897451` is a minor rounding dust
+                total_balance + 5 * total_deposit / 100
+            );
+            assert!(Withdrawals::<Test>::get(operator_id, nominator_account).is_none());
+        });
     }
 
     #[test]
