@@ -49,7 +49,7 @@ pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
         + sector_record_metadata_size(pieces_in_sector)
         + SectorContentsMap::encoded_size(pieces_in_sector)
-        + mem::size_of::<Blake3Hash>()
+        + Blake3Hash::SIZE
 }
 
 /// Metadata of the plotted sector
@@ -148,7 +148,7 @@ pub(crate) struct RecordMetadata {
 
 impl RecordMetadata {
     pub(crate) const fn encoded_size() -> usize {
-        RecordWitness::SIZE + RecordCommitment::SIZE + mem::size_of::<Blake3Hash>()
+        RecordWitness::SIZE + RecordCommitment::SIZE + Blake3Hash::SIZE
     }
 }
 
@@ -310,7 +310,7 @@ impl SectorContentsMap {
         }
 
         let (single_records_bit_arrays, expected_checksum) =
-            bytes.split_at(bytes.len() - mem::size_of::<Blake3Hash>());
+            bytes.split_at(bytes.len() - Blake3Hash::SIZE);
         // Verify checksum
         let actual_checksum = blake3_hash(single_records_bit_arrays);
         if *actual_checksum != *expected_checksum {
@@ -355,7 +355,7 @@ impl SectorContentsMap {
     /// Size of sector contents map when encoded and stored in the plot for specified number of
     /// pieces in sector
     pub const fn encoded_size(pieces_in_sector: u16) -> usize {
-        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize + mem::size_of::<Blake3Hash>()
+        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize + Blake3Hash::SIZE
     }
 
     /// Encode internal contents into `output`

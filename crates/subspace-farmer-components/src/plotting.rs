@@ -616,7 +616,7 @@ pub fn write_sector(
         // It would be more efficient to not re-read the whole sector again, but it makes above code
         // significantly more convoluted and most likely not worth it
         let (sector_contents, sector_checksum) =
-            sector_output.split_at_mut(sector_size - mem::size_of::<Blake3Hash>());
+            sector_output.split_at_mut(sector_size - Blake3Hash::SIZE);
         sector_checksum.copy_from_slice(blake3_hash_parallel(sector_contents).as_ref());
     }
 

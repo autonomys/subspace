@@ -13,7 +13,7 @@ fn basic() {
 
     // Encoding is extended with checksum
     assert_eq!(
-        plain_encoding.len() + mem::size_of::<Blake3Hash>(),
+        plain_encoding.len() + Blake3Hash::SIZE,
         checksummed_encoding.len()
     );
 

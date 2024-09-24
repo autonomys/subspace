@@ -105,7 +105,7 @@ where
 {
     #[inline]
     fn size_hint(&self) -> usize {
-        self.0.size_hint() + mem::size_of::<Blake3Hash>()
+        self.0.size_hint() + Blake3Hash::SIZE
     }
 
     #[inline]
@@ -118,7 +118,7 @@ where
 
     #[inline]
     fn encoded_size(&self) -> usize {
-        self.0.encoded_size() + mem::size_of::<Blake3Hash>()
+        self.0.encoded_size() + Blake3Hash::SIZE
     }
 }
 
