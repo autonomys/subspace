@@ -133,7 +133,6 @@ pub struct SolutionResponse {
     pub solution: Solution<PublicKey>,
 }
 
-// TODO: Use better types here
 /// Reward info that needs to be signed.
 #[derive(Clone, Copy, Debug, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,8 +141,7 @@ pub struct RewardSigningInfo {
     #[serde(with = "hex")]
     pub hash: [u8; 32],
     /// Public key of the plot identity that should create signature.
-    #[serde(with = "hex")]
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
 }
 
 /// Signature in response to reward hash signing request.
