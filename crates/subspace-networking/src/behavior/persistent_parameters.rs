@@ -373,7 +373,7 @@ impl KnownPeersManager {
                     // Verify checksum
                     let actual_checksum = blake3_hash(encoded_bytes);
                     let expected_checksum = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
-                    if actual_checksum.as_ref() != expected_checksum {
+                    if *actual_checksum != *expected_checksum {
                         debug!(
                             encoded_bytes_len = %encoded_bytes.len(),
                             actual_checksum = %hex::encode(actual_checksum),

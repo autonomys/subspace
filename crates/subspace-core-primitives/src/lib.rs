@@ -102,8 +102,6 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
     TypeInfo,
     MaxEncodedLen,
 )]
-#[as_ref(forward)]
-#[as_mut(forward)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; BLAKE3_HASH_SIZE]);
@@ -111,6 +109,20 @@ pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; B
 impl fmt::Debug for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl AsRef<[u8]> for Blake3Hash {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for Blake3Hash {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
     }
 }
 

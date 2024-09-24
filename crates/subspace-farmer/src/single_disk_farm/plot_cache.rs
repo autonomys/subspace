@@ -320,7 +320,7 @@ impl DiskPlotCache {
 
         // Verify checksum
         let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece_bytes]);
-        if actual_checksum.as_ref() != expected_checksum {
+        if *actual_checksum != *expected_checksum {
             if element.iter().all(|&byte| byte == 0) {
                 return Ok(None);
             }
