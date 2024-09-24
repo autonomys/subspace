@@ -20,7 +20,6 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use std::mem;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

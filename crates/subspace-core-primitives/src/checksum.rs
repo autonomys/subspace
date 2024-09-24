@@ -4,7 +4,6 @@
 mod tests;
 
 use crate::Blake3Hash;
-use core::mem;
 use parity_scale_codec::{Decode, Encode, EncodeLike, Error, Input, Output};
 
 /// Output wrapper for SCALE codec that will write Blake3 checksum at the end of the encoding

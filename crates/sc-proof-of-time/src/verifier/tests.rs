@@ -1,7 +1,6 @@
 use crate::verifier::PotVerifier;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
-use std::mem;
 use std::num::NonZeroU32;
 use subspace_core_primitives::{Blake3Hash, PotSeed};
 

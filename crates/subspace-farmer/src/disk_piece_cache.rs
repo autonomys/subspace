@@ -22,7 +22,7 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
 use std::task::Poll;
-use std::{fs, io, mem};
+use std::{fs, io};
 use subspace_core_primitives::crypto::blake3_hash_list;
 use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
 use subspace_farmer_components::file_ext::FileExt;
