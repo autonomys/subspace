@@ -7870,6 +7870,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -7957,7 +7958,6 @@ dependencies = [
  "serde",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core",
  "sp-io",
  "sp-runtime",
  "sp-std",
@@ -10095,7 +10095,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "jsonrpsee 0.23.2",
- "parity-scale-codec",
  "parking_lot 0.12.3",
  "sc-client-api",
  "sc-consensus-subspace",
@@ -10732,6 +10731,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-runtime",
  "strum_macros 0.26.4",
+ "subspace-core-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
  "tracing",
@@ -13200,7 +13200,6 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
- "sp-application-crypto",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",

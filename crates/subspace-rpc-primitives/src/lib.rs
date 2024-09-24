@@ -130,9 +130,10 @@ pub struct SolutionResponse {
     /// Solution farmer has for the challenge.
     ///
     /// Corresponds to `slot_number` above.
-    pub solution: Solution<PublicKey, PublicKey>,
+    pub solution: Solution<PublicKey>,
 }
 
+// TODO: Use better types here
 /// Reward info that needs to be signed.
 #[derive(Clone, Copy, Debug, Encode, Decode, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

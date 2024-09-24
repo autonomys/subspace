@@ -95,7 +95,7 @@ use sp_blockchain::HeaderMetadata;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
-    FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
+    KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
@@ -119,7 +119,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{BlockNumber, PotSeed, Record, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{BlockNumber, PotSeed, PublicKey, Record, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::piece_provider::PieceProvider;
@@ -262,7 +262,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>
+    Client::Api: SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>
         + MmrApi<Block, H256, NumberFor<Block>>
@@ -482,7 +482,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + BundleProducerElectionApi<Block, Balance>
@@ -679,7 +679,7 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + MmrApi<Block, H256, NumberFor<Block>>
         + MessengerApi<Block, NumberFor<Block>, <Block as BlockT>::Hash>,
 {
@@ -739,7 +739,7 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>

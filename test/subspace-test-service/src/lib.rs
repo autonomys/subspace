@@ -51,14 +51,13 @@ use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, ProvideRuntimeApi};
-use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
-use sp_consensus_subspace::{FarmerPublicKey, PotExtension, SubspaceApi};
+use sp_consensus_subspace::{PotExtension, SubspaceApi};
 use sp_core::offchain::storage::OffchainDb;
 use sp_core::offchain::OffchainDbExt;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
@@ -85,7 +84,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::{BlockNumber, PotOutput, Solution};
+use subspace_core_primitives::{BlockNumber, PotOutput, PublicKey, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Signature};
 use subspace_service::transaction_pool::FullPool;
@@ -369,7 +368,7 @@ pub struct MockConsensusNode {
     block_import: MockBlockImport<Client, Block>,
     xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
-    mock_solution: Solution<FarmerPublicKey, AccountId>,
+    mock_solution: Solution<AccountId>,
     log_prefix: &'static str,
     /// Ferdie key
     pub key: Sr25519Keyring,
@@ -490,10 +489,8 @@ impl MockConsensusNode {
         })
         .expect("Should be able to spawn tasks");
 
-        let mock_solution = Solution::genesis_solution(
-            FarmerPublicKey::unchecked_from(key.public().0),
-            key.to_account_id(),
-        );
+        let mock_solution =
+            Solution::genesis_solution(PublicKey::from(key.public().0), key.to_account_id());
 
         let mut gossip_builder = GossipWorkerBuilder::new();
 
@@ -883,7 +880,7 @@ impl MockConsensusNode {
     }
 
     fn mock_subspace_digest(&self, slot: Slot) -> Digest {
-        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
+        let pre_digest: PreDigest<AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
             pot_info: PreDigestPotInfo::V0 {

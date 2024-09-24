@@ -16,7 +16,6 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
@@ -458,7 +457,7 @@ pub fn construct_signed_extrinsic(
             raw_payload
                 .using_encoded(|e| {
                     consensus_keystore
-                        .sr25519_sign(FarmerPublicKey::ID, &public_key, e)
+                        .sr25519_sign(OperatorPublicKey::ID, &public_key, e)
                 })?
                 .ok_or(format!(
                     "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {:?}",

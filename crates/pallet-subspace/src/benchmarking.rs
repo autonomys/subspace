@@ -15,19 +15,16 @@ mod benchmarks {
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
     use frame_benchmarking::v2::*;
+    use frame_support::traits::Get;
     use frame_system::pallet_prelude::*;
     use frame_system::{Pallet as System, RawOrigin};
-    use sp_consensus_subspace::{
-        EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
-    };
-    use sp_core::crypto::UncheckedFrom;
-    use sp_core::Get;
+    use sp_consensus_subspace::{EquivocationProof, SignedVote, Vote};
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
     use subspace_core_primitives::{
-        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput,
-        SegmentHeader, SegmentIndex, Solution, SolutionRange,
+        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput, PublicKey,
+        RewardSignature, SegmentHeader, SegmentIndex, Solution, SolutionRange,
     };
 
     const SEED: u32 = 0;
@@ -36,7 +33,7 @@ mod benchmarks {
     fn report_equivocation() {
         // Construct a dummy equivocation proof which is invalid but it is okay because the
         // proof is not validate during the call
-        let offender = FarmerPublicKey::unchecked_from([0u8; 32]);
+        let offender = PublicKey::from([0u8; 32]);
         let header = <T::Block as Block>::Header::new(
             System::<T>::block_number(),
             Default::default(),
@@ -110,13 +107,13 @@ mod benchmarks {
             parent_hash: System::<T>::parent_hash(),
             slot: Pallet::<T>::current_slot(),
             solution: Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from([1u8; 32]),
+                PublicKey::from([1u8; 32]),
                 account("user1", 1, SEED),
             ),
             proof_of_time: PotOutput::default(),
             future_proof_of_time: PotOutput::default(),
         };
-        let signature = FarmerSignature::unchecked_from([2u8; 64]);
+        let signature = RewardSignature::from([2u8; 64]);
         let signed_vote = SignedVote {
             vote: unsigned_vote,
             signature,

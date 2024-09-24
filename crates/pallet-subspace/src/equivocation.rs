@@ -37,13 +37,14 @@ use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::offence::{Kind, Offence, OffenceError, ReportOffence};
-use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
+use sp_consensus_subspace::EquivocationProof;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
 use sp_runtime::DispatchResult;
 use sp_std::prelude::*;
+use subspace_core_primitives::PublicKey;
 
 use crate::{Call, Config, Pallet};
 
@@ -57,12 +58,10 @@ pub trait HandleEquivocation<T: Config> {
     type ReportLongevity: Get<u64>;
 
     /// Report an offence proved by the given reporters.
-    fn report_offence(
-        offence: SubspaceEquivocationOffence<FarmerPublicKey>,
-    ) -> Result<(), OffenceError>;
+    fn report_offence(offence: SubspaceEquivocationOffence) -> Result<(), OffenceError>;
 
     /// Returns true if all of the offenders at the given time slot have already been reported.
-    fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &Slot) -> bool;
+    fn is_known_offence(offenders: &[PublicKey], time_slot: &Slot) -> bool;
 
     /// Create and dispatch an equivocation report extrinsic.
     fn submit_equivocation_report(
@@ -73,13 +72,11 @@ pub trait HandleEquivocation<T: Config> {
 impl<T: Config> HandleEquivocation<T> for () {
     type ReportLongevity = ();
 
-    fn report_offence(
-        _offence: SubspaceEquivocationOffence<FarmerPublicKey>,
-    ) -> Result<(), OffenceError> {
+    fn report_offence(_offence: SubspaceEquivocationOffence) -> Result<(), OffenceError> {
         Ok(())
     }
 
-    fn is_known_offence(_offenders: &[FarmerPublicKey], _time_slot: &Slot) -> bool {
+    fn is_known_offence(_offenders: &[PublicKey], _time_slot: &Slot) -> bool {
         true
     }
 
@@ -112,20 +109,18 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
     // A system for reporting offences after valid equivocation reports are
     // processed.
-    R: ReportOffence<FarmerPublicKey, SubspaceEquivocationOffence<FarmerPublicKey>>,
+    R: ReportOffence<PublicKey, SubspaceEquivocationOffence>,
     // The longevity (in blocks) that the equivocation report is valid for. When using the staking
     // pallet this should be the bonding duration.
     L: Get<u64>,
 {
     type ReportLongevity = L;
 
-    fn report_offence(
-        offence: SubspaceEquivocationOffence<FarmerPublicKey>,
-    ) -> Result<(), OffenceError> {
+    fn report_offence(offence: SubspaceEquivocationOffence) -> Result<(), OffenceError> {
         R::report_offence(offence)
     }
 
-    fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &Slot) -> bool {
+    fn is_known_offence(offenders: &[PublicKey], time_slot: &Slot) -> bool {
         R::is_known_offence(offenders, time_slot)
     }
 
@@ -189,10 +184,7 @@ impl<T: Config> Pallet<T> {
             // We assign the maximum priority for any equivocation report.
             .priority(TransactionPriority::MAX)
             // Only one equivocation report for the same offender at the same slot.
-            .and_provides((
-                equivocation_proof.offender.clone(),
-                *equivocation_proof.slot,
-            ))
+            .and_provides((equivocation_proof.offender, *equivocation_proof.slot))
             .longevity(longevity)
             // We don't propagate this. This can never be included on a remote node.
             .propagate(false)
@@ -221,7 +213,7 @@ fn is_known_offence<T: Config>(
 ) -> Result<(), TransactionValidityError> {
     // Check if the offence has already been reported, and if so then we can discard the report.
     if T::HandleEquivocation::is_known_offence(
-        &[equivocation_proof.offender.clone()],
+        &[equivocation_proof.offender],
         &equivocation_proof.slot,
     ) {
         Err(InvalidTransaction::Stale.into())
@@ -234,19 +226,19 @@ fn is_known_offence<T: Config>(
 ///
 /// When a farmer released two or more solutions at the same slot.
 #[derive(Debug, Eq, PartialEq)]
-pub struct SubspaceEquivocationOffence<PublicKey> {
+pub struct SubspaceEquivocationOffence {
     /// A Subspace slot in which this incident happened.
     pub slot: Slot,
     /// Identity of the farmer that produced the equivocation.
     pub offender: PublicKey,
 }
 
-impl<PublicKey: Clone> Offence<PublicKey> for SubspaceEquivocationOffence<PublicKey> {
+impl Offence<PublicKey> for SubspaceEquivocationOffence {
     const ID: Kind = *b"sub:equivocation";
     type TimeSlot = Slot;
 
     fn offenders(&self) -> Vec<PublicKey> {
-        vec![self.offender.clone()]
+        vec![self.offender]
     }
 
     fn time_slot(&self) -> Self::TimeSlot {

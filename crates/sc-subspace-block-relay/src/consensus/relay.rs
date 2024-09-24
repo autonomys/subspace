@@ -28,12 +28,13 @@ use sc_network_sync::block_relay_protocol::{
 };
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_api::ProvideRuntimeApi;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_core_primitives::PublicKey;
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
 use tracing::{debug, info, trace, warn};
 
@@ -295,7 +296,7 @@ impl<Block, Client, Pool> ConsensusRelayServer<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     /// Creates the consensus relay server.
@@ -553,7 +554,7 @@ impl<Block, Client, Pool> BlockServer<Block> for ConsensusRelayServer<Block, Cli
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     async fn run(&mut self) {
@@ -596,7 +597,7 @@ impl<Block, Client, Pool> ServerBackend<BlockHash<Block>, TxHash<Pool>, Extrinsi
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     fn download_unit_members(
@@ -689,7 +690,7 @@ pub fn build_consensus_relay<Block, Client, Pool>(
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     let (tx, request_receiver) = async_channel::bounded(NUM_PEER_HINT.get());

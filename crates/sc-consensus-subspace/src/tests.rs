@@ -586,8 +586,8 @@
 //                     //
 //                     // let _ = solution_sender
 //                     //     .send(Solution {
-//                     //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-//                     //         reward_address: FarmerPublicKey::unchecked_from(
+//                     //         public_key: FarmerPublicKey::from_bytes(keypair.public.to_bytes()),
+//                     //         reward_address: FarmerPublicKey::from_bytes(
 //                     //             keypair.public.to_bytes(),
 //                     //         ),
 //                     //         piece_index,
@@ -677,7 +677,7 @@
 // #[test]
 // fn malformed_pre_digest_rejected() {
 //     sp_tracing::try_init_simple();
-//     let bad_seal = DigestItem::subspace_seal(FarmerSignature::unchecked_from([0u8; 64]));
+//     let bad_seal = DigestItem::subspace_seal(FarmerSignature::from_bytes([0u8; 64]));
 //     assert!(CompatibleDigestItem::as_subspace_pre_digest::<FarmerPublicKey>(&bad_seal).is_none());
 // }
 //
@@ -686,7 +686,7 @@
 //     sp_tracing::try_init_simple();
 //     let keypair = Keypair::generate();
 //     let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
-//     let bad_seal = DigestItem::subspace_seal(FarmerSignature::unchecked_from(
+//     let bad_seal = DigestItem::subspace_seal(FarmerSignature::from_bytes(
 //         keypair.sign(ctx.bytes(b"")).to_bytes(),
 //     ));
 //     assert!(CompatibleDigestItem::as_subspace_pre_digest::<FarmerPublicKey>(&bad_seal).is_none());
@@ -700,8 +700,8 @@
 //     Some((
 //         PreDigest {
 //             solution: Solution {
-//                 public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
-//                 reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
+//                 public_key: FarmerPublicKey::from_bytes([0u8; 32]),
+//                 reward_address: FarmerPublicKey::from_bytes([0u8; 32]),
 //                 sector_index: 0,
 //                 history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
 //                 piece_offset: PieceOffset::default(),
@@ -713,7 +713,7 @@
 //             },
 //             slot,
 //         },
-//         FarmerPublicKey::unchecked_from([0u8; 32]),
+//         FarmerPublicKey::from_bytes([0u8; 32]),
 //     ))
 // }
 //
@@ -762,8 +762,8 @@
 //     //             logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
 //     //                 slot,
 //     //                 solution: Solution {
-//     //                     public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-//     //                     reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+//     //                     public_key: FarmerPublicKey::from_bytes(keypair.public.to_bytes()),
+//     //                     reward_address: FarmerPublicKey::from_bytes(keypair.public.to_bytes()),
 //     //                     piece_index: 0,
 //     //                     encoding,
 //     //                     tag_signature: create_chunk_signature(&keypair, tag),

@@ -51,8 +51,7 @@ use sp_consensus_subspace::consensus::{is_proof_of_time_valid, verify_solution};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, FarmerSignature, PotParameters, PotParametersChange,
-    SignedVote, Vote, WrappedPotOutput,
+    EquivocationProof, PotParameters, PotParametersChange, SignedVote, Vote, WrappedPotOutput,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
@@ -111,15 +110,15 @@ pub mod pallet {
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
+    use sp_consensus_subspace::{EquivocationProof, SignedVote};
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, Randomness, SectorIndex,
-        SegmentHeader, SegmentIndex, SolutionRange,
+        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, PublicKey, Randomness,
+        RewardSignature, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -259,7 +258,7 @@ pub mod pallet {
         /// for everyone.
         FirstFarmer,
         /// Specified root farmer is allowed to author blocks unless unlocked for everyone.
-        RootFarmer(FarmerPublicKey),
+        RootFarmer(PublicKey),
     }
 
     #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo)]
@@ -353,7 +352,7 @@ pub mod pallet {
                 }
                 AllowAuthoringBy::RootFarmer(root_farmer) => {
                     AllowAuthoringByAnyone::<T>::put(false);
-                    RootPlotPublicKey::<T>::put(root_farmer.clone());
+                    RootPlotPublicKey::<T>::put(root_farmer);
                 }
             }
             PotSlotIterations::<T>::put(PotSlotIterationsValue {
@@ -371,7 +370,7 @@ pub mod pallet {
         SegmentHeaderStored { segment_header: SegmentHeader },
         /// Farmer vote.
         FarmerVote {
-            public_key: FarmerPublicKey,
+            public_key: PublicKey,
             reward_address: T::AccountId,
             height: BlockNumberFor<T>,
             parent_hash: T::Hash,
@@ -426,7 +425,7 @@ pub mod pallet {
 
     /// A set of blocked farmers keyed by their public key.
     #[pallet::storage]
-    pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerPublicKey, ()>;
+    pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, PublicKey, ()>;
 
     /// Mapping from segment index to corresponding segment commitment of contained records.
     #[pallet::storage]
@@ -452,7 +451,7 @@ pub mod pallet {
     /// Parent block author information.
     #[pallet::storage]
     pub(super) type ParentBlockAuthorInfo<T> =
-        StorageValue<_, (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot)>;
+        StorageValue<_, (PublicKey, SectorIndex, PieceOffset, Scalar, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -467,7 +466,7 @@ pub mod pallet {
     pub(super) type CurrentBlockAuthorInfo<T: Config> = StorageValue<
         _,
         (
-            FarmerPublicKey,
+            PublicKey,
             SectorIndex,
             PieceOffset,
             Scalar,
@@ -481,8 +480,8 @@ pub mod pallet {
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (T::AccountId, RewardSignature),
         >,
         ValueQuery,
     >;
@@ -492,8 +491,8 @@ pub mod pallet {
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (T::AccountId, RewardSignature),
         >,
     >;
 
@@ -521,7 +520,7 @@ pub mod pallet {
     /// Set just once to make sure no one else can author blocks until allowed for anyone.
     #[pallet::storage]
     #[pallet::getter(fn root_plot_public_key)]
-    pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
+    pub(super) type RootPlotPublicKey<T> = StorageValue<_, PublicKey>;
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -846,7 +845,7 @@ impl<T: Config> Pallet<T> {
         {
             // Remove old value
             CurrentBlockAuthorInfo::<T>::take();
-            let farmer_public_key = pre_digest.solution().public_key.clone();
+            let farmer_public_key = pre_digest.solution().public_key;
 
             // Optional restriction for block authoring to the root user
             if !AllowAuthoringByAnyone::<T>::get() {
@@ -856,13 +855,11 @@ impl<T: Config> Pallet<T> {
                             panic!("Client bug, authoring must be only done by the root user");
                         }
                     } else {
-                        maybe_root_plot_public_key.replace(farmer_public_key.clone());
+                        maybe_root_plot_public_key.replace(farmer_public_key);
                         // Deposit root plot public key update such that light client can validate
                         // blocks later.
                         frame_system::Pallet::<T>::deposit_log(
-                            DigestItem::root_plot_public_key_update(Some(
-                                farmer_public_key.clone(),
-                            )),
+                            DigestItem::root_plot_public_key_update(Some(farmer_public_key)),
                         );
                     }
                 });
@@ -906,8 +903,8 @@ impl<T: Config> Pallet<T> {
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (T::AccountId, RewardSignature),
         >::default());
 
         // If solution range was updated in previous block, set it as current.
@@ -1096,7 +1093,7 @@ impl<T: Config> Pallet<T> {
     fn do_report_equivocation(
         equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> DispatchResultWithPostInfo {
-        let offender = equivocation_proof.offender.clone();
+        let offender = equivocation_proof.offender;
         let slot = equivocation_proof.slot;
 
         let offence = SubspaceEquivocationOffence { slot, offender };
@@ -1180,7 +1177,7 @@ impl<T: Config> Pallet<T> {
             ..
         } = signed_vote.vote;
 
-        if BlockList::<T>::contains_key(&solution.public_key) {
+        if BlockList::<T>::contains_key(solution.public_key) {
             Err(DispatchError::Other("Equivocated"))
         } else {
             Self::deposit_event(Event::FarmerVote {
@@ -1301,7 +1298,7 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)
-    pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
+    pub fn is_in_block_list(farmer_public_key: &PublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
     }
 
@@ -1386,7 +1383,7 @@ impl<T: Config> Pallet<T> {
             .priority(TransactionPriority::MAX)
             // Should be included in the next block or block after that, but not later
             .longevity(2)
-            .and_provides(&signed_vote.signature)
+            .and_provides(signed_vote.signature)
             .build()
     }
 
@@ -1463,7 +1460,7 @@ enum CheckVoteError {
     InvalidProofOfTime,
     InvalidFutureProofOfTime,
     DuplicateVote,
-    Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
+    Equivocated(SubspaceEquivocationOffence),
 }
 
 impl From<CheckVoteError> for TransactionValidityError {
@@ -1505,7 +1502,7 @@ fn check_vote<T: Config>(
     let height = *height;
     let slot = *slot;
 
-    if BlockList::<T>::contains_key(&solution.public_key) {
+    if BlockList::<T>::contains_key(solution.public_key) {
         return Err(CheckVoteError::BlockListed);
     }
 
@@ -1596,8 +1593,8 @@ fn check_vote<T: Config>(
 
     if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
-        &RewardSignature::from(&signed_vote.signature),
-        &PublicKey::from(&solution.public_key),
+        &signed_vote.signature,
+        &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
         debug!(
@@ -1613,10 +1610,7 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let sector_id = SectorId::new(
-        PublicKey::from(&solution.public_key).hash(),
-        solution.sector_index,
-    );
+    let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
 
     let recent_segments = T::RecentSegments::get();
     let recent_history_fraction = (
@@ -1720,7 +1714,7 @@ fn check_vote<T: Config>(
     }
 
     let key = (
-        solution.public_key.clone(),
+        solution.public_key,
         solution.sector_index,
         solution.piece_offset,
         solution.chunk,
@@ -1789,10 +1783,7 @@ fn check_vote<T: Config>(
                 .expect("Always set during block initialization")
                 .insert(
                     key,
-                    (
-                        solution.reward_address.clone(),
-                        signed_vote.signature.clone(),
-                    ),
+                    (solution.reward_address.clone(), signed_vote.signature),
                 );
         });
     }
@@ -1925,10 +1916,10 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, BlockNumberFor<T>> fo
     }
 }
 
-impl<T: Config> OnOffenceHandler<FarmerPublicKey> for Pallet<T> {
-    fn on_offence(offenders: &[OffenceDetails<FarmerPublicKey>]) {
+impl<T: Config> OnOffenceHandler<PublicKey> for Pallet<T> {
+    fn on_offence(offenders: &[OffenceDetails<PublicKey>]) {
         for offender in offenders {
-            BlockList::<T>::insert(offender.offender.clone(), ());
+            BlockList::<T>::insert(offender.offender, ());
         }
     }
 }

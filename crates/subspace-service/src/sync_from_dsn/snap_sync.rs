@@ -15,7 +15,7 @@ use sc_service::{ClientExt, Error};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{BlockNumber, SegmentIndex};
+use subspace_core_primitives::{BlockNumber, PublicKey, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
@@ -55,7 +55,7 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
         + 'static,
     // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
     for<'a> &'a Client: BlockImport<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     PG: DsnSyncPieceGetter,
     NR: NetworkRequest,
 {
@@ -272,7 +272,7 @@ where
         + 'static,
     // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
     for<'a> &'a Client: BlockImport<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized,
     NR: NetworkRequest,
 {

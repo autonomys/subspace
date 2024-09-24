@@ -1,26 +1,24 @@
 use crate::digests::PreDigestPotInfo;
-use crate::{
-    is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerPublicKey,
-    FarmerSignature,
-};
+use crate::{is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
 use std::num::NonZeroU64;
-use subspace_core_primitives::{HistorySize, PieceOffset, Solution, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{
+    HistorySize, PieceOffset, PublicKey, RewardSignature, Solution, REWARD_SIGNING_CONTEXT,
+};
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
-type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;
+type PreDigest = crate::PreDigest<()>;
 
 #[test]
 fn test_is_equivocation_proof_valid() {
     let keypair = Keypair::generate();
-    let offender = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+    let offender = PublicKey::from(keypair.public.to_bytes());
     let slot = Slot::from(1);
     let solution = Solution {
-        public_key: offender.clone(),
+        public_key: offender,
         reward_address: (),
         sector_index: 0,
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
@@ -51,7 +49,7 @@ fn test_is_equivocation_proof_valid() {
     first_header
         .digest
         .logs
-        .push(DigestItem::subspace_seal(FarmerSignature::unchecked_from(
+        .push(DigestItem::subspace_seal(RewardSignature::from(
             keypair
                 .sign(
                     schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)
@@ -79,7 +77,7 @@ fn test_is_equivocation_proof_valid() {
     second_header
         .digest
         .logs
-        .push(DigestItem::subspace_seal(FarmerSignature::unchecked_from(
+        .push(DigestItem::subspace_seal(RewardSignature::from(
             keypair
                 .sign(
                     schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)

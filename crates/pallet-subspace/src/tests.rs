@@ -35,8 +35,7 @@ use frame_system::{EventRecord, Phase};
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, PotExtension, SolutionRanges};
-use sp_core::crypto::UncheckedFrom;
+use sp_consensus_subspace::{PotExtension, SolutionRanges};
 use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
@@ -47,7 +46,9 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
+use subspace_core_primitives::{
+    PieceOffset, PotOutput, PublicKey, RewardSignature, SegmentIndex, SolutionRange,
+};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
@@ -245,7 +246,7 @@ fn report_equivocation_current_session_works() {
 
         progress_to_block(&keypair, 1, 1);
 
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let farmer_public_key = PublicKey::from(keypair.public.to_bytes());
 
         // generate an equivocation proof. it creates two headers at the given
         // slot with different block hashes and signed by the given key
@@ -270,7 +271,7 @@ fn report_equivocation_old_session_works() {
 
         progress_to_block(&keypair, 1, 1);
 
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let farmer_public_key = PublicKey::from(keypair.public.to_bytes());
 
         // generate an equivocation proof at the current slot
         let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
@@ -368,7 +369,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
         progress_to_block(&keypair, 1, 1);
 
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let farmer_public_key = PublicKey::from(keypair.public.to_bytes());
 
         let equivocation_proof = generate_equivocation_proof(&keypair, Subspace::current_slot());
 
@@ -575,10 +576,7 @@ fn vote_block_listed() {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
-        BlockList::<Test>::insert(
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            (),
-        );
+        BlockList::<Test>::insert(PublicKey::from(keypair.public.to_bytes()), ());
 
         // Vote author is in block list
         let signed_vote = create_signed_vote(
@@ -916,7 +914,7 @@ fn vote_bad_reward_signature() {
             SolutionRange::MAX,
         );
 
-        signed_vote.signature = FarmerSignature::unchecked_from(rand::random::<[u8; 64]>());
+        signed_vote.signature = RewardSignature::from(rand::random::<[u8; 64]>());
 
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
@@ -1287,7 +1285,7 @@ fn vote_equivocation_current_block_plus_vote() {
 
         // Parent block author + sector index + chunk + slot matches that of the vote
         CurrentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            PublicKey::from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
@@ -1299,7 +1297,7 @@ fn vote_equivocation_current_block_plus_vote() {
             super::check_vote::<Test>(&signed_vote, false),
             CheckVoteError::Equivocated(SubspaceEquivocationOffence {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+                offender: PublicKey::from(keypair.public.to_bytes())
             })
         );
     });
@@ -1342,7 +1340,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         // Parent block author + sector index + chunk + slot matches that of the vote
         ParentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            PublicKey::from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
@@ -1353,7 +1351,7 @@ fn vote_equivocation_parent_block_plus_vote() {
             super::check_vote::<Test>(&signed_vote, true),
             CheckVoteError::Equivocated(SubspaceEquivocationOffence {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+                offender: PublicKey::from(keypair.public.to_bytes())
             })
         );
 
@@ -1409,13 +1407,13 @@ fn vote_equivocation_current_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    PublicKey::from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (reward_address, signed_vote.signature),
             );
             map
         });
@@ -1430,13 +1428,13 @@ fn vote_equivocation_current_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    PublicKey::from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (reward_address, RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1493,13 +1491,13 @@ fn vote_equivocation_parent_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    PublicKey::from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (reward_address, signed_vote.signature),
             );
             map
         });
@@ -1514,13 +1512,13 @@ fn vote_equivocation_parent_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    PublicKey::from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (reward_address, RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1530,7 +1528,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             super::check_vote::<Test>(&signed_vote, false),
             CheckVoteError::Equivocated(SubspaceEquivocationOffence {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+                offender: PublicKey::from(keypair.public.to_bytes())
             })
         );
 
@@ -1545,7 +1543,7 @@ fn vote_equivocation_parent_voters_duplicate() {
 fn enabling_block_rewards_works() {
     fn set_block_rewards() {
         CurrentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            PublicKey::from(Keypair::generate().public.to_bytes()),
             0,
             PieceOffset::ZERO,
             Scalar::default(),
@@ -1556,13 +1554,13 @@ fn enabling_block_rewards_works() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    PublicKey::from(Keypair::generate().public.to_bytes()),
                     0,
                     PieceOffset::ZERO,
                     Scalar::default(),
                     Subspace::current_slot(),
                 ),
-                (2, FarmerSignature::unchecked_from([0; 64])),
+                (2, RewardSignature::from([0; 64])),
             );
             map
         });

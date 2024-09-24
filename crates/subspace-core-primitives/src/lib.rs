@@ -220,12 +220,6 @@ const_assert!(
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
 
-/// Length of public key in bytes.
-pub const PUBLIC_KEY_LENGTH: usize = 32;
-
-/// Length of signature in bytes
-pub const REWARD_SIGNATURE_LENGTH: usize = 64;
-
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
 pub struct PosSeed([u8; Self::SIZE]);
@@ -481,14 +475,20 @@ impl PotCheckpoints {
     TypeInfo,
     Deref,
     From,
-    Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PUBLIC_KEY_LENGTH]);
+pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl From<PublicKey> for [u8; PublicKey::SIZE] {
+    #[inline]
+    fn from(value: PublicKey) -> Self {
+        value.0
     }
 }
 
@@ -500,6 +500,9 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 impl PublicKey {
+    /// Public key size in bytes
+    pub const SIZE: usize = 32;
+
     /// Public key hash.
     pub fn hash(&self) -> Blake3Hash {
         blake3_hash(&self.0)
@@ -508,31 +511,28 @@ impl PublicKey {
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Encode,
-    Decode,
-    TypeInfo,
-    Deref,
-    From,
-    Into,
+    Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RewardSignature(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; REWARD_SIGNATURE_LENGTH],
-);
+pub struct RewardSignature(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+
+impl From<RewardSignature> for [u8; RewardSignature::SIZE] {
+    #[inline]
+    fn from(value: RewardSignature) -> Self {
+        value.0
+    }
+}
 
 impl AsRef<[u8]> for RewardSignature {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
+}
+
+impl RewardSignature {
+    /// Reward signature size in bytes
+    pub const SIZE: usize = 64;
 }
 
 /// Progress of an archived block.
@@ -674,7 +674,7 @@ pub type SectorIndex = u16;
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct Solution<PublicKey, RewardAddress> {
+pub struct Solution<RewardAddress> {
     /// Public key of the farmer that created the solution
     pub public_key: PublicKey,
     /// Address for receiving block reward
@@ -697,12 +697,10 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub proof_of_space: PosProof,
 }
 
-impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
+impl<RewardAddressA> Solution<RewardAddressA> {
     /// Transform solution with one reward address type into solution with another compatible
     /// reward address type.
-    pub fn into_reward_address_format<T, RewardAddressB>(
-        self,
-    ) -> Solution<PublicKey, RewardAddressB>
+    pub fn into_reward_address_format<T, RewardAddressB>(self) -> Solution<RewardAddressB>
     where
         RewardAddressA: Into<T>,
         T: Into<RewardAddressB>,
@@ -734,7 +732,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
     }
 }
 
-impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
+impl<RewardAddress> Solution<RewardAddress> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {

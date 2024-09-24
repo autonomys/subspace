@@ -29,9 +29,9 @@ pub use pallet::*;
 use sp_consensus_subspace::offence::{
     Offence, OffenceDetails, OffenceError, OnOffenceHandler, ReportOffence,
 };
-use sp_consensus_subspace::FarmerPublicKey;
 use sp_runtime::traits::Hash;
 use sp_std::prelude::*;
+use subspace_core_primitives::PublicKey;
 
 /// A binary blob which represents a SCALE codec-encoded `O::TimeSlot`.
 type OpaqueTimeSlot = Vec<u8>;
@@ -44,8 +44,8 @@ mod pallet {
     use super::{OpaqueTimeSlot, ReportIdOf};
     use frame_support::pallet_prelude::*;
     use sp_consensus_subspace::offence::{Kind, OffenceDetails, OnOffenceHandler};
-    use sp_consensus_subspace::FarmerPublicKey;
     use sp_std::prelude::*;
+    use subspace_core_primitives::PublicKey;
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
@@ -57,14 +57,14 @@ mod pallet {
         /// The overarching event type.
         type RuntimeEvent: From<Event> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// A handler called for every offence report.
-        type OnOffenceHandler: OnOffenceHandler<FarmerPublicKey>;
+        type OnOffenceHandler: OnOffenceHandler<PublicKey>;
     }
 
     /// The primary structure that holds all offence records keyed by report identifiers.
     #[pallet::storage]
     #[pallet::getter(fn reports)]
     pub type Reports<T: Config> =
-        StorageMap<_, Twox64Concat, ReportIdOf<T>, OffenceDetails<FarmerPublicKey>>;
+        StorageMap<_, Twox64Concat, ReportIdOf<T>, OffenceDetails<PublicKey>>;
 
     /// A vector of reports of the same kind that happened at the same time slot.
     #[pallet::storage]
@@ -107,7 +107,7 @@ mod pallet {
     }
 }
 
-impl<T: Config, O: Offence<FarmerPublicKey>> ReportOffence<FarmerPublicKey, O> for Pallet<T> {
+impl<T: Config, O: Offence<PublicKey>> ReportOffence<PublicKey, O> for Pallet<T> {
     fn report_offence(offence: O) -> Result<(), OffenceError> {
         let offenders = offence.offenders();
         let time_slot = offence.time_slot();
@@ -133,7 +133,7 @@ impl<T: Config, O: Offence<FarmerPublicKey>> ReportOffence<FarmerPublicKey, O> f
         Ok(())
     }
 
-    fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &O::TimeSlot) -> bool {
+    fn is_known_offence(offenders: &[PublicKey], time_slot: &O::TimeSlot) -> bool {
         let any_unknown = offenders.iter().any(|offender| {
             let report_id = Self::report_id::<O>(time_slot, offender);
             !<Reports<T>>::contains_key(report_id)
@@ -147,18 +147,18 @@ impl<T: Config> Pallet<T> {
     /// Compute the ID for the given report properties.
     ///
     /// The report id depends on the offence kind, time slot and the id of offender.
-    fn report_id<O: Offence<FarmerPublicKey>>(
+    fn report_id<O: Offence<PublicKey>>(
         time_slot: &O::TimeSlot,
-        offender: &FarmerPublicKey,
+        offender: &PublicKey,
     ) -> ReportIdOf<T> {
         (O::ID, time_slot.encode(), offender).using_encoded(T::Hashing::hash)
     }
 
     /// Triages the offence report and returns the set of offenders that was involved in unique
     /// reports along with the list of the concurrent offences.
-    fn triage_offence_report<O: Offence<FarmerPublicKey>>(
+    fn triage_offence_report<O: Offence<PublicKey>>(
         time_slot: &O::TimeSlot,
-        offenders: Vec<FarmerPublicKey>,
+        offenders: Vec<PublicKey>,
     ) -> Option<TriageOutcome> {
         let mut storage = ReportIndexStorage::<T, O>::load(time_slot);
 
@@ -195,7 +195,7 @@ impl<T: Config> Pallet<T> {
 
 struct TriageOutcome {
     /// Other reports for the same report kinds.
-    concurrent_offenders: Vec<OffenceDetails<FarmerPublicKey>>,
+    concurrent_offenders: Vec<OffenceDetails<PublicKey>>,
 }
 
 /// An auxiliary struct for working with storage of indexes localized for a specific offence
@@ -204,13 +204,13 @@ struct TriageOutcome {
 /// This struct is responsible for aggregating storage writes and the underlying storage should not
 /// accessed directly meanwhile.
 #[must_use = "The changes are not saved without called `save`"]
-struct ReportIndexStorage<T: Config, O: Offence<FarmerPublicKey>> {
+struct ReportIndexStorage<T: Config, O: Offence<PublicKey>> {
     opaque_time_slot: OpaqueTimeSlot,
     concurrent_reports: Vec<ReportIdOf<T>>,
     same_kind_reports: Vec<(O::TimeSlot, ReportIdOf<T>)>,
 }
 
-impl<T: Config, O: Offence<FarmerPublicKey>> ReportIndexStorage<T, O> {
+impl<T: Config, O: Offence<PublicKey>> ReportIndexStorage<T, O> {
     /// Preload indexes from the storage for the specific `time_slot` and the kind of the offence.
     fn load(time_slot: &O::TimeSlot) -> Self {
         let opaque_time_slot = time_slot.encode();

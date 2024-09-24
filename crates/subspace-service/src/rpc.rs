@@ -39,11 +39,11 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
@@ -102,7 +102,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + mmr_rpc::MmrRuntimeApi<Block, <Block as sp_runtime::traits::Block>::Hash, BlockNumber>
         + ObjectsApi<Block>,
     P: TransactionPool + 'static,

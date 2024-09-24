@@ -17,10 +17,7 @@
 //! Test utilities
 
 use crate::equivocation::EquivocationHandler;
-use crate::{
-    self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, FarmerPublicKey,
-    NormalEraChange,
-};
+use crate::{self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, NormalEraChange};
 use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
 use futures::executor::block_on;
@@ -28,10 +25,7 @@ use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
-use sp_consensus_subspace::{
-    FarmerSignature, KzgExtension, PosExtension, PotExtension, SignedVote, Vote,
-};
-use sp_core::crypto::UncheckedFrom;
+use sp_consensus_subspace::{KzgExtension, PosExtension, PotExtension, SignedVote, Vote};
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _};
@@ -47,8 +41,8 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
-    RecordedHistorySegment, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber,
-    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
+    RecordedHistorySegment, RewardSignature, SectorId, SegmentCommitment, SegmentHeader,
+    SegmentIndex, SlotNumber, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
@@ -197,7 +191,7 @@ pub fn go_to_block(
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            public_key: PublicKey::from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
             history_size: HistorySize::from(SegmentIndex::ZERO),
@@ -231,7 +225,7 @@ pub fn progress_to_block(
 
 pub fn make_pre_digest(
     slot: Slot,
-    solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
+    solution: Solution<<Test as frame_system::Config>::AccountId>,
 ) -> Digest {
     let log = DigestItem::subspace_pre_digest(&PreDigest::V0 {
         slot,
@@ -295,14 +289,14 @@ pub fn generate_equivocation_proof(
         Scalar::from(&chunk_bytes)
     };
 
-    let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+    let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let make_header = |piece_offset, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
-                public_key: public_key.clone(),
+                public_key,
                 reward_address,
                 sector_index: 0,
                 history_size: HistorySize::from(SegmentIndex::ZERO),
@@ -324,7 +318,7 @@ pub fn generate_equivocation_proof(
     // digest item
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
-        let signature = FarmerSignature::unchecked_from(
+        let signature = RewardSignature::from(
             keypair
                 .sign(
                     schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)
@@ -495,7 +489,7 @@ pub fn create_signed_vote(
             parent_hash,
             slot,
             solution: Solution {
-                public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                public_key: PublicKey::from(keypair.public.to_bytes()),
                 reward_address: solution.reward_address,
                 sector_index: solution.sector_index,
                 history_size: solution.history_size,
@@ -510,7 +504,7 @@ pub fn create_signed_vote(
             future_proof_of_time,
         };
 
-        let signature = FarmerSignature::unchecked_from(
+        let signature = RewardSignature::from(
             keypair
                 .sign(reward_signing_context.bytes(vote.hash().as_ref()))
                 .to_bytes(),

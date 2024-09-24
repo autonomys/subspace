@@ -20,6 +20,7 @@ scale-info = { version = "2.11.2", default-features = false, features = ["derive
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
+subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
@@ -36,5 +37,6 @@ std = [
     "sp-consensus-subspace/std",
     "sp-runtime/std",
     "sp-std/std",
+    "subspace-core-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]

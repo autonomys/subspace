@@ -32,10 +32,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
-    SubspaceJustification,
-};
+use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{DigestItem, Justifications};
 use std::iter;
@@ -45,7 +42,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::available_parallelism;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use tokio::sync::Semaphore;
@@ -91,7 +88,7 @@ struct CheckedHeader<H> {
     /// Includes the digest item that encoded the seal.
     pre_header: H,
     /// Pre-digest
-    pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    pre_digest: PreDigest<PublicKey>,
     /// Seal (signature)
     seal: DigestItem,
 }
@@ -163,7 +160,7 @@ where
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
     Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     /// Create new instance
@@ -237,11 +234,7 @@ where
     async fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
-        subspace_digest_items: SubspaceDigestItems<
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >,
+        subspace_digest_items: SubspaceDigestItems<PublicKey>,
         full_pot_verification: bool,
         justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header>, VerificationError<Block::Header>> {
@@ -367,8 +360,8 @@ where
         // Verify that block is signed properly
         if check_reward_signature(
             pre_hash.as_ref(),
-            &RewardSignature::from(&signature),
-            &PublicKey::from(&pre_digest.solution().public_key),
+            &signature,
+            &pre_digest.solution().public_key,
             &self.reward_signing_context,
         )
         .is_err()
@@ -377,7 +370,7 @@ where
         }
 
         // Verify that solution is valid
-        verify_solution::<PosTable, _, _>(
+        verify_solution::<PosTable, _>(
             pre_digest.solution(),
             slot.into(),
             verify_solution_params,
@@ -397,7 +390,7 @@ where
         slot_now: Slot,
         slot: Slot,
         header: &Block::Header,
-        author: &FarmerPublicKey,
+        author: &PublicKey,
         origin: &BlockOrigin,
     ) -> Result<(), String> {
         // don't report any equivocations during initial sync
@@ -464,7 +457,7 @@ where
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     fn verification_concurrency(&self) -> NonZeroUsize {
@@ -507,12 +500,8 @@ where
             block.header.digest().logs().len()
         );
 
-        let subspace_digest_items = extract_subspace_digest_items::<
-            Block::Header,
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >(&block.header)?;
+        let subspace_digest_items =
+            extract_subspace_digest_items::<Block::Header, PublicKey>(&block.header)?;
 
         // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
         // during block import anyway
