@@ -11131,15 +11131,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_arrays"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_bytes"
 version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12555,7 +12546,6 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "blst",
  "bytes",
  "criterion",
  "derive_more 1.0.0",
@@ -12570,7 +12560,6 @@ dependencies = [
  "rust-kzg-blst",
  "scale-info",
  "serde",
- "serde_arrays",
  "spin 0.9.8",
  "static_assertions",
  "tracing",
