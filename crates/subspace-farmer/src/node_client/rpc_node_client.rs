@@ -176,7 +176,7 @@ impl NodeClient for RpcNodeClient {
 impl NodeClientExt for RpcNodeClient {
     async fn last_segment_headers(
         &self,
-        limit: u64,
+        limit: u32,
     ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
         Ok(self
             .client

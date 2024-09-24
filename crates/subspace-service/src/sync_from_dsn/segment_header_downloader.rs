@@ -159,7 +159,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                             SegmentHeaderRequest::LastSegmentHeaders {
                                 // Request 2 top segment headers, accounting for situations when new
                                 // segment header was just produced and not all nodes have it
-                                segment_header_number: 2,
+                                limit: 2,
                             },
                         )
                         .await;
@@ -320,13 +320,14 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 return false;
             }
             Some(first_segment_header) => {
-                // We expect the reverse order
                 let last_segment_index = first_segment_header.segment_index();
 
-                (SegmentIndex::ZERO..=last_segment_index)
+                let mut segment_indices = (SegmentIndex::ZERO..=last_segment_index)
                     .rev()
                     .take(segment_headers.len())
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                segment_indices.reverse();
+                segment_indices
             }
         };
 
