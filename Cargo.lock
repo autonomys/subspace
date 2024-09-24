@@ -7801,41 +7801,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-feeds"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "subspace-core-primitives",
-]
-
-[[package]]
-name = "pallet-grandpa-finality-verifier"
-version = "0.1.0"
-dependencies = [
- "ed25519-dalek",
- "finality-grandpa",
- "frame-support",
- "frame-system",
- "log",
- "num-traits",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-application-crypto",
- "sp-consensus-grandpa",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-history-seeding"
 version = "0.1.0"
 dependencies = [
@@ -7889,22 +7854,6 @@ dependencies = [
  "sp-io",
  "sp-mmr-primitives",
  "sp-runtime",
-]
-
-[[package]]
-name = "pallet-object-store"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "hex",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "subspace-core-primitives",
 ]
 
 [[package]]
