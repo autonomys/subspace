@@ -553,7 +553,7 @@ where
                 // This will be sent to the farmer
                 RewardSigningInfo {
                     hash: hash.into(),
-                    public_key: *public_key,
+                    public_key,
                 }
             },
         );
