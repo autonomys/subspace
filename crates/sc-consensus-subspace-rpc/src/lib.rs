@@ -25,7 +25,6 @@ use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
 use jsonrpsee::PendingSubscriptionSink;
-use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::archiver::{
@@ -43,7 +42,7 @@ use schnellru::{ByLength, LruMap};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{ChainConstants, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{ChainConstants, SubspaceApi};
 use sp_core::H256;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::Block as BlockT;
@@ -534,18 +533,7 @@ where
                 let forward_signature_fut = async move {
                     if let Ok(reward_signature) = response_receiver.await {
                         if let Some(signature) = reward_signature.signature {
-                            match FarmerSignature::decode(&mut signature.encode().as_ref()) {
-                                Ok(signature) => {
-                                    let _ = signature_sender.unbounded_send(signature);
-                                }
-                                Err(error) => {
-                                    warn!(
-                                        "Failed to convert signature of length {}: {}",
-                                        signature.len(),
-                                        error
-                                    );
-                                }
-                            }
+                            let _ = signature_sender.unbounded_send(signature);
                         }
                     }
                 };

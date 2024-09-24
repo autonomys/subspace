@@ -51,8 +51,7 @@ use sp_consensus_subspace::consensus::{is_proof_of_time_valid, verify_solution};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerSignature, PotParameters, PotParametersChange, SignedVote, Vote,
-    WrappedPotOutput,
+    EquivocationProof, PotParameters, PotParametersChange, SignedVote, Vote, WrappedPotOutput,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
@@ -111,15 +110,15 @@ pub mod pallet {
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, FarmerSignature, SignedVote};
+    use sp_consensus_subspace::{EquivocationProof, SignedVote};
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, PublicKey, Randomness, SectorIndex,
-        SegmentHeader, SegmentIndex, SolutionRange,
+        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, PublicKey, Randomness,
+        RewardSignature, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -482,7 +481,7 @@ pub mod pallet {
         _,
         BTreeMap<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (T::AccountId, RewardSignature),
         >,
         ValueQuery,
     >;
@@ -493,7 +492,7 @@ pub mod pallet {
         _,
         BTreeMap<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (T::AccountId, RewardSignature),
         >,
     >;
 
@@ -905,7 +904,7 @@ impl<T: Config> Pallet<T> {
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, FarmerSignature),
+            (T::AccountId, RewardSignature),
         >::default());
 
         // If solution range was updated in previous block, set it as current.
@@ -1384,7 +1383,7 @@ impl<T: Config> Pallet<T> {
             .priority(TransactionPriority::MAX)
             // Should be included in the next block or block after that, but not later
             .longevity(2)
-            .and_provides(&signed_vote.signature)
+            .and_provides(signed_vote.signature)
             .build()
     }
 
@@ -1594,7 +1593,7 @@ fn check_vote<T: Config>(
 
     if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
-        &RewardSignature::from(&signed_vote.signature),
+        &signed_vote.signature,
         &solution.public_key,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
@@ -1784,10 +1783,7 @@ fn check_vote<T: Config>(
                 .expect("Always set during block initialization")
                 .insert(
                     key,
-                    (
-                        solution.reward_address.clone(),
-                        signed_vote.signature.clone(),
-                    ),
+                    (solution.reward_address.clone(), signed_vote.signature),
                 );
         });
     }

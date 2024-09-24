@@ -25,10 +25,7 @@ use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
-use sp_consensus_subspace::{
-    FarmerSignature, KzgExtension, PosExtension, PotExtension, SignedVote, Vote,
-};
-use sp_core::crypto::UncheckedFrom;
+use sp_consensus_subspace::{KzgExtension, PosExtension, PotExtension, SignedVote, Vote};
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _};
@@ -44,8 +41,8 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
-    RecordedHistorySegment, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber,
-    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
+    RecordedHistorySegment, RewardSignature, SectorId, SegmentCommitment, SegmentHeader,
+    SegmentIndex, SlotNumber, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
@@ -321,7 +318,7 @@ pub fn generate_equivocation_proof(
     // digest item
     let seal_header = |header: &mut Header| {
         let prehash = header.hash();
-        let signature = FarmerSignature::unchecked_from(
+        let signature = RewardSignature::from(
             keypair
                 .sign(
                     schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)
@@ -507,7 +504,7 @@ pub fn create_signed_vote(
             future_proof_of_time,
         };
 
-        let signature = FarmerSignature::unchecked_from(
+        let signature = RewardSignature::from(
             keypair
                 .sign(reward_signing_context.bytes(vote.hash().as_ref()))
                 .to_bytes(),

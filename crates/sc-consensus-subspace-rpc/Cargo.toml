@@ -17,7 +17,6 @@ async-oneshot = "0.5.9"
 futures = "0.3.29"
 futures-timer = "3.0.3"
 jsonrpsee = { version = "0.23.2", features = ["server", "macros"] }
-parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
 schnellru = "0.2.3"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }

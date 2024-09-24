@@ -35,8 +35,7 @@ use frame_system::{EventRecord, Phase};
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerSignature, PotExtension, SolutionRanges};
-use sp_core::crypto::UncheckedFrom;
+use sp_consensus_subspace::{PotExtension, SolutionRanges};
 use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
@@ -47,7 +46,9 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{PieceOffset, PotOutput, PublicKey, SegmentIndex, SolutionRange};
+use subspace_core_primitives::{
+    PieceOffset, PotOutput, PublicKey, RewardSignature, SegmentIndex, SolutionRange,
+};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
@@ -913,7 +914,7 @@ fn vote_bad_reward_signature() {
             SolutionRange::MAX,
         );
 
-        signed_vote.signature = FarmerSignature::unchecked_from(rand::random::<[u8; 64]>());
+        signed_vote.signature = RewardSignature::from(rand::random::<[u8; 64]>());
 
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
@@ -1412,7 +1413,7 @@ fn vote_equivocation_current_voters_duplicate() {
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (reward_address, signed_vote.signature),
             );
             map
         });
@@ -1433,7 +1434,7 @@ fn vote_equivocation_current_voters_duplicate() {
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (reward_address, RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1496,7 +1497,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (reward_address, signed_vote.signature),
             );
             map
         });
@@ -1517,7 +1518,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (reward_address, RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1559,7 +1560,7 @@ fn enabling_block_rewards_works() {
                     Scalar::default(),
                     Subspace::current_slot(),
                 ),
-                (2, FarmerSignature::unchecked_from([0; 64])),
+                (2, RewardSignature::from([0; 64])),
             );
             map
         });

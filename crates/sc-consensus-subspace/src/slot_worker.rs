@@ -55,7 +55,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{
-    FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi, SubspaceJustification, Vote,
+    PotNextSlotInput, SignedVote, SubspaceApi, SubspaceJustification, Vote,
 };
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One, Saturating, Zero};
@@ -158,7 +158,7 @@ pub struct RewardSigningNotification {
     /// Public key of the plot identity that should create signature.
     pub public_key: PublicKey,
     /// Sender that can be used to send signature for the header.
-    pub signature_sender: TracingUnboundedSender<FarmerSignature>,
+    pub signature_sender: TracingUnboundedSender<RewardSignature>,
 }
 
 /// Parameters for [`SubspaceSlotWorker`]
@@ -882,7 +882,7 @@ where
         &self,
         hash: H256,
         public_key: PublicKey,
-    ) -> Result<FarmerSignature, ConsensusError> {
+    ) -> Result<RewardSignature, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream", 100);
 
@@ -897,7 +897,7 @@ where
         while let Some(signature) = signature_receiver.next().await {
             if check_reward_signature(
                 hash.as_ref(),
-                &RewardSignature::from(&signature),
+                &signature,
                 &public_key,
                 &self.reward_signing_context,
             )

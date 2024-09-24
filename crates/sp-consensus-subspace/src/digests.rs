@@ -16,7 +16,7 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{ConsensusLog, FarmerSignature, PotParametersChange, SUBSPACE_ENGINE_ID};
+use crate::{ConsensusLog, PotParametersChange, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use log::trace;
 use sp_consensus_slots::Slot;
@@ -26,7 +26,7 @@ use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use sp_std::num::NonZeroU32;
 use subspace_core_primitives::{
-    PotOutput, PublicKey, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    PotOutput, PublicKey, RewardSignature, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
@@ -109,10 +109,10 @@ pub trait CompatibleDigestItem: Sized {
     fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>>;
 
     /// Construct a digest item which contains a Subspace seal.
-    fn subspace_seal(signature: FarmerSignature) -> Self;
+    fn subspace_seal(signature: RewardSignature) -> Self;
 
     /// If this item is a Subspace signature, return the signature.
-    fn as_subspace_seal(&self) -> Option<FarmerSignature>;
+    fn as_subspace_seal(&self) -> Option<RewardSignature>;
 
     /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
     /// parent block's slot and can change before slot for which block is produced
@@ -174,11 +174,11 @@ impl CompatibleDigestItem for DigestItem {
         self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
     }
 
-    fn subspace_seal(signature: FarmerSignature) -> Self {
+    fn subspace_seal(signature: RewardSignature) -> Self {
         Self::Seal(SUBSPACE_ENGINE_ID, signature.encode())
     }
 
-    fn as_subspace_seal(&self) -> Option<FarmerSignature> {
+    fn as_subspace_seal(&self) -> Option<RewardSignature> {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
@@ -418,11 +418,11 @@ impl From<Error> for String {
 
 /// Digest items extracted from a header into convenient form
 #[derive(Debug)]
-pub struct SubspaceDigestItems<RewardAddress, Signature> {
+pub struct SubspaceDigestItems<RewardAddress> {
     /// Pre-runtime digest
     pub pre_digest: PreDigest<RewardAddress>,
     /// Signature (seal) if present
-    pub signature: Option<Signature>,
+    pub signature: Option<RewardSignature>,
     /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
     /// parent block's slot and can change before slot for which block is produced
     pub pot_slot_iterations: NonZeroU32,
@@ -441,13 +441,12 @@ pub struct SubspaceDigestItems<RewardAddress, Signature> {
 }
 
 /// Extract the Subspace global randomness from the given header.
-pub fn extract_subspace_digest_items<Header, RewardAddress, Signature>(
+pub fn extract_subspace_digest_items<Header, RewardAddress>(
     header: &Header,
-) -> Result<SubspaceDigestItems<RewardAddress, Signature>, Error>
+) -> Result<SubspaceDigestItems<RewardAddress>, Error>
 where
     Header: HeaderT,
     RewardAddress: Decode,
-    Signature: Decode,
 {
     let mut maybe_pre_digest = None;
     let mut maybe_seal = None;
@@ -565,7 +564,7 @@ where
                     continue;
                 }
 
-                let seal = Signature::decode(&mut data.as_slice())
+                let seal = RewardSignature::decode(&mut data.as_slice())
                     .map_err(|error| Error::FailedToDecode(ErrorDigestType::Seal, error))?;
 
                 match maybe_seal {
@@ -702,7 +701,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Header number for which we are verifying the digests.
     pub number: NumberOf<Header>,
     /// Digests present in the header that corresponds to number above.
-    pub header_digests: &'a SubspaceDigestItems<PublicKey, FarmerSignature>,
+    pub header_digests: &'a SubspaceDigestItems<PublicKey>,
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
     /// Slot probability.

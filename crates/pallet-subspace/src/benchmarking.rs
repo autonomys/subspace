@@ -15,17 +15,16 @@ mod benchmarks {
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
     use frame_benchmarking::v2::*;
+    use frame_support::traits::Get;
     use frame_system::pallet_prelude::*;
     use frame_system::{Pallet as System, RawOrigin};
-    use sp_consensus_subspace::{EquivocationProof, FarmerSignature, SignedVote, Vote};
-    use sp_core::crypto::UncheckedFrom;
-    use sp_core::Get;
+    use sp_consensus_subspace::{EquivocationProof, SignedVote, Vote};
     use sp_runtime::traits::{Block, Header};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
     use subspace_core_primitives::{
         ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput, PublicKey,
-        SegmentHeader, SegmentIndex, Solution, SolutionRange,
+        RewardSignature, SegmentHeader, SegmentIndex, Solution, SolutionRange,
     };
 
     const SEED: u32 = 0;
@@ -114,7 +113,7 @@ mod benchmarks {
             proof_of_time: PotOutput::default(),
             future_proof_of_time: PotOutput::default(),
         };
-        let signature = FarmerSignature::from_bytes([2u8; 64]);
+        let signature = RewardSignature::from([2u8; 64]);
         let signed_vote = SignedVote {
             vote: unsigned_vote,
             signature,

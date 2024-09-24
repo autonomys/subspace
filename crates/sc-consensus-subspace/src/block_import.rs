@@ -46,9 +46,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
-};
+use sp_consensus_subspace::{PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::Justifications;
@@ -341,7 +339,7 @@ where
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
         root_plot_public_key: &Option<PublicKey>,
-        subspace_digest_items: &SubspaceDigestItems<PublicKey, FarmerSignature>,
+        subspace_digest_items: &SubspaceDigestItems<PublicKey>,
         justifications: &Option<Justifications>,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -384,11 +382,9 @@ where
         let parent_subspace_digest_items = if block_number.is_one() {
             None
         } else {
-            Some(extract_subspace_digest_items::<
-                _,
-                PublicKey,
-                FarmerSignature,
-            >(&parent_header)?)
+            Some(extract_subspace_digest_items::<_, PublicKey>(
+                &parent_header,
+            )?)
         };
 
         let correct_solution_range = if block_number.is_one() {

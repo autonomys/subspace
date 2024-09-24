@@ -37,7 +37,6 @@ use alloc::vec::Vec;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_consensus_slots::{Slot, SlotDuration};
-use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
@@ -50,7 +49,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, BlockHash, BlockNumber, HistorySize, PotCheckpoints, PotOutput, PotSeed, PublicKey,
     RewardSignature, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
-    SolutionRange, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
+    SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -61,30 +60,6 @@ use subspace_proof_of_space::PosTableType;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, VerifySolutionParams};
-
-/// Key type for Subspace pallet.
-const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
-
-// TODO: Remove this and replace with simple encodable wrappers of Schnorrkel's types
-mod app {
-    use super::KEY_TYPE;
-    use sp_application_crypto::{app_crypto, sr25519};
-
-    app_crypto!(sr25519, KEY_TYPE);
-}
-
-/// A Subspace farmer signature.
-pub type FarmerSignature = app::Signature;
-
-impl From<&FarmerSignature> for RewardSignature {
-    #[inline]
-    fn from(signature: &FarmerSignature) -> Self {
-        RewardSignature::from(
-            TryInto::<[u8; REWARD_SIGNATURE_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(signature))
-                .expect("Always correct length; qed"),
-        )
-    }
-}
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
@@ -274,7 +249,7 @@ pub struct SignedVote<Number, Hash, RewardAddress> {
     /// Farmer vote.
     pub vote: Vote<Number, Hash, RewardAddress>,
     /// Signature.
-    pub signature: FarmerSignature,
+    pub signature: RewardSignature,
 }
 
 fn find_pre_digest<Header, RewardAddress>(header: &Header) -> Option<PreDigest<RewardAddress>>
@@ -309,7 +284,7 @@ where
 
     check_reward_signature(
         pre_hash.as_ref(),
-        &RewardSignature::from(&seal),
+        &seal,
         offender,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     )

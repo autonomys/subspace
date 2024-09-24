@@ -32,9 +32,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    ChainConstants, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
-};
+use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{DigestItem, Justifications};
 use std::iter;
@@ -44,7 +42,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::available_parallelism;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use tokio::sync::Semaphore;
@@ -236,7 +234,7 @@ where
     async fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
-        subspace_digest_items: SubspaceDigestItems<PublicKey, FarmerSignature>,
+        subspace_digest_items: SubspaceDigestItems<PublicKey>,
         full_pot_verification: bool,
         justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header>, VerificationError<Block::Header>> {
@@ -362,7 +360,7 @@ where
         // Verify that block is signed properly
         if check_reward_signature(
             pre_hash.as_ref(),
-            &RewardSignature::from(&signature),
+            &signature,
             &pre_digest.solution().public_key,
             &self.reward_signing_context,
         )
@@ -503,9 +501,7 @@ where
         );
 
         let subspace_digest_items =
-            extract_subspace_digest_items::<Block::Header, PublicKey, FarmerSignature>(
-                &block.header,
-            )?;
+            extract_subspace_digest_items::<Block::Header, PublicKey>(&block.header)?;
 
         // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
         // during block import anyway
