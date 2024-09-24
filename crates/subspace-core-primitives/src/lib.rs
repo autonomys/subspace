@@ -78,9 +78,6 @@ pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
-/// Size of BLAKE3 hash output (in bytes).
-pub const BLAKE3_HASH_SIZE: usize = 32;
-
 /// BLAKE3 hash output transparent wrapper
 #[derive(
     Default,
@@ -92,7 +89,6 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
     PartialOrd,
     Hash,
     From,
-    Into,
     AsRef,
     AsMut,
     Deref,
@@ -104,7 +100,7 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; BLAKE3_HASH_SIZE]);
+pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
 
 impl fmt::Debug for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -138,9 +134,9 @@ impl FromHex for Blake3Hash {
     }
 }
 
-impl From<&[u8; BLAKE3_HASH_SIZE]> for Blake3Hash {
+impl From<&[u8; Self::SIZE]> for Blake3Hash {
     #[inline]
-    fn from(value: &[u8; BLAKE3_HASH_SIZE]) -> Self {
+    fn from(value: &[u8; Self::SIZE]) -> Self {
         Self(*value)
     }
 }
@@ -152,6 +148,18 @@ impl TryFrom<&[u8]> for Blake3Hash {
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(value.try_into()?))
     }
+}
+
+impl From<Blake3Hash> for [u8; Blake3Hash::SIZE] {
+    #[inline]
+    fn from(value: Blake3Hash) -> Self {
+        value.0
+    }
+}
+
+impl Blake3Hash {
+    /// Size of BLAKE3 hash output (in bytes).
+    pub const SIZE: usize = 32;
 }
 
 /// Type of randomness.
