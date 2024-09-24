@@ -10,7 +10,6 @@ use parity_scale_codec::{Decode, Encode};
 use rs_merkle::Hasher;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{BlakeTwo256, Hash};
-use subspace_core_primitives::Blake3Hash;
 
 /// Merkle tree using [`Blake2b256Algorithm`].
 pub type MerkleTree = rs_merkle::MerkleTree<Blake2b256Algorithm>;
@@ -40,9 +39,9 @@ impl Default for Blake2b256Algorithm {
 }
 
 impl Hasher for Blake2b256Algorithm {
-    type Hash = Blake3Hash;
+    type Hash = [u8; 32];
 
-    fn hash(data: &[u8]) -> Blake3Hash {
+    fn hash(data: &[u8]) -> Self::Hash {
         let mut hasher = Blake2b::new();
         hasher.update(data);
         hasher.finalize_fixed().into()
