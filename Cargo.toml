@@ -14,10 +14,6 @@ members = [
     "test/subspace-test-runtime",
     "test/subspace-test-service",
 ]
-exclude = [
-    # TODO: We need to figure out what to do with sp-lightclient before unlocking it again
-    "crates/sp-lightclient",
-]
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
 # that are suspected to be CPU-intensive, and that are unlikely to require debugging (as some of
