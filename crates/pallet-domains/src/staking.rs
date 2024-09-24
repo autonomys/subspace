@@ -131,7 +131,6 @@ pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub(crate) struct WithdrawalInBalance<DomainBlockNumber, Balance> {
-    pub(crate) domain_id: DomainId,
     pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
     pub(crate) amount_to_unlock: Balance,
     pub(crate) storage_fee_refund: Balance,
@@ -542,10 +541,10 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     };
 
     if let Some(WithdrawalInShares {
-        domain_epoch,
         unlock_at_confirmed_domain_block_number,
         shares,
         storage_fee_refund,
+        ..
     }) = withdrawal.withdrawal_in_shares.take()
     {
         let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
@@ -553,10 +552,8 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
             .total_withdrawal_amount
             .checked_add(&withdrawal_amount)
             .ok_or(Error::BalanceOverflow)?;
-        let (domain_id, _) = domain_epoch.deconstruct();
 
         let withdraw_in_balance = WithdrawalInBalance {
-            domain_id,
             unlock_at_confirmed_domain_block_number,
             amount_to_unlock: withdrawal_amount,
             storage_fee_refund,
@@ -977,40 +974,66 @@ pub(crate) fn do_unlock_funds<T: Config>(
     Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
         let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
         do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
-        let WithdrawalInBalance {
-            domain_id,
-            unlock_at_confirmed_domain_block_number,
-            amount_to_unlock,
-            storage_fee_refund,
-        } = withdrawal
-            .withdrawals
-            .pop_front()
-            .ok_or(Error::MissingWithdrawal)?;
+
+        ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
 
         let latest_confirmed_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
+            Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
+
+        let mut total_unlocked_amount: BalanceOf<T> = Zero::zero();
+        let mut total_storage_fee_refund: BalanceOf<T> = Zero::zero();
+        loop {
+            if withdrawal
+                .withdrawals
+                .front()
+                .map(|w| w.unlock_at_confirmed_domain_block_number > latest_confirmed_block_number)
+                .unwrap_or(true)
+            {
+                break;
+            }
+
+            let WithdrawalInBalance {
+                amount_to_unlock,
+                storage_fee_refund,
+                ..
+            } = withdrawal
+                .withdrawals
+                .pop_front()
+                .expect("Must not empty as checked above; qed");
+
+            // deduct the amount unlocked from total
+            withdrawal.total_withdrawal_amount = withdrawal
+                .total_withdrawal_amount
+                .checked_sub(&amount_to_unlock)
+                .ok_or(Error::BalanceUnderflow)?;
+
+            total_unlocked_amount = total_unlocked_amount
+                .checked_add(&amount_to_unlock)
+                .ok_or(Error::BalanceUnderflow)?;
+
+            total_storage_fee_refund = total_storage_fee_refund
+                .checked_add(&storage_fee_refund)
+                .ok_or(Error::BalanceUnderflow)?;
+        }
+
+        // There is withdrawal but none being processed meaning the first withdrawal's unlocke period
+        // not completed yet
         ensure!(
-            unlock_at_confirmed_domain_block_number <= latest_confirmed_block_number,
+            !total_unlocked_amount.is_zero() || !total_storage_fee_refund.is_zero(),
             Error::UnlockPeriodNotComplete
         );
-
-        // deduct the amount unlocked from total
-        withdrawal.total_withdrawal_amount = withdrawal
-            .total_withdrawal_amount
-            .checked_sub(&amount_to_unlock)
-            .ok_or(Error::BalanceUnderflow)?;
 
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
         let amount_to_release: BalanceOf<T> = {
             // if the amount to release is more than currently locked,
             // mint the diff and release the rest
-            if let Some(amount_to_mint) = amount_to_unlock.checked_sub(&locked_amount) {
+            if let Some(amount_to_mint) = total_unlocked_amount.checked_sub(&locked_amount) {
                 // mint any gains
                 mint_funds::<T>(&nominator_id, amount_to_mint)?;
                 locked_amount
             } else {
-                amount_to_unlock
+                total_unlocked_amount
             }
         };
 
@@ -1026,7 +1049,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            unlocked_amount: amount_to_unlock,
+            unlocked_amount: total_unlocked_amount,
         });
 
         // Release storage fund
@@ -1034,7 +1057,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         T::Currency::release(
             &storage_fund_hold_id,
             &nominator_id,
-            storage_fee_refund,
+            total_storage_fee_refund,
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
@@ -1042,7 +1065,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            storage_fee: storage_fee_refund,
+            storage_fee: total_storage_fee_refund,
         });
 
         // if there are no withdrawals, then delete the storage as well
