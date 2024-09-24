@@ -525,7 +525,7 @@ impl PublicKey {
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RewardSignature(
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; REWARD_SIGNATURE_LENGTH],
 );
 
 impl AsRef<[u8]> for RewardSignature {
