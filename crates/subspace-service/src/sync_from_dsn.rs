@@ -17,7 +17,7 @@ use sc_network::NetworkBlock;
 use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::error::Error;
 use std::fmt;
@@ -25,7 +25,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, PublicKey, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
@@ -115,7 +115,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     PG: DsnSyncPieceGetter + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(0);
@@ -281,7 +281,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     PG: DsnSyncPieceGetter,
 {
     let info = client.info();

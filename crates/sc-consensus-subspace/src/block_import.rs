@@ -47,7 +47,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
+    FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
@@ -170,7 +170,7 @@ pub enum Error<Header: HeaderT> {
     DifferentSegmentCommitment(SegmentIndex),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
-    FarmerInBlockList(FarmerPublicKey),
+    FarmerInBlockList(PublicKey),
     /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
@@ -310,7 +310,7 @@ where
     PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<Block::Header as HeaderT>::Number>,
@@ -340,12 +340,8 @@ where
         block_hash: Block::Hash,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        root_plot_public_key: &Option<FarmerPublicKey>,
-        subspace_digest_items: &SubspaceDigestItems<
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >,
+        root_plot_public_key: &Option<PublicKey>,
+        subspace_digest_items: &SubspaceDigestItems<PublicKey, FarmerSignature>,
         justifications: &Option<Justifications>,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -370,9 +366,7 @@ where
                 "Ignoring block with solution provided by farmer in block list",
             );
 
-            return Err(Error::FarmerInBlockList(
-                pre_digest.solution().public_key.clone(),
-            ));
+            return Err(Error::FarmerInBlockList(pre_digest.solution().public_key));
         }
 
         let parent_header = self
@@ -392,8 +386,7 @@ where
         } else {
             Some(extract_subspace_digest_items::<
                 _,
-                FarmerPublicKey,
-                FarmerPublicKey,
+                PublicKey,
                 FarmerSignature,
             >(&parent_header)?)
         };
@@ -477,7 +470,7 @@ where
         }
 
         let sector_id = SectorId::new(
-            PublicKey::from(&pre_digest.solution().public_key).hash(),
+            pre_digest.solution().public_key.hash(),
             pre_digest.solution().sector_index,
         );
 
@@ -515,7 +508,7 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
-        subspace_verification::verify_solution::<PosTable, _, _>(
+        subspace_verification::verify_solution::<PosTable, _>(
             pre_digest.solution(),
             // Slot was already checked during initial block verification
             pre_digest.slot().into(),
@@ -587,7 +580,7 @@ where
         + AuxStore
         + Send
         + Sync,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<Block::Header as HeaderT>::Number>,

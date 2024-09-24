@@ -674,7 +674,7 @@ pub type SectorIndex = u16;
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct Solution<PublicKey, RewardAddress> {
+pub struct Solution<RewardAddress> {
     /// Public key of the farmer that created the solution
     pub public_key: PublicKey,
     /// Address for receiving block reward
@@ -697,12 +697,10 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub proof_of_space: PosProof,
 }
 
-impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
+impl<RewardAddressA> Solution<RewardAddressA> {
     /// Transform solution with one reward address type into solution with another compatible
     /// reward address type.
-    pub fn into_reward_address_format<T, RewardAddressB>(
-        self,
-    ) -> Solution<PublicKey, RewardAddressB>
+    pub fn into_reward_address_format<T, RewardAddressB>(self) -> Solution<RewardAddressB>
     where
         RewardAddressA: Into<T>,
         T: Into<RewardAddressB>,
@@ -734,7 +732,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
     }
 }
 
-impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
+impl<RewardAddress> Solution<RewardAddress> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {

@@ -26,7 +26,7 @@ sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sc-transaction-pool-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 strum_macros = "0.26.4"
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "5626154d0781ac9a6ffd5a6207ed237f425ae631" }
 thiserror = "1.0.63"
 tracing = "0.1.40"
-

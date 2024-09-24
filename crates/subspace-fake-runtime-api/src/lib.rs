@@ -20,7 +20,7 @@ use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::weights::Weight;
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
+    ChainConstants, EquivocationProof, PotParameters, SignedVote, SolutionRanges,
 };
 use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
@@ -43,7 +43,7 @@ use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    HistorySize, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
+    HistorySize, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
 };
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Moment, Nonce};
@@ -130,7 +130,7 @@ sp_api::impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block, PublicKey> for Runtime {
         fn pot_parameters() -> PotParameters {
             unreachable!()
         }
@@ -146,12 +146,12 @@ sp_api::impl_runtime_apis! {
         }
 
         fn submit_vote_extrinsic(
-            _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
+            _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
             unreachable!()
         }
 
-        fn is_in_block_list(_farmer_public_key: &FarmerPublicKey) -> bool {
+        fn is_in_block_list(_farmer_public_key: &PublicKey) -> bool {
             unreachable!()
         }
 
@@ -175,7 +175,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+        fn root_plot_public_key() -> Option<PublicKey> {
             unreachable!()
         }
 

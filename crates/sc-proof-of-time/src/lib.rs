@@ -13,11 +13,11 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::{Slot, SlotDuration};
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::PotCheckpoints;
+use subspace_core_primitives::{PotCheckpoints, PublicKey};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, info, trace};
 
@@ -46,7 +46,7 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
 ) where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     SC: SelectChain<Block>,
     Worker: PotSlotWorker<Block> + SimpleSlotWorker<Block> + Send + Sync,
     SO: SyncOracle + Send,

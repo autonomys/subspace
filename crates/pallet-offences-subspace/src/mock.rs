@@ -25,10 +25,10 @@ use frame_support::derive_impl;
 use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::Weight;
 use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
-use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;
 use sp_runtime::{BuildStorage, Perbill};
 use std::cell::RefCell;
+use subspace_core_primitives::PublicKey;
 
 pub struct OnOffenceHandler;
 
@@ -81,7 +81,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 pub const KIND: [u8; 16] = *b"test_report_1234";
 
 /// Returns all offence details for the specific `kind` happened at the specific time slot.
-pub fn offence_reports(kind: Kind, time_slot: u128) -> Vec<OffenceDetails<FarmerPublicKey>> {
+pub fn offence_reports(kind: Kind, time_slot: u128) -> Vec<OffenceDetails<PublicKey>> {
     <crate::ConcurrentReportsIndex<Runtime>>::get(kind, time_slot.encode())
         .into_iter()
         .map(|report_id| {
@@ -111,6 +111,6 @@ impl<T: Clone> offence::Offence<T> for Offence<T> {
 }
 
 /// Create the report id for the given `offender` and `time_slot` combination.
-pub fn report_id(time_slot: u128, offender: FarmerPublicKey) -> H256 {
-    OffencesSubspace::report_id::<Offence<FarmerPublicKey>>(&time_slot, &offender)
+pub fn report_id(time_slot: u128, offender: PublicKey) -> H256 {
+    OffencesSubspace::report_id::<Offence<PublicKey>>(&time_slot, &offender)
 }

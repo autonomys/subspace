@@ -1,7 +1,6 @@
 use crate::digests::PreDigestPotInfo;
 use crate::{
-    is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerPublicKey,
-    FarmerSignature,
+    is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerSignature,
 };
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
@@ -9,18 +8,20 @@ use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
 use std::num::NonZeroU64;
-use subspace_core_primitives::{HistorySize, PieceOffset, Solution, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{
+    HistorySize, PieceOffset, PublicKey, Solution, REWARD_SIGNING_CONTEXT,
+};
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
-type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;
+type PreDigest = crate::PreDigest<()>;
 
 #[test]
 fn test_is_equivocation_proof_valid() {
     let keypair = Keypair::generate();
-    let offender = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+    let offender = PublicKey::from(keypair.public.to_bytes());
     let slot = Slot::from(1);
     let solution = Solution {
-        public_key: offender.clone(),
+        public_key: offender,
         reward_address: (),
         sector_index: 0,
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),

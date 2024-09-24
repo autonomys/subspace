@@ -26,13 +26,12 @@ use codec::{Decode, Encode};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, ReportOffence};
-use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::crypto::UncheckedFrom;
 use sp_runtime::Perbill;
+use subspace_core_primitives::PublicKey;
 
-fn generate_farmer_public_key() -> FarmerPublicKey {
+fn generate_farmer_public_key() -> PublicKey {
     let keypair = Keypair::generate();
-    FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
+    PublicKey::from(keypair.public.to_bytes())
 }
 
 #[test]
@@ -189,7 +188,7 @@ fn doesnt_deposit_event_for_dups() {
 
 #[test]
 fn reports_if_an_offence_is_dup() {
-    type TestOffence = Offence<FarmerPublicKey>;
+    type TestOffence = Offence<PublicKey>;
 
     new_test_ext().execute_with(|| {
         let time_slot = 42;
@@ -203,7 +202,7 @@ fn reports_if_an_offence_is_dup() {
             offenders,
         };
 
-        let mut test_offence = offence(time_slot, vec![farmer_0.clone()]);
+        let mut test_offence = offence(time_slot, vec![farmer_0]);
 
         // the report for farmer 0 at time slot 42 should not be a known
         // offence
@@ -232,7 +231,7 @@ fn reports_if_an_offence_is_dup() {
         );
 
         // after adding a new offender to the offence report
-        test_offence.offenders.push(farmer_1.clone());
+        test_offence.offenders.push(farmer_1);
 
         // it should not be a known offence anymore
         assert!(
@@ -274,11 +273,11 @@ fn should_properly_count_offences() {
 
         let offence1 = Offence {
             time_slot,
-            offenders: vec![farmer_1.clone()],
+            offenders: vec![farmer_1],
         };
         let offence2 = Offence {
             time_slot,
-            offenders: vec![farmer_2.clone()],
+            offenders: vec![farmer_2],
         };
         OffencesSubspace::report_offence(offence1).unwrap();
         with_on_offence_fractions(|f| {
@@ -319,19 +318,19 @@ fn should_properly_sort_offences() {
 
         let offence1 = Offence {
             time_slot,
-            offenders: vec![farmer_5.clone()],
+            offenders: vec![farmer_5],
         };
         let offence2 = Offence {
             time_slot,
-            offenders: vec![farmer_4.clone()],
+            offenders: vec![farmer_4],
         };
         let offence3 = Offence {
             time_slot: time_slot + 1,
-            offenders: vec![farmer_6.clone(), farmer_7.clone()],
+            offenders: vec![farmer_6, farmer_7],
         };
         let offence4 = Offence {
             time_slot: time_slot - 1,
-            offenders: vec![farmer_3.clone()],
+            offenders: vec![farmer_3],
         };
         OffencesSubspace::report_offence(offence1).unwrap();
         with_on_offence_fractions(|f| {

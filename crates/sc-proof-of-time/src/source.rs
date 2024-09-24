@@ -19,15 +19,14 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput,
-    SubspaceApi as SubspaceRuntimeApi,
+    ChainConstants, FarmerSignature, PotNextSlotInput, SubspaceApi as SubspaceRuntimeApi,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::PotCheckpoints;
+use subspace_core_primitives::{PotCheckpoints, PublicKey};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::sync::broadcast;
 use tracing::{debug, error, trace, warn};
@@ -73,7 +72,7 @@ impl<Block, Client, SO> PotSourceWorker<Block, Client, SO>
 where
     Block: BlockT,
     Client: BlockchainEvents<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceRuntimeApi<Block, PublicKey>,
     SO: SyncOracle + Clone + Send + Sync + 'static,
 {
     // TODO: Struct for arguments
@@ -341,8 +340,7 @@ where
     ) {
         let subspace_digest_items = match extract_subspace_digest_items::<
             Block::Header,
-            FarmerPublicKey,
-            FarmerPublicKey,
+            PublicKey,
             FarmerSignature,
         >(header)
         {

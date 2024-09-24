@@ -50,10 +50,9 @@ use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
-    Vote,
+    ChainConstants, EquivocationProof, PotParameters, SignedVote, SolutionRanges, Vote,
 };
-use sp_core::crypto::{ByteArray, KeyTypeId};
+use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -92,8 +91,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    crypto, HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SlotNumber, SolutionRange, U256,
+    crypto, HistorySize, Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader,
+    SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
@@ -1091,15 +1090,10 @@ fn extract_bundle(
 
 struct RewardAddress([u8; 32]);
 
-impl From<FarmerPublicKey> for RewardAddress {
+impl From<PublicKey> for RewardAddress {
     #[inline]
-    fn from(farmer_public_key: FarmerPublicKey) -> Self {
-        Self(
-            farmer_public_key
-                .as_slice()
-                .try_into()
-                .expect("Public key is always of correct size; qed"),
-        )
+    fn from(public_key: PublicKey) -> Self {
+        Self(*public_key)
     }
 }
 
@@ -1218,7 +1212,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block, PublicKey> for Runtime {
         fn pot_parameters() -> PotParameters {
             Subspace::pot_parameters()
         }
@@ -1234,7 +1228,7 @@ impl_runtime_apis! {
         }
 
         fn submit_vote_extrinsic(
-            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
+            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
             let SignedVote { vote, signature } = signed_vote;
             let Vote::V0 {
@@ -1259,7 +1253,7 @@ impl_runtime_apis! {
             })
         }
 
-        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
+        fn is_in_block_list(farmer_public_key: &PublicKey) -> bool {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             Subspace::is_in_block_list(farmer_public_key)
@@ -1289,7 +1283,7 @@ impl_runtime_apis! {
             }
         }
 
-        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+        fn root_plot_public_key() -> Option<PublicKey> {
             Subspace::root_plot_public_key()
         }
 

@@ -16,39 +16,36 @@
 
 //! Private implementation details of Subspace consensus digests.
 
-use crate::{
-    ConsensusLog, FarmerPublicKey, FarmerSignature, PotParametersChange, SUBSPACE_ENGINE_ID,
-};
+use crate::{ConsensusLog, FarmerSignature, PotParametersChange, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use log::trace;
 use sp_consensus_slots::Slot;
-use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{Header as HeaderT, One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use sp_std::num::NonZeroU32;
 use subspace_core_primitives::{
-    PotOutput, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    PotOutput, PublicKey, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
 #[derive(Debug, Clone, Encode, Decode)]
-pub enum PreDigest<PublicKey, RewardAddress> {
+pub enum PreDigest<RewardAddress> {
     /// Initial version of the pre-digest
     #[codec(index = 0)]
     V0 {
         /// Slot
         slot: Slot,
         /// Solution (includes PoR)
-        solution: Solution<PublicKey, RewardAddress>,
+        solution: Solution<RewardAddress>,
         /// Proof of time information
         pot_info: PreDigestPotInfo,
     },
 }
 
-impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
+impl<RewardAddress> PreDigest<RewardAddress> {
     /// Slot
     #[inline]
     pub fn slot(&self) -> Slot {
@@ -58,7 +55,7 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
 
     /// Solution (includes PoR)
     #[inline]
-    pub fn solution(&self) -> &Solution<PublicKey, RewardAddress> {
+    pub fn solution(&self) -> &Solution<RewardAddress> {
         let Self::V0 { solution, .. } = self;
         solution
     }
@@ -106,14 +103,10 @@ impl PreDigestPotInfo {
 /// A digest item which is usable with Subspace consensus.
 pub trait CompatibleDigestItem: Sized {
     /// Construct a digest item which contains a Subspace pre-digest.
-    fn subspace_pre_digest<AccountId: Encode>(
-        pre_digest: &PreDigest<FarmerPublicKey, AccountId>,
-    ) -> Self;
+    fn subspace_pre_digest<AccountId: Encode>(pre_digest: &PreDigest<AccountId>) -> Self;
 
     /// If this item is an Subspace pre-digest, return it.
-    fn as_subspace_pre_digest<AccountId: Decode>(
-        &self,
-    ) -> Option<PreDigest<FarmerPublicKey, AccountId>>;
+    fn as_subspace_pre_digest<AccountId: Decode>(&self) -> Option<PreDigest<AccountId>>;
 
     /// Construct a digest item which contains a Subspace seal.
     fn subspace_seal(signature: FarmerSignature) -> Self;
@@ -166,22 +159,18 @@ pub trait CompatibleDigestItem: Sized {
     fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
 
     /// Construct digest item that indicates update of root plot public key.
-    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self;
+    fn root_plot_public_key_update(root_plot_public_key: Option<PublicKey>) -> Self;
 
     /// If this item is a Subspace update of root plot public key, return it.
-    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>>;
+    fn as_root_plot_public_key_update(&self) -> Option<Option<PublicKey>>;
 }
 
 impl CompatibleDigestItem for DigestItem {
-    fn subspace_pre_digest<RewardAddress: Encode>(
-        pre_digest: &PreDigest<FarmerPublicKey, RewardAddress>,
-    ) -> Self {
+    fn subspace_pre_digest<RewardAddress: Encode>(pre_digest: &PreDigest<RewardAddress>) -> Self {
         Self::PreRuntime(SUBSPACE_ENGINE_ID, pre_digest.encode())
     }
 
-    fn as_subspace_pre_digest<RewardAddress: Decode>(
-        &self,
-    ) -> Option<PreDigest<FarmerPublicKey, RewardAddress>> {
+    fn as_subspace_pre_digest<RewardAddress: Decode>(&self) -> Option<PreDigest<RewardAddress>> {
         self.pre_runtime_try_to(&SUBSPACE_ENGINE_ID)
     }
 
@@ -304,14 +293,14 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self {
+    fn root_plot_public_key_update(root_plot_public_key: Option<PublicKey>) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
             ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key).encode(),
         )
     }
 
-    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>> {
+    fn as_root_plot_public_key_update(&self) -> Option<Option<PublicKey>> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key) = c {
                 Some(root_plot_public_key)
@@ -429,9 +418,9 @@ impl From<Error> for String {
 
 /// Digest items extracted from a header into convenient form
 #[derive(Debug)]
-pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
+pub struct SubspaceDigestItems<RewardAddress, Signature> {
     /// Pre-runtime digest
-    pub pre_digest: PreDigest<PublicKey, RewardAddress>,
+    pub pre_digest: PreDigest<RewardAddress>,
     /// Signature (seal) if present
     pub signature: Option<Signature>,
     /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
@@ -448,16 +437,15 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Enable solution range adjustment and Override solution range
     pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
     /// Root plot public key was updated
-    pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
+    pub root_plot_public_key_update: Option<Option<PublicKey>>,
 }
 
 /// Extract the Subspace global randomness from the given header.
-pub fn extract_subspace_digest_items<Header, PublicKey, RewardAddress, Signature>(
+pub fn extract_subspace_digest_items<Header, RewardAddress, Signature>(
     header: &Header,
-) -> Result<SubspaceDigestItems<PublicKey, RewardAddress, Signature>, Error>
+) -> Result<SubspaceDigestItems<RewardAddress, Signature>, Error>
 where
     Header: HeaderT,
-    PublicKey: Decode,
     RewardAddress: Decode,
     Signature: Decode,
 {
@@ -478,10 +466,8 @@ where
                     continue;
                 }
 
-                let pre_digest = PreDigest::<PublicKey, RewardAddress>::decode(
-                    &mut data.as_slice(),
-                )
-                .map_err(|error| Error::FailedToDecode(ErrorDigestType::PreDigest, error))?;
+                let pre_digest = PreDigest::<RewardAddress>::decode(&mut data.as_slice())
+                    .map_err(|error| Error::FailedToDecode(ErrorDigestType::PreDigest, error))?;
 
                 match maybe_pre_digest {
                     Some(_) => {
@@ -617,9 +603,7 @@ where
 
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
 /// function will return `Err` if none is found.
-pub fn extract_pre_digest<Header>(
-    header: &Header,
-) -> Result<PreDigest<FarmerPublicKey, FarmerPublicKey>, Error>
+pub fn extract_pre_digest<Header>(header: &Header) -> Result<PreDigest<PublicKey>, Error>
 where
     Header: HeaderT,
 {
@@ -629,8 +613,8 @@ where
         return Ok(PreDigest::V0 {
             slot: Slot::from(0),
             solution: Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from([0u8; 32]),
-                FarmerPublicKey::unchecked_from([0u8; 32]),
+                PublicKey::from([0u8; 32]),
+                PublicKey::from([0u8; 32]),
             ),
             pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
@@ -718,7 +702,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Header number for which we are verifying the digests.
     pub number: NumberOf<Header>,
     /// Digests present in the header that corresponds to number above.
-    pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
+    pub header_digests: &'a SubspaceDigestItems<PublicKey, FarmerSignature>,
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
     /// Slot probability.
@@ -733,7 +717,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
     /// Root plot public key.
     /// Value is updated when digest items contain an update.
-    pub maybe_root_plot_public_key: &'a mut Option<FarmerPublicKey>,
+    pub maybe_root_plot_public_key: &'a mut Option<PublicKey>,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
@@ -793,15 +777,15 @@ pub fn verify_next_digests<Header: HeaderT>(
         ));
     }
 
-    if let Some(updated_root_plot_public_key) = &header_digests.root_plot_public_key_update {
+    if let Some(updated_root_plot_public_key) = header_digests.root_plot_public_key_update {
         match updated_root_plot_public_key {
             Some(updated_root_plot_public_key) => {
                 if number.is_one()
                     && root_plot_public_key.is_none()
-                    && &header_digests.pre_digest.solution().public_key
+                    && header_digests.pre_digest.solution().public_key
                         == updated_root_plot_public_key
                 {
-                    root_plot_public_key.replace(updated_root_plot_public_key.clone());
+                    root_plot_public_key.replace(updated_root_plot_public_key);
                 } else {
                     return Err(Error::NextDigestVerificationError(
                         ErrorDigestType::RootPlotPublicKeyUpdate,

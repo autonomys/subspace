@@ -14,7 +14,7 @@ use sc_transaction_pool_api::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainsApi;
 use sp_runtime::generic::BlockId;
@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use subspace_core_primitives::PublicKey;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
 
 /// Block hash type for a pool.
@@ -68,7 +69,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: TaggedTransactionQueue<Block> + SubspaceApi<Block, PublicKey>,
     DomainHeader: HeaderT,
 {
     fn new(
@@ -114,7 +115,7 @@ where
         + 'static,
     DomainHeader: HeaderT,
     Client::Api: TaggedTransactionQueue<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainHeader>,
 {
     type Block = Block;
@@ -232,7 +233,7 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainHeader>,
 {
     type Block = Block;
@@ -385,7 +386,7 @@ where
         + 'static,
     DomainHeader: HeaderT,
     Client::Api: TaggedTransactionQueue<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + DomainsApi<Block, DomainHeader>,
 {
     let pool_api = Arc::new(FullChainApiWrapper::new(

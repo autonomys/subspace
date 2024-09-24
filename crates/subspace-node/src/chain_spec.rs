@@ -24,13 +24,12 @@ use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
-use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::crypto::{Ss58Codec, UncheckedFrom};
+use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::Percent;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_core_primitives::PotKey;
+use subspace_core_primitives::{PotKey, PublicKey};
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
@@ -95,11 +94,11 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                 balances,
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
-                    allow_authoring_by: AllowAuthoringBy::RootFarmer(
-                        FarmerPublicKey::unchecked_from(hex_literal::hex!(
+                    allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
+                        hex_literal::hex!(
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
-                        )),
-                    ),
+                        ),
+                    )),
                     // TODO: Adjust once we bench PoT on faster hardware
                     // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
                     pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),

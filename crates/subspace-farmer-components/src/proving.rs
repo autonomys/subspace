@@ -188,7 +188,7 @@ where
     }
 }
 
-type MaybeSolution<RewardAddress> = Result<Solution<PublicKey, RewardAddress>, ProvingError>;
+type MaybeSolution<RewardAddress> = Result<Solution<RewardAddress>, ProvingError>;
 
 struct SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where

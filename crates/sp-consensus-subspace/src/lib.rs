@@ -50,7 +50,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, BlockHash, BlockNumber, HistorySize, PotCheckpoints, PotOutput, PotSeed, PublicKey,
     RewardSignature, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
-    SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
+    SolutionRange, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -81,20 +81,6 @@ impl From<&FarmerSignature> for RewardSignature {
     fn from(signature: &FarmerSignature) -> Self {
         RewardSignature::from(
             TryInto::<[u8; REWARD_SIGNATURE_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(signature))
-                .expect("Always correct length; qed"),
-        )
-    }
-}
-
-/// A Subspace farmer identifier. Necessarily equivalent to the schnorrkel public key used in
-/// the main Subspace module. If that ever changes, then this must, too.
-pub type FarmerPublicKey = app::Public;
-
-impl From<&FarmerPublicKey> for PublicKey {
-    #[inline]
-    fn from(pub_key: &FarmerPublicKey) -> Self {
-        PublicKey::from(
-            TryInto::<[u8; PUBLIC_KEY_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(pub_key))
                 .expect("Always correct length; qed"),
         )
     }
@@ -144,7 +130,7 @@ impl SubspaceJustification {
 }
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
-pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
+pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, PublicKey>;
 
 /// Next slot input for proof of time evaluation
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
@@ -233,7 +219,7 @@ enum ConsensusLog {
     EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
     /// Root plot public key was updated.
     #[codec(index = 6)]
-    RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
+    RootPlotPublicKeyUpdate(Option<PublicKey>),
 }
 
 /// Farmer vote.
@@ -250,7 +236,7 @@ pub enum Vote<Number, Hash, RewardAddress> {
         /// Slot at which vote was created.
         slot: Slot,
         /// Solution (includes PoR).
-        solution: Solution<FarmerPublicKey, RewardAddress>,
+        solution: Solution<RewardAddress>,
         /// Proof of time for this slot
         proof_of_time: PotOutput,
         /// Future proof of time
@@ -265,7 +251,7 @@ where
     RewardAddress: Encode,
 {
     /// Solution contained within.
-    pub fn solution(&self) -> &Solution<FarmerPublicKey, RewardAddress> {
+    pub fn solution(&self) -> &Solution<RewardAddress> {
         let Self::V0 { solution, .. } = self;
         solution
     }
@@ -291,9 +277,7 @@ pub struct SignedVote<Number, Hash, RewardAddress> {
     pub signature: FarmerSignature,
 }
 
-fn find_pre_digest<Header, RewardAddress>(
-    header: &Header,
-) -> Option<PreDigest<FarmerPublicKey, RewardAddress>>
+fn find_pre_digest<Header, RewardAddress>(header: &Header) -> Option<PreDigest<RewardAddress>>
 where
     Header: HeaderT,
     RewardAddress: Decode,
@@ -305,7 +289,7 @@ where
         .find_map(|log| log.as_subspace_pre_digest())
 }
 
-fn is_seal_signature_valid<Header>(mut header: Header, offender: &FarmerPublicKey) -> bool
+fn is_seal_signature_valid<Header>(mut header: Header, offender: &PublicKey) -> bool
 where
     Header: HeaderT,
 {
@@ -326,7 +310,7 @@ where
     check_reward_signature(
         pre_hash.as_ref(),
         &RewardSignature::from(&seal),
-        &PublicKey::from(offender),
+        offender,
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     )
     .is_ok()
@@ -498,13 +482,13 @@ impl ChainConstants {
 
 /// Wrapped solution for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
-pub struct WrappedSolution(Solution<FarmerPublicKey, ()>);
+pub struct WrappedSolution(Solution<()>);
 
-impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedSolution {
+impl<RewardAddress> From<&Solution<RewardAddress>> for WrappedSolution {
     #[inline]
-    fn from(solution: &Solution<FarmerPublicKey, RewardAddress>) -> Self {
+    fn from(solution: &Solution<RewardAddress>) -> Self {
         Self(Solution {
-            public_key: solution.public_key.clone(),
+            public_key: solution.public_key,
             reward_address: (),
             sector_index: solution.sector_index,
             history_size: solution.history_size,
@@ -624,14 +608,14 @@ pub trait Consensus {
             .0;
 
         match pos_table_type {
-            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
+            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _>(
                 &solution.0,
                 slot,
                 &params.0,
                 kzg,
             )
             .map_err(|error| error.to_string()),
-            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _, _>(
+            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _>(
                 &solution.0,
                 slot,
                 &params.0,
@@ -723,7 +707,7 @@ sp_api::decl_runtime_apis! {
         );
 
         /// Check if `farmer_public_key` is in block list (due to equivocation)
-        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
+        fn is_in_block_list(farmer_public_key: &PublicKey) -> bool;
 
         /// Size of the blockchain history
         fn history_size() -> HistorySize;
@@ -741,7 +725,7 @@ sp_api::decl_runtime_apis! {
         fn is_inherent(ext: &Block::Extrinsic) -> bool;
 
         /// Returns root plot public key in case block authoring is restricted.
-        fn root_plot_public_key() -> Option<FarmerPublicKey>;
+        fn root_plot_public_key() -> Option<PublicKey>;
 
         /// Whether solution range adjustment is enabled.
         fn should_adjust_solution_range() -> bool;

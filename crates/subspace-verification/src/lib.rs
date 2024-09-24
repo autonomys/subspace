@@ -178,15 +178,14 @@ pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
 /// success.
-pub fn verify_solution<'a, PosTable, FarmerPublicKey, RewardAddress>(
-    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
+pub fn verify_solution<'a, PosTable, RewardAddress>(
+    solution: &'a Solution<RewardAddress>,
     slot: SlotNumber,
     params: &'a VerifySolutionParams,
     kzg: &'a Kzg,
 ) -> Result<SolutionRange, Error>
 where
     PosTable: Table,
-    PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
         proof_of_time,
@@ -194,10 +193,7 @@ where
         piece_check_params,
     } = params;
 
-    let sector_id = SectorId::new(
-        PublicKey::from(&solution.public_key).hash(),
-        solution.sector_index,
-    );
+    let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
 
     let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);

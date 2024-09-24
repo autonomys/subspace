@@ -224,7 +224,7 @@ fn valid_header(
             .unwrap();
 
         let solution = Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            public_key: FarmerPublicKey::from_bytes(keypair.public.to_bytes()),
             reward_address: solution.reward_address,
             sector_index: solution.sector_index,
             history_size: solution.history_size,
@@ -292,7 +292,7 @@ fn seal_header(keypair: &Keypair, header: &mut Header) {
     let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
     let pre_hash = header.hash();
     let signature =
-        FarmerSignature::unchecked_from(keypair.sign(ctx.bytes(pre_hash.as_bytes())).to_bytes());
+        FarmerSignature::from_bytes(keypair.sign(ctx.bytes(pre_hash.as_bytes())).to_bytes());
     header
         .digest
         .logs
@@ -1332,7 +1332,7 @@ fn test_block_author_different_farmer() {
 
         let mut constants = default_test_constants();
         let keypair_allowed = Keypair::generate();
-        let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
+        let pub_key = FarmerPublicKey::from_bytes(keypair_allowed.public.to_bytes());
         let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
         let mut importer = HeaderImporter::new(store);
 
@@ -1358,7 +1358,7 @@ fn test_block_author_different_farmer() {
         let res = importer.import_header(header);
         assert_err!(
             res,
-            ImportError::IncorrectBlockAuthor(FarmerPublicKey::unchecked_from(
+            ImportError::IncorrectBlockAuthor(FarmerPublicKey::from_bytes(
                 keypair_disallowed.public.to_bytes()
             ))
         );
@@ -1372,7 +1372,7 @@ fn test_block_author_first_farmer() {
         let farmer_parameters = FarmerParameters::new();
 
         let mut constants = default_test_constants();
-        let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let pub_key = FarmerPublicKey::from_bytes(keypair.public.to_bytes());
         let (store, genesis_hash) = initialize_store(constants.clone(), true, None);
         let mut importer = HeaderImporter::new(store);
 
@@ -1415,7 +1415,7 @@ fn test_block_author_allow_any_farmer() {
         let farmer_parameters = FarmerParameters::new();
 
         let mut constants = default_test_constants();
-        let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let pub_key = FarmerPublicKey::from_bytes(keypair.public.to_bytes());
         let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
         let mut importer = HeaderImporter::new(store);
 
@@ -1456,7 +1456,7 @@ fn test_disallow_root_plot_public_key_override() {
 
         let mut constants = default_test_constants();
         let keypair_allowed = Keypair::generate();
-        let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
+        let pub_key = FarmerPublicKey::from_bytes(keypair_allowed.public.to_bytes());
         let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
         let mut importer = HeaderImporter::new(store);
 
@@ -1472,7 +1472,7 @@ fn test_disallow_root_plot_public_key_override() {
                 farmer_parameters: &farmer_parameters,
             });
         let keypair_disallowed = Keypair::generate();
-        let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());
+        let pub_key = FarmerPublicKey::from_bytes(keypair_disallowed.public.to_bytes());
         header
             .digest
             .logs

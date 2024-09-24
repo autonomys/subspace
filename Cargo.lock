@@ -7870,6 +7870,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -10732,6 +10733,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-runtime",
  "strum_macros 0.26.4",
+ "subspace-core-primitives",
  "substrate-prometheus-endpoint",
  "thiserror",
  "tracing",
@@ -13200,7 +13202,6 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
- "sp-application-crypto",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",

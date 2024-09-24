@@ -43,10 +43,7 @@ use schnellru::{ByLength, LruMap};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
-};
-use sp_core::crypto::ByteArray;
+use sp_consensus_subspace::{ChainConstants, FarmerSignature, SubspaceApi};
 use sp_core::H256;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::Block as BlockT;
@@ -263,8 +260,7 @@ where
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     #[allow(clippy::type_complexity)]
-    solution_response_senders:
-        Arc<Mutex<LruMap<SlotNumber, mpsc::Sender<Solution<PublicKey, PublicKey>>>>>,
+    solution_response_senders: Arc<Mutex<LruMap<SlotNumber, mpsc::Sender<Solution<PublicKey>>>>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -293,7 +289,7 @@ impl<Block, Client, SO, AS> SubspaceRpc<Block, Client, SO, AS>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
@@ -441,18 +437,12 @@ where
                     // into data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
                         while let Some(solution) = response_receiver.next().await {
-                            let public_key =
-                                FarmerPublicKey::from_slice(solution.public_key.as_ref())
-                                    .expect("Always correct length; qed");
-                            let reward_address =
-                                FarmerPublicKey::from_slice(solution.reward_address.as_ref())
-                                    .expect("Always correct length; qed");
-
+                            let public_key = solution.public_key;
                             let sector_index = solution.sector_index;
 
                             let solution = Solution {
-                                public_key: public_key.clone(),
-                                reward_address,
+                                public_key,
+                                reward_address: solution.reward_address,
                                 sector_index,
                                 history_size: solution.history_size,
                                 piece_offset: solution.piece_offset,
@@ -575,10 +565,7 @@ where
                 // This will be sent to the farmer
                 RewardSigningInfo {
                     hash: hash.into(),
-                    public_key: public_key
-                        .as_slice()
-                        .try_into()
-                        .expect("Public key is always 32 bytes; qed"),
+                    public_key: *public_key,
                 }
             },
         );

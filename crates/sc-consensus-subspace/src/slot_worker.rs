@@ -55,10 +55,8 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi,
-    SubspaceJustification, Vote,
+    FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi, SubspaceJustification, Vote,
 };
-use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One, Saturating, Zero};
 use sp_runtime::{DigestItem, Justification, Justifications};
@@ -150,7 +148,7 @@ pub struct NewSlotNotification {
     /// New slot information.
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: mpsc::Sender<Solution<FarmerPublicKey, FarmerPublicKey>>,
+    pub solution_sender: mpsc::Sender<Solution<PublicKey>>,
 }
 /// Notification with a hash that needs to be signed to receive reward and sender for signature.
 #[derive(Debug, Clone)]
@@ -158,7 +156,7 @@ pub struct RewardSigningNotification {
     /// Hash to be signed.
     pub hash: H256,
     /// Public key of the plot identity that should create signature.
-    pub public_key: FarmerPublicKey,
+    pub public_key: PublicKey,
     /// Sender that can be used to send signature for the header.
     pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }
@@ -230,7 +228,7 @@ where
     segment_headers_store: SegmentHeadersStore<AS>,
     /// Solution receivers for challenges that were sent to farmers and expected to be received
     /// eventually
-    pending_solutions: BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>,
+    pending_solutions: BTreeMap<Slot, mpsc::Receiver<Solution<PublicKey>>>,
     /// Collection of PoT slots that can be retrieved later if needed by block production
     pot_checkpoints: BTreeMap<Slot, PotCheckpoints>,
     pot_verifier: PotVerifier,
@@ -242,7 +240,7 @@ impl<PosTable, Block, Client, E, SO, L, BS, AS> PotSlotWorker<Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     SO: SyncOracle + Send + Sync,
 {
     fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
@@ -321,7 +319,7 @@ where
         + HeaderMetadata<Block, Error = ClientError>
         + AuxStore
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error>,
     SO: SyncOracle + Send + Sync,
@@ -337,10 +335,7 @@ where
     type CreateProposer =
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
-    type Claim = (
-        PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        SubspaceJustification,
-    );
+    type Claim = (PreDigest<PublicKey>, SubspaceJustification);
     type AuxData = ();
 
     fn logging_target(&self) -> &'static str {
@@ -541,10 +536,7 @@ where
                 continue;
             }
 
-            let sector_id = SectorId::new(
-                PublicKey::from(&solution.public_key).hash(),
-                solution.sector_index,
-            );
+            let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
 
             let history_size = runtime_api.history_size(parent_hash).ok()?;
             let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
@@ -587,7 +579,7 @@ where
                 .segment_commitment(parent_hash, sector_expiration_check_segment_index)
                 .ok()?;
 
-            let solution_verification_result = verify_solution::<PosTable, _, _>(
+            let solution_verification_result = verify_solution::<PosTable, _>(
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {
@@ -698,7 +690,7 @@ where
         let signature = self
             .sign_reward(
                 H256::from_slice(header_hash.as_ref()),
-                &pre_digest.solution().public_key,
+                pre_digest.solution().public_key,
             )
             .await?;
 
@@ -782,7 +774,7 @@ where
         + HeaderMetadata<Block, Error = ClientError>
         + AuxStore
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error>,
     SO: SyncOracle + Send + Sync,
@@ -837,7 +829,7 @@ where
         &self,
         parent_header: &Block::Header,
         slot: Slot,
-        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
+        solution: Solution<PublicKey>,
         proof_of_time: PotOutput,
         future_proof_of_time: PotOutput,
     ) {
@@ -863,7 +855,7 @@ where
             future_proof_of_time,
         };
 
-        let signature = match self.sign_reward(vote.hash(), &solution.public_key).await {
+        let signature = match self.sign_reward(vote.hash(), solution.public_key).await {
             Ok(signature) => signature,
             Err(error) => {
                 error!(
@@ -889,7 +881,7 @@ where
     async fn sign_reward(
         &self,
         hash: H256,
-        public_key: &FarmerPublicKey,
+        public_key: PublicKey,
     ) -> Result<FarmerSignature, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
             tracing_unbounded("subspace_signature_signing_stream", 100);
@@ -898,7 +890,7 @@ where
             .reward_signing_notification_sender
             .notify(|| RewardSigningNotification {
                 hash,
-                public_key: public_key.clone(),
+                public_key,
                 signature_sender,
             });
 
@@ -906,7 +898,7 @@ where
             if check_reward_signature(
                 hash.as_ref(),
                 &RewardSignature::from(&signature),
-                &subspace_core_primitives::PublicKey::from(public_key),
+                &public_key,
                 &self.reward_signing_context,
             )
             .is_err()
@@ -923,7 +915,7 @@ where
 
         Err(ConsensusError::CannotSign(format!(
             "Farmer didn't sign reward. Key: {:?}",
-            public_key.to_raw_vec()
+            public_key
         )))
     }
 }
@@ -937,7 +929,7 @@ pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
 {
     client
         .runtime_api()

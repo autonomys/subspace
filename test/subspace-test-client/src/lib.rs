@@ -29,7 +29,7 @@ use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::slice;
@@ -120,7 +120,7 @@ async fn start_farming<PosTable, Client>(
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
 {
     let (plotting_result_sender, plotting_result_receiver) = futures::channel::oneshot::channel();
 
@@ -191,10 +191,7 @@ async fn start_farming<PosTable, Client>(
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address
-            let solution = Solution::<FarmerPublicKey, FarmerPublicKey>::decode(
-                &mut solution.encode().as_slice(),
-            )
-            .unwrap();
+            let solution = Solution::decode(&mut solution.encode().as_slice()).unwrap();
             let _ = solution_sender.try_send(solution);
         }
     }

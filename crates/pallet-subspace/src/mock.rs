@@ -17,10 +17,7 @@
 //! Test utilities
 
 use crate::equivocation::EquivocationHandler;
-use crate::{
-    self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, FarmerPublicKey,
-    NormalEraChange,
-};
+use crate::{self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, NormalEraChange};
 use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
 use futures::executor::block_on;
@@ -197,7 +194,7 @@ pub fn go_to_block(
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            public_key: PublicKey::from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
             history_size: HistorySize::from(SegmentIndex::ZERO),
@@ -231,7 +228,7 @@ pub fn progress_to_block(
 
 pub fn make_pre_digest(
     slot: Slot,
-    solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
+    solution: Solution<<Test as frame_system::Config>::AccountId>,
 ) -> Digest {
     let log = DigestItem::subspace_pre_digest(&PreDigest::V0 {
         slot,
@@ -295,14 +292,14 @@ pub fn generate_equivocation_proof(
         Scalar::from(&chunk_bytes)
     };
 
-    let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+    let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let make_header = |piece_offset, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
-                public_key: public_key.clone(),
+                public_key,
                 reward_address,
                 sector_index: 0,
                 history_size: HistorySize::from(SegmentIndex::ZERO),
@@ -495,7 +492,7 @@ pub fn create_signed_vote(
             parent_hash,
             slot,
             solution: Solution {
-                public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                public_key: PublicKey::from(keypair.public.to_bytes()),
                 reward_address: solution.reward_address,
                 sector_index: solution.sector_index,
                 history_size: solution.history_size,

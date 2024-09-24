@@ -64,7 +64,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification};
+use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
@@ -78,7 +78,9 @@ use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{
+    BlockNumber, PublicKey, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+};
 use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, info, trace, warn};
 
@@ -352,7 +354,7 @@ fn find_last_archived_block<Block, Client, AS>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore,
 {
     let Some(max_segment_index) = segment_headers_store.max_segment_index() else {
@@ -526,7 +528,7 @@ fn initialize_archiver<Block, Client, AS>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore,
 {
     let client_info = client.info();
@@ -776,7 +778,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
@@ -934,7 +936,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
