@@ -19,7 +19,7 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
-mod default_weights;
+pub mod weights;
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

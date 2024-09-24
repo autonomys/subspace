@@ -404,7 +404,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
     type DynamicCostOfStorage = DynamicCostOfStorage;
-    type WeightInfo = ();
+    type WeightInfo = pallet_transaction_fees::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_transaction_payment::Config for Runtime {

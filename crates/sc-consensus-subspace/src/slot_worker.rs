@@ -920,7 +920,6 @@ where
     }
 }
 
-// TODO: Replace with querying parent block header when breaking protocol
 /// Extract solution ranges for block and votes, given ID of the parent block.
 pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
     client: &Client,

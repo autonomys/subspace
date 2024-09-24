@@ -76,5 +76,5 @@ pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
 #[async_trait]
 pub trait NodeClientExt: NodeClient {
     /// Get the last segment headers.
-    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
+    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

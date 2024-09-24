@@ -27,7 +27,7 @@ use tracing::{debug, error, info, Instrument};
 /// How many segment headers can be requested at a time.
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
-const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
+const SEGMENT_HEADERS_LIMIT: u32 = MAX_SEGMENT_HEADERS_PER_REQUEST as u32;
 
 /// Configuration for network stack
 #[derive(Debug, Parser)]
@@ -164,7 +164,7 @@ where
                 async move {
                     let internal_result = match req {
                         SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
-                            if segment_indexes.len() as u64 > SEGMENT_HEADER_NUMBER_LIMIT {
+                            if segment_indexes.len() > SEGMENT_HEADERS_LIMIT as usize {
                                 debug!(
                                     "segment_indexes length exceed the limit: {} ",
                                     segment_indexes.len()
@@ -180,20 +180,16 @@ where
 
                             node_client.segment_headers(segment_indexes).await
                         }
-                        SegmentHeaderRequest::LastSegmentHeaders {
-                            mut segment_header_number,
-                        } => {
-                            if segment_header_number > SEGMENT_HEADER_NUMBER_LIMIT {
+                        SegmentHeaderRequest::LastSegmentHeaders { mut limit } => {
+                            if limit > SEGMENT_HEADERS_LIMIT {
                                 debug!(
-                                    %segment_header_number,
+                                    %limit,
                                     "Segment header number exceeded the limit."
                                 );
 
-                                segment_header_number = SEGMENT_HEADER_NUMBER_LIMIT;
+                                limit = SEGMENT_HEADERS_LIMIT;
                             }
-                            node_client
-                                .last_segment_headers(segment_header_number)
-                                .await
+                            node_client.last_segment_headers(limit).await
                         }
                     };
 
