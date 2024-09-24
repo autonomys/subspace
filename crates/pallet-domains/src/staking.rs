@@ -297,6 +297,7 @@ pub enum Error {
     UnconfirmedER,
     /// Invalid signature from Signing key owner.
     InvalidSigningKeySignature,
+    TooManayWithdrawal,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -801,8 +802,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawal| {
             if let Some(withdrawal) = maybe_withdrawal {
                 do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
+                if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
+                    return Err(Error::TooManayWithdrawal);
+                }
             }
-
             Ok(())
         })?;
 

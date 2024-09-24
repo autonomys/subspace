@@ -769,6 +769,7 @@ parameter_types! {
     pub const MaxInitialDomainAccounts: u32 = 10;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
     pub const BundleLongevity: u32 = 5;
+    pub const WithdrawalLimit: u32 = 32;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -861,6 +862,7 @@ impl pallet_domains::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
+    type WithdrawalLimit = WithdrawalLimit;
 }
 
 parameter_types! {
