@@ -419,7 +419,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
     type DynamicCostOfStorage = ConstBool<false>;
-    type WeightInfo = ();
+    type WeightInfo = pallet_transaction_fees::weights::SubstrateWeight<Runtime>;
 }
 
 pub struct TransactionByteFee;
