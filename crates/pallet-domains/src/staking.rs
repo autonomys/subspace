@@ -980,8 +980,8 @@ pub(crate) fn do_unlock_funds<T: Config>(
         let latest_confirmed_block_number =
             Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
 
-        let mut total_unlocked_amount: BalanceOf<T> = Zero::zero();
-        let mut total_storage_fee_refund: BalanceOf<T> = Zero::zero();
+        let mut total_unlocked_amount = BalanceOf::<T>::zero();
+        let mut total_storage_fee_refund = BalanceOf::<T>::zero();
         loop {
             if withdrawal
                 .withdrawals
