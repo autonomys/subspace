@@ -37,13 +37,6 @@ pub enum PieceGetterError {
         piece_index: PieceIndex,
         source: BoxError,
     },
-
-    /// Piece decoding error
-    #[error("Piece data decoding error: {source:?}")]
-    PieceDecoding {
-        #[from]
-        source: parity_scale_codec::Error,
-    },
 }
 
 /// Trait representing a way to get pieces from the DSN for object reconstruction

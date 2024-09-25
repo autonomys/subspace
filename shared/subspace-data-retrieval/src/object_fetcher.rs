@@ -15,6 +15,7 @@
 
 //! Fetching objects stored in the archived history of Subspace Network.
 
+use crate::piece_fetcher::download_pieces;
 use crate::piece_getter::{ObjectPieceGetter, PieceGetterError};
 use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -287,16 +288,20 @@ impl ObjectFetcher {
         drop(read_records_data);
 
         // Read more pieces until we have enough data
-        let remaining_piece_count = (data_length as usize - data.len()) / RawRecord::SIZE;
-        let remaining_piece_indexes = (next_source_piece_index..)
-            .filter(|i| i.is_source())
-            .take(remaining_piece_count);
-        self.read_pieces(remaining_piece_indexes, piece_index, piece_offset)
-            .await?
-            .into_iter()
-            .for_each(|piece| {
-                data.extend(piece.record().to_raw_record_chunks().flatten().copied())
-            });
+        if data_length as usize > data.len() {
+            let remaining_piece_count =
+                (data_length as usize - data.len()).div_ceil(RawRecord::SIZE);
+            let remaining_piece_indexes = (next_source_piece_index..)
+                .filter(|i| i.is_source())
+                .take(remaining_piece_count)
+                .collect::<Vec<_>>();
+            self.read_pieces(&remaining_piece_indexes)
+                .await?
+                .into_iter()
+                .for_each(|piece| {
+                    data.extend(piece.record().to_raw_record_chunks().flatten().copied())
+                });
+        }
 
         // Decode the data, and return it if it's valid
         let data = Vec::<u8>::decode(&mut data.as_slice())?;
@@ -457,17 +462,11 @@ impl ObjectFetcher {
         .await?)
     }
 
-    /// Concurrently read multiple pieces by their indexes
-    ///
-    /// The mapping piece index and offset are only used for error reporting.
-    // TODO: replace with a refactored method that fetches pieces
-    async fn read_pieces(
-        &self,
-        _piece_indexes: impl IntoIterator<Item = PieceIndex>,
-        _mapping_piece_index: PieceIndex,
-        _mapping_piece_offset: u32,
-    ) -> Result<Vec<Piece>, Error> {
-        unimplemented!("read_pieces will be implemented as part of a refactoring")
+    /// Concurrently read multiple pieces, and return them in the supplied order.
+    async fn read_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<Vec<Piece>, Error> {
+        download_pieces(piece_indexes, &self.piece_getter)
+            .await
+            .map_err(|source| Error::PieceGetterPermanent { source })
     }
 
     /// Read and return a single piece.
@@ -515,6 +514,7 @@ impl ObjectFetcher {
                 "Temporary error fetching piece during object assembling"
             );
 
+            // TODO: retry before failing
             Err(Error::PieceGetterTemporary {
                 piece_index: mapping_piece_index,
             })?
