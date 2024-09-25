@@ -15,11 +15,10 @@
 
 //! Fetching objects stored in the archived history of Subspace Network.
 
-use async_trait::async_trait;
+use crate::piece_getter::{ObjectPieceGetter, PieceGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
-use std::fmt;
 use std::sync::Arc;
-use subspace_archiving::archiver::{NewArchivedSegment, Segment, SegmentItem};
+use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{
     Piece, PieceIndex, RawRecord, RecordedHistorySegment, SegmentIndex,
 };
@@ -111,16 +110,16 @@ pub enum Error {
         source: SegmentGetterError,
     },
 
-    /// Piece getter error
-    #[error("Getting piece failed temporarily: {source:?}")]
-    PieceGetterTemporary {
+    /// Piece getter permanent error
+    #[error("Getting piece failed permanently from supplied provider: {source:?}")]
+    PieceGetterPermanent {
         #[from]
         source: PieceGetterError,
     },
 
-    /// Piece getter custom error type
-    #[error("Getting piece failed permanently: {source:?}")]
-    PieceGetterPermanent { source: BoxError },
+    /// Piece getter temporary error
+    #[error("Getting piece {piece_index:?} failed temporarily")]
+    PieceGetterTemporary { piece_index: PieceIndex },
 }
 
 /// Segment getter errors.
@@ -143,88 +142,6 @@ pub enum SegmentGetterError {
         #[from]
         source: PieceGetterError,
     },
-}
-
-/// Piece getter errors.
-#[derive(Debug, thiserror::Error)]
-pub enum PieceGetterError {
-    /// Piece not found
-    #[error("Piece index {piece_index} is not available from this provider")]
-    NotFound { piece_index: PieceIndex },
-
-    /// Piece decoding error
-    #[error("Piece data decoding error: {source:?}")]
-    PieceDecoding {
-        #[from]
-        source: parity_scale_codec::Error,
-    },
-}
-
-/// A type-erased error
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-/// Something that can be used to get decoded pieces by index
-#[async_trait]
-pub trait ObjectPieceGetter: fmt::Debug {
-    /// Get piece by index.
-    ///
-    /// Returns `Ok(None)` for temporary errors: the piece is not found, but immediately retrying
-    /// this provider might return it.
-    /// Returns `Err(_)` for permanent errors: this provider can't provide the piece at this time,
-    /// and another provider should be attempted.
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError>;
-}
-
-#[async_trait]
-impl<PG> ObjectPieceGetter for Arc<PG>
-where
-    PG: ObjectPieceGetter + Send + Sync + ?Sized,
-{
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        self.as_ref().get_piece(piece_index).await
-    }
-}
-
-// Convenience methods, mainly used in testing
-#[async_trait]
-impl ObjectPieceGetter for NewArchivedSegment {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        if piece_index.segment_index() == self.segment_header.segment_index() {
-            return Ok(Some(
-                self.pieces
-                    .pieces()
-                    .nth(piece_index.position() as usize)
-                    .expect("checked segment index in if; piece must be present; qed"),
-            ));
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
-}
-
-#[async_trait]
-impl ObjectPieceGetter for (PieceIndex, Piece) {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        if self.0 == piece_index {
-            return Ok(Some(self.1.clone()));
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
-}
-
-// TODO: impl for IntoIterator instead?
-#[async_trait]
-impl ObjectPieceGetter for Vec<(PieceIndex, Piece)> {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        for (index, piece) in self.iter() {
-            if *index == piece_index {
-                return Ok(Some(piece.clone()));
-            }
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
 }
 
 /// Object fetcher for the Subspace DSN.
@@ -593,7 +510,10 @@ impl ObjectFetcher {
                     "Permanent error fetching piece during object assembling"
                 );
 
-                Error::PieceGetterPermanent { source }
+                PieceGetterError::NotFoundWithError {
+                    piece_index,
+                    source,
+                }
             })?;
 
         if let Some(piece) = piece {
@@ -613,7 +533,7 @@ impl ObjectFetcher {
                 "Temporary error fetching piece during object assembling"
             );
 
-            Err(PieceGetterError::NotFound {
+            Err(Error::PieceGetterTemporary {
                 piece_index: mapping_piece_index,
             })?
         }
