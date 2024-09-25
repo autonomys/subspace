@@ -233,6 +233,7 @@ where
     Ok(imported_blocks)
 }
 
+/// Downloads and reconstructs blocks from a DSN segment, by concurrently downloading its pieces.
 pub(super) async fn download_and_reconstruct_blocks<PG>(
     segment_index: SegmentIndex,
     piece_getter: &PG,
