@@ -72,15 +72,13 @@ impl Reconstructor {
 
     /// Given a set of pieces of a segment of the archived history (any half of all pieces are
     /// required to be present, the rest will be recovered automatically due to use of erasure
-    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
-    /// corresponding block numbers.
+    /// coding if needed), reconstructs and returns the segment itself.
     ///
-    /// It is possible to start with any segment, but when next segment is pushed, it needs to
-    /// follow the previous one or else error will be returned.
-    pub fn add_segment(
-        &mut self,
+    /// Does not modify the internal state of the reconstructor.
+    pub fn reconstruct_segment(
+        &self,
         segment_pieces: &[Option<Piece>],
-    ) -> Result<ReconstructedContents, ReconstructorError> {
+    ) -> Result<Segment, ReconstructorError> {
         let mut segment_data = RecordedHistorySegment::new_boxed();
 
         if !segment_pieces
@@ -151,9 +149,24 @@ impl Reconstructor {
             }
         }
 
-        let Segment::V0 { items } =
-            Segment::decode(&mut AsRef::<[u8]>::as_ref(segment_data.as_ref()))
-                .map_err(ReconstructorError::SegmentDecoding)?;
+        let segment = Segment::decode(&mut AsRef::<[u8]>::as_ref(segment_data.as_ref()))
+            .map_err(ReconstructorError::SegmentDecoding)?;
+
+        Ok(segment)
+    }
+
+    /// Given a set of pieces of a segment of the archived history (any half of all pieces are
+    /// required to be present, the rest will be recovered automatically due to use of erasure
+    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
+    /// corresponding block numbers.
+    ///
+    /// It is possible to start with any segment, but when next segment is pushed, it needs to
+    /// follow the previous one or else error will be returned.
+    pub fn add_segment(
+        &mut self,
+        segment_pieces: &[Option<Piece>],
+    ) -> Result<ReconstructedContents, ReconstructorError> {
+        let Segment::V0 { items } = self.reconstruct_segment(segment_pieces)?;
 
         let mut reconstructed_contents = ReconstructedContents::default();
         let mut next_block_number = 0;
