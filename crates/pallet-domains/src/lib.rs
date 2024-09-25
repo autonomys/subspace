@@ -431,6 +431,12 @@ mod pallet {
 
         /// Hook to handle chain rewards.
         type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
+
+        /// The max number of withdrawals per nominator that may exist at any time,
+        /// once this limit is reached, the nominator need to unlock the withdrawal
+        /// before requesting new withdrawal.
+        #[pallet::constant]
+        type WithdrawalLimit: Get<u32>;
     }
 
     #[pallet::pallet]

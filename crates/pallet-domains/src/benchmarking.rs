@@ -7,8 +7,8 @@ use crate::block_tree::{prune_receipt, BlockTreeNode};
 use crate::bundle_storage_fund::refund_storage_fee;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{
-    do_convert_previous_epoch_deposits, do_mark_operators_as_slashed, do_reward_operators,
-    OperatorConfig, OperatorStatus, WithdrawStake,
+    do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
+    Error as StakingError, OperatorConfig, OperatorStatus, WithdrawStake,
 };
 use crate::staking_epoch::{
     do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking, do_slash_operator,
@@ -725,10 +725,10 @@ mod benchmarks {
     /// Benchmark `unlock_funds` extrinsic with the worst possible conditions:
     /// - Unlock a full withdrawal which also remove the deposit storage for the nominator
     #[benchmark]
-    fn unlock_funds() {
+    fn unlock_funds(w: Linear<1, { T::WithdrawalLimit::get() }>) {
         let nominator = account("nominator", 1, SEED);
         let minimum_nominator_stake = T::MinNominatorStake::get();
-        let staking_amount = T::MinOperatorStake::get();
+        let staking_amount = T::MinOperatorStake::get() * 3u32.into();
         T::Currency::set_balance(&nominator, staking_amount + T::MinNominatorStake::get());
 
         let domain_id = register_domain::<T>();
@@ -741,21 +741,31 @@ mod benchmarks {
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
-        // Withdraw all deposit
-        let withdraw_amount = {
-            let mut deposit =
-                Deposits::<T>::get(operator_id, nominator.clone()).expect("deposit must exist");
-            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)
-                .expect("convert must success");
-            deposit.known.shares
-        };
+        // Request `w` number of withdrawal in different epoch and withdraw all the stake in the last one
+        for _ in 1..w {
+            assert_ok!(Domains::<T>::withdraw_stake(
+                RawOrigin::Signed(nominator.clone()).into(),
+                operator_id,
+                WithdrawStake::Stake(T::MinOperatorStake::get() / w.into()),
+            ));
+            do_finalize_domain_epoch_staking::<T>(domain_id)
+                .expect("finalize domain staking should success");
+        }
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            WithdrawStake::Share(withdraw_amount),
+            WithdrawStake::All,
         ));
         do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
+
+        Withdrawals::<T>::try_mutate(operator_id, nominator.clone(), |maybe_withdrawal| {
+            let withdrawal = maybe_withdrawal.as_mut().unwrap();
+            do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
+            assert_eq!(withdrawal.withdrawals.len() as u32, w);
+            Ok::<(), StakingError>(())
+        })
+        .unwrap();
 
         // Update the `LatestConfirmedDomainExecutionReceipt` so unlock can success
         let confirmed_domain_block_number =
