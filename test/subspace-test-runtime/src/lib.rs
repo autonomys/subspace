@@ -59,9 +59,9 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
+    OpaqueBundles, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -98,8 +98,8 @@ use subspace_core_primitives::{
     SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    MIN_REPLICATION_FACTOR,
+    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
+    Signature, MIN_REPLICATION_FACTOR,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -330,35 +330,30 @@ impl pallet_timestamp::Config for Runtime {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Domains(DomainsHoldIdentifier),
-    Messenger(MessengerHoldIdentifier),
-}
+pub struct HoldIdentifierWrapper(HoldIdentifier);
 
-impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
     fn staking_staked() -> Self {
-        Self::Domains(DomainsHoldIdentifier::Staking)
+        Self(HoldIdentifier::DomainStaking)
     }
 
     fn domain_instantiation_id() -> Self {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation)
+        Self(HoldIdentifier::DomainInstantiation)
     }
 
     fn storage_fund_withdrawal() -> Self {
-        Self::Domains(DomainsHoldIdentifier::StorageFund)
+        Self(HoldIdentifier::DomainStorageFund)
     }
 }
 
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
     fn messenger_channel() -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel)
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
-impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = 1
-        + mem::variant_count::<DomainsHoldIdentifier>() as u32
-        + mem::variant_count::<MessengerHoldIdentifier>() as u32;
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -377,7 +372,7 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 pub struct CreditSupply;
@@ -635,7 +630,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
@@ -748,7 +743,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

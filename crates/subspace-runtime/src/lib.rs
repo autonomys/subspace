@@ -69,9 +69,9 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
-    DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
+    OpaqueBundle, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -106,8 +106,9 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
-    Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC, MAX_BLOCK_LENGTH,
-    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
+    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
+    SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -328,36 +329,30 @@ parameter_types! {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Domains(DomainsHoldIdentifier),
-    Messenger(MessengerHoldIdentifier),
-    Preimage,
-}
+pub struct HoldIdentifierWrapper(HoldIdentifier);
 
-impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
     fn staking_staked() -> Self {
-        Self::Domains(DomainsHoldIdentifier::Staking)
+        Self(HoldIdentifier::DomainStaking)
     }
 
     fn domain_instantiation_id() -> Self {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation)
+        Self(HoldIdentifier::DomainInstantiation)
     }
 
     fn storage_fund_withdrawal() -> Self {
-        Self::Domains(DomainsHoldIdentifier::StorageFund)
+        Self(HoldIdentifier::DomainStorageFund)
     }
 }
 
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
     fn messenger_channel() -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel)
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
-impl VariantCount for HoldIdentifier {
-    const VARIANT_COUNT: u32 = 1
-        + mem::variant_count::<DomainsHoldIdentifier>() as u32
-        + mem::variant_count::<MessengerHoldIdentifier>() as u32;
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -375,7 +370,7 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 parameter_types! {
@@ -465,7 +460,7 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 parameter_types! {
     pub PreimageBaseDeposit: Balance = 100 * SSC;
     pub PreimageByteDeposit: Balance = SSC;
-    pub const PreImageHoldReason: HoldIdentifier = HoldIdentifier::Preimage;
+    pub const PreImageHoldReason: HoldIdentifierWrapper = HoldIdentifierWrapper(HoldIdentifier::Preimage);
 }
 
 impl pallet_preimage::Config for Runtime {
@@ -695,7 +690,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
@@ -818,7 +813,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

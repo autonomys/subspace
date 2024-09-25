@@ -21,7 +21,7 @@ macro_rules! impl_runtime {
         use crate::mock::MockEndpoint;
         use crate::mock::{AccountId, Balance, MessageId, TestExternalities};
         use codec::{Decode, Encode};
-        use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
+        use domain_runtime_primitives::{MultiAccountId, TryConvertBack, HoldIdentifier};
         #[cfg(not(feature = "runtime-benchmarks"))]
         use frame_support::pallet_prelude::*;
         use frame_support::{derive_impl, parameter_types};
@@ -31,10 +31,8 @@ macro_rules! impl_runtime {
         use sp_messenger::messages::{ChainId, FeeModel};
         use sp_runtime::traits::Convert;
         use sp_runtime::BuildStorage;
-        use crate::HoldIdentifier;
         use scale_info::TypeInfo;
         use codec::MaxEncodedLen;
-        use sp_domains::MessengerHoldIdentifier;
         use frame_support::traits::VariantCount;
         use core::mem;
         use sp_runtime::Perbill;
@@ -68,16 +66,16 @@ macro_rules! impl_runtime {
             PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
         )]
         pub enum MockHoldIdentifer {
-            Messenger(MessengerHoldIdentifier)
+            Messenger(HoldIdentifier)
         }
 
         impl VariantCount for MockHoldIdentifer {
-            const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+            const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
         }
 
-        impl HoldIdentifier<$runtime> for MockHoldIdentifer {
+        impl crate::HoldIdentifier<$runtime> for MockHoldIdentifer {
             fn messenger_channel() -> Self {
-                MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel)
+                MockHoldIdentifer::Messenger(HoldIdentifier::MessengerChannel)
             }
         }
 

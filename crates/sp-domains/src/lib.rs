@@ -951,25 +951,6 @@ pub type OperatorId = u64;
 /// Channel identity.
 pub type ChannelId = sp_core::U256;
 
-/// Messenger specific hold identifier
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum MessengerHoldIdentifier {
-    /// Holds the current reserved balance for channel opening
-    Channel,
-}
-
-/// Domains specific Identifier for Balances holds.
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum DomainsHoldIdentifier {
-    Staking,
-    DomainInstantiation,
-    StorageFund,
-}
-
 /// Domains specific digest item.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub enum DomainDigestItem {

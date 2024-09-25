@@ -660,7 +660,7 @@ mod tests {
 
             assert_ok!(do_unlock_nominator::<Test>(operator_id, operator_account));
 
-            let hold_id = crate::tests::HoldIdentifier::staking_staked();
+            let hold_id = crate::tests::HoldIdentifierWrapper::staking_staked();
             for (nominator_id, mut expected_usable_balance) in expected_usable_balances {
                 expected_usable_balance += minimum_free_balance;
                 assert_eq!(Deposits::<Test>::get(operator_id, nominator_id), None);
