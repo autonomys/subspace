@@ -800,7 +800,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             if let Some(withdrawal) = maybe_withdrawal {
                 do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
                 if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
-                    return Err(Error::TooManayWithdrawal);
+                    return Err(Error::TooManyWithdrawals);
                 }
             }
             Ok(())
@@ -2723,7 +2723,7 @@ pub(crate) mod tests {
                     nominator_account,
                     WithdrawStake::Stake(amount_per_withdraw),
                 ),
-                StakingError::TooManayWithdrawal
+                StakingError::TooManyWithdrawals
             );
             Withdrawals::<Test>::try_mutate(operator_id, nominator_account, |maybe_withdrawal| {
                 let withdrawal = maybe_withdrawal.as_mut().unwrap();
