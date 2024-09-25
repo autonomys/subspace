@@ -4,6 +4,7 @@
 //! a small piece cache. It fully manages farming and plotting process, including listening to node
 //! notifications, producing solutions and singing rewards.
 
+pub mod direct_io_file;
 pub mod farming;
 pub mod identity;
 mod metrics;
@@ -13,7 +14,6 @@ pub mod plot_cache;
 mod plotted_sectors;
 mod plotting;
 mod reward_signing;
-pub mod unbuffered_io_file_windows;
 
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::farm::{
@@ -22,6 +22,7 @@ use crate::farm::{
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
+use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
@@ -37,9 +38,6 @@ use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
 };
 use crate::single_disk_farm::reward_signing::reward_signing;
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
@@ -75,8 +73,6 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
-#[cfg(not(windows))]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAtSync};
@@ -753,14 +749,8 @@ struct SingleDiskFarmInit {
     identity: Identity,
     single_disk_farm_info: SingleDiskFarmInfo,
     single_disk_farm_info_lock: Option<SingleDiskFarmInfoLock>,
-    #[cfg(not(windows))]
-    plot_file: Arc<File>,
-    #[cfg(windows)]
-    plot_file: Arc<UnbufferedIoFileWindows>,
-    #[cfg(not(windows))]
-    metadata_file: File,
-    #[cfg(windows)]
-    metadata_file: UnbufferedIoFileWindows,
+    plot_file: Arc<DirectIoFile>,
+    metadata_file: DirectIoFile,
     metadata_header: PlotMetadataHeader,
     target_sector_count: u16,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
@@ -993,17 +983,7 @@ impl SingleDiskFarm {
         let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
-                    #[cfg(windows)]
-                    {
-                        RayonFiles::open_with(
-                            &directory.join(Self::PLOT_FILE),
-                            UnbufferedIoFileWindows::open,
-                        )
-                    }
-                    #[cfg(not(windows))]
-                    {
-                        RayonFiles::open(&directory.join(Self::PLOT_FILE))
-                    }
+                    RayonFiles::open_with(&directory.join(Self::PLOT_FILE), DirectIoFile::open)
                 })
                 .map(|farming_plot| (farming_plot, farming_thread_pool))
         });
@@ -1474,19 +1454,7 @@ impl SingleDiskFarm {
         let target_sector_count = allocated_space_distribution.target_sector_count;
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
-        #[cfg(not(windows))]
-        let metadata_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(&metadata_file_path)?;
-
-        #[cfg(not(windows))]
-        metadata_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+        let metadata_file = DirectIoFile::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
         let expected_metadata_size = allocated_space_distribution.metadata_file_size;
@@ -1576,19 +1544,7 @@ impl SingleDiskFarm {
             Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
-        #[cfg(not(windows))]
-        let plot_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(directory.join(Self::PLOT_FILE))?;
-
-        #[cfg(not(windows))]
-        plot_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = DirectIoFile::open(&directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != allocated_space_distribution.plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1731,13 +1687,7 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
-        #[cfg(not(windows))]
-        let metadata_file = OpenOptions::new()
-            .read(true)
-            .open(directory.join(Self::METADATA_FILE))?;
-
-        #[cfg(windows)]
-        let metadata_file = UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = DirectIoFile::open(&directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
