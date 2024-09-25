@@ -296,7 +296,7 @@ pub enum Error {
     UnconfirmedER,
     /// Invalid signature from Signing key owner.
     InvalidSigningKeySignature,
-    TooManayWithdrawal,
+    TooManyWithdrawals,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
