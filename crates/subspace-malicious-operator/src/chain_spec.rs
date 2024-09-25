@@ -130,7 +130,6 @@ struct GenesisParams {
     enable_domains: bool,
     enable_dynamic_cost_of_storage: bool,
     enable_balance_transfers: bool,
-    enable_non_root_calls: bool,
     confirmation_depth_k: u32,
     rewards_config: RewardsConfig,
 }
@@ -179,7 +178,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    enable_non_root_calls: true,
                     confirmation_depth_k: 5,
                     rewards_config: RewardsConfig {
                         remaining_issuance: 1_000_000 * SSC,
@@ -215,7 +213,6 @@ fn subspace_genesis_config(
         enable_domains,
         enable_dynamic_cost_of_storage,
         enable_balance_transfers,
-        enable_non_root_calls,
         confirmation_depth_k,
         rewards_config,
     } = genesis_params;
@@ -241,7 +238,6 @@ fn subspace_genesis_config(
             enable_domains,
             enable_dynamic_cost_of_storage,
             enable_balance_transfers,
-            enable_non_root_calls,
             confirmation_depth_k,
             council_democracy_config_params:
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
