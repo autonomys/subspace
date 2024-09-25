@@ -1016,7 +1016,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
                 .ok_or(Error::BalanceOverflow)?;
         }
 
-        // There is withdrawal but none being processed meaning the first withdrawal's unlocke period
+        // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
         // not completed yet
         ensure!(
             !total_unlocked_amount.is_zero() || !total_storage_fee_refund.is_zero(),
