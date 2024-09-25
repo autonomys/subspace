@@ -6,47 +6,6 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionValidity, TransactionValidityError, ValidTransaction,
 };
 use sp_std::prelude::*;
-/// Controls non-root access to feeds and object store
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct CheckStorageAccess;
-
-impl SignedExtension for CheckStorageAccess {
-    const IDENTIFIER: &'static str = "CheckStorageAccess";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::RuntimeCall;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate(
-        &self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        // TODO: Find a way to work around `Sudo::key()`
-        //  (https://github.com/paritytech/polkadot-sdk/pull/3370) or remove this feature
-        // if RuntimeConfigs::enable_non_root_calls() || Some(who) == Sudo::key().as_ref() {
-        Ok(ValidTransaction::default())
-        // } else {
-        //     InvalidTransaction::BadSigner.into()
-        // }
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-}
 
 /// Disable specific pallets.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]

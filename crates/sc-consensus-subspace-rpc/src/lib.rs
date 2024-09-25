@@ -165,7 +165,7 @@ pub trait SubspaceRpcApi {
     ) -> Result<(), Error>;
 
     #[method(name = "subspace_lastSegmentHeaders")]
-    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
+    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
     /// Block/transaction archived object mappings subscription
     #[subscription(
@@ -553,7 +553,7 @@ where
                 // This will be sent to the farmer
                 RewardSigningInfo {
                     hash: hash.into(),
-                    public_key: *public_key,
+                    public_key,
                 }
             },
         );
@@ -788,7 +788,7 @@ where
             .collect())
     }
 
-    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
+    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error> {
         if limit as usize > MAX_SEGMENT_HEADERS_PER_REQUEST {
             error!(
                 "Request limit ({}) exceed the server limit: {} ",
@@ -806,11 +806,13 @@ where
             .max_segment_index()
             .unwrap_or(SegmentIndex::ZERO);
 
-        let last_segment_headers = (SegmentIndex::ZERO..=last_segment_index)
+        let mut last_segment_headers = (SegmentIndex::ZERO..=last_segment_index)
             .rev()
             .take(limit as usize)
             .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
             .collect::<Vec<_>>();
+
+        last_segment_headers.reverse();
 
         Ok(last_segment_headers)
     }

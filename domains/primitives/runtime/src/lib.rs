@@ -37,6 +37,7 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
+pub use subspace_runtime_primitives::HoldIdentifier;
 use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON, SLOT_PROBABILITY};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.

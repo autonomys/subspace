@@ -21,7 +21,7 @@ where
             reward_signing_info_notifications.next().await
         {
             // Multiple plots might have solved, only sign with correct one
-            if identity.public_key().to_bytes() != public_key {
+            if identity.public_key().to_bytes() != *public_key {
                 continue;
             }
 

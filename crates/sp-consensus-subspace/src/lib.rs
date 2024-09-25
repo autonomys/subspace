@@ -166,7 +166,6 @@ pub struct PotParametersChange {
     /// New number of slot iterations
     pub slot_iterations: NonZeroU32,
     /// Entropy that should be injected at this time
-    // TODO: Reconsider if the type is correct here
     pub entropy: Blake3Hash,
 }
 

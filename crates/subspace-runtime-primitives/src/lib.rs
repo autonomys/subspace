@@ -243,6 +243,17 @@ impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balan
     }
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum HoldIdentifier {
+    DomainStaking,
+    DomainInstantiation,
+    DomainStorageFund,
+    MessengerChannel,
+    Preimage,
+}
+
 #[cfg(feature = "testing")]
 pub mod tests_utils {
     use frame_support::dispatch::DispatchClass;

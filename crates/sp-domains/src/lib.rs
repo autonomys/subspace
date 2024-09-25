@@ -948,36 +948,8 @@ pub type EpochIndex = u32;
 /// Type representing operator ID
 pub type OperatorId = u64;
 
-/// Staking specific hold identifier
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum StakingHoldIdentifier {
-    /// Holds all the currently staked funds to an Operator.
-    Staked(OperatorId),
-}
-
 /// Channel identity.
 pub type ChannelId = sp_core::U256;
-
-/// Messenger specific hold identifier
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum MessengerHoldIdentifier {
-    /// Holds the current reserved balance for channel opening
-    Channel((ChainId, ChannelId)),
-}
-
-/// Domains specific Identifier for Balances holds.
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum DomainsHoldIdentifier {
-    Staking(StakingHoldIdentifier),
-    DomainInstantiation(DomainId),
-    StorageFund(OperatorId),
-}
 
 /// Domains specific digest item.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
