@@ -11,9 +11,9 @@ use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::single_disk_farm::direct_io_file::DirectIoFile;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
-use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmInfo, SingleDiskFarmSummary,
 };
@@ -209,10 +209,10 @@ where
                 )
             });
         }
-        if cfg!(windows) {
+        {
             let plot = RayonFiles::open_with(
                 &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                UnbufferedIoFileWindows::open,
+                DirectIoFile::open,
             )
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
@@ -424,10 +424,10 @@ where
                 )
             });
         }
-        if cfg!(windows) {
+        {
             let plot = RayonFiles::open_with(
                 &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                UnbufferedIoFileWindows::open,
+                DirectIoFile::open,
             )
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);

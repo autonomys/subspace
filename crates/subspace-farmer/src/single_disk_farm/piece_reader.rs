@@ -1,15 +1,12 @@
 //! Piece reader for single disk farm
 
 use crate::farm::{FarmError, PieceReader};
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::direct_io_file::DirectIoFile;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use std::collections::HashSet;
-#[cfg(not(windows))]
-use std::fs::File;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
@@ -54,8 +51,7 @@ impl DiskPieceReader {
     pub(super) fn new<PosTable>(
         public_key: PublicKey,
         pieces_in_sector: u16,
-        #[cfg(not(windows))] plot_file: Arc<File>,
-        #[cfg(windows)] plot_file: Arc<UnbufferedIoFileWindows>,
+        plot_file: Arc<DirectIoFile>,
         sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
         sectors_being_modified: Arc<AsyncRwLock<HashSet<SectorIndex>>>,

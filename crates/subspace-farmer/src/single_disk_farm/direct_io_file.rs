@@ -1,13 +1,11 @@
-//! Wrapper data structure for unbuffered I/O on Windows
+//! Wrapper data structure for direct/unbuffered I/O
 
 use parking_lot::Mutex;
 use static_assertions::const_assert_eq;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
-use subspace_farmer_components::file_ext::FileExt;
-#[cfg(windows)]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::ReadAtSync;
 
 /// 4096 is as a relatively safe size due to sector size on SSDs commonly being 512 or 4096 bytes
@@ -17,30 +15,30 @@ const MAX_READ_SIZE: usize = 1024 * 1024;
 
 const_assert_eq!(MAX_READ_SIZE % DISK_SECTOR_SIZE, 0);
 
-/// Wrapper data structure for unbuffered I/O on Windows
+/// Wrapper data structure for direct/unbuffered I/O
 #[derive(Debug)]
-pub struct UnbufferedIoFileWindows {
+pub struct DirectIoFile {
     file: File,
     physical_sector_size: usize,
     /// Scratch buffer of aligned memory for reads and writes
     scratch_buffer: Mutex<Vec<[u8; DISK_SECTOR_SIZE]>>,
 }
 
-impl ReadAtSync for UnbufferedIoFileWindows {
+impl ReadAtSync for DirectIoFile {
     #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         self.read_exact_at(buf, offset)
     }
 }
 
-impl ReadAtSync for &UnbufferedIoFileWindows {
+impl ReadAtSync for &DirectIoFile {
     #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         (*self).read_at(buf, offset)
     }
 }
 
-impl FileExt for UnbufferedIoFileWindows {
+impl FileExt for DirectIoFile {
     fn size(&self) -> io::Result<u64> {
         Ok(self.file.metadata()?.len())
     }
@@ -55,6 +53,11 @@ impl FileExt for UnbufferedIoFileWindows {
     }
 
     fn advise_sequential_access(&self) -> io::Result<()> {
+        // Ignore, not supported
+        Ok(())
+    }
+
+    fn disable_cache(&self) -> io::Result<()> {
         // Ignore, not supported
         Ok(())
     }
@@ -128,21 +131,22 @@ impl FileExt for UnbufferedIoFileWindows {
     }
 }
 
-impl UnbufferedIoFileWindows {
-    /// Open file at specified path for random unbuffered access on Windows for reads to prevent
-    /// huge memory usage (if file doesn't exist, it will be created).
+impl DirectIoFile {
+    /// Open file at specified path for direct/unbuffered I/O for reads (if file doesn't exist, it
+    /// will be created).
     ///
-    /// This abstraction is useless on other platforms and will just result in extra memory copies
+    /// This is especially important on Windows to prevent huge memory usage.
     pub fn open(path: &Path) -> io::Result<Self> {
         let mut open_options = OpenOptions::new();
-        #[cfg(windows)]
-        open_options.advise_unbuffered();
+        open_options.use_direct_io();
         let file = open_options
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
             .open(path)?;
+
+        file.disable_cache()?;
 
         // Physical sector size on many SSDs is smaller than 4096 and should improve performance
         let physical_sector_size = if file.read_at(&mut [0; 512], 512).is_ok() {
@@ -201,7 +205,7 @@ impl UnbufferedIoFileWindows {
         bytes_to_write: &[u8],
         offset: u64,
     ) -> io::Result<()> {
-        // This is guaranteed by `UnbufferedIoFileWindows::open()`
+        // This is guaranteed by constructor
         assert!(scratch_buffer.as_flattened().len() >= MAX_READ_SIZE);
 
         let aligned_offset =
@@ -230,9 +234,7 @@ impl UnbufferedIoFileWindows {
 
 #[cfg(test)]
 mod tests {
-    use crate::single_disk_farm::unbuffered_io_file_windows::{
-        UnbufferedIoFileWindows, MAX_READ_SIZE,
-    };
+    use crate::single_disk_farm::direct_io_file::{DirectIoFile, MAX_READ_SIZE};
     use rand::prelude::*;
     use std::fs;
     use subspace_farmer_components::file_ext::FileExt;
@@ -246,7 +248,7 @@ mod tests {
         thread_rng().fill(data.as_mut_slice());
         fs::write(&file_path, &data).unwrap();
 
-        let mut file = UnbufferedIoFileWindows::open(&file_path).unwrap();
+        let mut file = DirectIoFile::open(&file_path).unwrap();
 
         for override_physical_sector_size in [None, Some(4096)] {
             if let Some(physical_sector_size) = override_physical_sector_size {
