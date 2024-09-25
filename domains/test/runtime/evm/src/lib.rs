@@ -15,13 +15,15 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
     block_weights, maximum_block_length, maximum_domain_block_weight, ERR_BALANCE_OVERFLOW,
     ERR_NONCE_OVERFLOW, EXISTENTIAL_DEPOSIT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
-    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
+    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash,
+    HoldIdentifier, Nonce,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -50,7 +52,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
+use sp_domains::{DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage, FeeModel, MessageId,
@@ -348,7 +350,7 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 parameter_types! {
@@ -467,20 +469,15 @@ impl sp_subspace_mmr::MmrProofVerifier<MmrHash, NumberFor<Block>, Hash> for MmrP
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Messenger(MessengerHoldIdentifier),
+pub struct HoldIdentifierWrapper(HoldIdentifier);
+
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
-impl VariantCount for HoldIdentifier {
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 10;
-}
-
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn messenger_channel() -> Self {
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
@@ -532,7 +529,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = ();
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();

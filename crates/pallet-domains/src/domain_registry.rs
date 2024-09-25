@@ -147,6 +147,8 @@ pub struct DomainObject<Number, ReceiptHash, AccountId: Ord, Balance> {
     pub domain_config: DomainConfig<AccountId, Balance>,
     /// Domain runtime specific information.
     pub domain_runtime_info: DomainRuntimeInfo,
+    /// The amount of balance hold on the domain owner account
+    pub domain_instantiation_deposit: Balance,
 }
 
 pub(crate) fn can_instantiate_domain<T: Config>(
@@ -205,6 +207,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
+    let domain_instantiation_deposit = T::DomainInstantiationDeposit::get();
     let domain_id = NextDomainId::<T>::get();
     let runtime_obj = RuntimeRegistry::<T>::mutate(domain_config.runtime_id, |maybe_runtime_obj| {
         let mut runtime_object = maybe_runtime_obj
@@ -277,17 +280,18 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         genesis_receipt_hash,
         domain_config,
         domain_runtime_info,
+        domain_instantiation_deposit,
     };
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
     NextDomainId::<T>::set(next_domain_id);
 
-    // Lock up fund of the domain instance creator
+    // Lock up `domain_instantiation_deposit` amount of fund of the domain instance creator
     T::Currency::hold(
-        &T::HoldIdentifier::domain_instantiation_id(domain_id),
+        &T::HoldIdentifier::domain_instantiation_id(),
         &owner_account_id,
-        T::DomainInstantiationDeposit::get(),
+        domain_instantiation_deposit,
     )
     .map_err(|_| Error::BalanceFreeze)?;
 

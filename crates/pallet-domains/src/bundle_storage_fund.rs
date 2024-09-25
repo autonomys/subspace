@@ -27,6 +27,7 @@ pub enum Error {
     FailToDeposit,
     WithdrawAndHold,
     BalanceTransfer,
+    FailToWithdraw,
 }
 
 /// The type of system account being created.
@@ -184,7 +185,7 @@ pub fn withdraw_and_hold<T: Config>(
     }
 
     let storage_fund_acc = storage_fund_account::<T>(operator_id);
-    let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+    let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
     T::Currency::transfer_and_hold(
         &storage_fund_hold_id,
         &storage_fund_acc,
@@ -195,6 +196,27 @@ pub fn withdraw_and_hold<T: Config>(
         Fortitude::Force,
     )
     .map_err(|_| Error::WithdrawAndHold)
+}
+
+/// Transfer the given `withdraw_amount` of balance from the bundle storage fund to the
+/// given `dest_account`
+pub fn withdraw_to<T: Config>(
+    operator_id: OperatorId,
+    dest_account: &T::AccountId,
+    withdraw_amount: BalanceOf<T>,
+) -> Result<BalanceOf<T>, Error> {
+    if withdraw_amount.is_zero() {
+        return Ok(Zero::zero());
+    }
+
+    let storage_fund_acc = storage_fund_account::<T>(operator_id);
+    T::Currency::transfer(
+        &storage_fund_acc,
+        dest_account,
+        withdraw_amount,
+        Preservation::Expendable,
+    )
+    .map_err(|_| Error::FailToWithdraw)
 }
 
 /// Return the total balance of the bundle storage fund the given `operator_id`
