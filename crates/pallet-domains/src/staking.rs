@@ -544,7 +544,7 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
         unlock_at_confirmed_domain_block_number,
         shares,
         storage_fee_refund,
-        ..
+        domain_epoch: _,
     }) = withdrawal.withdrawal_in_shares.take()
     {
         let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
@@ -1009,11 +1009,11 @@ pub(crate) fn do_unlock_funds<T: Config>(
 
             total_unlocked_amount = total_unlocked_amount
                 .checked_add(&amount_to_unlock)
-                .ok_or(Error::BalanceUnderflow)?;
+                .ok_or(Error::BalanceOverflow)?;
 
             total_storage_fee_refund = total_storage_fee_refund
                 .checked_add(&storage_fee_refund)
-                .ok_or(Error::BalanceUnderflow)?;
+                .ok_or(Error::BalanceOverflow)?;
         }
 
         // There is withdrawal but none being processed meaning the first withdrawal's unlocke period
