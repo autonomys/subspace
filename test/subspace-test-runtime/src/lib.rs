@@ -1067,19 +1067,6 @@ fn extract_successful_bundles(
         .collect()
 }
 
-fn extract_bundle(
-    extrinsic: UncheckedExtrinsic,
-) -> Option<
-    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
-> {
-    match extrinsic.function {
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
-            Some(opaque_bundle)
-        }
-        _ => None,
-    }
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<PublicKey> for RewardAddress {
@@ -1317,23 +1304,6 @@ impl_runtime_apis! {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extract_bundle(
-            extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            extract_bundle(extrinsic)
-        }
-
-
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            extract_successful_bundles(domain_id, extrinsics)
-                .into_iter()
-                .map(|bundle| bundle.into_receipt())
-                .collect()
-        }
-
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1368,10 +1338,6 @@ impl_runtime_apis! {
 
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
             Domains::oldest_unconfirmed_receipt_number(domain_id)
-        }
-
-        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
-            Domains::domain_block_limit(domain_id)
         }
 
         fn domain_bundle_limit(domain_id: DomainId) -> Option<sp_domains::DomainBundleLimit> {

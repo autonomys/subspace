@@ -64,9 +64,9 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
-    OpaqueBundle, OperatorId, OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId,
-    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -2681,14 +2681,6 @@ impl<T: Config> Pallet<T> {
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
         LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
             .map(|er| (er.domain_block_number, er.domain_block_hash))
-    }
-
-    /// Returns the domain block limit of the given domain.
-    pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
-        DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
-            max_block_size: domain_obj.domain_config.max_block_size,
-            max_block_weight: domain_obj.domain_config.max_block_weight,
-        })
     }
 
     /// Returns the domain bundle limit of the given domain

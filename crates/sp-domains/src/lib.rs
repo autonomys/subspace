@@ -1071,14 +1071,6 @@ pub struct DomainInstanceData {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone)]
-pub struct DomainBlockLimit {
-    /// The max block size for the domain.
-    pub max_block_size: u32,
-    /// The max block weight for the domain.
-    pub max_block_weight: Weight,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
 pub struct DomainBundleLimit {
     /// The max bundle size for the domain.
     pub max_bundle_size: u32,
@@ -1491,15 +1483,6 @@ sp_api::decl_runtime_apis! {
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
 
-        /// Extract bundle from the extrinsic if the extrinsic is `submit_bundle`.
-        fn extract_bundle(extrinsic: Block::Extrinsic) -> Option<OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>>;
-
-        /// Extract the execution receipt stored successfully from the given extrinsics.
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
-
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
 
@@ -1526,9 +1509,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the block number of oldest unconfirmed execution receipt.
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<HeaderNumberFor<DomainHeader>>;
-
-        /// Returns the domain block limit of the given domain.
-        fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
 
         /// Returns the domain bundle limit of the given domain.
         fn domain_bundle_limit(domain_id: DomainId) -> Option<DomainBundleLimit>;
