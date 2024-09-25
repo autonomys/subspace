@@ -16,12 +16,14 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
 use crate::piece_getter::{ObjectPieceGetter, PieceGetterError};
+use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{
     Piece, PieceIndex, RawRecord, RecordedHistorySegment, SegmentIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, trace};
 
 /// Object fetching errors.
@@ -122,48 +124,34 @@ pub enum Error {
     PieceGetterTemporary { piece_index: PieceIndex },
 }
 
-/// Segment getter errors.
-#[derive(Debug, thiserror::Error)]
-pub enum SegmentGetterError {
-    /// Segment not found
-    #[error("Segment index {segment_index} is not available")]
-    NotFound { segment_index: PieceIndex },
-
-    /// Segment decoding error
-    #[error("Segment data decoding error: {source:?}")]
-    SegmentDecoding {
-        #[from]
-        source: parity_scale_codec::Error,
-    },
-
-    /// Piece getter error
-    #[error("Getting piece failed: {source:?}")]
-    PieceGetter {
-        #[from]
-        source: PieceGetterError,
-    },
-}
-
 /// Object fetcher for the Subspace DSN.
 pub struct ObjectFetcher {
     /// The piece getter used to fetch pieces.
     piece_getter: Arc<dyn ObjectPieceGetter + Send + Sync + 'static>,
+
+    /// The erasure coding configuration of those pieces.
+    erasure_coding: ErasureCoding,
 
     /// The maximum number of data bytes we'll read for a single object.
     max_object_len: usize,
 }
 
 impl ObjectFetcher {
-    /// Create a new object fetcher with the given piece getter.
+    /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
     /// up and returning an error, or `None` for no limit (`usize::MAX`).
-    pub fn new<PG>(piece_getter: PG, max_object_len: Option<usize>) -> Self
+    pub fn new<PG>(
+        piece_getter: PG,
+        erasure_coding: ErasureCoding,
+        max_object_len: Option<usize>,
+    ) -> Self
     where
         PG: ObjectPieceGetter + Send + Sync + 'static,
     {
         Self {
             piece_getter: Arc::new(piece_getter),
+            erasure_coding,
             max_object_len: max_object_len.unwrap_or(usize::MAX),
         }
     }
@@ -330,9 +318,7 @@ impl ObjectFetcher {
             piece_position_in_segment as usize * RawRecord::SIZE + piece_offset as usize;
 
         let mut data = {
-            let Segment::V0 { items } = self
-                .read_segment(segment_index, piece_index, piece_offset)
-                .await?;
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
             // Go through the segment until we reach the offset.
             // Unconditional progress is enum variant + compact encoding of number of elements
             let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
@@ -416,9 +402,8 @@ impl ObjectFetcher {
         // We don't attempt to calculate the number of segments needed, because it involves
         // headers and optional padding.
         loop {
-            let Segment::V0 { items } = self
-                .read_segment(segment_index + SegmentIndex::ONE, piece_index, piece_offset)
-                .await?;
+            let Segment::V0 { items } =
+                self.read_segment(segment_index + SegmentIndex::ONE).await?;
             for segment_item in items {
                 match segment_item {
                     SegmentItem::BlockContinuation { bytes, .. } => {
@@ -463,16 +448,13 @@ impl ObjectFetcher {
     }
 
     /// Read the whole segment by its index (just records, skipping witnesses).
-    ///
-    /// The mapping piece index and offset are only used for error reporting.
-    // TODO: replace with a refactored subspace-service::sync_from_dsn::import_blocks::download_and_reconstruct_blocks()
-    async fn read_segment(
-        &self,
-        _segment_index: SegmentIndex,
-        _mapping_piece_index: PieceIndex,
-        _mapping_piece_offset: u32,
-    ) -> Result<Segment, Error> {
-        unimplemented!("read_segment will be implemented as part of a refactoring")
+    async fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
+        Ok(download_segment(
+            segment_index,
+            &self.piece_getter,
+            self.erasure_coding.clone(),
+        )
+        .await?)
     }
 
     /// Concurrently read multiple pieces by their indexes
