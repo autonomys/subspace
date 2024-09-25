@@ -161,7 +161,6 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    #[api_version(2)]
     pub trait RelayerApi<BlockNumber, CNumber, CHash>
     where
         BlockNumber: Encode + Decode,
@@ -196,7 +195,6 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
-    #[api_version(4)]
     pub trait MessengerApi<CNumber, CHash>
     where
         CNumber: Encode + Decode,

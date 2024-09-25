@@ -436,7 +436,6 @@ impl DomainInherentExtrinsicDataProof {
         domain_id: DomainId,
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
-        should_include_domain_sudo_call: bool,
     ) -> Result<Self, GenerationError> {
         let timestamp_proof =
             TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
@@ -465,20 +464,12 @@ impl DomainInherentExtrinsicDataProof {
             storage_key_provider,
         )?;
 
-        // Domain sudo call is optional since both Consensus and domain runtimes needs to have the functionality.
-        // If only consensus runtime is upgraded but not Domain, the storage proof will never contain the data
-        // Since sudo call extrinsic on Consensus will never go through.
-        // but it can still generate empty storage proof in this case
-        let maybe_domain_sudo_call_proof = if should_include_domain_sudo_call {
-            Some(DomainSudoCallStorageProof::generate(
-                proof_provider,
-                block_hash,
-                domain_id,
-                storage_key_provider,
-            )?)
-        } else {
-            None
-        };
+        let maybe_domain_sudo_call_proof = Some(DomainSudoCallStorageProof::generate(
+            proof_provider,
+            block_hash,
+            domain_id,
+            storage_key_provider,
+        )?);
 
         Ok(Self {
             timestamp_proof,

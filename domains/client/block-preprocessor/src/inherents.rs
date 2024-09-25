@@ -12,7 +12,7 @@
 //! Deriving these extrinsics during fraud proof verification should be possible since
 //! verification environment will have access to consensus chain.
 
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
@@ -215,36 +215,15 @@ where
         let storage_price_provider =
             sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
 
-        // TODO: remove version check before next network
-        let messenger_api_version = runtime_api
-            .api_version::<dyn MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>>(
-                consensus_block_hash,
-            )?
-            // safe to return default version as 1 since there will always be version 1.
-            .unwrap_or(1);
-
-        let domain_chains_allowlist_update = if messenger_api_version >= 3 {
-            runtime_api.domain_chains_allowlist_update(consensus_block_hash, self.domain_id)?
-        } else {
-            None
-        };
-
+        let domain_chains_allowlist_update =
+            runtime_api.domain_chains_allowlist_update(consensus_block_hash, self.domain_id)?;
         let messenger_inherent_provider =
             sp_messenger::InherentDataProvider::new(sp_messenger::InherentType {
                 maybe_updates: domain_chains_allowlist_update,
             });
 
-        // TODO: remove version check before next network
-        let domain_api_version = runtime_api
-            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)?
-            // safe to return default version as 1 since there will always be version 1.
-            .unwrap_or(1);
-
-        let maybe_domain_sudo_call = if domain_api_version >= 5 {
-            runtime_api.domain_sudo_call(consensus_block_hash, self.domain_id)?
-        } else {
-            None
-        };
+        let maybe_domain_sudo_call =
+            runtime_api.domain_sudo_call(consensus_block_hash, self.domain_id)?;
         let domain_sudo_call_inherent_provider =
             sp_domain_sudo::InherentDataProvider::new(maybe_domain_sudo_call);
 

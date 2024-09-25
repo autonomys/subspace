@@ -12,7 +12,7 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
@@ -757,39 +757,17 @@ where
         }
 
         if let Some(mismatched_receipts) = self.find_mismatch_receipt(consensus_block_hash)? {
+            let fraud_proof_v2 = self.generate_fraud_proof(mismatched_receipts)?;
+            tracing::info!("Submit fraud proof: {fraud_proof_v2:?}");
+
             let consensus_best_hash = self.consensus_client.info().best_hash;
             let mut consensus_runtime_api = self.consensus_client.runtime_api();
-            let fraud_proof_api_version = consensus_runtime_api
-                .api_version::<dyn FraudProofApi<CBlock, Block::Header>>(consensus_best_hash)
-                .map_err(sp_blockchain::Error::RuntimeApiError)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                        format!("FraudProofApi not found at: {:?}", consensus_best_hash).into(),
-                    ))
-                })?;
-            let domains_api_version = consensus_runtime_api
-                .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_best_hash)
-                .map_err(sp_blockchain::Error::RuntimeApiError)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                        format!("DomainsApi not found at: {:?}", consensus_best_hash).into(),
-                    ))
-                })?;
-
-            // New `DomainsApi` introduced in version 4 is required for generating fraud proof and
-            // new `FraudProofApi` in version 2 is required for submitting fraud proof
-            // TODO: remove before next network
-            if domains_api_version >= 4 && fraud_proof_api_version >= 2 {
-                let fraud_proof_v2 = self.generate_fraud_proof(mismatched_receipts)?;
-
-                tracing::info!("Submit fraud proof: {fraud_proof_v2:?}");
-                consensus_runtime_api.register_extension(
-                    self.consensus_offchain_tx_pool_factory
-                        .offchain_transaction_pool(consensus_best_hash),
-                );
-                consensus_runtime_api
-                    .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof_v2)?;
-            }
+            consensus_runtime_api.register_extension(
+                self.consensus_offchain_tx_pool_factory
+                    .offchain_transaction_pool(consensus_best_hash),
+            );
+            consensus_runtime_api
+                .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof_v2)?;
         }
 
         Ok(())
