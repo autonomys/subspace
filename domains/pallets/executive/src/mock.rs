@@ -1,6 +1,8 @@
-// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
-// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
-#![allow(non_camel_case_types)]
+// TODO: remove when upstream issue is fixed
+#![allow(
+    non_camel_case_types,
+    reason = "https://github.com/rust-lang/rust-analyzer/issues/16514"
+)]
 
 use crate as pallet_executive;
 use crate::Config;

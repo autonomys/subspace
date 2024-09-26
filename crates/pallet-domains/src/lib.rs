@@ -171,8 +171,6 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 
 #[frame_support::pallet]
 mod pallet {
-    #![allow(clippy::large_enum_variant)]
-
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::block_tree::AcceptedReceiptType;
     use crate::block_tree::{

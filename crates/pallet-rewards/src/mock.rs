@@ -1,5 +1,3 @@
-#![allow(missing_debug_implementations)]
-
 use frame_support::derive_impl;
 use frame_support::traits::{ConstU128, ConstU32};
 use sp_runtime::traits::parameter_types;

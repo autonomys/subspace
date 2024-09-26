@@ -18,9 +18,11 @@
 #![feature(const_option, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
-// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
-// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
-#![allow(non_camel_case_types)]
+// TODO: remove when upstream issue is fixed
+#![allow(
+    non_camel_case_types,
+    reason = "https://github.com/rust-lang/rust-analyzer/issues/16514"
+)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
