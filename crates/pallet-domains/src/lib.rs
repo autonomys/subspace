@@ -628,9 +628,6 @@ mod pallet {
     /// only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
     /// that point to the consensus block is pruned.
-    ///
-    /// TODO: this storage is unbounded in some cases, see https://github.com/autonomys/subspace/issues/1673
-    /// for more details, this will be fixed once https://github.com/autonomys/subspace/issues/1731 is implemented.
     #[pallet::storage]
     #[pallet::getter(fn consensus_block_info)]
     pub type ConsensusBlockHash<T: Config> =

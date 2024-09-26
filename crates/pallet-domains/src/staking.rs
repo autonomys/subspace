@@ -125,7 +125,6 @@ pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
     /// Total amount of storage fee on withdraw (including withdrawal in shares)
     pub(crate) total_storage_fee_withdrawal: Balance,
     /// Individual withdrawal amounts with their unlocking block for a given domain
-    // TODO: fixed number of withdrawal & uhlock all ready withdrawal at once
     pub(crate) withdrawals: VecDeque<WithdrawalInBalance<DomainBlockNumber, Balance>>,
     /// Withdrawal that was initiated by nominator and not converted to balance due to
     /// unfinished domain epoch.
