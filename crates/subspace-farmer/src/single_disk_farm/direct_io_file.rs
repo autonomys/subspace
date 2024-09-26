@@ -3,8 +3,8 @@
 use parking_lot::Mutex;
 use static_assertions::const_assert_eq;
 use std::fs::{File, OpenOptions};
-use std::io;
 use std::path::Path;
+use std::{io, mem};
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::ReadAtSync;
 
@@ -15,13 +15,32 @@ const MAX_READ_SIZE: usize = 1024 * 1024;
 
 const_assert_eq!(MAX_READ_SIZE % DISK_SECTOR_SIZE, 0);
 
+#[derive(Debug, Copy, Clone)]
+#[repr(C, align(4096))]
+struct AlignedSectorSize([u8; DISK_SECTOR_SIZE]);
+
+const_assert_eq!(align_of::<AlignedSectorSize>(), DISK_SECTOR_SIZE);
+
+impl Default for AlignedSectorSize {
+    fn default() -> Self {
+        Self([0; DISK_SECTOR_SIZE])
+    }
+}
+
+impl AlignedSectorSize {
+    fn slice_mut_to_repr(slice: &mut [Self]) -> &mut [[u8; DISK_SECTOR_SIZE]] {
+        // SAFETY: `AlignedSectorSize` is `#[repr(C)]` and its alignment is larger than inner value
+        unsafe { mem::transmute(slice) }
+    }
+}
+
 /// Wrapper data structure for direct/unbuffered I/O
 #[derive(Debug)]
 pub struct DirectIoFile {
     file: File,
     physical_sector_size: usize,
     /// Scratch buffer of aligned memory for reads and writes
-    scratch_buffer: Mutex<Vec<[u8; DISK_SECTOR_SIZE]>>,
+    scratch_buffer: Mutex<Vec<AlignedSectorSize>>,
 }
 
 impl ReadAtSync for DirectIoFile {
@@ -160,7 +179,7 @@ impl DirectIoFile {
             physical_sector_size,
             // In many cases we'll want to read this much at once, so pre-allocate it right away
             scratch_buffer: Mutex::new(vec![
-                [0; DISK_SECTOR_SIZE];
+                AlignedSectorSize::default();
                 MAX_READ_SIZE / DISK_SECTOR_SIZE
             ]),
         })
@@ -173,7 +192,7 @@ impl DirectIoFile {
 
     fn read_exact_at_internal<'a>(
         &self,
-        scratch_buffer: &'a mut Vec<[u8; DISK_SECTOR_SIZE]>,
+        scratch_buffer: &'a mut Vec<AlignedSectorSize>,
         bytes_to_read: usize,
         offset: u64,
     ) -> io::Result<&'a [u8]> {
@@ -182,31 +201,39 @@ impl DirectIoFile {
         let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
         let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
         if scratch_buffer.len() < desired_buffer_size {
-            scratch_buffer.resize(desired_buffer_size, [0; DISK_SECTOR_SIZE]);
+            scratch_buffer.resize_with(desired_buffer_size, AlignedSectorSize::default);
         }
+
+        let scratch_buffer =
+            AlignedSectorSize::slice_mut_to_repr(scratch_buffer).as_flattened_mut();
 
         // While buffer above is allocated with granularity of `MAX_DISK_SECTOR_SIZE`, reads are
         // done with granularity of physical sector size
         let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
         self.file.read_exact_at(
-            &mut scratch_buffer.as_flattened_mut()[..(bytes_to_read + offset_in_buffer)
+            &mut scratch_buffer[..(bytes_to_read + offset_in_buffer)
                 .div_ceil(self.physical_sector_size)
                 * self.physical_sector_size],
             offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
         )?;
 
-        Ok(&scratch_buffer.as_flattened()[offset_in_buffer..][..bytes_to_read])
+        Ok(&scratch_buffer[offset_in_buffer..][..bytes_to_read])
     }
 
     /// Panics on writes over `MAX_READ_SIZE` (including padding on both ends)
     fn write_all_at_internal(
         &self,
-        scratch_buffer: &mut Vec<[u8; DISK_SECTOR_SIZE]>,
+        scratch_buffer: &mut Vec<AlignedSectorSize>,
         bytes_to_write: &[u8],
         offset: u64,
     ) -> io::Result<()> {
         // This is guaranteed by constructor
-        assert!(scratch_buffer.as_flattened().len() >= MAX_READ_SIZE);
+        assert!(
+            AlignedSectorSize::slice_mut_to_repr(scratch_buffer)
+                .as_flattened_mut()
+                .len()
+                >= MAX_READ_SIZE
+        );
 
         let aligned_offset =
             offset / self.physical_sector_size as u64 * self.physical_sector_size as u64;
@@ -216,13 +243,17 @@ impl DirectIoFile {
             * self.physical_sector_size;
 
         if padding == 0 && bytes_to_read == bytes_to_write.len() {
-            let scratch_buffer = &mut scratch_buffer.as_flattened_mut()[..bytes_to_read];
+            let scratch_buffer =
+                AlignedSectorSize::slice_mut_to_repr(scratch_buffer).as_flattened_mut();
+            let scratch_buffer = &mut scratch_buffer[..bytes_to_read];
             scratch_buffer.copy_from_slice(bytes_to_write);
             self.file.write_all_at(scratch_buffer, offset)?;
         } else {
             // Read whole pages where `bytes_to_write` will be written
             self.read_exact_at_internal(scratch_buffer, bytes_to_read, aligned_offset)?;
-            let scratch_buffer = &mut scratch_buffer.as_flattened_mut()[..bytes_to_read];
+            let scratch_buffer =
+                AlignedSectorSize::slice_mut_to_repr(scratch_buffer).as_flattened_mut();
+            let scratch_buffer = &mut scratch_buffer[..bytes_to_read];
             // Update contents of existing pages and write into the file
             scratch_buffer[padding..][..bytes_to_write.len()].copy_from_slice(bytes_to_write);
             self.file.write_all_at(scratch_buffer, aligned_offset)?;
