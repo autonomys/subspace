@@ -28,7 +28,6 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zer
 use sp_runtime::{Digest, Saturating};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::str::FromStr;
 use std::sync::Arc;
 
 struct DomainBlockBuildResult<Block>
@@ -423,15 +422,6 @@ where
         inherent_digests: Digest,
         inherent_data: sp_inherents::InherentData,
     ) -> Result<DomainBlockBuildResult<Block>, sp_blockchain::Error> {
-        // TODO: This is used to keep compatible with gemini-3h, remove before next network
-        let is_gemini_3h = self.consensus_client.info().genesis_hash
-            == FromStr::from_str(
-                // The genesis hash of gemini-3h
-                "0c121c75f4ef450f40619e1fca9d1e8e7fbabc42c895bc4790801e85d5a91c34",
-            )
-            .map_err(|_| ())
-            .expect("parsing consensus block hash should success");
-
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
@@ -441,7 +431,6 @@ where
             &*self.backend,
             extrinsics,
             Some(inherent_data),
-            is_gemini_3h,
         )?;
 
         let BuiltBlock {
