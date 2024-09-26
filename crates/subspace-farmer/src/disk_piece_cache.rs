@@ -13,9 +13,7 @@ mod tests;
 use crate::disk_piece_cache::metrics::DiskPieceCacheMetrics;
 use crate::farm;
 use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
+use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
 use crate::utils::AsyncJoinOnDrop;
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -23,8 +21,6 @@ use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
-#[cfg(not(windows))]
-use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
 use std::task::Poll;
@@ -32,8 +28,6 @@ use std::{fs, io};
 use subspace_core_primitives::crypto::blake3_hash_list;
 use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
 use subspace_farmer_components::file_ext::FileExt;
-#[cfg(not(windows))]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task;
@@ -71,10 +65,7 @@ pub enum DiskPieceCacheError {
 #[derive(Debug)]
 struct Inner {
     id: PieceCacheId,
-    #[cfg(not(windows))]
-    file: File,
-    #[cfg(windows)]
-    file: UnbufferedIoFileWindows,
+    file: DirectIoFile,
     max_num_elements: u32,
     metrics: Option<DiskPieceCacheMetrics>,
 }
@@ -202,19 +193,7 @@ impl DiskPieceCache {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
 
-        #[cfg(not(windows))]
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(directory.join(Self::FILE_NAME))?;
-
-        #[cfg(not(windows))]
-        file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let file = UnbufferedIoFileWindows::open(&directory.join(Self::FILE_NAME))?;
+        let file = DirectIoFile::open(&directory.join(Self::FILE_NAME))?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
         // Align plot file size for disk sector size
