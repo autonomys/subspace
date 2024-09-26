@@ -79,6 +79,8 @@ use tracing::{debug, error, info, warn};
 /// Large enough size for any practical purposes, there shouldn't be even this many solutions.
 const PENDING_SOLUTIONS_CHANNEL_CAPACITY: usize = 10;
 
+/// Subspace sync oracle.
+///
 /// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
 /// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
 /// connected nodes (none of which will be synced initially). It also accounts for DSN sync, when

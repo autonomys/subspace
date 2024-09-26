@@ -171,8 +171,6 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 
 #[frame_support::pallet]
 mod pallet {
-    #![allow(clippy::large_enum_variant)]
-
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::block_tree::AcceptedReceiptType;
     use crate::block_tree::{
@@ -624,8 +622,9 @@ mod pallet {
     pub(super) type NewAddedHeadReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainHash, OptionQuery>;
 
-    /// The consensus block hash used to verify ER,
-    /// only store the consensus block hash for a domain
+    /// Map of consensus block hashes.
+    ///
+    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
     /// that point to the consensus block is pruned.
     ///
@@ -724,6 +723,7 @@ mod pallet {
     pub type DomainRuntimeUpgrades<T> = StorageValue<_, Vec<RuntimeId>, ValueQuery>;
 
     /// Temporary storage to hold the sudo calls meant for the Domains.
+    ///
     /// Storage is cleared when there are any successful bundles in the next block.
     /// Only one sudo call is allowed per domain per consensus block.
     #[pallet::storage]
@@ -731,6 +731,7 @@ mod pallet {
         StorageMap<_, Identity, DomainId, DomainSudoCall, ValueQuery>;
 
     /// Storage that hold a list of all frozen domains.
+    ///
     /// A frozen domain does not accept the bundles but does accept a fraud proof.
     #[pallet::storage]
     pub type FrozenDomains<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;

@@ -48,10 +48,11 @@ use subspace_core_primitives::PublicKey;
 
 use crate::{Call, Config, Pallet};
 
-/// A trait with utility methods for handling equivocation reports in Subspace. The trait provides
-/// methods for reporting an offence triggered by a valid equivocation report, checking the current
-/// block author (to declare as the reporter), and also for creating and submitting equivocation
-/// report extrinsics (useful only in offchain context).
+/// A trait with utility methods for handling equivocation reports in Subspace.
+///
+/// The trait provides methods for reporting an offence triggered by a valid equivocation report,
+/// checking the current block author (to declare as the reporter), and also for creating and
+/// submitting equivocation report extrinsics (useful only in offchain context).
 pub trait HandleEquivocation<T: Config> {
     /// The longevity, in blocks, that the equivocation report is valid for. When using the staking
     /// pallet this should be equal to the bonding duration (in blocks, not eras).
@@ -87,9 +88,10 @@ impl<T: Config> HandleEquivocation<T> for () {
     }
 }
 
-/// Generic equivocation handler. This type implements `HandleEquivocation`
-/// using existing subsystems that are part of frame (type bounds described
-/// below) and will dispatch to them directly, it's only purpose is to wire all
+/// Generic equivocation handler.
+///
+/// This type implements `HandleEquivocation` using existing subsystems that are part of frame (type
+/// bounds described below) and will dispatch to them directly, it's only purpose is to wire all
 /// subsystems together.
 pub struct EquivocationHandler<R, L> {
     _phantom: sp_std::marker::PhantomData<(R, L)>,

@@ -34,8 +34,6 @@ use tokio::task;
 use tracing::{debug, info, info_span, trace, warn, Instrument};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
-/// Size of the cache of archived segments for the purposes of faster sector expiration checks.
-
 const PLOTTING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub(super) struct SectorToPlot {

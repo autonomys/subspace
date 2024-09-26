@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use crate::farm::MaybePieceStoredResult;
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
 #[cfg(windows)]

@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    elided_named_lifetimes,
+    reason = "https://github.com/dtolnay/async-trait/issues/279"
+)]
+
 //! Disk piece cache implementation
 
 mod metrics;

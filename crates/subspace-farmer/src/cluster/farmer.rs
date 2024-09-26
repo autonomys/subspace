@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    elided_named_lifetimes,
+    reason = "https://github.com/dtolnay/async-trait/issues/279"
+)]
+
 //! Farming cluster farmer
 //!
 //! Farmer is responsible for maintaining farms, doing audits and generating proofs when solution is

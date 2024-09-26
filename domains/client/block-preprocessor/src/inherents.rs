@@ -1,4 +1,5 @@
 //! Provides functionality of adding inherent extrinsics to the Domain.
+//!
 //! Unlike Primary chain where inherent data is first derived the block author
 //! and the data is verified by the on primary runtime, domains inherents
 //! short circuit the derivation and verification of inherent data

@@ -137,8 +137,14 @@ impl<LocalRecordProvider> RecordStore for LocalOnlyRecordStore<LocalRecordProvid
 where
     LocalRecordProvider: self::LocalRecordProvider,
 {
-    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
-    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self: 'a;
+    type RecordsIter<'a>
+        = Empty<Cow<'a, Record>>
+    where
+        Self: 'a;
+    type ProvidedIter<'a>
+        = Empty<Cow<'a, ProviderRecord>>
+    where
+        Self: 'a;
 
     fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
         // Not supported

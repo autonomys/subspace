@@ -250,10 +250,12 @@ pub struct DecodeExtrinsicError(pub String);
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
-/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
-/// the specifics of the runtime. They can then be made to be agnostic over specific formats
-/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
-/// to even the core data structures.
+/// Opaque types.
+///
+/// These are used by the CLI to instantiate machinery that don't need to know the specifics of the
+/// runtime. They can then be made to be agnostic over specific formats of data like extrinsics,
+/// allowing for them to continue syncing the network through upgrades to even the core data
+/// structures.
 pub mod opaque {
     use crate::BlockNumber;
     #[cfg(not(feature = "std"))]

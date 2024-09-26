@@ -1,7 +1,8 @@
 //! This module provides the feature of generating and verifying the execution proof used in
-//! the Subspace fraud proof mechanism. The execution is more fine-grained than the entire
-//! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
-//! specific extrinsic execution are supported.
+//! the Subspace fraud proof mechanism.
+//!
+//! The execution is more fine-grained than the entire block execution, block execution hooks
+//! (`initialize_block` and `finalize_block`) and any specific extrinsic execution are supported.
 
 use crate::fraud_proof::ExecutionPhase;
 use codec::Codec;

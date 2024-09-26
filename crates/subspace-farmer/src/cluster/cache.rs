@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    elided_named_lifetimes,
+    reason = "https://github.com/dtolnay/async-trait/issues/279"
+)]
+
 //! Farming cluster cache
 //!
 //! Cache is responsible for caching pieces within allocated space to accelerate plotting and serve
