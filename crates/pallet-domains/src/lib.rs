@@ -2240,7 +2240,7 @@ impl<T: Config> Pallet<T> {
     fn validate_eligibility(
         to_sign: &[u8],
         signature: &OperatorSignature,
-        proof_of_election: &ProofOfElection<T::Hash>,
+        proof_of_election: &ProofOfElection,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
