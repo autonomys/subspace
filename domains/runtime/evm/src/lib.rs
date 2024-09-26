@@ -1150,7 +1150,7 @@ impl_runtime_apis! {
                     account_result.ok().map(|account_id| account_id.encode())
                 }) {
                 // Check if the signer Id hash is within the tx range
-                let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
+                let signer_id_hash = U256::from_be_bytes(*blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
                 // Unsigned transactions are always in the range.

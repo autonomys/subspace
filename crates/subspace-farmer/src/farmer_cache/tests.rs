@@ -259,7 +259,7 @@ async fn basic() {
             let segment_header = SegmentHeader::V0 {
                 segment_index: SegmentIndex::ONE,
                 segment_commitment: Default::default(),
-                prev_segment_header_hash: [0; 32],
+                prev_segment_header_hash: [0; 32].into(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: Default::default(),
@@ -317,7 +317,7 @@ async fn basic() {
             let segment_header = SegmentHeader::V0 {
                 segment_index: SegmentIndex::from(segment_index),
                 segment_commitment: Default::default(),
-                prev_segment_header_hash: [0; 32],
+                prev_segment_header_hash: [0; 32].into(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: Default::default(),

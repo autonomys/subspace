@@ -2058,7 +2058,7 @@ impl SingleDiskFarm {
                 plot_file
             };
 
-            let sector_bytes_range = 0..(sector_size as usize - mem::size_of::<Blake3Hash>());
+            let sector_bytes_range = 0..(sector_size as usize - Blake3Hash::SIZE);
 
             info!("Checking sectors and corresponding metadata");
             (0..metadata_header.plotted_sector_count)
@@ -2191,7 +2191,7 @@ impl SingleDiskFarm {
                             }
 
                             let actual_checksum = *hasher.finalize().as_bytes();
-                            let mut expected_checksum = [0; mem::size_of::<Blake3Hash>()];
+                            let mut expected_checksum = [0; Blake3Hash::SIZE];
                             {
                                 let offset = u64::from(sector_index) * sector_size
                                     + sector_bytes_range.end as u64;
@@ -2382,9 +2382,9 @@ impl SingleDiskFarm {
                 }
 
                 let (index_and_piece_bytes, expected_checksum) =
-                    element.split_at(element_size as usize - mem::size_of::<Blake3Hash>());
+                    element.split_at(element_size as usize - Blake3Hash::SIZE);
                 let actual_checksum = blake3_hash(index_and_piece_bytes);
-                if actual_checksum != expected_checksum && element != &dummy_element {
+                if *actual_checksum != *expected_checksum && element != &dummy_element {
                     warn!(
                         %cache_offset,
                         actual_checksum = %hex::encode(actual_checksum),

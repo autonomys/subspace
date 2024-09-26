@@ -176,8 +176,8 @@ impl KnownPeersSlots {
         let (encoded_bytes, remaining_bytes) = self.a.split_at_mut(known_peers_bytes.len());
         encoded_bytes.copy_from_slice(&known_peers_bytes);
         // Write checksum
-        remaining_bytes[..mem::size_of::<Blake3Hash>()]
-            .copy_from_slice(&blake3_hash(&known_peers_bytes));
+        remaining_bytes[..Blake3Hash::SIZE]
+            .copy_from_slice(blake3_hash(&known_peers_bytes).as_ref());
         if let Err(error) = self.a.flush() {
             warn!(%error, "Failed to flush known peers to disk");
         }
@@ -362,7 +362,7 @@ impl KnownPeersManager {
 
                     let (encoded_bytes, remaining_bytes) =
                         known_addresses_bytes.split_at(known_addresses.encoded_size());
-                    if remaining_bytes.len() < mem::size_of::<Blake3Hash>() {
+                    if remaining_bytes.len() < Blake3Hash::SIZE {
                         debug!(
                             remaining_bytes = %remaining_bytes.len(),
                             "Not enough bytes to decode checksum, file was likely corrupted"
@@ -372,8 +372,8 @@ impl KnownPeersManager {
 
                     // Verify checksum
                     let actual_checksum = blake3_hash(encoded_bytes);
-                    let expected_checksum = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
-                    if actual_checksum != expected_checksum {
+                    let expected_checksum = &remaining_bytes[..Blake3Hash::SIZE];
+                    if *actual_checksum != *expected_checksum {
                         debug!(
                             encoded_bytes_len = %encoded_bytes.len(),
                             actual_checksum = %hex::encode(actual_checksum),
@@ -521,7 +521,7 @@ impl KnownPeersManager {
         mem::size_of::<u64>()
             + Compact::compact_len(&(cache_size))
             + Self::single_peer_encoded_size() * cache_size as usize
-            + mem::size_of::<Blake3Hash>()
+            + Blake3Hash::SIZE
     }
 
     fn persistent_enabled(&self) -> bool {

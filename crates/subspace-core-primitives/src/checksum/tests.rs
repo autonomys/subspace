@@ -2,7 +2,6 @@ use super::Blake3Checksummed;
 use crate::Blake3Hash;
 use parity_scale_codec::{Decode, Encode};
 use rand::prelude::*;
-use std::mem;
 
 #[test]
 fn basic() {
@@ -13,7 +12,7 @@ fn basic() {
 
     // Encoding is extended with checksum
     assert_eq!(
-        plain_encoding.len() + mem::size_of::<Blake3Hash>(),
+        plain_encoding.len() + Blake3Hash::SIZE,
         checksummed_encoding.len()
     );
 

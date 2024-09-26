@@ -20,7 +20,6 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use std::mem;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -616,8 +615,8 @@ pub fn write_sector(
         // It would be more efficient to not re-read the whole sector again, but it makes above code
         // significantly more convoluted and most likely not worth it
         let (sector_contents, sector_checksum) =
-            sector_output.split_at_mut(sector_size - mem::size_of::<Blake3Hash>());
-        sector_checksum.copy_from_slice(&blake3_hash_parallel(sector_contents));
+            sector_output.split_at_mut(sector_size - Blake3Hash::SIZE);
+        sector_checksum.copy_from_slice(blake3_hash_parallel(sector_contents).as_ref());
     }
 
     Ok(())
@@ -668,7 +667,7 @@ fn record_encoding<PosTable>(
         )
         .map(|(s_bucket, record_chunk)| {
             if let Some(proof) = pos_table.find_proof(s_bucket.into()) {
-                (Simd::from(*record_chunk) ^ Simd::from(proof.hash())).to_array()
+                (Simd::from(*record_chunk) ^ Simd::from(*proof.hash())).to_array()
             } else {
                 // Dummy value indicating no proof
                 [0; Scalar::FULL_BYTES]

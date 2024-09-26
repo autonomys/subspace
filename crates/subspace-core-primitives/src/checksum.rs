@@ -4,7 +4,6 @@
 mod tests;
 
 use crate::Blake3Hash;
-use core::mem;
 use parity_scale_codec::{Decode, Encode, EncodeLike, Error, Input, Output};
 
 /// Output wrapper for SCALE codec that will write Blake3 checksum at the end of the encoding
@@ -91,7 +90,7 @@ where
     fn finish(self) -> (Blake3Hash, &'a mut I) {
         // Compute checksum at the very end of decoding
         let hash = *self.hasher.finalize().as_bytes();
-        (hash, self.input)
+        (hash.into(), self.input)
     }
 }
 
@@ -105,7 +104,7 @@ where
 {
     #[inline]
     fn size_hint(&self) -> usize {
-        self.0.size_hint() + mem::size_of::<Blake3Hash>()
+        self.0.size_hint() + Blake3Hash::SIZE
     }
 
     #[inline]
@@ -118,7 +117,7 @@ where
 
     #[inline]
     fn encoded_size(&self) -> usize {
-        self.0.encoded_size() + mem::size_of::<Blake3Hash>()
+        self.0.encoded_size() + Blake3Hash::SIZE
     }
 }
 

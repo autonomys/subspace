@@ -469,7 +469,7 @@ pub fn create_signed_vote(
         );
         let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
         let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-            ^ Simd::from(solution.proof_of_space.hash()))
+            ^ Simd::from(*solution.proof_of_space.hash()))
         .to_array();
 
         // Check that solution quality is not too high

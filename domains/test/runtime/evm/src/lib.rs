@@ -1106,7 +1106,7 @@ impl_runtime_apis! {
             if let Some(signer) = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {
                     account_result.ok().map(|account_id| account_id.encode())
                 }) {
-                let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
+                let signer_id_hash = U256::from_be_bytes(*blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
                 true
