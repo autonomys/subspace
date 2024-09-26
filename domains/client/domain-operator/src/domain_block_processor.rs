@@ -746,8 +746,8 @@ where
         }
 
         if let Some(mismatched_receipts) = self.find_mismatch_receipt(consensus_block_hash)? {
-            let fraud_proof_v2 = self.generate_fraud_proof(mismatched_receipts)?;
-            tracing::info!("Submit fraud proof: {fraud_proof_v2:?}");
+            let fraud_proof = self.generate_fraud_proof(mismatched_receipts)?;
+            tracing::info!("Submit fraud proof: {fraud_proof:?}");
 
             let consensus_best_hash = self.consensus_client.info().best_hash;
             let mut consensus_runtime_api = self.consensus_client.runtime_api();
@@ -755,8 +755,7 @@ where
                 self.consensus_offchain_tx_pool_factory
                     .offchain_transaction_pool(consensus_best_hash),
             );
-            consensus_runtime_api
-                .submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof_v2)?;
+            consensus_runtime_api.submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
         }
 
         Ok(())

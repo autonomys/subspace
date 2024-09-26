@@ -280,8 +280,6 @@ pub struct BlockFees<Balance> {
     /// Burned balances on domain chain
     pub burned_balance: Balance,
     /// Rewards for the chain.
-    // TODO: remove this before mainnet. Skipping to maintain compatibility with Gemini
-    #[codec(skip)]
     pub chain_rewards: BTreeMap<ChainId, Balance>,
 }
 
@@ -1538,9 +1536,7 @@ sp_api::decl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
 
         /// Return if the domain runtime code is upgraded since `at`
-        // TODO: change from `is_domain_runtime_updraded_since` to `is_domain_runtime_upgraded_since`
-        //  before next network
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
 
         /// Return domain sudo call.
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;

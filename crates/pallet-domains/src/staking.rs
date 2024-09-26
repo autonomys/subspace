@@ -191,8 +191,7 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
     /// not assigned to this field directly, thus MUST use the `status()` method to query the status
     /// instead.
-    /// TODO: update the filed to `_status` to avoid accidental access in next network reset
-    status: OperatorStatus<DomainBlockNumber>,
+    _status: OperatorStatus<DomainBlockNumber>,
     /// Total deposits during the previous epoch
     pub deposits_in_epoch: Balance,
     /// Total withdrew shares during the previous epoch
@@ -203,17 +202,17 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
 
 impl<Balance, Share, DomainBlockNumber> Operator<Balance, Share, DomainBlockNumber> {
     pub fn status<T: Config>(&self, operator_id: OperatorId) -> &OperatorStatus<DomainBlockNumber> {
-        if matches!(self.status, OperatorStatus::Slashed) {
+        if matches!(self._status, OperatorStatus::Slashed) {
             &OperatorStatus::Slashed
         } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id) {
             &OperatorStatus::PendingSlash
         } else {
-            &self.status
+            &self._status
         }
     }
 
     pub fn update_status(&mut self, new_status: OperatorStatus<DomainBlockNumber>) {
-        self.status = new_status;
+        self._status = new_status;
     }
 }
 
@@ -233,7 +232,7 @@ impl<Balance: Zero, Share: Zero, DomainBlockNumber> Operator<Balance, Share, Dom
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
-            status: OperatorStatus::Registered,
+            _status: OperatorStatus::Registered,
             deposits_in_epoch: Zero::zero(),
             withdrawals_in_epoch: Zero::zero(),
             total_storage_fee_deposit: Zero::zero(),
@@ -401,7 +400,7 @@ pub fn do_register_operator<T: Config>(
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
-            status: OperatorStatus::Registered,
+            _status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
             deposits_in_epoch: new_deposit.staking,
             withdrawals_in_epoch: Zero::zero(),
@@ -1681,7 +1680,7 @@ pub(crate) mod tests {
                     current_total_stake: operator_stake,
                     current_epoch_rewards: 0,
                     current_total_shares: operator_stake,
-                    status: OperatorStatus::Registered,
+                    _status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,
                     withdrawals_in_epoch: 0,
                     total_storage_fee_deposit: operator_storage_fee_deposit,
