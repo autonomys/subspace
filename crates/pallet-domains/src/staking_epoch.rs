@@ -10,8 +10,8 @@ use crate::staking::{
     DomainEpoch, Error as TransitionError, OperatorStatus, SharePrice, WithdrawalInShares,
 };
 use crate::{
-    bundle_storage_fund, BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event,
-    HoldIdentifier, OperatorEpochSharePrice, Pallet,
+    bundle_storage_fund, BalanceOf, Config, CurrentActiveOperators, DepositOnHold,
+    ElectionVerificationParams, Event, HoldIdentifier, OperatorEpochSharePrice, Pallet,
 };
 #[cfg(not(feature = "std"))]
 use alloc::vec;
@@ -27,7 +27,6 @@ use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Saturating;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::collections::btree_set::BTreeSet;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
@@ -165,29 +164,35 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
             .ok_or(TransitionError::EpochOverflow)?;
 
         let mut total_domain_stake = BalanceOf::<T>::zero();
+        let mut initial_total_active_domain_stake = BalanceOf::<T>::zero();
         let mut current_operators = BTreeMap::new();
-        let mut next_operators = BTreeSet::new();
-        for next_operator_id in &stake_summary.next_operators {
+        let mut next_operators = stake_summary.next_operators.clone();
+
+        for (next_operator_id, _) in CurrentActiveOperators::<T>::drain() {
             // If an operator is pending to slash then similar to the slashed operator it should not be added
             // into the `next_operators/current_operators` and we should not `do_finalize_operator_epoch_staking`
             // for it.
-            if Pallet::<T>::is_operator_pending_to_slash(domain_id, *next_operator_id) {
+            if Pallet::<T>::is_operator_pending_to_slash(domain_id, next_operator_id) {
                 continue;
             }
 
-            let (operator_stake, stake_changed) = do_finalize_operator_epoch_staking::<T>(
+            let (operator_stake, initial_operator_stake) = do_finalize_operator_epoch_staking::<T>(
                 domain_id,
-                *next_operator_id,
+                next_operator_id,
                 previous_epoch,
             )?;
 
             total_domain_stake = total_domain_stake
                 .checked_add(&operator_stake)
                 .ok_or(TransitionError::BalanceOverflow)?;
-            current_operators.insert(*next_operator_id, operator_stake);
-            next_operators.insert(*next_operator_id);
+            initial_total_active_domain_stake = initial_total_active_domain_stake
+                .checked_add(&initial_operator_stake)
+                .ok_or(TransitionError::BalanceOverflow)?;
 
-            if stake_changed {
+            current_operators.insert(next_operator_id, operator_stake);
+            next_operators.insert(next_operator_id);
+
+            if operator_stake != initial_operator_stake {
                 finalized_operator_count += 1;
             }
         }
@@ -200,8 +205,15 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
 
         let previous_epoch = stake_summary.current_epoch_index;
+        let non_active_domain_stake = stake_summary
+            .current_total_stake
+            .checked_sub(&initial_total_active_domain_stake)
+            .ok_or(TransitionError::BalanceOverflow)?;
+
         stake_summary.current_epoch_index = next_epoch;
-        stake_summary.current_total_stake = total_domain_stake;
+        stake_summary.current_total_stake = total_domain_stake
+            .checked_add(&non_active_domain_stake)
+            .ok_or(TransitionError::BalanceOverflow)?;
         stake_summary.current_operators = current_operators;
         stake_summary.next_operators = next_operators;
 
@@ -212,13 +224,12 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
 
 /// Finalize the epoch for the operator
 ///
-/// Return the new total stake of the operator and a bool indicate if its total stake
-/// is changed due to deposit/withdraw/reward happened in the previous epoch
+/// Return the new total stake of the operator and the initial total stake of the operator.
 pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     domain_id: DomainId,
     operator_id: OperatorId,
     previous_epoch: EpochIndex,
-) -> Result<(BalanceOf<T>, bool), TransitionError> {
+) -> Result<(BalanceOf<T>, BalanceOf<T>), TransitionError> {
     let mut operator = match Operators::<T>::get(operator_id) {
         Some(op) => op,
         None => return Err(TransitionError::UnknownOperator),
@@ -228,13 +239,15 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
         return Err(TransitionError::OperatorNotRegistered);
     }
 
+    let initial_total_stake = operator.current_total_stake;
+
     // if there are no deposits, withdrawls, and epoch rewards for this operator
     // then short-circuit and return early.
     if operator.deposits_in_epoch.is_zero()
         && operator.withdrawals_in_epoch.is_zero()
         && operator.current_epoch_rewards.is_zero()
     {
-        return Ok((operator.current_total_stake, false));
+        return Ok((initial_total_stake, initial_total_stake));
     }
 
     let total_stake = operator
@@ -293,7 +306,7 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     operator.current_epoch_rewards = Zero::zero();
     Operators::<T>::set(operator_id, Some(operator));
 
-    Ok((total_stake, true))
+    Ok((total_stake, initial_total_stake))
 }
 
 pub(crate) fn mint_funds<T: Config>(
@@ -530,10 +543,12 @@ mod tests {
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, Test};
-    use crate::{BalanceOf, Config, ExecutionReceiptOf, HoldIdentifier, NominatorId};
+    use crate::{
+        BalanceOf, Config, CurrentActiveOperators, ExecutionReceiptOf, HoldIdentifier, NominatorId,
+    };
     use codec::Encode;
     use frame_support::assert_ok;
-    use frame_support::traits::fungible::InspectHold;
+    use frame_support::traits::fungible::{InspectHold, Mutate};
     use sp_core::{Pair, U256};
     use sp_domains::{
         BlockFees, DomainId, OperatorPair, OperatorSigningKeyProofOfOwnershipData, Transfers,
@@ -895,6 +910,117 @@ mod tests {
             );
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(domain_stake_summary.current_epoch_rewards.is_empty())
+        });
+    }
+
+    #[test]
+    fn test_current_active_operators() {
+        let domain_id = DomainId::new(0);
+        let mut ext = new_test_ext();
+
+        ext.execute_with(|| {
+            let mut operators = vec![];
+            for i in 0u128..10 {
+                let operator_account = i;
+                let pair = OperatorPair::from_seed(&U256::from(i).into());
+                let data = OperatorSigningKeyProofOfOwnershipData {
+                    operator_owner: operator_account,
+                };
+                let nominators = if i == 0 && i == 3 {
+                    BTreeMap::from_iter(vec![
+                        (1, (250 * SSC, 200 * SSC)),
+                        (12, (100 * SSC, 50 * SSC)),
+                    ])
+                } else {
+                    BTreeMap::new()
+                };
+                let signature = pair.sign(&data.encode());
+                let operator_free_balance = 1250 * SSC + i;
+                let operator_stake = 200 * SSC + i;
+
+                let (operator_id, _) = register_operator(
+                    domain_id,
+                    operator_account,
+                    operator_free_balance,
+                    operator_stake,
+                    SSC,
+                    pair.public(),
+                    signature,
+                    nominators,
+                );
+                operators.push(operator_id);
+
+                // for the first operator, zero epoch is finalized, so current active operators are reset
+                if i != 0 {
+                    assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+                }
+            }
+
+            assert_eq!(
+                CurrentActiveOperators::<Test>::iter_keys().count(),
+                operators.len() - 1
+            );
+
+            // nominate operator
+            let operator_id = operators[1];
+            let nominator_account = 11;
+            Balances::set_balance(&nominator_account, 100 * SSC);
+
+            do_nominate_operator::<Test>(operator_id, nominator_account, 10 * SSC).unwrap();
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            assert_eq!(CurrentActiveOperators::<Test>::iter_keys().count(), 0);
+
+            // nomination marks operator as active
+            let operator_id = operators[0];
+            let nominator_account = 12;
+            Balances::set_balance(&nominator_account, 100 * SSC);
+
+            do_nominate_operator::<Test>(operator_id, nominator_account, 10 * SSC).unwrap();
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
+            // withdrwal also marks operator as active
+            let operator_id = operators[1];
+            let nominator_account = 11;
+            do_withdraw_stake::<Test>(
+                operator_id,
+                nominator_account,
+                WithdrawStake::Percent(Percent::from_parts(10)),
+            )
+            .unwrap();
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
+            // new registered operator is active
+            let new_operator_id = 10;
+            let pair = OperatorPair::from_seed(&U256::from(new_operator_id).into());
+            let data = OperatorSigningKeyProofOfOwnershipData {
+                operator_owner: new_operator_id,
+            };
+            let signature = pair.sign(&data.encode());
+            let operator_free_balance = 1250 * SSC + new_operator_id;
+            let operator_stake = 200 * SSC + new_operator_id;
+
+            let (operator_id, _) = register_operator(
+                domain_id,
+                new_operator_id,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                signature,
+                BTreeMap::new(),
+            );
+
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
+            // before the end of the epoch, three operators are active
+            assert_eq!(CurrentActiveOperators::<Test>::iter_keys().count(), 3);
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            // operators map is reset
+            assert_eq!(CurrentActiveOperators::<Test>::iter_keys().count(), 0);
         });
     }
 }

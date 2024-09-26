@@ -510,6 +510,11 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// List of active operators for the current epoch. Reset at the end of the current epoch.
+    #[pallet::storage]
+    pub(super) type CurrentActiveOperators<T: Config> =
+        StorageMap<_, Identity, OperatorId, (), ValueQuery>;
+
     /// The highest slot of the bundle submitted by an operator
     #[pallet::storage]
     pub(super) type OperatorHighestSlot<T: Config> =

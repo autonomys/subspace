@@ -11,8 +11,8 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
-    OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, CurrentActiveOperators, DepositOnHold, DomainBlockNumberFor, Event,
+    HoldIdentifier, NominatorId, OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
@@ -420,6 +420,8 @@ pub fn do_register_operator<T: Config>(
             new_deposit,
         )?;
 
+        CurrentActiveOperators::<T>::insert(operator_id, ());
+
         Ok((operator_id, domain_stake_summary.current_epoch_index))
     })
 }
@@ -646,6 +648,8 @@ pub(crate) fn do_nominate_operator<T: Config>(
             }
         }
 
+        CurrentActiveOperators::<T>::insert(operator_id, ());
+
         Ok(())
     })
 }
@@ -713,6 +717,8 @@ pub(crate) fn do_deregister_operator<T: Config>(
                 operator.update_status(OperatorStatus::Deregistered(operator_deregister_info));
 
                 stake_summary.next_operators.remove(&operator_id);
+                CurrentActiveOperators::<T>::remove(operator_id);
+
                 Ok(())
             },
         )
@@ -968,6 +974,9 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     .ok_or(Error::BalanceOverflow)?;
 
                 *maybe_withdrawal = Some(withdrawal);
+
+                CurrentActiveOperators::<T>::insert(operator_id, ());
+
                 Ok(())
             })
         })
@@ -1383,6 +1392,8 @@ pub(crate) fn do_reward_operators<T: Config>(
             allocated_rewards = allocated_rewards
                 .checked_add(&operator_reward)
                 .ok_or(Error::BalanceOverflow)?;
+
+            CurrentActiveOperators::<T>::insert(operator_id, ());
         }
 
         // mint remaining funds to treasury
@@ -1447,7 +1458,7 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary,
+        Config, CurrentActiveOperators, Deposits, DomainRegistry, DomainStakingSummary,
         LatestConfirmedDomainExecutionReceipt, NextOperatorId, NominatorCount, OperatorIdOwner,
         Operators, PendingSlashes, Withdrawals,
     };
@@ -1837,6 +1848,8 @@ pub(crate) mod tests {
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             assert_eq!(nominator_count, 1);
 
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
             // do epoch transition
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
@@ -1945,6 +1958,7 @@ pub(crate) mod tests {
                 res,
                 Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
             );
+            assert!(!CurrentActiveOperators::<Test>::contains_key(operator_id));
         });
     }
 
@@ -2017,6 +2031,8 @@ pub(crate) mod tests {
                 nominators,
             );
 
+            assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
+
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             if !operator_reward.is_zero() {
@@ -2056,6 +2072,7 @@ pub(crate) mod tests {
                     deposit_amount,
                 );
                 assert_ok!(res);
+                assert!(CurrentActiveOperators::<Test>::contains_key(operator_id));
             }
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
