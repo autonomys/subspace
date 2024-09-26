@@ -136,6 +136,8 @@ pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
+/// Expected block time in milliseconds.
+///
 /// Since Subspace is probabilistic this is the average expected block time that
 /// we are targeting. Blocks will be produced at a minimum duration defined
 /// by `SLOT_DURATION`, but some slots will not be allocated to any

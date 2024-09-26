@@ -23,7 +23,7 @@
     const_option,
     const_trait_impl,
     const_try,
-    new_uninit,
+    new_zeroed_alloc,
     portable_simd,
     step_trait
 )]

@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 //! Simple bootstrap node implementation
 
 #![feature(const_option, type_changing_struct_update)]

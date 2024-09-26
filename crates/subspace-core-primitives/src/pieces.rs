@@ -1056,9 +1056,7 @@ impl AsMut<[u8]> for CowBytes {
 
                 bytes.as_mut()
             }
-            CowBytes::Owned(bytes) => {
-                return bytes.as_mut();
-            }
+            CowBytes::Owned(bytes) => bytes.as_mut(),
         }
     }
 }

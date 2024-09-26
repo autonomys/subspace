@@ -1408,6 +1408,7 @@ impl DomainAllowlistUpdates {
 }
 
 /// Domain Sudo runtime call.
+///
 /// This structure exists because we need to generate a storage proof for FP
 /// and Storage shouldn't be None. So each domain must always hold this value even if
 /// there is an empty runtime call inside

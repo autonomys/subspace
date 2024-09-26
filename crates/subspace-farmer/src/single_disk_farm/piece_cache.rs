@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    elided_named_lifetimes,
+    reason = "https://github.com/dtolnay/async-trait/issues/279"
+)]
+
 //! Cache implementation specific to single disk farm
 
 use crate::disk_piece_cache::DiskPieceCache;

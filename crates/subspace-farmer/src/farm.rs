@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    elided_named_lifetimes,
+    reason = "https://github.com/dtolnay/async-trait/issues/279"
+)]
+
 //! Abstract farm API
 //!
 //! This module provides a bunch of traits and simple data structures that serve as a layer of

@@ -265,6 +265,8 @@ pub enum SectorContentsMapIterationError {
     },
 }
 
+/// Map of sector contents.
+///
 /// Abstraction on top of bitfields that allow making sense of sector contents that contains both
 /// encoded (meaning erasure coded and encoded with existing PoSpace quality) and unencoded chunks
 /// (just erasure coded) used at the same time both in records (before writing to plot) and

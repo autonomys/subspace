@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use crate::protocols::request_response::request_response_factory::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
     RequestFailure, RequestHandler, RequestResponseFactoryBehaviour,

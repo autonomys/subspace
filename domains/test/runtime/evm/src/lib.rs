@@ -896,33 +896,31 @@ fn pre_dispatch_evm_transaction(
             {
                 transaction_validity.map(|_| ())?;
 
-                if let Call::transact { transaction } = call {
-                    frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                let Call::transact { transaction } = call;
+                frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
-                    let transaction_data: TransactionData = (&transaction).into();
-                    let transaction_nonce = transaction_data.nonce;
-                    // if the current account nonce is more the tracked nonce, then
-                    // pick the highest nonce
-                    let account_nonce = {
-                        let tracked_nonce =
-                            EVMNoncetracker::account_nonce(AccountId::from(account_id))
-                                .unwrap_or(U256::zero());
-                        let account_nonce = EVM::account_basic(&account_id).0.nonce;
-                        max(tracked_nonce, account_nonce)
-                    };
+                let transaction_data: TransactionData = (&transaction).into();
+                let transaction_nonce = transaction_data.nonce;
+                // if the current account nonce is more the tracked nonce, then
+                // pick the highest nonce
+                let account_nonce = {
+                    let tracked_nonce = EVMNoncetracker::account_nonce(AccountId::from(account_id))
+                        .unwrap_or(U256::zero());
+                    let account_nonce = EVM::account_basic(&account_id).0.nonce;
+                    max(tracked_nonce, account_nonce)
+                };
 
-                    match transaction_nonce.cmp(&account_nonce) {
-                        Ordering::Less => return Err(InvalidTransaction::Stale.into()),
-                        Ordering::Greater => return Err(InvalidTransaction::Future.into()),
-                        Ordering::Equal => {}
-                    }
-
-                    let next_nonce = account_nonce
-                        .checked_add(U256::one())
-                        .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
-
-                    EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
+                match transaction_nonce.cmp(&account_nonce) {
+                    Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                    Ordering::Greater => return Err(InvalidTransaction::Future.into()),
+                    Ordering::Equal => {}
                 }
+
+                let next_nonce = account_nonce
+                    .checked_add(U256::one())
+                    .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
+
+                EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
             }
 
             Ok(())

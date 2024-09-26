@@ -9,7 +9,7 @@
     int_roundings,
     iter_collect_into,
     never_type,
-    new_uninit,
+    new_zeroed_alloc,
     portable_simd,
     try_blocks
 )]
