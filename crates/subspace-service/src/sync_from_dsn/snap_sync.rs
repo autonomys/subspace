@@ -20,7 +20,7 @@ use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{BlockNumber, PublicKey, SegmentIndex};
@@ -229,11 +229,11 @@ where
     // Reconstruct blocks of the last segment
     let mut blocks = VecDeque::new();
     {
-        let mut reconstructor = Reconstructor::new(erasure_coding.clone());
+        let reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
 
         for segment_index in segments_to_reconstruct {
             let blocks_fut =
-                download_and_reconstruct_blocks(segment_index, piece_getter, &mut reconstructor);
+                download_and_reconstruct_blocks(segment_index, piece_getter, &reconstructor);
 
             blocks = VecDeque::from(blocks_fut.await?);
         }
