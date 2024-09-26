@@ -69,8 +69,7 @@ use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
-    OpaqueBundle, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
-    INITIAL_DOMAIN_TX_RANGE,
+    OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -1279,22 +1278,6 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extract_bundle(
-            extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            crate::domains::extract_bundle(extrinsic)
-        }
-
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            crate::domains::extract_successful_bundles(domain_id, extrinsics)
-                .into_iter()
-                .map(|bundle| bundle.into_receipt())
-                .collect()
-        }
-
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1329,10 +1312,6 @@ impl_runtime_apis! {
 
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
             Domains::oldest_unconfirmed_receipt_number(domain_id)
-        }
-
-        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
-            Domains::domain_block_limit(domain_id)
         }
 
         fn domain_bundle_limit(domain_id: DomainId) -> Option<sp_domains::DomainBundleLimit> {

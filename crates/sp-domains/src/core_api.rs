@@ -16,7 +16,6 @@ use subspace_runtime_primitives::Moment;
 
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
-    #[api_version(2)]
     pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(

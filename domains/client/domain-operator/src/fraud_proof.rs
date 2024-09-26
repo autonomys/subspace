@@ -6,7 +6,7 @@ use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::CheckExtrinsicsValidityError;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_domains::FPStorageKeyProvider;
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
@@ -391,25 +391,12 @@ where
         let maybe_runtime_id =
             self.is_domain_runtime_updraded_at(domain_id, consensus_block_hash)?;
 
-        let consensus_runtime_api = self.consensus_client.runtime_api();
-        let api_version = consensus_runtime_api
-            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)
-            .map_err(sp_blockchain::Error::RuntimeApiError)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("DomainsApi not found at: {:?}", consensus_block_hash).into(),
-                ))
-            })?;
-
-        // Domains api must be atleast version 4
-        let should_include_domain_sudo_call = api_version >= 5;
         let domain_inherent_extrinsic_data_proof = DomainInherentExtrinsicDataProof::generate(
             &self.storage_key_provider,
             self.consensus_client.as_ref(),
             domain_id,
             consensus_block_hash,
             maybe_runtime_id,
-            should_include_domain_sudo_call,
         )?;
 
         let invalid_domain_extrinsics_root_proof = FraudProof {
@@ -705,22 +692,6 @@ where
                     InvalidBundlesProofData::Extrinsic(extrinsic_proof)
                 }
                 InvalidBundleType::InvalidXDM(extrinsic_index) => {
-                    let messenger_api_version = self
-                        .client
-                        .runtime_api()
-                        .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(
-                            local_receipt.domain_block_hash,
-                        )?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                                format!(
-                                    "MessengerApi not found at: {:?}",
-                                    local_receipt.domain_block_hash
-                                )
-                                .into(),
-                            ))
-                        })?;
-
                     let encoded_extrinsic = bundle.extrinsics[extrinsic_index as usize].encode();
                     let extrinsic = Block::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
                         .map_err(|decoding_error| {
@@ -730,13 +701,10 @@ where
                             }
                         })?;
 
-                    let maybe_xdm_mmr_proof = if messenger_api_version >= 4 {
-                        self.client
-                            .runtime_api()
-                            .extract_xdm_mmr_proof(local_receipt.domain_block_hash, &extrinsic)?
-                    } else {
-                        None
-                    };
+                    let maybe_xdm_mmr_proof = self
+                        .client
+                        .runtime_api()
+                        .extract_xdm_mmr_proof(local_receipt.domain_block_hash, &extrinsic)?;
 
                     let mmr_root_proof = match maybe_xdm_mmr_proof {
                         // `None` this is not an XDM so not need to generate mmr root proof
@@ -820,21 +788,9 @@ where
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
-
         let runtime_api = self.client.runtime_api();
-        let api_version = runtime_api
-            .api_version::<dyn DomainCoreApi<Block>>(block_hash)
-            .map_err(sp_blockchain::Error::RuntimeApiError)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("DomainCoreApi not found at: {:?}", block_hash).into(),
-                ))
-            })?;
-        let key = if api_version >= 2 {
-            runtime_api.block_fees_storage_key(block_hash)?
-        } else {
-            sp_domains::operator_block_fees_final_key()
-        };
+
+        let key = runtime_api.block_fees_storage_key(block_hash)?;
         let storage_proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;

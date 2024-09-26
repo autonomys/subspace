@@ -398,7 +398,6 @@ impl PassBy for StatelessDomainRuntimeCall {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for fraud proof.
-    #[api_version(2)]
     pub trait FraudProofApi<DomainHeader: HeaderT> {
         /// Submit the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader, H256>);

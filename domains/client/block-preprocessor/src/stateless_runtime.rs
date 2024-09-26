@@ -3,7 +3,7 @@ use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DecodeExtrinsicError};
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, Core, RuntimeApiInfo};
+use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::Hasher;
 use sp_domain_sudo::DomainSudoApi;
@@ -357,31 +357,7 @@ where
     }
 
     pub fn block_fees_storage_key(&self) -> Result<Vec<u8>, ApiError> {
-        let runtime_version = {
-            let mut ext = BasicExternalities::new(self.storage.clone());
-            let ext_extensions = ext.extensions();
-            ext_extensions.merge(
-                self.extension_factory
-                    .extensions_for(Default::default(), Default::default()),
-            );
-            let runtime_code = self.runtime_code();
-            self.executor
-                .runtime_version(&mut ext, &runtime_code)
-                .map_err(|err| {
-                    ApiError::Application(Box::from(format!(
-                        "failed to read domain runtime version: {err}"
-                    )))
-                })?
-        };
-        let has_runtime_api = runtime_version
-            .api_version(&<dyn DomainCoreApi<Block>>::ID)
-            .map_or(false, |runtime_api_version| runtime_api_version >= 2);
-
-        if has_runtime_api {
-            <Self as DomainCoreApi<Block>>::block_fees_storage_key(self, Default::default())
-        } else {
-            Ok(sp_domains::operator_block_fees_final_key())
-        }
+        <Self as DomainCoreApi<Block>>::block_fees_storage_key(self, Default::default())
     }
 
     pub fn extrinsic_weight(&self, extrinsic: &Block::Extrinsic) -> Result<Weight, ApiError> {

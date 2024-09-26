@@ -2,7 +2,7 @@ use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, L
 use cross_domain_message_gossip::{ChannelUpdate, Message as GossipMessage, MessageData};
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
 use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::messages::ChainId;
@@ -102,17 +102,6 @@ where
     Client::Api: RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>,
 {
     let api = client.runtime_api();
-    let api_version = api
-        .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(
-            block_hash,
-        )?
-        .ok_or(sp_api::ApiError::Application(
-            "Failed to get relayer api version".into(),
-        ))?;
-
-    if api_version < 2 {
-        return Ok(());
-    }
 
     let updated_channels = api.updated_channels(block_hash)?;
 
