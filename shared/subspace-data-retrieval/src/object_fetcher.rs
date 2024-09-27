@@ -37,6 +37,13 @@ pub enum Error {
         piece_offset: u32,
     },
 
+    /// Supplied piece offset is too large
+    #[error("Piece offset {piece_offset} is too large, must be less than {}, piece index: {piece_index}", RawRecord::SIZE)]
+    PieceOffsetTooLarge {
+        piece_index: PieceIndex,
+        piece_offset: u32,
+    },
+
     /// No item in segment at offset
     #[error("Offset {offset_in_segment} in segment {segment_index} is not an item, current progress: {progress}, object: {piece_index:?}, {piece_offset}")]
     NoSegmentItem {
@@ -166,6 +173,7 @@ impl ObjectFetcher {
         piece_index: PieceIndex,
         piece_offset: u32,
     ) -> Result<Vec<u8>, Error> {
+        // Validate parameters
         if !piece_index.is_source() {
             tracing::debug!(
                 %piece_index,
@@ -175,6 +183,20 @@ impl ObjectFetcher {
 
             // Parity pieces contain effectively random data, and can't be used to fetch objects
             return Err(Error::NotSourcePiece {
+                piece_index,
+                piece_offset,
+            });
+        }
+
+        if piece_offset >= RawRecord::SIZE as u32 {
+            tracing::debug!(
+                %piece_index,
+                piece_offset,
+                RawRecord_SIZE = RawRecord::SIZE,
+                "Invalid piece offset for object: must be less than the size of a raw record",
+            );
+
+            return Err(Error::PieceOffsetTooLarge {
                 piece_index,
                 piece_offset,
             });
@@ -316,7 +338,7 @@ impl ObjectFetcher {
         piece_index: PieceIndex,
         piece_offset: u32,
     ) -> Result<Vec<u8>, Error> {
-        let segment_index = piece_index.segment_index();
+        let mut segment_index = piece_index.segment_index();
         let piece_position_in_segment = piece_index.position();
         // Used to access the data after it is converted to raw bytes
         let offset_in_segment =
@@ -361,9 +383,9 @@ impl ObjectFetcher {
                 SegmentItem::Block { bytes, .. }
                 | SegmentItem::BlockStart { bytes, .. }
                 | SegmentItem::BlockContinuation { bytes, .. } => {
-                    // Rewind back progress to the beginning of the number of bytes
+                    // Rewind back progress to the beginning of this item
                     progress -= bytes.len();
-                    // Get a chunk of the bytes starting at the position we care about
+                    // Get a chunk of the bytes starting at the offset in this item
                     Vec::from(&bytes[offset_in_segment - progress..])
                 }
                 segment_item @ SegmentItem::Padding
@@ -407,8 +429,8 @@ impl ObjectFetcher {
         // We don't attempt to calculate the number of segments needed, because it involves
         // headers and optional padding.
         loop {
-            let Segment::V0 { items } =
-                self.read_segment(segment_index + SegmentIndex::ONE).await?;
+            segment_index += SegmentIndex::ONE;
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
             for segment_item in items {
                 match segment_item {
                     SegmentItem::BlockContinuation { bytes, .. } => {
