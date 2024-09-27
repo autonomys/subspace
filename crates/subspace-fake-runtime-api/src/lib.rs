@@ -19,9 +19,7 @@
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::weights::Weight;
-use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, PotParameters, SignedVote, SolutionRanges,
-};
+use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
@@ -139,19 +137,9 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn submit_report_equivocation_extrinsic(
-            _equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
-        ) -> Option<()> {
-            unreachable!()
-        }
-
         fn submit_vote_extrinsic(
             _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
-            unreachable!()
-        }
-
-        fn is_in_block_list(_farmer_public_key: &PublicKey) -> bool {
             unreachable!()
         }
 

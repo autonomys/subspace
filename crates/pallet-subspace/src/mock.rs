@@ -16,7 +16,6 @@
 
 //! Test utilities
 
-use crate::equivocation::EquivocationHandler;
 use crate::{self as pallet_subspace, AllowAuthoringBy, Config, EnableRewardsAt, NormalEraChange};
 use frame_support::traits::{ConstU128, ConstU16, OnInitialize};
 use frame_support::{derive_impl, parameter_types};
@@ -27,8 +26,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::{KzgExtension, PosExtension, PotExtension, SignedVote, Vote};
 use sp_io::TestExternalities;
-use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
-use sp_runtime::traits::{Block as BlockT, Header as _};
+use sp_runtime::testing::{Digest, DigestItem, TestXt};
+use sp_runtime::traits::Block as BlockT;
 use sp_runtime::BuildStorage;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
@@ -37,7 +36,6 @@ use std::sync::{Once, OnceLock};
 use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
@@ -83,7 +81,6 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         Subspace: pallet_subspace,
-        OffencesSubspace: pallet_offences_subspace,
     }
 );
 
@@ -108,11 +105,6 @@ impl pallet_balances::Config for Test {
     type AccountStore = System;
     type RuntimeHoldReason = ();
     type DustRemoval = ();
-}
-
-impl pallet_offences_subspace::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type OnOffenceHandler = Subspace;
 }
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
@@ -163,8 +155,6 @@ impl Config for Test {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
-
-    type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
 }
@@ -270,82 +260,6 @@ pub fn new_test_ext(pot_extension: PotExtension) -> TestExternalities {
     ext.register_extension(pot_extension);
 
     ext
-}
-
-/// Creates an equivocation at the current block, by generating two headers.
-pub fn generate_equivocation_proof(
-    keypair: &Keypair,
-    slot: Slot,
-) -> sp_consensus_subspace::EquivocationProof<Header> {
-    let current_block = System::block_number();
-    let current_slot = Subspace::current_slot();
-
-    let chunk = {
-        let mut chunk_bytes = [0; Scalar::SAFE_BYTES];
-        chunk_bytes.as_mut().iter_mut().for_each(|byte| {
-            *byte = (current_block % 8) as u8;
-        });
-
-        Scalar::from(&chunk_bytes)
-    };
-
-    let public_key = PublicKey::from(keypair.public.to_bytes());
-
-    let make_header = |piece_offset, reward_address: <Test as frame_system::Config>::AccountId| {
-        let parent_hash = System::parent_hash();
-        let pre_digest = make_pre_digest(
-            slot,
-            Solution {
-                public_key,
-                reward_address,
-                sector_index: 0,
-                history_size: HistorySize::from(SegmentIndex::ZERO),
-                piece_offset,
-                record_commitment: Default::default(),
-                record_witness: Default::default(),
-                chunk,
-                chunk_witness: Default::default(),
-                proof_of_space: Default::default(),
-            },
-        );
-        System::reset_events();
-        System::initialize(&current_block, &parent_hash, &pre_digest);
-        System::set_block_number(current_block);
-        System::finalize()
-    };
-
-    // sign the header prehash and sign it, adding it to the block as the seal
-    // digest item
-    let seal_header = |header: &mut Header| {
-        let prehash = header.hash();
-        let signature = RewardSignature::from(
-            keypair
-                .sign(
-                    schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT)
-                        .bytes(prehash.as_bytes()),
-                )
-                .to_bytes(),
-        );
-        let seal = DigestItem::subspace_seal(signature);
-        header.digest_mut().push(seal);
-    };
-
-    // generate two headers at the current block
-    let mut h1 = make_header(PieceOffset::ZERO, 0);
-    let mut h2 = make_header(PieceOffset::ONE, 1);
-
-    seal_header(&mut h1);
-    seal_header(&mut h2);
-
-    // restore previous runtime state
-    go_to_block(keypair, current_block, *current_slot, 2);
-
-    sp_consensus_subspace::EquivocationProof {
-        slot,
-        offender: public_key,
-        first_header: h1,
-        second_header: h2,
-    }
 }
 
 pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {

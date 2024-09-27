@@ -18,8 +18,7 @@ mod benchmarks {
     use frame_support::traits::Get;
     use frame_system::pallet_prelude::*;
     use frame_system::{Pallet as System, RawOrigin};
-    use sp_consensus_subspace::{EquivocationProof, SignedVote, Vote};
-    use sp_runtime::traits::{Block, Header};
+    use sp_consensus_subspace::{SignedVote, Vote};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
     use subspace_core_primitives::{
@@ -28,29 +27,6 @@ mod benchmarks {
     };
 
     const SEED: u32 = 0;
-
-    #[benchmark]
-    fn report_equivocation() {
-        // Construct a dummy equivocation proof which is invalid but it is okay because the
-        // proof is not validate during the call
-        let offender = PublicKey::from([0u8; 32]);
-        let header = <T::Block as Block>::Header::new(
-            System::<T>::block_number(),
-            Default::default(),
-            Default::default(),
-            System::<T>::parent_hash(),
-            Default::default(),
-        );
-        let proof = EquivocationProof {
-            slot: Pallet::<T>::current_slot(),
-            offender,
-            first_header: header.clone(),
-            second_header: header,
-        };
-
-        #[extrinsic_call]
-        _(RawOrigin::None, Box::new(proof));
-    }
 
     #[benchmark]
     fn store_segment_headers(x: Linear<1, 20>) {
