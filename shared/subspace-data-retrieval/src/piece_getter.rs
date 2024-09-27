@@ -24,30 +24,14 @@ use subspace_core_primitives::{Piece, PieceIndex};
 /// A type-erased error
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-/// Object piece getter errors.
-#[derive(Debug, thiserror::Error)]
-pub enum PieceGetterError {
-    /// Getting piece failed, a retry won't get the piece from this provider, try another provider
-    #[error("Piece index {piece_index} can't be fetched by this provider")]
-    NotFound { piece_index: PieceIndex },
-
-    /// Getting piece failed, a retry won't get the piece from this provider, try another provider
-    #[error("Piece index {piece_index} can't be fetched by this provider: {source:?}")]
-    NotFoundWithError {
-        piece_index: PieceIndex,
-        source: BoxError,
-    },
-}
-
 /// Trait representing a way to get pieces from the DSN for object reconstruction
+// TODO: make ObjectPieceGetter impls retry before failing, if that is useful
 #[async_trait]
 pub trait ObjectPieceGetter: fmt::Debug {
     /// Get piece by index.
     ///
-    /// Returns `Ok(None)` for temporary errors: the piece is not found, but immediately retrying
-    /// this provider might return it.
-    /// Returns `Err(_)` for permanent errors: this provider can't provide the piece at this time,
-    /// and another provider should be attempted.
+    /// Returns `Ok(None)` if the piece is not found.
+    /// Returns `Err(_)` if trying to get the piece caused an error.
     async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError>;
 }
 
@@ -74,7 +58,7 @@ impl ObjectPieceGetter for NewArchivedSegment {
             ));
         }
 
-        Err(PieceGetterError::NotFound { piece_index }.into())
+        Ok(None)
     }
 }
 
@@ -85,6 +69,6 @@ impl ObjectPieceGetter for (PieceIndex, Piece) {
             return Ok(Some(self.1.clone()));
         }
 
-        Err(PieceGetterError::NotFound { piece_index }.into())
+        Ok(None)
     }
 }

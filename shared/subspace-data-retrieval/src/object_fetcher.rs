@@ -16,7 +16,7 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
 use crate::piece_fetcher::download_pieces;
-use crate::piece_getter::{ObjectPieceGetter, PieceGetterError};
+use crate::piece_getter::{BoxError, ObjectPieceGetter};
 use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
@@ -120,16 +120,16 @@ pub enum Error {
         source: SegmentGetterError,
     },
 
-    /// Piece getter permanent error
-    #[error("Getting piece failed permanently from supplied provider: {source:?}")]
-    PieceGetterPermanent {
+    /// Piece getter error
+    #[error("Getting piece caused an error: {source:?}")]
+    PieceGetterError {
         #[from]
-        source: PieceGetterError,
+        source: BoxError,
     },
 
-    /// Piece getter temporary error
-    #[error("Getting piece {piece_index:?} failed temporarily")]
-    PieceGetterTemporary { piece_index: PieceIndex },
+    /// Piece getter couldn't find the piece
+    #[error("Piece {piece_index:?} was not found by piece getter")]
+    PieceGetterNotFound { piece_index: PieceIndex },
 }
 
 /// Object fetcher for the Subspace DSN.
@@ -245,6 +245,14 @@ impl ObjectFetcher {
         let last_data_piece_in_segment = piece_position_in_segment >= data_shards - 1;
 
         if last_data_piece_in_segment && !before_last_two_bytes {
+            trace!(
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: last source piece in segment, \
+                and start of object length bytes is in potential segment padding",
+            );
+
             // Fast retrieval possibility is not guaranteed
             return Ok(None);
         }
@@ -282,6 +290,15 @@ impl ObjectFetcher {
         } else if !last_data_piece_in_segment {
             // Need the next piece to read the length of data, but we can only use it if there was
             // no segment padding
+            trace!(
+                %next_source_piece_index,
+                piece_position_in_segment,
+                bytes_available_in_segment,
+                %piece_index,
+                piece_offset,
+                "Part of object length bytes is in next piece, fetching",
+            );
+
             let piece = self
                 .read_piece(next_source_piece_index, piece_index, piece_offset)
                 .await?;
@@ -295,12 +312,31 @@ impl ObjectFetcher {
             )?
             .expect("Extra RawRecord is larger than the length encoding; qed")
         } else {
+            trace!(
+                piece_position_in_segment,
+                bytes_available_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: last source piece in segment, \
+                and part of object length bytes is in potential segment padding",
+            );
+
             // Super fast read is not possible, because we removed potential segment padding, so
             // the piece bytes are not guaranteed to be continuous
             return Ok(None);
         };
 
         if data_length > bytes_available_in_segment as usize {
+            trace!(
+                data_length,
+                bytes_available_in_segment,
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: part of object data bytes is in \
+                potential segment padding",
+            );
+
             // Not enough data without crossing segment boundary
             return Ok(None);
         }
@@ -344,6 +380,15 @@ impl ObjectFetcher {
         let offset_in_segment =
             piece_position_in_segment as usize * RawRecord::SIZE + piece_offset as usize;
 
+        tracing::trace!(
+            %segment_index,
+            offset_in_segment,
+            piece_position_in_segment,
+            %piece_index,
+            piece_offset,
+            "Fetching object from segment(s)",
+        );
+
         let mut data = {
             let Segment::V0 { items } = self.read_segment(segment_index).await?;
             // Go through the segment until we reach the offset.
@@ -378,6 +423,17 @@ impl ObjectFetcher {
                     }
                 })?;
 
+            tracing::trace!(
+                progress,
+                %segment_index,
+                offset_in_segment,
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
+                "Found item at offset in first segment",
+            );
+
             // Look at the item after the offset, collecting block bytes
             match segment_item {
                 SegmentItem::Block { bytes, .. }
@@ -398,7 +454,7 @@ impl ObjectFetcher {
                         %segment_index,
                         %piece_index,
                         piece_offset,
-                        ?segment_item,
+                        segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
                         "Unexpected segment item in first segment",
                     );
 
@@ -413,6 +469,16 @@ impl ObjectFetcher {
                 }
             }
         };
+
+        tracing::trace!(
+            %segment_index,
+            offset_in_segment,
+            piece_position_in_segment,
+            %piece_index,
+            piece_offset,
+            data_len = data.len(),
+            "Got data at offset in first segment",
+        );
 
         // Return an error if the length is unreasonably large, before we get the next segment
         if let Some(data_length) =
@@ -457,7 +523,7 @@ impl ObjectFetcher {
                             %segment_index,
                             %piece_index,
                             piece_offset,
-                            ?segment_item,
+                            segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
                             "Unexpected segment item in continuing segment",
                         );
 
@@ -488,7 +554,7 @@ impl ObjectFetcher {
     async fn read_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<Vec<Piece>, Error> {
         download_pieces(piece_indexes, &self.piece_getter)
             .await
-            .map_err(|source| Error::PieceGetterPermanent { source })
+            .map_err(|source| Error::PieceGetterError { source })
     }
 
     /// Read and return a single piece.
@@ -504,19 +570,14 @@ impl ObjectFetcher {
             .piece_getter
             .get_piece(piece_index)
             .await
-            .map_err(|source| {
+            .inspect_err(|source| {
                 debug!(
                     %piece_index,
                     error = ?source,
                     %mapping_piece_index,
                     mapping_piece_offset,
-                    "Permanent error fetching piece during object assembling"
+                    "Error fetching piece during object assembling"
                 );
-
-                PieceGetterError::NotFoundWithError {
-                    piece_index,
-                    source,
-                }
             })?;
 
         if let Some(piece) = piece {
@@ -533,11 +594,10 @@ impl ObjectFetcher {
                 %piece_index,
                 %mapping_piece_index,
                 mapping_piece_offset,
-                "Temporary error fetching piece during object assembling"
+                "Piece not found during object assembling"
             );
 
-            // TODO: retry before failing
-            Err(Error::PieceGetterTemporary {
+            Err(Error::PieceGetterNotFound {
                 piece_index: mapping_piece_index,
             })?
         }

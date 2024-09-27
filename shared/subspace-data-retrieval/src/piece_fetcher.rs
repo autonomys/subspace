@@ -31,7 +31,7 @@ use tracing::{debug, trace};
 pub async fn download_pieces<PG>(
     piece_indexes: &[PieceIndex],
     piece_getter: &PG,
-) -> Result<Vec<Piece>, PieceGetterError>
+) -> Result<Vec<Piece>, BoxError>
 where
     PG: ObjectPieceGetter,
 {
@@ -56,22 +56,19 @@ where
                     Ok(piece)
                 }
                 Ok(None) => {
-                    // TODO: retry before failing
-                    trace!(?piece_index, "Piece request temporarily failed",);
-                    return Err(PieceGetterError::NotFound {
+                    trace!(?piece_index, "Piece not found");
+                    Err(Error::PieceGetterNotFound {
                         piece_index: *piece_index,
-                    });
+                    }
+                    .into())
                 }
                 Err(error) => {
                     trace!(
                         %error,
                         ?piece_index,
-                        "Piece request permanently failed",
+                        "Piece request caused an error",
                     );
-                    return Err(PieceGetterError::NotFoundWithError {
-                        piece_index: *piece_index,
-                        source: error,
-                    });
+                    Err(error)
                 }
             }
         })
