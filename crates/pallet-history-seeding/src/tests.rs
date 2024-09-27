@@ -1,4 +1,4 @@
-use crate::{self as pallet_history_seeding, Error};
+use crate::{self as pallet_history_seeding};
 use frame_support::traits::BuildGenesisConfig;
 use frame_support::{assert_noop, assert_ok, construct_runtime, derive_impl};
 use frame_system as system;
@@ -68,26 +68,5 @@ fn seed_history_works() {
             RuntimeOrigin::signed(1),
             remark.clone()
         ));
-
-        // Ensure unauthorized account cannot seed history
-        assert_noop!(
-            HistorySeeding::seed_history(RuntimeOrigin::signed(2), remark),
-            Error::<Test>::NotAuthorized
-        );
-    });
-}
-
-#[test]
-fn seed_history_fails_when_no_seeder_set() {
-    new_test_ext().execute_with(|| {
-        let remark = vec![1, 2, 3];
-        assert_noop!(
-            HistorySeeding::seed_history(RuntimeOrigin::signed(1), remark.clone()),
-            Error::<Test>::NotAuthorized
-        );
-        assert_noop!(
-            HistorySeeding::seed_history(RuntimeOrigin::root(), remark),
-            sp_runtime::DispatchError::BadOrigin
-        );
     });
 }
