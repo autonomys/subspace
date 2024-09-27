@@ -19,7 +19,7 @@ required-features = ["binary"]
 anyhow = "1.0.86"
 async-lock = "3.3.0"
 async-nats = { version = "0.35.1", optional = true }
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"

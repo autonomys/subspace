@@ -13,7 +13,7 @@ documentation = "https://docs.rs/sc-consensus-subspace"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
 futures = "0.3.29"
 parking_lot = "0.12.2"
