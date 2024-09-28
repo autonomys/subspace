@@ -31,7 +31,9 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
-use subspace_runtime::{DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic};
+use subspace_runtime::{
+    CheckHistorySeeder, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
+};
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
 
@@ -426,6 +428,7 @@ pub fn construct_signed_extrinsic(
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
         DisablePallets,
+        CheckHistorySeeder::<Runtime>::new(),
     );
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
         call.clone(),
@@ -436,6 +439,7 @@ pub fn construct_signed_extrinsic(
             subspace_runtime::VERSION.transaction_version,
             consensus_chain_info.genesis_hash,
             consensus_chain_info.best_hash,
+            (),
             (),
             (),
             (),
