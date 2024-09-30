@@ -15,7 +15,8 @@ use sc_client_api::{
 };
 use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
-use sc_network::{NetworkPeers, NotificationMetrics};
+use sc_network::service::traits::NetworkService;
+use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -98,7 +99,7 @@ where
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network service.
-    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network_service: Arc<dyn NetworkService>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
@@ -368,7 +369,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let net_config = sc_network::config::FullNetworkConfiguration::new(
+    let net_config = sc_network::config::FullNetworkConfiguration::<_, _, NetworkWorker<_, _>>::new(
         &domain_config.network,
         domain_config
             .prometheus_config
@@ -376,31 +377,25 @@ where
             .map(|cfg| cfg.registry.clone()),
     );
 
-    let (
-        network_service,
-        system_rpc_tx,
-        tx_handler_controller,
-        network_starter,
-        sync_service,
-        _block_downloader,
-    ) = crate::build_network(BuildNetworkParams {
-        config: &domain_config,
-        net_config,
-        client: client.clone(),
-        transaction_pool: transaction_pool.clone(),
-        spawn_handle: task_manager.spawn_handle(),
-        import_queue: params.import_queue,
-        // TODO: we might want to re-enable this some day.
-        block_announce_validator_builder: None,
-        warp_sync_config: None,
-        block_relay: None,
-        metrics: NotificationMetrics::new(
-            domain_config
-                .prometheus_config
-                .as_ref()
-                .map(|cfg| &cfg.registry),
-        ),
-    })?;
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
+        sc_service::build_network(BuildNetworkParams {
+            config: &domain_config,
+            net_config,
+            client: client.clone(),
+            transaction_pool: transaction_pool.clone(),
+            spawn_handle: task_manager.spawn_handle(),
+            import_queue: params.import_queue,
+            // TODO: we might want to re-enable this some day.
+            block_announce_validator_builder: None,
+            warp_sync_config: None,
+            block_relay: None,
+            metrics: NotificationMetrics::new(
+                domain_config
+                    .prometheus_config
+                    .as_ref()
+                    .map(|cfg| &cfg.registry),
+            ),
+        })?;
 
     let is_authority = domain_config.role.is_authority();
     domain_config.rpc.id_provider = provider.rpc_id();

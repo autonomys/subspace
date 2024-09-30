@@ -10,7 +10,7 @@ use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_network::NetworkService;
+use sc_network::service::traits::NetworkService;
 use sc_network_sync::SyncingService;
 use sc_service::{DatabaseSource, SpawnTaskHandle};
 use sc_transaction_pool::{ChainApi, Pool};
@@ -37,7 +37,7 @@ pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP> {
     /// Graph pool instance.
     pub graph: Arc<Pool<CA>>,
     /// Network service
-    pub network: Arc<NetworkService<Block, Block::Hash>>,
+    pub network: Arc<dyn NetworkService>,
     /// Chain syncing service
     pub sync: Arc<SyncingService<Block>>,
     /// Is node running as authority.

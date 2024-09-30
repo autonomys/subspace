@@ -18,7 +18,8 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
-use sc_network::{NetworkService, NetworkStateInfo};
+use sc_network::service::traits::NetworkService;
+use sc_network::NetworkStateInfo;
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -86,7 +87,7 @@ where
     /// Code executor.
     pub code_executor: Arc<RuntimeExecutor>,
     /// Network service.
-    pub network_service: Arc<NetworkService<Block, H256>>,
+    pub network_service: Arc<dyn NetworkService>,
     /// Sync service.
     pub sync_service: Arc<SyncingService<Block>>,
     /// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node"

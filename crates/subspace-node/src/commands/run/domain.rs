@@ -324,7 +324,13 @@ pub(super) fn create_domain_configuration(
                     unreachable!("Memory transport not used in CLI; qed")
                 }
             },
-            force_synced: false,
+            // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
+            // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
+            // It would have been ideal to use `Consensus` chain sync service to respond to `is_major_sync` requests but this
+            // would require upstream changes and with some refactoring. This is not worth the effort at the moment since
+            // we are planning to enable domain's block request and state sync mechanism in the near future.
+            // Until such change has been made, domain's sync service needs to be in force_synced state.
+            force_synced: true,
         },
         keystore,
         state_pruning: pruning_params.state_pruning()?,
