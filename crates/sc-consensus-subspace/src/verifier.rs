@@ -447,22 +447,6 @@ where
 
         Ok(())
     }
-}
-
-#[async_trait::async_trait]
-impl<PosTable, Block, Client, SelectChain> Verifier<Block>
-    for SubspaceVerifier<PosTable, Block, Client, SelectChain>
-where
-    PosTable: Table,
-    Block: BlockT,
-    BlockNumber: From<NumberFor<Block>>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
-{
-    fn verification_concurrency(&self) -> NonZeroUsize {
-        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
-    }
 
     async fn verify(
         &self,
@@ -617,5 +601,28 @@ where
         block.post_hash = Some(hash);
 
         Ok(block)
+    }
+}
+
+#[async_trait::async_trait]
+impl<PosTable, Block, Client, SelectChain> Verifier<Block>
+    for SubspaceVerifier<PosTable, Block, Client, SelectChain>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+    SelectChain: sp_consensus::SelectChain<Block>,
+{
+    fn verification_concurrency(&self) -> NonZeroUsize {
+        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
+    }
+
+    async fn verify(
+        &self,
+        block: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
+        self.verify(block).await
     }
 }
