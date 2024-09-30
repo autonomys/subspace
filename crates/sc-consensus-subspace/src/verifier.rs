@@ -45,6 +45,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
 
@@ -134,7 +135,7 @@ where
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain>
+pub struct Inner<PosTable, Block, Client, SelectChain>
 where
     Block: BlockT,
 {
@@ -154,17 +155,17 @@ where
     _block: PhantomData<Block>,
 }
 
-impl<PosTable, Block, Client, SelectChain> SubspaceVerifier<PosTable, Block, Client, SelectChain>
+impl<PosTable, Block, Client, SelectChain> Inner<PosTable, Block, Client, SelectChain>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
-    Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
+    SelectChain: sp_consensus::SelectChain<Block> + 'static,
 {
     /// Create new instance
-    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
+    fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
         let SubspaceVerifierOptions {
             client,
             chain_constants,
@@ -231,7 +232,7 @@ where
     ///
     /// `pre_digest` argument is optional in case it is available to avoid doing the work of
     /// extracting it from the header twice.
-    async fn check_header(
+    fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
         subspace_digest_items: SubspaceDigestItems<PublicKey>,
@@ -544,7 +545,6 @@ where
                 full_pot_verification,
                 &block.justifications,
             )
-            .await
             .map_err(|error| error.to_string())?;
 
         let CheckedHeader {
@@ -604,6 +604,31 @@ where
     }
 }
 
+/// A verifier for Subspace blocks.
+pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain>
+where
+    Block: BlockT,
+{
+    inner: Arc<Inner<PosTable, Block, Client, SelectChain>>,
+}
+
+impl<PosTable, Block, Client, SelectChain> SubspaceVerifier<PosTable, Block, Client, SelectChain>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+    SelectChain: sp_consensus::SelectChain<Block> + 'static,
+{
+    /// Create new instance
+    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
+        Self {
+            inner: Arc::new(Inner::new(options)),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl<PosTable, Block, Client, SelectChain> Verifier<Block>
     for SubspaceVerifier<PosTable, Block, Client, SelectChain>
@@ -611,9 +636,9 @@ where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
+    SelectChain: sp_consensus::SelectChain<Block> + 'static,
 {
     fn verification_concurrency(&self) -> NonZeroUsize {
         available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
@@ -623,6 +648,9 @@ where
         &self,
         block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
-        self.verify(block).await
+        let inner = Arc::clone(&self.inner);
+        tokio::task::spawn_blocking(move || Handle::current().block_on(inner.verify(block)))
+            .await
+            .map_err(|error| format!("Failed to join block verification task: {error}"))?
     }
 }
