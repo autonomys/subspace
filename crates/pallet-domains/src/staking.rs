@@ -1508,7 +1508,6 @@ pub(crate) mod tests {
                 max_block_size: u32::MAX,
                 max_block_weight: Weight::MAX,
                 bundle_slot_probability: (0, 0),
-                target_bundles_per_block: 0,
                 operator_allow_list: OperatorAllowList::Anyone,
                 initial_balances: Default::default(),
             };
@@ -1905,7 +1904,6 @@ pub(crate) mod tests {
                 max_block_size: u32::MAX,
                 max_block_weight: Weight::MAX,
                 bundle_slot_probability: (0, 0),
-                target_bundles_per_block: 0,
                 operator_allow_list: OperatorAllowList::Anyone,
                 initial_balances: Default::default(),
             };

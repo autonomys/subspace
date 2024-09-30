@@ -335,10 +335,6 @@ mod pallet {
         #[pallet::constant]
         type MaxDomainBlockWeight: Get<Weight>;
 
-        /// The maximum bundle per block limit for all domain.
-        #[pallet::constant]
-        type MaxBundlesPerBlock: Get<u32>;
-
         /// The maximum domain name length limit for all domain.
         #[pallet::constant]
         type MaxDomainNameLength: Get<u32>;
@@ -1829,7 +1825,6 @@ mod pallet {
                         max_block_size: genesis_domain.max_block_size,
                         max_block_weight: genesis_domain.max_block_weight,
                         bundle_slot_probability: genesis_domain.bundle_slot_probability,
-                        target_bundles_per_block: genesis_domain.target_bundles_per_block,
                         operator_allow_list: genesis_domain.operator_allow_list,
                         initial_balances: genesis_domain.initial_balances,
                     };

@@ -258,7 +258,6 @@ fn subspace_genesis_config(
                 max_block_size: MaxDomainBlockSize::get(),
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
-                target_bundles_per_block: 10,
                 operator_allow_list: genesis_domain_params.operator_allow_list,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),

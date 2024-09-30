@@ -908,7 +908,6 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
     pub max_block_size: u32,
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
-    pub target_bundles_per_block: u32,
     pub operator_allow_list: OperatorAllowList<AccountId>,
 
     // Genesis operator

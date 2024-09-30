@@ -37,7 +37,6 @@ use sp_std::collections::btree_set::BTreeSet;
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
-    InvalidBundlesPerBlock,
     ExceedMaxDomainBlockWeight,
     ExceedMaxDomainBlockSize,
     MaxDomainId,
@@ -72,8 +71,6 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
     /// The probability of successful bundle in a slot (active slots coefficient). This defines the
     /// expected bundle production rate, must be `> 0` and `≤ 1`.
     pub bundle_slot_probability: (u64, u64),
-    /// The expected number of bundles for a domain block, must be `≥ 1` and `≤ MaxBundlesPerBlock`.
-    pub target_bundles_per_block: u32,
     /// Allowed operators to operate for this domain.
     pub operator_allow_list: OperatorAllowList<AccountId>,
     // Initial balances for Domain.
@@ -172,11 +169,6 @@ pub(crate) fn can_instantiate_domain<T: Config>(
             .max_block_weight
             .all_lte(T::MaxDomainBlockWeight::get()),
         Error::ExceedMaxDomainBlockWeight
-    );
-    ensure!(
-        domain_config.target_bundles_per_block != 0
-            && domain_config.target_bundles_per_block <= T::MaxBundlesPerBlock::get(),
-        Error::InvalidBundlesPerBlock
     );
 
     // `bundle_slot_probability` must be `> 0` and `≤ 1`
@@ -361,7 +353,6 @@ mod tests {
             max_block_size: u32::MAX,
             max_block_weight: Weight::MAX,
             bundle_slot_probability: (0, 0),
-            target_bundles_per_block: 0,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };
@@ -420,19 +411,6 @@ mod tests {
             );
             // Recorrect `max_block_weight`
             domain_config.max_block_weight = Weight::from_parts(1, 0);
-
-            // Failed to instantiate domain due to invalid `target_bundles_per_block`
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidBundlesPerBlock)
-            );
-            domain_config.target_bundles_per_block = u32::MAX;
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidBundlesPerBlock)
-            );
-            // Recorrect `target_bundles_per_block`
-            domain_config.target_bundles_per_block = 1;
 
             // Failed to instantiate domain due to invalid `bundle_slot_probability`
             assert_eq!(
@@ -518,7 +496,6 @@ mod tests {
             max_block_size: 10,
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * SSC)],
         };

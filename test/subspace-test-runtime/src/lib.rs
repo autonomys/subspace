@@ -672,7 +672,6 @@ parameter_types! {
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
     pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
-    pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = 10;
@@ -748,7 +747,6 @@ impl pallet_domains::Config for Runtime {
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;

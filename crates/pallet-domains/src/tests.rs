@@ -81,7 +81,6 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
-    pub const MaxBundlesPerBlock: u32 = 10;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
@@ -253,7 +252,6 @@ impl pallet_domains::Config for Test {
     type MinNominatorStake = MinNominatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
@@ -469,7 +467,6 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
             max_block_size: 1u32,
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         },
@@ -629,7 +626,6 @@ fn test_bundle_fromat_verification() {
             max_block_size,
             max_block_weight: Weight::MAX,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };

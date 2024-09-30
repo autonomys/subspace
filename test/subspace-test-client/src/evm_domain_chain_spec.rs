@@ -125,7 +125,6 @@ pub fn get_genesis_domain(
         max_block_size: MaxDomainBlockSize::get(),
         max_block_weight: MaxDomainBlockWeight::get(),
         bundle_slot_probability: (1, 1),
-        target_bundles_per_block: 10,
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
