@@ -50,7 +50,6 @@ sc-offchain = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818
 sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-rpc-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-sc-rpc-spec-v2 = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", default-features = false }
 sc-sysinfo = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", default-features = false }
 sc-subspace-block-relay = { version = "0.1.0", path = "../sc-subspace-block-relay" }

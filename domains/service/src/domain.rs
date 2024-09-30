@@ -409,7 +409,6 @@ where
             client: client.clone(),
             pool: transaction_pool.clone(),
             graph: transaction_pool.pool().clone(),
-            chain_spec: domain_config.chain_spec.cloned_box(),
             network: network_service.clone(),
             sync: sync_service.clone(),
             is_authority,
