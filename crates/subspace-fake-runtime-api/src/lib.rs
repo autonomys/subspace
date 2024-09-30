@@ -288,7 +288,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn is_domain_runtime_updraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
+        fn is_domain_runtime_upgraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
             unreachable!()
         }
 

@@ -122,7 +122,7 @@ where
 
     pub(crate) async fn propose_bundle_at(
         &mut self,
-        proof_of_election: ProofOfElection<CBlock::Hash>,
+        proof_of_election: ProofOfElection,
         tx_range: U256,
         operator_id: OperatorId,
         receipt: ExecutionReceiptFor<Block, CBlock>,

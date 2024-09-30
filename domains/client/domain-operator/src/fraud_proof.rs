@@ -178,7 +178,7 @@ where
                 )
             })?;
         let is_domain_runtime_upgraded_since = runtime_api
-            .is_domain_runtime_updraded_since(best_hash, domain_id, parent_consensus_number)?
+            .is_domain_runtime_upgraded_since(best_hash, domain_id, parent_consensus_number)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Application(
                     "Failed to get domain runtime object".to_string().into(),
@@ -238,10 +238,8 @@ where
             extrinsics.into(),
             // NOTE: the inherent extrinsic is already contained in the above `extrinsics`, which
             // is getting from the block body, thus it is okay to pass `maybe_inherent_data` as
-            // `None` and `is_gemini_3h` as `false`, the latter is only used when `maybe_inherent_data`
-            // is `Some`.
+            // `None`.
             None,
-            false,
         )?;
 
         let (storage_changes, call_data) = match &execution_phase {
