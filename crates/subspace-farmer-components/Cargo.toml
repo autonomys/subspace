@@ -17,7 +17,7 @@ bench = false
 
 [dependencies]
 async-lock = "3.3.0"
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved

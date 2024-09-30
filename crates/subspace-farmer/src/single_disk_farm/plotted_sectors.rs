@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    elided_named_lifetimes,
-    reason = "https://github.com/dtolnay/async-trait/issues/279"
-)]
-
 use crate::farm::{FarmError, PlottedSectors};
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;

@@ -12,7 +12,7 @@ include = [
 
 [dependencies]
 async-channel = "1.9.0"
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["full"] }
 futures = "0.3.29"

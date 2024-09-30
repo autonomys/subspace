@@ -15,7 +15,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }

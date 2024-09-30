@@ -13,7 +13,7 @@ build = "build.rs"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
