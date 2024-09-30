@@ -12,8 +12,6 @@ description = "Common primitives of subspace domain runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-# TODO: This dependency is only included because of https://github.com/polkadot-evm/frontier/pull/1426/files#r1648652020
-fixed-hash = { version = "0.8.0", default-features = false, features = ["rustc-hex"] }
 fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
 frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }

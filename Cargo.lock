@@ -2694,7 +2694,6 @@ dependencies = [
 name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
- "fixed-hash",
  "fp-account",
  "frame-support",
  "frame-system",
