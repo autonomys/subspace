@@ -24,10 +24,13 @@
     reason = "https://github.com/rust-lang/rust-analyzer/issues/16514"
 )]
 
+extern crate alloc;
+
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use alloc::borrow::Cow;
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
@@ -81,9 +84,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -113,8 +114,8 @@ const MAX_PIECES_IN_SECTOR: u16 = 32;
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace"),
-    impl_name: create_runtime_str!("subspace"),
+    spec_name: Cow::Borrowed("subspace"),
+    impl_name: Cow::Borrowed("subspace"),
     authoring_version: 1,
     // The version of the runtime specification. A full node will not attempt to use its native
     //   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -125,8 +126,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
-    state_version: 1,
-    extrinsic_state_version: 0,
+    system_version: 2,
 };
 
 /// The smallest unit of the token is called Shannon.
@@ -821,6 +821,8 @@ impl pallet_mmr::Config for Runtime {
     type OnNewRoot = SubspaceMmr;
     type BlockHashProvider = BlockHashProvider;
     type WeightInfo = ();
+    #[cfg(feature = "runtime-benchmarks")]
+    type BenchmarkHelper = ();
 }
 
 parameter_types! {

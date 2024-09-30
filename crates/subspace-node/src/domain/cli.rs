@@ -37,7 +37,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
 use sp_runtime::DigestItem;
 use std::io::Write;
-use std::net::SocketAddr;
 use std::path::Path;
 use subspace_runtime::Block;
 use subspace_runtime_primitives::{AccountId, Balance};
@@ -224,7 +223,10 @@ impl CliConfiguration<Self> for DomainCli {
         self.shared_params().base_path()
     }
 
-    fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<SocketAddr>> {
+    fn rpc_addr(
+        &self,
+        default_listen_port: u16,
+    ) -> sc_cli::Result<Option<Vec<sc_cli::RpcEndpoint>>> {
         self.run.rpc_addr(default_listen_port)
     }
 

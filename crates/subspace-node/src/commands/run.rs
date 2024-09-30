@@ -76,7 +76,7 @@ fn raise_fd_limit() {
 /// Default run command for node
 #[tokio::main]
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
-    let enable_color = init_logger().enable_color;
+    init_logger();
     raise_fd_limit();
 
     let signals = Signals::capture()?;
@@ -96,11 +96,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         pot_external_entropy,
         storage_monitor,
         mut prometheus_configuration,
-    } = create_consensus_chain_configuration(consensus, enable_color, domain_options.is_some())?;
+    } = create_consensus_chain_configuration(consensus, domain_options.is_some())?;
 
     let maybe_domain_configuration = domain_options
         .map(|domain_options| {
-            create_domain_configuration(&subspace_configuration, dev, domain_options, enable_color)
+            create_domain_configuration(&subspace_configuration, dev, domain_options)
         })
         .transpose()?;
 
@@ -203,7 +203,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
                 // Start cross domain message listener for Consensus chain to receive messages from domains in the network
                 let domain_code_executor: sc_domains::RuntimeExecutor =
-                    sc_service::new_wasm_executor(&domain_configuration.domain_config);
+                    sc_service::new_wasm_executor(&domain_configuration.domain_config.executor);
                 consensus_chain_node
                     .task_manager
                     .spawn_essential_handle()

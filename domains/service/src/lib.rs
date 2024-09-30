@@ -21,8 +21,8 @@ use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
 use sc_service::{
-    build_system_rpc_future, BuildNetworkParams, NetworkStarter, TFullClient,
-    TransactionPoolAdapter,
+    build_polkadot_syncing_strategy, build_system_rpc_future, BuildNetworkParams, NetworkStarter,
+    TFullClient, TransactionPoolAdapter,
 };
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
@@ -77,7 +77,7 @@ where
         spawn_handle,
         import_queue,
         block_announce_validator_builder: _,
-        warp_sync_params: _,
+        warp_sync_config: _,
         block_relay,
         metrics,
     } = params;
@@ -99,7 +99,7 @@ where
         .flatten()
         .expect("Genesis block exists; qed");
 
-    let (chain_sync_network_provider, chain_sync_network_handle) = NetworkServiceProvider::new();
+    let chain_sync_network_provider = NetworkServiceProvider::new();
     let (mut block_server, block_downloader, block_request_protocol_config) = match block_relay {
         Some(params) => (
             params.server,
@@ -109,7 +109,7 @@ where
         None => {
             // Custom protocol was not specified, use the default block handler.
             let params = BlockRequestHandler::new::<NetworkWorker<TBl, TBl::Hash>>(
-                chain_sync_network_handle.clone(),
+                chain_sync_network_provider.handle(),
                 &protocol_id,
                 config.chain_spec.fork_id(),
                 client.clone(),
@@ -162,25 +162,35 @@ where
     net_config.add_request_response_protocol(block_request_protocol_config);
     net_config.add_request_response_protocol(state_request_protocol_config.clone());
 
+    let syncing_strategy = build_polkadot_syncing_strategy(
+        protocol_id.clone(),
+        config.chain_spec.fork_id(),
+        &mut net_config,
+        None,
+        block_downloader.clone(),
+        client.clone(),
+        &spawn_handle,
+        config
+            .prometheus_config
+            .as_ref()
+            .map(|config| &config.registry),
+    )?;
+
     let (engine, sync_service, block_announce_config) = SyncingEngine::new(
         Roles::from(&config.role),
         client.clone(),
         config
             .prometheus_config
             .as_ref()
-            .map(|config| config.registry.clone())
-            .as_ref(),
+            .map(|config| &config.registry),
         metrics.clone(),
         &net_config,
         protocol_id.clone(),
-        &config.chain_spec.fork_id().map(ToOwned::to_owned),
+        config.chain_spec.fork_id(),
         Box::new(DefaultBlockAnnounceValidator),
-        None,
-        chain_sync_network_handle,
+        syncing_strategy,
+        chain_sync_network_provider.handle(),
         import_queue.service(),
-        block_downloader.clone(),
-        state_request_protocol_config.name.clone(),
-        None,
         peer_store_handle,
         // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
         // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
@@ -190,11 +200,10 @@ where
         // Until such change has been made, domain's sync service needs to be in force_synced state.
         true,
     )?;
-    let sync_service_import_queue = sync_service.clone();
     let sync_service = Arc::new(sync_service);
 
     let network_params = sc_network::config::Params::<TBl, _, _> {
-        role: config.role.clone(),
+        role: config.role,
         executor: {
             let spawn_handle = Clone::clone(&spawn_handle);
             Box::new(move |fut| {
@@ -245,11 +254,11 @@ where
         Some("networking"),
         chain_sync_network_provider.run(network.clone()),
     );
-    spawn_handle.spawn(
-        "import-queue",
-        None,
-        import_queue.run(Box::new(sync_service_import_queue)),
-    );
+    spawn_handle.spawn("import-queue", None, {
+        let sync_service = sync_service.clone();
+
+        async move { import_queue.run(sync_service.as_ref()).await }
+    });
     spawn_handle.spawn_blocking("syncing", None, engine.run());
 
     let (system_rpc_tx, system_rpc_rx) = tracing_unbounded("mpsc_system_rpc", 10_000);
@@ -257,7 +266,7 @@ where
         "system-rpc-handler",
         Some("networking"),
         build_system_rpc_future::<_, _, TBl::Hash>(
-            config.role.clone(),
+            config.role,
             network_mut.service().clone(),
             sync_service.clone(),
             client.clone(),

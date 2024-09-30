@@ -326,8 +326,7 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
         impl_version: 1,
         apis: Default::default(),
         transaction_version: 1,
-        state_version: 0,
-        extrinsic_state_version: 0,
+        system_version: 2,
     };
 
     let mut ext = new_test_ext();

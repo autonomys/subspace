@@ -36,7 +36,7 @@ fs4 = "0.8.4"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 hwlocality = { version = "1.0.0-alpha.6", features = ["vendored"], optional = true }
-jsonrpsee = { version = "0.24.2", features = ["ws-client"] }
+jsonrpsee = { version = "0.24.5", features = ["ws-client"] }
 mimalloc = { version = "0.1.43", optional = true }
 num_cpus = "1.16.0"
 parity-scale-codec = "3.6.12"
@@ -47,8 +47,8 @@ rand = "0.8.5"
 rayon = "1.10.0"
 schnellru = "0.2.3"
 schnorrkel = "0.11.4"
-serde = { version = "1.0.206", features = ["derive"] }
-serde_json = "1.0.124"
+serde = { version = "1.0.110", features = ["derive"] }
+serde_json = "1.0.128"
 static_assertions = "1.1.0"
 ss58-registry = "1.47.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }

@@ -13,8 +13,6 @@ use crate::{
     bundle_storage_fund, BalanceOf, Config, DepositOnHold, ElectionVerificationParams, Event,
     HoldIdentifier, OperatorEpochSharePrice, Pallet,
 };
-#[cfg(not(feature = "std"))]
-use alloc::vec;
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, Mutate, MutateHold};
 use frame_support::traits::tokens::{
@@ -531,6 +529,8 @@ mod tests {
     };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, ExecutionReceiptOf, HoldIdentifier, NominatorId};
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;

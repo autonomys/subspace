@@ -22,7 +22,6 @@ use futures::StreamExt;
 use pallet_domains::OperatorConfig;
 use pallet_messenger::ChainAllowlistUpdate;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
-use sc_consensus::SharedBlockImport;
 use sc_domains::generate_mmr_proof;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool::error::Error as PoolError;
@@ -337,7 +336,7 @@ async fn test_processing_empty_consensus_block() {
         consensus_client: ferdie.client.clone(),
         backend: alice.backend.clone(),
         domain_confirmation_depth: 256u32,
-        block_import: SharedBlockImport::new(alice.client.clone()),
+        block_import: Arc::new(Box::new(alice.client.clone())),
         import_notification_sinks: Default::default(),
         consensus_network_sync_oracle: ferdie.sync_service.clone(),
     };

@@ -29,6 +29,8 @@ mod fees;
 mod object_mapping;
 mod signed_extensions;
 
+extern crate alloc;
+
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -36,6 +38,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 pub use crate::signed_extensions::{CheckHistorySeeder, DisablePallets};
+use alloc::borrow::Cow;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
@@ -88,9 +91,7 @@ use sp_runtime::traits::{
     NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -123,15 +124,14 @@ const MAX_PIECES_IN_SECTOR: u16 = 1000;
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace"),
-    impl_name: create_runtime_str!("subspace"),
+    spec_name: Cow::Borrowed("subspace"),
+    impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
     spec_version: 7,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
-    state_version: 0,
-    extrinsic_state_version: 0,
+    system_version: 2,
 };
 
 // TODO: Many of below constants should probably be updatable but currently they are not
@@ -901,6 +901,8 @@ impl pallet_mmr::Config for Runtime {
     type OnNewRoot = SubspaceMmr;
     type BlockHashProvider = BlockHashProvider;
     type WeightInfo = ();
+    #[cfg(feature = "runtime-benchmarks")]
+    type BenchmarkHelper = ();
 }
 
 parameter_types! {
@@ -1584,7 +1586,7 @@ impl_runtime_apis! {
 
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
-        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
             use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
             use sp_core::storage::TrackedStorageKey;
 

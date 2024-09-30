@@ -9,9 +9,9 @@ mod precompiles;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
@@ -70,7 +70,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
+    generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -244,15 +244,14 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-evm-domain"),
-    impl_name: create_runtime_str!("subspace-evm-domain"),
+    spec_name: Cow::Borrowed("subspace-evm-domain"),
+    impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
     spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
-    state_version: 0,
-    extrinsic_state_version: 1,
+    system_version: 2,
 };
 
 parameter_types! {

@@ -19,7 +19,6 @@ use sc_cli::{
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::NetworkPeers;
 use sc_proof_of_time::source::PotSlotInfo;
@@ -142,7 +141,6 @@ pub(super) fn create_domain_configuration(
     consensus_chain_configuration: &Configuration,
     dev: bool,
     domain_options: DomainOptions,
-    enable_color: bool,
 ) -> Result<DomainConfiguration, Error> {
     let DomainOptions {
         domain_id: maybe_domain_id,
@@ -359,7 +357,6 @@ pub(super) fn create_domain_configuration(
         telemetry_endpoints: consensus_chain_configuration.telemetry_endpoints.clone(),
         force_authoring: false,
         chain_spec: Box::new(chain_spec),
-        informant_output_format: OutputFormat { enable_color },
     };
 
     Ok(DomainConfiguration {

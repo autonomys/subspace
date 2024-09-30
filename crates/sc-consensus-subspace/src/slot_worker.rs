@@ -37,7 +37,7 @@ use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImportParams, StateAction};
-use sc_consensus::{JustificationSyncLink, SharedBlockImport, StorageChanges};
+use sc_consensus::{BoxBlockImport, JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
@@ -176,7 +176,7 @@ where
     /// The underlying block-import object to supply our produced blocks to.
     /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
     /// critical consensus logic will be omitted.
-    pub block_import: SharedBlockImport<Block>,
+    pub block_import: BoxBlockImport<Block>,
     /// A sync oracle
     pub sync_oracle: SubspaceSyncOracle<SO>,
     /// Hook into the sync module to control the justification sync process.
@@ -215,7 +215,7 @@ where
     SO: SyncOracle + Send + Sync,
 {
     client: Arc<Client>,
-    block_import: SharedBlockImport<Block>,
+    block_import: BoxBlockImport<Block>,
     env: E,
     sync_oracle: SubspaceSyncOracle<SO>,
     justification_sync_link: L,
@@ -331,7 +331,7 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<Block::Header as Header>::Number>,
 {
-    type BlockImport = SharedBlockImport<Block>;
+    type BlockImport = BoxBlockImport<Block>;
     type SyncOracle = SubspaceSyncOracle<SO>;
     type JustificationSyncLink = L;
     type CreateProposer =

@@ -153,7 +153,7 @@ where
             key_seed,
             domain_nodes,
             domain_nodes_exclusive,
-            role.clone(),
+            role,
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
             Box::new(chain_spec) as Box<_>,
         )

@@ -387,8 +387,9 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                    let executor =
-                        sc_service::new_wasm_executor::<DomainsHostFunctions>(&domain_config);
+                    let executor = sc_service::new_wasm_executor::<DomainsHostFunctions>(
+                        &domain_config.executor,
+                    );
 
                     let (client, _, _, _) = sc_service::new_full_parts::<
                         DomainBlock,

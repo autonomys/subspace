@@ -61,8 +61,8 @@ use sc_client_api::{
     AuxStore, Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend,
 };
 use sc_consensus::{
-    BasicQueue, BlockCheckParams, BlockImport, BlockImportParams, DefaultImportQueue, ImportQueue,
-    ImportResult, SharedBlockImport,
+    BasicQueue, BlockCheckParams, BlockImport, BlockImportParams, BoxBlockImport,
+    DefaultImportQueue, ImportQueue, ImportResult,
 };
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{
@@ -78,12 +78,18 @@ use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions}
 use sc_consensus_subspace::SubspaceLink;
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkWorker, NotificationMetrics, NotificationService};
+use sc_network::{NetworkWorker, NotificationMetrics, NotificationService, Roles};
+use sc_network_sync::block_relay_protocol::BlockRelayParams;
+use sc_network_sync::engine::SyncingEngine;
+use sc_network_sync::service::network::NetworkServiceProvider;
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::{PotSlotInfo, PotSourceWorker};
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
+use sc_service::{
+    build_network_advanced, build_polkadot_syncing_strategy, BuildNetworkAdvancedParams,
+    Configuration, NetworkStarter, SpawnTasksParams, TaskManager,
+};
 use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
@@ -92,6 +98,7 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
+use sp_consensus::block_validation::DefaultBlockAnnounceValidator;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
@@ -175,6 +182,7 @@ pub enum Error {
 }
 
 // Simple wrapper whose ony purpose is to convert error type
+#[derive(Clone)]
 struct BlockImportWrapper<BI>(BI);
 
 #[async_trait::async_trait]
@@ -198,7 +206,7 @@ where
     }
 
     async fn import_block(
-        &mut self,
+        &self,
         block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.0
@@ -442,7 +450,7 @@ where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi>> + Send + Sync + 'static,
 {
     /// Subspace block import
-    pub block_import: SharedBlockImport<Block>,
+    pub block_import: BoxBlockImport<Block>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
@@ -501,8 +509,8 @@ where
         })
         .transpose()?;
 
-    let executor = sc_service::new_wasm_executor(config);
-    let domains_executor = sc_service::new_wasm_executor(config);
+    let executor = sc_service::new_wasm_executor(&config.executor);
+    let domains_executor = sc_service::new_wasm_executor(&config.executor);
 
     let backend = sc_service::new_db_backend(config.db_config())?;
 
@@ -636,17 +644,16 @@ where
         pot_verifier: pot_verifier.clone(),
     });
 
-    let block_import = SharedBlockImport::new(BlockImportWrapper(block_import));
     let import_queue = BasicQueue::new(
         verifier,
-        block_import.clone(),
+        Box::new(BlockImportWrapper(block_import.clone())),
         None,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     );
 
     let other = OtherPartialComponents {
-        block_import,
+        block_import: Box::new(BlockImportWrapper(block_import.clone())),
         subspace_link,
         segment_headers_store,
         pot_verifier,
@@ -765,8 +772,7 @@ where
         mut telemetry,
     } = other;
 
-    let offchain_indexing_enabled = config.offchain_worker.indexing_enabled;
-    let fork_id = config.base.chain_spec.fork_id().map(String::from);
+    let offchain_indexing_enabled = config.base.offchain_worker.indexing_enabled;
     let (node, bootstrap_nodes) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
@@ -861,19 +867,25 @@ where
         }
     };
 
+    let substrate_prometheus_registry = config
+        .base
+        .prometheus_config
+        .as_ref()
+        .map(|prometheus_config| prometheus_config.registry.clone());
     let import_queue_service1 = import_queue.service();
     let import_queue_service2 = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
-    let block_relay = Some(
-        build_consensus_relay(
-            network_wrapper.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-            config.base.prometheus_registry(),
-        )
-        .map_err(Error::BlockRelay)?,
+    let block_relay = build_consensus_relay(
+        network_wrapper.clone(),
+        client.clone(),
+        transaction_pool.clone(),
+        substrate_prometheus_registry.as_ref(),
+    )
+    .map_err(Error::BlockRelay)?;
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(
+        &config.base.network,
+        substrate_prometheus_registry.clone(),
     );
-    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
     let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
         xdm_gossip_peers_set_config();
     net_config.add_notification_protocol(xdm_gossip_notification_config);
@@ -889,16 +901,18 @@ where
             .reserved_nodes
             .len();
 
+    let protocol_id = config.base.protocol_id();
+    let fork_id = config.base.chain_spec.fork_id();
+
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) =
-            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>, _>(
-                &config.base.protocol_id(),
-                fork_id.as_deref(),
-                client.clone(),
-                num_peer_hint,
-                offchain_storage,
-            );
+        let (handler, protocol_config) = MmrRequestHandler::new::<NetworkWorker<_, _>, _>(
+            &protocol_id,
+            fork_id,
+            client.clone(),
+            num_peer_hint,
+            offchain_storage,
+        );
         task_manager
             .spawn_handle()
             .spawn("mmr-request-handler", Some("networking"), handler.run());
@@ -908,10 +922,10 @@ where
 
     // "Last confirmed domain block execution receipt" request handler
     {
-        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<
-            NetworkWorker<Block, <Block as BlockT>::Hash>,
-        >(
-            fork_id.as_deref(), client.clone(), num_peer_hint
+        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<NetworkWorker<_, _>>(
+            fork_id,
+            client.clone(),
+            num_peer_hint,
         );
         task_manager.spawn_handle().spawn(
             "last-domain-execution-receipt-request-handler",
@@ -922,25 +936,77 @@ where
         net_config.add_request_response_protocol(protocol_config);
     }
 
-    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
-        sc_service::build_network(sc_service::BuildNetworkParams {
-            config: &config.base,
+    let network_service_provider = NetworkServiceProvider::new();
+    let network_service_handle = network_service_provider.handle();
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) = {
+        let spawn_handle = task_manager.spawn_handle();
+        let metrics = NotificationMetrics::new(substrate_prometheus_registry.as_ref());
+
+        // TODO: Remove BlockRelayParams here and simplify relay initialization
+        let block_downloader = {
+            let BlockRelayParams {
+                mut server,
+                downloader,
+                request_response_config,
+            } = block_relay;
+            net_config.add_request_response_protocol(request_response_config);
+
+            spawn_handle.spawn("block-request-handler", Some("networking"), async move {
+                server.run().await;
+            });
+
+            downloader
+        };
+
+        let syncing_strategy = build_polkadot_syncing_strategy(
+            protocol_id.clone(),
+            fork_id,
+            &mut net_config,
+            None,
+            block_downloader,
+            client.clone(),
+            &spawn_handle,
+            substrate_prometheus_registry.as_ref(),
+        )?;
+
+        let (syncing_engine, sync_service, block_announce_config) =
+            SyncingEngine::new::<NetworkWorker<_, _>>(
+                Roles::from(&config.base.role),
+                Arc::clone(&client),
+                substrate_prometheus_registry.as_ref(),
+                metrics.clone(),
+                &net_config,
+                protocol_id.clone(),
+                fork_id,
+                Box::new(DefaultBlockAnnounceValidator),
+                syncing_strategy,
+                network_service_provider.handle(),
+                import_queue.service(),
+                net_config.peer_store_handle(),
+                config.base.network.force_synced,
+            )
+            .map_err(sc_service::Error::from)?;
+
+        spawn_handle.spawn_blocking("syncing", None, syncing_engine.run());
+
+        build_network_advanced(BuildNetworkAdvancedParams {
+            role: config.base.role,
+            protocol_id,
+            fork_id,
+            ipfs_server: config.base.network.ipfs_server,
+            announce_block: config.base.announce_block,
             net_config,
-            client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
-            spawn_handle: task_manager.spawn_handle(),
+            client: Arc::clone(&client),
+            transaction_pool: Arc::clone(&transaction_pool),
+            spawn_handle,
             import_queue,
-            block_announce_validator_builder: None,
-            warp_sync_params: None,
-            block_relay,
-            metrics: NotificationMetrics::new(
-                config
-                    .base
-                    .prometheus_config
-                    .as_ref()
-                    .map(|cfg| &cfg.registry),
-            ),
-        })?;
+            sync_service,
+            block_announce_config,
+            network_service_provider,
+            metrics_registry: substrate_prometheus_registry.as_ref(),
+            metrics,
+        })?
+    };
 
     task_manager.spawn_handle().spawn(
         "sync-target-follower",
@@ -1014,13 +1080,13 @@ where
     let snap_sync_task = snap_sync(
         segment_headers_store.clone(),
         node.clone(),
-        fork_id.clone(),
+        fork_id.map(|fork_id| fork_id.to_string()),
         Arc::clone(&client),
         import_queue_service1,
         pause_sync.clone(),
         dsn_sync_piece_getter.clone(),
-        Arc::clone(&network_service),
         sync_service.clone(),
+        network_service_handle,
         subspace_link.erasure_coding().clone(),
     );
 
@@ -1056,7 +1122,7 @@ where
             }),
         );
 
-    if let Some(registry) = config.base.prometheus_registry() {
+    if let Some(registry) = substrate_prometheus_registry.as_ref() {
         match NodeMetrics::new(
             client.clone(),
             client.every_import_notification_stream(),
@@ -1144,7 +1210,7 @@ where
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
-            config.base.prometheus_registry(),
+            substrate_prometheus_registry.as_ref(),
             telemetry.as_ref().map(|x| x.handle()),
         );
 
@@ -1232,12 +1298,11 @@ where
             let chain_spec = config.base.chain_spec.cloned_box();
             let backend = backend.clone();
 
-            Box::new(move |deny_unsafe, subscription_executor| {
+            Box::new(move |subscription_executor| {
                 let deps = rpc::FullDeps {
                     client: client.clone(),
                     pool: transaction_pool.clone(),
                     chain_spec: chain_spec.cloned_box(),
-                    deny_unsafe,
                     subscription_executor,
                     new_slot_notification_stream: new_slot_notification_stream.clone(),
                     reward_signing_notification_stream: reward_signing_notification_stream.clone(),
@@ -1254,7 +1319,7 @@ where
                 rpc::create_full(deps).map_err(Into::into)
             })
         } else {
-            Box::new(|_, _| Ok(RpcModule::new(())))
+            Box::new(|_| Ok(RpcModule::new(())))
         },
         backend: backend.clone(),
         system_rpc_tx,

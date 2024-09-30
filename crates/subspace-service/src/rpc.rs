@@ -33,7 +33,6 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer, SubspaceRpcConfig};
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
@@ -62,8 +61,6 @@ where
     pub pool: Arc<P>,
     /// A copy of the chain spec.
     pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
-    /// Whether to deny unsafe calls.
-    pub deny_unsafe: DenyUnsafe,
     /// Executor to drive the subscription manager in the Grandpa RPC handler.
     pub subscription_executor: SubscriptionTaskExecutor,
     /// A stream with notifications about new slot arrival with ability to send solution back.
@@ -117,7 +114,6 @@ where
         client,
         pool,
         chain_spec,
-        deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
         reward_signing_notification_stream,
@@ -135,7 +131,7 @@ where
     let properties = chain_spec.properties();
     module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
 
-    module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(System::new(client.clone(), pool).into_rpc())?;
     module.merge(TransactionPayment::new(client.clone()).into_rpc())?;
 
     module.merge(
@@ -150,7 +146,6 @@ where
             sync_oracle,
             kzg,
             erasure_coding,
-            deny_unsafe,
         })?
         .into_rpc(),
     )?;

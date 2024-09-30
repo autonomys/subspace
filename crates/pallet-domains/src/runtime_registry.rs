@@ -342,8 +342,7 @@ mod tests {
             impl_version: 1,
             apis: Default::default(),
             transaction_version: 1,
-            state_version: 0,
-            extrinsic_state_version: 0,
+            system_version: 0,
         };
         let read_runtime_version = ReadRuntimeVersion(version.encode());
 
@@ -511,8 +510,7 @@ mod tests {
             impl_version: 1,
             apis: Default::default(),
             transaction_version: 1,
-            state_version: 0,
-            extrinsic_state_version: 0,
+            system_version: 0,
         };
 
         ext.execute_with(|| {

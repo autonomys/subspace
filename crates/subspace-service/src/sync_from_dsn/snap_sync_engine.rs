@@ -20,42 +20,48 @@
 //! to tip and keep the blockchain up to date with network updates.
 
 use futures::channel::oneshot;
-use futures::{FutureExt, StreamExt};
-use prost::Message;
+use futures::StreamExt;
 use sc_client_api::ProofProvider;
 use sc_consensus::IncomingBlock;
-use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkRequest, PeerId};
+use sc_network::{OutboundFailure, PeerId, RequestFailure};
 use sc_network_sync::pending_responses::{PendingResponses, ResponseEvent};
-use sc_network_sync::schema::v1::{StateRequest, StateResponse};
+use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::state_request_handler::generate_protocol_name;
-use sc_network_sync::strategy::state::{StateStrategy, StateStrategyAction};
-use sc_network_sync::strategy::StrategyKey;
-use sc_network_sync::types::{BadPeer, OpaqueStateRequest, OpaqueStateResponse, PeerRequest};
+use sc_network_sync::strategy::state::StateStrategy;
+use sc_network_sync::strategy::SyncingAction;
+use sc_network_sync::types::BadPeer;
 use sp_blockchain::{Error as ClientError, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
-pub struct SnapSyncingEngine<'a, Block, NR>
+mod rep {
+    use sc_network::ReputationChange as Rep;
+    /// Peer is on unsupported protocol version.
+    pub(super) const BAD_PROTOCOL: Rep = Rep::new_fatal("Unsupported protocol");
+    /// Reputation change when a peer refuses a request.
+    pub(super) const REFUSED: Rep = Rep::new(-(1 << 10), "Request refused");
+    /// Reputation change when a peer doesn't respond in time to our messages.
+    pub(super) const TIMEOUT: Rep = Rep::new(-(1 << 10), "Request timeout");
+}
+
+pub struct SnapSyncingEngine<'a, Block>
 where
     Block: BlockT,
 {
     /// Syncing strategy
     strategy: StateStrategy<Block>,
-    /// Network request handle
-    network_request: &'a NR,
     /// Pending responses
-    pending_responses: PendingResponses<Block>,
+    pending_responses: PendingResponses,
     /// Protocol name used to send out state requests
     state_request_protocol_name: ProtocolName,
+    network_service_handle: &'a NetworkServiceHandle,
 }
 
-impl<'a, Block, NR> SnapSyncingEngine<'a, Block, NR>
+impl<'a, Block> SnapSyncingEngine<'a, Block>
 where
     Block: BlockT,
-    NR: NetworkRequest,
 {
     pub fn new<Client>(
         client: Arc<Client>,
@@ -63,13 +69,13 @@ where
         target_header: Block::Header,
         skip_proof: bool,
         current_sync_peer: (PeerId, NumberFor<Block>),
-        network_request: &'a NR,
+        network_service_handle: &'a NetworkServiceHandle,
     ) -> Result<Self, ClientError>
     where
         Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
     {
         let state_request_protocol_name =
-            generate_protocol_name(client.info().genesis_hash, fork_id).into();
+            ProtocolName::from(generate_protocol_name(client.info().genesis_hash, fork_id));
 
         // Initialize syncing strategy.
         let strategy = StateStrategy::new(
@@ -83,13 +89,14 @@ where
             None,
             skip_proof,
             vec![current_sync_peer].into_iter(),
+            state_request_protocol_name.clone(),
         );
 
         Ok(Self {
             strategy,
-            network_request,
             pending_responses: PendingResponses::new(),
             state_request_protocol_name,
+            network_service_handle,
         })
     }
 
@@ -99,7 +106,10 @@ where
 
         loop {
             // Process actions requested by a syncing strategy.
-            let mut actions = self.strategy.actions().peekable();
+            let mut actions = self
+                .strategy
+                .actions(self.network_service_handle)
+                .peekable();
             if actions.peek().is_none() {
                 return Err(ClientError::Backend(
                     "Sync state download failed: no further actions".into(),
@@ -108,23 +118,40 @@ where
 
             for action in actions {
                 match action {
-                    StateStrategyAction::SendStateRequest { peer_id, request } => {
-                        self.send_state_request(peer_id, StrategyKey::State, request);
+                    SyncingAction::StartRequest {
+                        peer_id,
+                        key,
+                        request,
+                        // State sync doesn't use this
+                        remove_obsolete: _,
+                    } => {
+                        self.pending_responses.insert(peer_id, key, request);
                     }
-                    StateStrategyAction::DropPeer(BadPeer(peer_id, rep)) => {
-                        self.pending_responses.remove(peer_id, StrategyKey::State);
+                    SyncingAction::CancelRequest { .. } => {
+                        return Err(ClientError::Application(
+                            "Unexpected SyncingAction::CancelRequest".into(),
+                        ));
+                    }
+                    SyncingAction::DropPeer(BadPeer(peer_id, rep)) => {
+                        self.pending_responses
+                            .remove(peer_id, StateStrategy::<Block>::STRATEGY_KEY);
 
                         trace!(%peer_id, "Peer dropped: {rep:?}");
                     }
-                    StateStrategyAction::ImportBlocks { blocks, .. } => {
+                    SyncingAction::ImportBlocks { blocks, .. } => {
                         return blocks.into_iter().next().ok_or_else(|| {
                             ClientError::Application(
-                                "StateStrategyAction::ImportBlocks didn't contain any blocks to import"
+                                "SyncingAction::ImportBlocks didn't contain any blocks to import"
                                     .into(),
                             )
                         });
                     }
-                    StateStrategyAction::Finished => {
+                    SyncingAction::ImportJustifications { .. } => {
+                        return Err(ClientError::Application(
+                            "Unexpected SyncingAction::ImportJustifications".into(),
+                        ));
+                    }
+                    SyncingAction::Finished => {
                         return Err(ClientError::Backend(
                             "Sync state finished without blocks to import".into(),
                         ));
@@ -137,84 +164,70 @@ where
         }
     }
 
-    fn send_state_request(
-        &mut self,
-        peer_id: PeerId,
-        key: StrategyKey,
-        request: OpaqueStateRequest,
-    ) {
-        let (tx, rx) = oneshot::channel();
-
-        self.pending_responses
-            .insert(peer_id, key, PeerRequest::State, rx.boxed());
-
-        match Self::encode_state_request(&request) {
-            Ok(data) => {
-                self.network_request.start_request(
-                    peer_id,
-                    self.state_request_protocol_name.clone(),
-                    data,
-                    None,
-                    tx,
-                    IfDisconnected::ImmediateError,
-                );
-            }
-            Err(err) => {
-                warn!("Failed to encode state request {request:?}: {err:?}",);
-            }
-        }
-    }
-
-    fn encode_state_request(request: &OpaqueStateRequest) -> Result<Vec<u8>, String> {
-        let request: &StateRequest = request.0.downcast_ref().ok_or_else(|| {
-            "Failed to downcast opaque state response during encoding, this is an implementation \
-            bug"
-            .to_string()
-        })?;
-
-        Ok(request.encode_to_vec())
-    }
-
-    fn decode_state_response(response: &[u8]) -> Result<OpaqueStateResponse, String> {
-        let response = StateResponse::decode(response)
-            .map_err(|error| format!("Failed to decode state response: {error}"))?;
-
-        Ok(OpaqueStateResponse(Box::new(response)))
-    }
-
-    fn process_response_event(&mut self, response_event: ResponseEvent<Block>) {
+    fn process_response_event(&mut self, response_event: ResponseEvent) {
         let ResponseEvent {
             peer_id,
-            request,
-            response,
-            ..
+            key: _,
+            response: response_result,
         } = response_event;
 
-        match response {
-            Ok(Ok((resp, _))) => match request {
-                PeerRequest::Block(req) => {
-                    error!("Unexpected PeerRequest::Block - {:?}", req);
-                }
-                PeerRequest::State => {
-                    let response = match Self::decode_state_response(&resp[..]) {
-                        Ok(proto) => proto,
-                        Err(e) => {
-                            debug!("Failed to decode state response from peer {peer_id:?}: {e:?}.",);
-                            return;
-                        }
-                    };
+        match response_result {
+            Ok(Ok((response, _protocol_name))) => {
+                let Ok(response) = response.downcast::<Vec<u8>>() else {
+                    warn!("Failed to downcast state response");
+                    debug_assert!(false);
+                    return;
+                };
 
-                    self.strategy.on_state_response(peer_id, response);
-                }
-                PeerRequest::WarpProof => {
-                    error!("Unexpected PeerRequest::WarpProof",);
-                }
-            },
+                self.strategy.on_state_response(&peer_id, *response);
+            }
             Ok(Err(e)) => {
                 debug!("Request to peer {peer_id:?} failed: {e:?}.");
+
+                match e {
+                    RequestFailure::Network(OutboundFailure::Timeout) => {
+                        self.network_service_handle
+                            .report_peer(peer_id, rep::TIMEOUT);
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    }
+                    RequestFailure::Network(OutboundFailure::UnsupportedProtocols) => {
+                        self.network_service_handle
+                            .report_peer(peer_id, rep::BAD_PROTOCOL);
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    }
+                    RequestFailure::Network(OutboundFailure::DialFailure) => {
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    }
+                    RequestFailure::Refused => {
+                        self.network_service_handle
+                            .report_peer(peer_id, rep::REFUSED);
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    }
+                    RequestFailure::Network(OutboundFailure::ConnectionClosed)
+                    | RequestFailure::NotConnected => {
+                        self.network_service_handle
+                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    }
+                    RequestFailure::UnknownProtocol => {
+                        debug_assert!(false, "Block request protocol should always be known.");
+                    }
+                    RequestFailure::Obsolete => {
+                        debug_assert!(
+                            false,
+                            "Can not receive `RequestFailure::Obsolete` after dropping the \
+                            response receiver.",
+                        );
+                    }
+                }
             }
             Err(oneshot::Canceled) => {
-                trace!("Request to peer {peer_id:?} failed due to oneshot being canceled.",);
+                trace!("Request to peer {peer_id:?} failed due to oneshot being canceled.");
+                self.network_service_handle
+                    .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
             }
         }
     }

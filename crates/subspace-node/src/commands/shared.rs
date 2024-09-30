@@ -52,12 +52,7 @@ pub(super) fn store_key_in_keystore(
         .map_err(|()| Error::Application("Failed to insert key into keystore".to_string().into()))
 }
 
-#[derive(Debug, Copy, Clone)]
-pub(super) struct InitLoggerResult {
-    pub(super) enable_color: bool,
-}
-
-pub(super) fn init_logger() -> InitLoggerResult {
+pub(super) fn init_logger() {
     // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
     //  Windows terminal doesn't support the same colors as bash does
     let enable_color = if cfg!(windows) {
@@ -74,6 +69,4 @@ pub(super) fn init_logger() -> InitLoggerResult {
             ),
         )
         .init();
-
-    InitLoggerResult { enable_color }
 }
