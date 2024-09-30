@@ -11,8 +11,10 @@ use parity_scale_codec::{Decode, Encode};
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
+use sp_core::{Hasher, KeccakHasher};
 use sp_domains::{DomainId, ExecutionReceiptFor};
 use sp_runtime::traits::{Block as BlockT, Header};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -112,12 +114,19 @@ where
         &self,
         block_hash: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
+        const ATTEMPTS_NUMBER: u32 = 5;
+        const PEERS_THRESHOLD: usize = 5;
+
         let info = self.client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
 
         debug!(domain_id=%self.domain_id, %protocol_name, "Started obtaining domain info...");
 
-        loop {
+        let mut receipts = BTreeMap::new();
+        let mut receipts_hashes = BTreeMap::new();
+        let mut peers_hashes = BTreeMap::new();
+
+        for attempt in 0..ATTEMPTS_NUMBER {
             let peers_info = match self.sync_service.peers_info().await {
                 Ok(peers_info) => peers_info,
                 Err(error) => {
@@ -135,8 +144,14 @@ where
                     peer_info
                 );
 
+                if peers_hashes.contains_key(peer_id) {
+                    trace!(%attempt, %peer_id, "Peer receipt has been already collected.");
+
+                    continue 'peers;
+                }
+
                 if !peer_info.is_synced {
-                    trace!("Domain data request skipped (not synced). peer = {peer_id}");
+                    trace!(%attempt, %peer_id, "Domain data request skipped (not synced).");
 
                     continue 'peers;
                 }
@@ -156,12 +171,20 @@ where
 
                 match response {
                     Ok(response) => {
-                        trace!("Response from a peer {peer_id},",);
+                        trace!(%attempt, "Response from a peer {peer_id},",);
 
-                        return Some(response.last_confirmed_block_receipt);
+                        let receipt = response.last_confirmed_block_receipt;
+                        let receipt_hash = KeccakHasher::hash(&receipt.encode());
+
+                        peers_hashes.insert(*peer_id, receipt_hash);
+                        receipts.insert(receipt_hash, receipt);
+                        receipts_hashes
+                            .entry(receipt_hash)
+                            .and_modify(|count: &mut u32| *count += 1)
+                            .or_insert(1u32);
                     }
                     Err(error) => {
-                        debug!("Domain info request failed. peer = {peer_id}: {error}");
+                        debug!(%attempt, "Domain info request failed. peer = {peer_id}: {error}");
 
                         continue 'peers;
                     }
@@ -169,11 +192,34 @@ where
             }
             debug!(
                 domain_id=%self.domain_id,
-                "No synced peers to handle the domain confirmed block infor request. Pausing..."
+                "No synced peers to handle the domain confirmed block info request. Pausing..."
             );
+
+            if peers_hashes.len() >= PEERS_THRESHOLD {
+                break;
+            }
 
             sleep(REQUEST_PAUSE).await;
         }
+
+        if peers_hashes.len() < PEERS_THRESHOLD {
+            debug!(peers=%peers_hashes.len(), "Couldn't pass peer threshold for receipts.");
+        }
+
+        // Find the receipt with the maximum votes
+        if let Some(max_receipt_vote) = receipts_hashes.values().max() {
+            if let Some((receipt_hash, _)) = receipts_hashes
+                .iter()
+                .find(|(_, vote)| max_receipt_vote == *vote)
+            {
+                return receipts.get(receipt_hash).cloned();
+            }
+        } else {
+            debug!("Couldn't find last confirmed domain block execution receipt: no receipts.");
+        }
+
+        error!("Couldn't find last confirmed domain block execution receipt.");
+        None
     }
 }
 
