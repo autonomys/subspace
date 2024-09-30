@@ -87,142 +87,137 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                 .expect("Wrong root account address");
 
         let balances = vec![(sudo_account.clone(), 1_000 * SSC)];
-        patch_domain_runtime_version(
-            serde_json::to_value(subspace_genesis_config(
-                sudo_account.clone(),
-                balances,
-                GenesisParams {
-                    enable_rewards_at: EnableRewardsAt::Manually,
-                    allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
-                        hex_literal::hex!(
-                            "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
-                        ),
-                    )),
-                    // TODO: Adjust once we bench PoT on faster hardware
-                    // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
-                    pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
-                    enable_domains: false,
-                    enable_dynamic_cost_of_storage: false,
-                    enable_balance_transfers: true,
-                    // TODO: Proper value here
-                    confirmation_depth_k: 100,
-                    // TODO: Proper value here
-                    rewards_config: RewardsConfig {
-                        remaining_issuance: 360_000_000 * SSC,
-                        proposer_subsidy_points: BoundedVec::try_from(vec![
-                            RewardPoint {
-                                block: 0,
-                                subsidy: 454545454545455000,
-                            },
-                            RewardPoint {
-                                block: 10512000,
-                                subsidy: 423672207997007000,
-                            },
-                            RewardPoint {
-                                block: 26280000,
-                                subsidy: 333635878252228000,
-                            },
-                            RewardPoint {
-                                block: 42048000,
-                                subsidy: 262825353875519000,
-                            },
-                            RewardPoint {
-                                block: 57816000,
-                                subsidy: 207116053874914000,
-                            },
-                            RewardPoint {
-                                block: 73584000,
-                                subsidy: 163272262877830000,
-                            },
-                            RewardPoint {
-                                block: 94608000,
-                                subsidy: 118963574070561000,
-                            },
-                            RewardPoint {
-                                block: 120888000,
-                                subsidy: 80153245846642200,
-                            },
-                            RewardPoint {
-                                block: 149796000,
-                                subsidy: 51971522998131200,
-                            },
-                            RewardPoint {
-                                block: 183960000,
-                                subsidy: 31192714495359900,
-                            },
-                            RewardPoint {
-                                block: 220752000,
-                                subsidy: 18033114698427300,
-                            },
-                        ])
-                        .expect("Number of elements is below configured MaxRewardPoints; qed"),
-                        voter_subsidy_points: BoundedVec::try_from(vec![
-                            RewardPoint {
-                                block: 0,
-                                subsidy: 454545454545455000,
-                            },
-                            RewardPoint {
-                                block: 10512000,
-                                subsidy: 423672207997007000,
-                            },
-                            RewardPoint {
-                                block: 26280000,
-                                subsidy: 333635878252228000,
-                            },
-                            RewardPoint {
-                                block: 42048000,
-                                subsidy: 262825353875519000,
-                            },
-                            RewardPoint {
-                                block: 57816000,
-                                subsidy: 207116053874914000,
-                            },
-                            RewardPoint {
-                                block: 73584000,
-                                subsidy: 163272262877830000,
-                            },
-                            RewardPoint {
-                                block: 94608000,
-                                subsidy: 118963574070561000,
-                            },
-                            RewardPoint {
-                                block: 120888000,
-                                subsidy: 80153245846642200,
-                            },
-                            RewardPoint {
-                                block: 149796000,
-                                subsidy: 51971522998131200,
-                            },
-                            RewardPoint {
-                                block: 183960000,
-                                subsidy: 31192714495359900,
-                            },
-                            RewardPoint {
-                                block: 220752000,
-                                subsidy: 18033114698427300,
-                            },
-                        ])
-                        .expect("Number of elements is below configured MaxRewardPoints; qed"),
-                    },
-                },
-                GenesisDomainParams {
-                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
-                        sudo_account.clone(),
-                    ]),
-                    genesis_domains: vec![
-                        evm_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
-                        auto_id_chain_spec::get_genesis_domain(
-                            SpecId::Gemini,
-                            sudo_account.clone(),
-                        )?,
-                    ],
-                },
-                CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
+        serde_json::to_value(subspace_genesis_config(
+            sudo_account.clone(),
+            balances,
+            GenesisParams {
+                enable_rewards_at: EnableRewardsAt::Manually,
+                allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
+                    hex_literal::hex!(
+                        "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
+                    ),
+                )),
+                // TODO: Adjust once we bench PoT on faster hardware
+                // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
+                pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
+                enable_domains: false,
+                enable_dynamic_cost_of_storage: false,
+                enable_balance_transfers: true,
                 // TODO: Proper value here
-                sudo_account.clone(),
-            )?)
-            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-        )
+                confirmation_depth_k: 100,
+                // TODO: Proper value here
+                rewards_config: RewardsConfig {
+                    remaining_issuance: 360_000_000 * SSC,
+                    proposer_subsidy_points: BoundedVec::try_from(vec![
+                        RewardPoint {
+                            block: 0,
+                            subsidy: 454545454545455000,
+                        },
+                        RewardPoint {
+                            block: 10512000,
+                            subsidy: 423672207997007000,
+                        },
+                        RewardPoint {
+                            block: 26280000,
+                            subsidy: 333635878252228000,
+                        },
+                        RewardPoint {
+                            block: 42048000,
+                            subsidy: 262825353875519000,
+                        },
+                        RewardPoint {
+                            block: 57816000,
+                            subsidy: 207116053874914000,
+                        },
+                        RewardPoint {
+                            block: 73584000,
+                            subsidy: 163272262877830000,
+                        },
+                        RewardPoint {
+                            block: 94608000,
+                            subsidy: 118963574070561000,
+                        },
+                        RewardPoint {
+                            block: 120888000,
+                            subsidy: 80153245846642200,
+                        },
+                        RewardPoint {
+                            block: 149796000,
+                            subsidy: 51971522998131200,
+                        },
+                        RewardPoint {
+                            block: 183960000,
+                            subsidy: 31192714495359900,
+                        },
+                        RewardPoint {
+                            block: 220752000,
+                            subsidy: 18033114698427300,
+                        },
+                    ])
+                    .expect("Number of elements is below configured MaxRewardPoints; qed"),
+                    voter_subsidy_points: BoundedVec::try_from(vec![
+                        RewardPoint {
+                            block: 0,
+                            subsidy: 454545454545455000,
+                        },
+                        RewardPoint {
+                            block: 10512000,
+                            subsidy: 423672207997007000,
+                        },
+                        RewardPoint {
+                            block: 26280000,
+                            subsidy: 333635878252228000,
+                        },
+                        RewardPoint {
+                            block: 42048000,
+                            subsidy: 262825353875519000,
+                        },
+                        RewardPoint {
+                            block: 57816000,
+                            subsidy: 207116053874914000,
+                        },
+                        RewardPoint {
+                            block: 73584000,
+                            subsidy: 163272262877830000,
+                        },
+                        RewardPoint {
+                            block: 94608000,
+                            subsidy: 118963574070561000,
+                        },
+                        RewardPoint {
+                            block: 120888000,
+                            subsidy: 80153245846642200,
+                        },
+                        RewardPoint {
+                            block: 149796000,
+                            subsidy: 51971522998131200,
+                        },
+                        RewardPoint {
+                            block: 183960000,
+                            subsidy: 31192714495359900,
+                        },
+                        RewardPoint {
+                            block: 220752000,
+                            subsidy: 18033114698427300,
+                        },
+                    ])
+                    .expect("Number of elements is below configured MaxRewardPoints; qed"),
+                },
+            },
+            GenesisDomainParams {
+                permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
+                    sudo_account.clone(),
+                ]),
+                genesis_domains: vec![
+                    evm_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
+                    auto_id_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
+                ],
+            },
+            CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
+            // TODO: Proper value here
+            sudo_account.clone(),
+        )?)
+        .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
     .build())
 }
@@ -262,40 +257,38 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 .expect("Wrong root account address");
 
         let balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
-        patch_domain_runtime_version(
-            serde_json::to_value(subspace_genesis_config(
-                sudo_account.clone(),
-                balances,
-                GenesisParams {
-                    enable_rewards_at: EnableRewardsAt::Manually,
-                    allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                    pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
-                    enable_domains: true,
-                    enable_dynamic_cost_of_storage: false,
-                    enable_balance_transfers: true,
-                    // TODO: Proper value here
-                    confirmation_depth_k: 100,
-                    // TODO: Proper value here
-                    rewards_config: RewardsConfig {
-                        remaining_issuance: 1_000_000_000 * SSC,
-                        proposer_subsidy_points: Default::default(),
-                        voter_subsidy_points: Default::default(),
-                    },
+        serde_json::to_value(subspace_genesis_config(
+            sudo_account.clone(),
+            balances,
+            GenesisParams {
+                enable_rewards_at: EnableRewardsAt::Manually,
+                allow_authoring_by: AllowAuthoringBy::FirstFarmer,
+                pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
+                enable_domains: true,
+                enable_dynamic_cost_of_storage: false,
+                enable_balance_transfers: true,
+                // TODO: Proper value here
+                confirmation_depth_k: 100,
+                // TODO: Proper value here
+                rewards_config: RewardsConfig {
+                    remaining_issuance: 1_000_000_000 * SSC,
+                    proposer_subsidy_points: Default::default(),
+                    voter_subsidy_points: Default::default(),
                 },
-                GenesisDomainParams {
-                    permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
-                        sudo_account.clone(),
-                    ]),
-                    genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
-                        SpecId::DevNet,
-                        sudo_account.clone(),
-                    )?],
-                },
-                CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
-                sudo_account.clone(),
-            )?)
-            .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-        )
+            },
+            GenesisDomainParams {
+                permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
+                    sudo_account.clone(),
+                ]),
+                genesis_domains: vec![auto_id_chain_spec::get_genesis_domain(
+                    SpecId::DevNet,
+                    sudo_account.clone(),
+                )?],
+            },
+            CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+            sudo_account.clone(),
+        )?)
+        .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
     .build())
 }
@@ -317,7 +310,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
             );
             properties
         })
-        .with_genesis_config(patch_domain_runtime_version(
+        .with_genesis_config(
             serde_json::to_value(subspace_genesis_config(
                 // Sudo account
                 sudo_account.clone(),
@@ -355,7 +348,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                 history_seeder,
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-        ))
+        )
         .build())
 }
 
@@ -442,43 +435,4 @@ fn subspace_genesis_config(
             history_seeder: Some(history_seeder_account),
         },
     })
-}
-
-// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
-fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
-    let Some(genesis_domains) = genesis_config
-        .get_mut("domains")
-        .and_then(|domains| domains.get_mut("genesisDomains"))
-        .and_then(|genesis_domains| genesis_domains.as_array_mut())
-    else {
-        return genesis_config;
-    };
-
-    for genesis_domain in genesis_domains {
-        let Some(runtime_version) = genesis_domain.get_mut("runtime_version") else {
-            continue;
-        };
-
-        if let Some(spec_name) = runtime_version.get_mut("specName") {
-            if let Some(spec_name_bytes) = spec_name
-                .as_str()
-                .map(|spec_name| spec_name.as_bytes().to_vec())
-            {
-                *spec_name = serde_json::to_value(spec_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-
-        if let Some(impl_name) = runtime_version.get_mut("implName") {
-            if let Some(impl_name_bytes) = impl_name
-                .as_str()
-                .map(|impl_name| impl_name.as_bytes().to_vec())
-            {
-                *impl_name = serde_json::to_value(impl_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-    }
-
-    genesis_config
 }
