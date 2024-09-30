@@ -5,7 +5,7 @@
     "Custom": "Testnet"
   },
   "bootNodes": [
-    "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWSgR8aph2bVFjVBJS1Khe6gehKXUotBFvrCwJPYkCDLr5"
+    "/dns/bootstrap-0.devnet.subspace.network/tcp/30333/p2p/12D3KooWLdPnDksKX43hEgV4N9EeJzm6x8wPWkHCvRaFBZvj4GBg"
   ],
   "telemetryEndpoints": [
     [
@@ -16,7 +16,9 @@
   "protocolId": "subspace-devnet",
   "properties": {
     "domainsBootstrapNodes": {},
-    "dsnBootstrapNodes": [],
+    "dsnBootstrapNodes": [
+      "/dns/bootstrap-0.devnet.subspace.network/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
+    ],
     "potExternalEntropy": null,
     "ss58Format": 2254,
     "tokenDecimals": 18,
