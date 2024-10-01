@@ -4,16 +4,13 @@
 mod tests;
 
 use crate::farm::{FarmError, MaybePieceStoredResult, PlotCache};
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
+use crate::single_disk_farm::direct_io_file::DirectIoFile;
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
 use bytes::BytesMut;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-#[cfg(not(windows))]
-use std::fs::File;
 use std::sync::{Arc, Weak};
 use std::{io, mem};
 use subspace_core_primitives::crypto::blake3_hash_list;
@@ -50,10 +47,7 @@ struct CachedPieces {
 /// Additional piece cache that exploit part of the plot that does not contain sectors yet
 #[derive(Debug, Clone)]
 pub struct DiskPlotCache {
-    #[cfg(not(windows))]
-    file: Weak<File>,
-    #[cfg(windows)]
-    file: Weak<UnbufferedIoFileWindows>,
+    file: Weak<DirectIoFile>,
     sectors_metadata: Weak<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
     cached_pieces: Arc<RwLock<CachedPieces>>,
     target_sector_count: SectorIndex,
@@ -84,8 +78,7 @@ impl PlotCache for DiskPlotCache {
 
 impl DiskPlotCache {
     pub(crate) fn new(
-        #[cfg(not(windows))] file: &Arc<File>,
-        #[cfg(windows)] file: &Arc<UnbufferedIoFileWindows>,
+        file: &Arc<DirectIoFile>,
         sectors_metadata: &Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
         target_sector_count: SectorIndex,
         sector_size: u64,
@@ -144,7 +137,7 @@ impl DiskPlotCache {
 
     /// Size of a single plot cache element
     pub(crate) const fn element_size() -> u32 {
-        (PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()) as u32
+        (PieceIndex::SIZE + Piece::SIZE + Blake3Hash::SIZE) as u32
     }
 
     /// Check if piece is potentially stored in this cache (not guaranteed to be because it might be
@@ -234,7 +227,7 @@ impl DiskPlotCache {
                 file.write_all_at(&piece_index_bytes, element_offset)?;
                 file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
                 file.write_all_at(
-                    &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
+                    blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]).as_ref(),
                     element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
                 )
             }
@@ -308,8 +301,7 @@ impl DiskPlotCache {
     }
 
     fn read_piece_internal(
-        #[cfg(not(windows))] file: &File,
-        #[cfg(windows)] file: &UnbufferedIoFileWindows,
+        file: &DirectIoFile,
         offset: u32,
         element: &mut [u8],
     ) -> Result<Option<PieceIndex>, DiskPlotCacheError> {
@@ -320,7 +312,7 @@ impl DiskPlotCache {
 
         // Verify checksum
         let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece_bytes]);
-        if actual_checksum != expected_checksum {
+        if *actual_checksum != *expected_checksum {
             if element.iter().all(|&byte| byte == 0) {
                 return Ok(None);
             }

@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 mod consensus;
 mod domain;
 mod shared;

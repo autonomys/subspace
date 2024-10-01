@@ -210,7 +210,7 @@ where
     };
 
     let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-        ^ Simd::from(solution.proof_of_space.hash()))
+        ^ Simd::from(*solution.proof_of_space.hash()))
     .to_array();
 
     let solution_distance =

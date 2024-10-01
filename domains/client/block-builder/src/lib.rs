@@ -158,7 +158,6 @@ where
         backend: &'a B,
         mut extrinsics: VecDeque<Block::Extrinsic>,
         maybe_inherent_data: Option<sp_inherents::InherentData>,
-        is_gemini_3h: bool,
     ) -> Result<Self, Error> {
         let header = <Block::Header as HeaderT>::new(
             parent_number + One::one(),
@@ -176,43 +175,14 @@ where
             api.record_proof();
         }
 
-        let core_version = api
-            .api_version::<dyn Core<Block>>(parent_hash)?
-            .ok_or_else(|| Error::VersionInvalid("Core".to_string()))?;
-
-        if core_version >= 5 {
-            if api.initialize_block(parent_hash, &header).is_err() {
-                // TODO: Hack for Subspace fork caused by
-                // https://github.com/subspace/polkadot-sdk/commit/447bbc765020674614e9ac982163f7e11e5b03ea
-                // Replace with error propagation before next network
-            }
-        } else {
-            #[allow(deprecated)]
-            api.initialize_block_before_version_5(parent_hash, &header)?;
-        }
+        api.initialize_block(parent_hash, &header)?;
 
         if let Some(inherent_data) = maybe_inherent_data {
             let inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
 
-            // TODO: This is used to keep compatible with gemini-3h, remove before next network
-            //
-            // HACK: ideally, any network should maintain the inherent extrinsic order to keep consistency
-            // with the order in the fraud proof verification side, but in gemini-3h, the domain inherent
-            // extrinsic order is changed in the ER that derived from the consensus block #168431, we have
-            // to follow this change in the client side to ensure every domain node that sync from genesis
-            // will produce the same ER and hence can successfully submit ER to exend the previous ER.
-            let maintain_runtime_inherent_extrinsic_order =
-                !is_gemini_3h || parent_number >= 168430u32.into();
-
-            if maintain_runtime_inherent_extrinsic_order {
-                // reverse and push the inherents so that order is maintained
-                for inherent_extrinsic in inherent_extrinsics.into_iter().rev() {
-                    extrinsics.push_front(inherent_extrinsic)
-                }
-            } else {
-                for inherent_extrinsic in inherent_extrinsics {
-                    extrinsics.push_front(inherent_extrinsic)
-                }
+            // reverse and push the inherents so that order is maintained
+            for inherent_extrinsic in inherent_extrinsics.into_iter().rev() {
+                extrinsics.push_front(inherent_extrinsic)
             }
         }
 

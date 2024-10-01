@@ -83,10 +83,12 @@ pub type Hash = sp_core::H256;
 /// Type used for expressing timestamp.
 pub type Moment = u64;
 
-/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
-/// the specifics of the runtime. They can then be made to be agnostic over specific formats
-/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
-/// to even the core data structures.
+/// Opaque types.
+///
+/// These are used by the CLI to instantiate machinery that don't need to know the specifics of the
+/// runtime. They can then be made to be agnostic over specific formats of data like extrinsics,
+/// allowing for them to continue syncing the network through upgrades to even the core data
+/// structures.
 pub mod opaque {
     use super::BlockNumber;
     use sp_runtime::generic;
@@ -100,6 +102,8 @@ pub mod opaque {
 }
 
 pub mod time {
+    /// Expected block time in milliseconds.
+    ///
     /// Since Subspace is probabilistic this is the average expected block time that
     /// we are targeting. Blocks will be produced at a minimum duration defined
     /// by `SLOT_DURATION`, but some slots will not be allocated to any
@@ -241,6 +245,17 @@ impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balan
             next: Balance::max_value(),
         }
     }
+}
+
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum HoldIdentifier {
+    DomainStaking,
+    DomainInstantiation,
+    DomainStorageFund,
+    MessengerChannel,
+    Preimage,
 }
 
 #[cfg(feature = "testing")]

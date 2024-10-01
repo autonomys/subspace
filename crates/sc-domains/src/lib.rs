@@ -160,9 +160,10 @@ where
     }
 }
 
-/// Generate MMR proof for the block `to_prove` in the current best fork. The returned proof
-/// can be later used to verify stateless (without query offchain MMR leaf) and extract the state
-/// root at `to_prove`.
+/// Generate MMR proof for the block `to_prove` in the current best fork.
+///
+/// The returned proof can be later used to verify stateless (without query offchain MMR leaf) and
+/// extract the state root at `to_prove`.
 pub fn generate_mmr_proof<CClient, CBlock>(
     consensus_client: &Arc<CClient>,
     to_prove: NumberFor<CBlock>,

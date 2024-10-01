@@ -280,8 +280,6 @@ pub struct BlockFees<Balance> {
     /// Burned balances on domain chain
     pub burned_balance: Balance,
     /// Rewards for the chain.
-    // TODO: remove this before mainnet. Skipping to maintain compatibility with Gemini
-    #[codec(skip)]
     pub chain_rewards: BTreeMap<ChainId, Balance>,
 }
 
@@ -342,7 +340,7 @@ pub const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection<Hash>,
+    pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<
@@ -712,7 +710,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection<CHash> {
+pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -723,15 +721,9 @@ pub struct ProofOfElection<CHash> {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
-    /// TODO: this field is only used in the bundle equivocation FP which is removed,
-    /// also this field is problematic see <https://github.com/autonomys/subspace/issues/2737>
-    /// so remove this field before next network
-    ///
-    /// Consensus block hash at which proof of election was derived.
-    pub consensus_block_hash: CHash,
 }
 
-impl<CHash> ProofOfElection<CHash> {
+impl ProofOfElection {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
@@ -760,7 +752,7 @@ impl<CHash> ProofOfElection<CHash> {
     }
 }
 
-impl<CHash: Default> ProofOfElection<CHash> {
+impl ProofOfElection {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = sp_std::vec![0u8; VrfPreOutput::max_encoded_len()];
@@ -775,7 +767,6 @@ impl<CHash: Default> ProofOfElection<CHash> {
             proof_of_time: PotOutput::default(),
             vrf_signature,
             operator_id,
-            consensus_block_hash: Default::default(),
         }
     }
 }
@@ -785,7 +776,7 @@ impl<CHash: Default> ProofOfElection<CHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SingletonReceipt<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of receipt producer election.
-    pub proof_of_election: ProofOfElection<Hash>,
+    pub proof_of_election: ProofOfElection,
     /// The receipt to submit
     pub receipt: ExecutionReceipt<
         Number,
@@ -948,36 +939,8 @@ pub type EpochIndex = u32;
 /// Type representing operator ID
 pub type OperatorId = u64;
 
-/// Staking specific hold identifier
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum StakingHoldIdentifier {
-    /// Holds all the currently staked funds to an Operator.
-    Staked(OperatorId),
-}
-
 /// Channel identity.
 pub type ChannelId = sp_core::U256;
-
-/// Messenger specific hold identifier
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum MessengerHoldIdentifier {
-    /// Holds the current reserved balance for channel opening
-    Channel((ChainId, ChannelId)),
-}
-
-/// Domains specific Identifier for Balances holds.
-#[derive(
-    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
-)]
-pub enum DomainsHoldIdentifier {
-    Staking(StakingHoldIdentifier),
-    DomainInstantiation(DomainId),
-    StorageFund(OperatorId),
-}
 
 /// Domains specific digest item.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
@@ -1096,14 +1059,6 @@ pub fn self_domain_id_storage_key() -> StorageKey {
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub raw_genesis: RawGenesis,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
-pub struct DomainBlockLimit {
-    /// The max block size for the domain.
-    pub max_block_size: u32,
-    /// The max block weight for the domain.
-    pub max_block_weight: Weight,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone)]
@@ -1444,6 +1399,7 @@ impl DomainAllowlistUpdates {
 }
 
 /// Domain Sudo runtime call.
+///
 /// This structure exists because we need to generate a storage proof for FP
 /// and Storage shouldn't be None. So each domain must always hold this value even if
 /// there is an empty runtime call inside
@@ -1506,7 +1462,6 @@ impl<Balance> OnChainRewards<Balance> for () {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    #[api_version(6)]
     pub trait DomainsApi<DomainHeader: HeaderT> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>);
@@ -1519,15 +1474,6 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
-
-        /// Extract bundle from the extrinsic if the extrinsic is `submit_bundle`.
-        fn extract_bundle(extrinsic: Block::Extrinsic) -> Option<OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>>;
-
-        /// Extract the execution receipt stored successfully from the given extrinsics.
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
@@ -1555,9 +1501,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the block number of oldest unconfirmed execution receipt.
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<HeaderNumberFor<DomainHeader>>;
-
-        /// Returns the domain block limit of the given domain.
-        fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
 
         /// Returns the domain bundle limit of the given domain.
         fn domain_bundle_limit(domain_id: DomainId) -> Option<DomainBundleLimit>;
@@ -1594,9 +1537,7 @@ sp_api::decl_runtime_apis! {
         fn storage_fund_account_balance(operator_id: OperatorId) -> Balance;
 
         /// Return if the domain runtime code is upgraded since `at`
-        // TODO: change from `is_domain_runtime_updraded_since` to `is_domain_runtime_upgraded_since`
-        //  before next network
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool>;
 
         /// Return domain sudo call.
         fn domain_sudo_call(domain_id: DomainId) -> Option<Vec<u8>>;

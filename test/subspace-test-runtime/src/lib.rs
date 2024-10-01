@@ -18,15 +18,18 @@
 #![feature(const_option, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
-// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
-// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
-#![allow(non_camel_case_types)]
+// TODO: remove when upstream issue is fixed
+#![allow(
+    non_camel_case_types,
+    reason = "https://github.com/rust-lang/rust-analyzer/issues/16514"
+)]
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
+use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -56,9 +59,8 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OpaqueBundles, OperatorId,
-    OperatorPublicKey, StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
+    OpaqueBundles, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
     INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -95,8 +97,8 @@ use subspace_core_primitives::{
     SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    MIN_REPLICATION_FACTOR,
+    AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
+    Signature, MIN_REPLICATION_FACTOR,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -136,6 +138,8 @@ pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
+/// Expected block time in milliseconds.
+///
 /// Since Subspace is probabilistic this is the average expected block time that
 /// we are targeting. Blocks will be produced at a minimum duration defined
 /// by `SLOT_DURATION`, but some slots will not be allocated to any
@@ -327,38 +331,30 @@ impl pallet_timestamp::Config for Runtime {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Domains(DomainsHoldIdentifier),
-    Messenger(MessengerHoldIdentifier),
-}
+pub struct HoldIdentifierWrapper(HoldIdentifier);
 
-impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn staking_staked(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::Staked(operator_id),
-        ))
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn staking_staked() -> Self {
+        Self(HoldIdentifier::DomainStaking)
     }
 
-    fn domain_instantiation_id(domain_id: DomainId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
+    fn domain_instantiation_id() -> Self {
+        Self(HoldIdentifier::DomainInstantiation)
     }
 
-    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    fn storage_fund_withdrawal() -> Self {
+        Self(HoldIdentifier::DomainStorageFund)
     }
 }
 
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn messenger_channel() -> Self {
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
-impl VariantCount for HoldIdentifier {
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 10;
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -377,7 +373,7 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 pub struct CreditSupply;
@@ -631,7 +627,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
@@ -688,6 +684,7 @@ parameter_types! {
     pub const MaxInitialDomainAccounts: u32 = 20;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
     pub const BundleLongevity: u32 = 5;
+    pub const WithdrawalLimit: u32 = 32;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -744,7 +741,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
@@ -777,6 +774,7 @@ impl pallet_domains::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
+    type WithdrawalLimit = WithdrawalLimit;
 }
 
 parameter_types! {
@@ -1075,19 +1073,6 @@ fn extract_successful_bundles(
         .collect()
 }
 
-fn extract_bundle(
-    extrinsic: UncheckedExtrinsic,
-) -> Option<
-    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
-> {
-    match extrinsic.function {
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
-            Some(opaque_bundle)
-        }
-        _ => None,
-    }
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<PublicKey> for RewardAddress {
@@ -1325,23 +1310,6 @@ impl_runtime_apis! {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extract_bundle(
-            extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            extract_bundle(extrinsic)
-        }
-
-
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            extract_successful_bundles(domain_id, extrinsics)
-                .into_iter()
-                .map(|bundle| bundle.into_receipt())
-                .collect()
-        }
-
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1376,10 +1344,6 @@ impl_runtime_apis! {
 
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
             Domains::oldest_unconfirmed_receipt_number(domain_id)
-        }
-
-        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
-            Domains::domain_block_limit(domain_id)
         }
 
         fn domain_bundle_limit(domain_id: DomainId) -> Option<sp_domains::DomainBundleLimit> {
@@ -1432,7 +1396,7 @@ impl_runtime_apis! {
             Domains::storage_fund_account_balance(operator_id)
         }
 
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
             Domains::is_domain_runtime_upgraded_since(domain_id, at)
         }
 

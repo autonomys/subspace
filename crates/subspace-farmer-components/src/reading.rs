@@ -162,10 +162,10 @@ where
     S: ReadAtSync,
     A: ReadAtAsync,
 {
-    // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-    // SAFETY: Data structure filled with zeroes is a valid invariant
-    let mut record_chunks =
-        unsafe { Box::<[Option<Scalar>; Record::NUM_S_BUCKETS]>::new_zeroed().assume_init() };
+    let mut record_chunks = Box::<[Option<Scalar>; Record::NUM_S_BUCKETS]>::try_from(
+        vec![None::<Scalar>; Record::NUM_S_BUCKETS].into_boxed_slice(),
+    )
+    .expect("Correct size; qed");
 
     let read_chunks_inputs = record_chunks
         .par_iter_mut()
@@ -238,7 +238,7 @@ where
                             .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                         record_chunk =
-                            Simd::to_array(Simd::from(record_chunk) ^ Simd::from(proof.hash()));
+                            Simd::to_array(Simd::from(record_chunk) ^ Simd::from(*proof.hash()));
                     }
 
                     maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
@@ -296,7 +296,7 @@ where
                                 .ok_or(ReadingError::MissingPosProof { s_bucket })?;
 
                             record_chunk = Simd::to_array(
-                                Simd::from(record_chunk) ^ Simd::from(proof.hash()),
+                                Simd::from(record_chunk) ^ Simd::from(*proof.hash()),
                             );
                         }
 

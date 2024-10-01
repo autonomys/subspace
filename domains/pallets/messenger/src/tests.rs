@@ -25,7 +25,7 @@ use sp_messenger::messages::{
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
-use sp_runtime::traits::Convert;
+use sp_runtime::traits::{Convert, Zero};
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 use std::collections::BTreeSet;
@@ -490,8 +490,14 @@ fn force_toggle_channel_state<Runtime: crate::Config>(
         if add_to_allow_list {
             ChainAllowlist::<Runtime>::put(list);
         }
-        Pallet::<Runtime>::do_init_channel(dst_chain_id, init_params, None, add_to_allow_list)
-            .unwrap();
+        Pallet::<Runtime>::do_init_channel(
+            dst_chain_id,
+            init_params,
+            None,
+            add_to_allow_list,
+            Zero::zero(),
+        )
+        .unwrap();
         Pallet::<Runtime>::channels(dst_chain_id, channel_id).unwrap()
     });
 
@@ -765,6 +771,7 @@ fn test_update_consensus_channel_allowlist() {
                     relay_fee: Default::default(),
                 },
                 maybe_owner: None,
+                channel_reserve_fee: Default::default(),
             }),
         );
     });

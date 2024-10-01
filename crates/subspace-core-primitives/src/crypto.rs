@@ -38,7 +38,7 @@ use scale_info::{Type, TypeInfo};
 
 /// BLAKE3 hashing of a single value.
 pub fn blake3_hash(data: &[u8]) -> Blake3Hash {
-    *blake3::hash(data).as_bytes()
+    blake3::hash(data).as_bytes().into()
 }
 
 /// BLAKE3 hashing of a single value in parallel (only useful for large values well above 128kiB).
@@ -46,12 +46,12 @@ pub fn blake3_hash(data: &[u8]) -> Blake3Hash {
 pub fn blake3_hash_parallel(data: &[u8]) -> Blake3Hash {
     let mut state = blake3::Hasher::new();
     state.update_rayon(data);
-    *state.finalize().as_bytes()
+    state.finalize().as_bytes().into()
 }
 
 /// BLAKE3 keyed hashing of a single value.
 pub fn blake3_hash_with_key(key: &[u8; 32], data: &[u8]) -> Blake3Hash {
-    *blake3::keyed_hash(key, data).as_bytes()
+    blake3::keyed_hash(key, data).as_bytes().into()
 }
 
 /// BLAKE3 hashing of a list of values.
@@ -60,7 +60,7 @@ pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
     for d in data {
         state.update(d);
     }
-    *state.finalize().as_bytes()
+    state.finalize().as_bytes().into()
 }
 
 /// BLAKE3 hashing of a single value truncated to 254 bits as Scalar for usage with KZG.
@@ -68,7 +68,7 @@ pub fn blake3_254_hash_to_scalar(data: &[u8]) -> Scalar {
     let mut hash = blake3_hash(data);
     // Erase first 2 bits to effectively truncate the hash (number is interpreted as big-endian)
     hash[0] &= 0b00111111;
-    Scalar::try_from(hash)
+    Scalar::try_from(*hash)
         .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed")
 }
 

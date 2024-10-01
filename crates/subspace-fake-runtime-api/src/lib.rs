@@ -26,8 +26,8 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
-    OperatorId, OperatorPublicKey,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OperatorId,
+    OperatorPublicKey,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
@@ -208,19 +208,6 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn extract_bundle(
-            _extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            unreachable!()
-        }
-
-        fn extract_receipts(
-            _domain_id: DomainId,
-            _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            unreachable!()
-        }
-
         fn extrinsics_shuffling_seed() -> Randomness {
             unreachable!()
         }
@@ -254,10 +241,6 @@ sp_api::impl_runtime_apis! {
         }
 
         fn oldest_unconfirmed_receipt_number(_domain_id: DomainId) -> Option<DomainNumber> {
-            unreachable!()
-        }
-
-        fn domain_block_limit(_domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             unreachable!()
         }
 
@@ -305,7 +288,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn is_domain_runtime_updraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
+        fn is_domain_runtime_upgraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
             unreachable!()
         }
 

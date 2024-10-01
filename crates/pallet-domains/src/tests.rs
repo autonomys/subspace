@@ -11,6 +11,7 @@ use crate::{
     RuntimeRegistry, ScheduledRuntimeUpgrades,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::{DispatchInfo, RawOrigin};
@@ -26,9 +27,9 @@ use sp_core::{Get, H256, U256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, ChainId, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
-    OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId,
-    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, ChainId, DomainId, ExecutionReceipt, InboxedBundle, OpaqueBundle,
+    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeId, RuntimeType,
+    SealedBundleHeader,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{
@@ -38,7 +39,7 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{BuildStorage, OpaqueExtrinsic, Saturating};
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::U256 as P256;
-use subspace_runtime_primitives::{Moment, StorageFee, SSC};
+use subspace_runtime_primitives::{HoldIdentifier, Moment, StorageFee, SSC};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -100,31 +101,24 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Domains(DomainsHoldIdentifier),
-}
+pub struct HoldIdentifierWrapper(HoldIdentifier);
 
-impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
-    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::Staked(operator_id),
-        ))
+impl pallet_domains::HoldIdentifier<Test> for HoldIdentifierWrapper {
+    fn staking_staked() -> FungibleHoldId<Test> {
+        Self(HoldIdentifier::DomainStaking)
     }
 
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
+    fn domain_instantiation_id() -> FungibleHoldId<Test> {
+        Self(HoldIdentifier::DomainInstantiation)
     }
 
-    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    fn storage_fund_withdrawal() -> Self {
+        Self(HoldIdentifier::DomainStorageFund)
     }
 }
 
-impl VariantCount for HoldIdentifier {
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 10;
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
 parameter_types! {
@@ -136,7 +130,7 @@ impl pallet_balances::Config for Test {
     type Balance = Balance;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
     type DustRemoval = ();
 }
 
@@ -153,6 +147,7 @@ parameter_types! {
     pub const MaxInitialDomainAccounts: u32 = 5;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
     pub const BundleLongevity: u32 = 5;
+    pub const WithdrawalLimit: u32 = 10;
 }
 
 pub struct MockRandomness;
@@ -250,7 +245,7 @@ impl pallet_domains::Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
@@ -283,6 +278,7 @@ impl pallet_domains::Config for Test {
     type MmrProofVerifier = ();
     type FraudProofStorageKeyProvider = ();
     type OnChainRewards = ();
+    type WithdrawalLimit = WithdrawalLimit;
 }
 
 pub struct ExtrinsicStorageFees;
@@ -643,6 +639,7 @@ fn test_bundle_fromat_verification() {
             genesis_receipt_hash: Default::default(),
             domain_config,
             domain_runtime_info: Default::default(),
+            domain_instantiation_deposit: Default::default(),
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 

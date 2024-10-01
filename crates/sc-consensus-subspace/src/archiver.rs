@@ -736,8 +736,10 @@ fn finalize_block<Block, Backend, Client>(
     });
 }
 
-/// Create an archiver task that will listen for importing blocks and archive blocks at `K` depth,
-/// producing pieces and segment headers (segment headers are then added back to the blockchain as
+/// Create an archiver task.
+///
+/// Archiver task will listen for importing blocks and archive blocks at `K` depth, producing pieces
+/// and segment headers (segment headers are then added back to the blockchain as
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.

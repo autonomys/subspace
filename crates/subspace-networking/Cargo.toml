@@ -17,7 +17,7 @@ include = [
 
 [dependencies]
 async-mutex = "1.4.0"
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.7.1"
 clap = { version = "4.5.15", features = ["color", "derive"] }

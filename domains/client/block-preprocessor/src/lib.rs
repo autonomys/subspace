@@ -18,7 +18,7 @@ use crate::inherents::is_runtime_upgraded;
 use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use sc_client_api::BlockBackend;
-use sp_api::{ApiError, ApiExt, Core, ProvideRuntimeApi};
+use sp_api::{ApiError, Core, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::core_api::DomainCoreApi;
@@ -320,23 +320,13 @@ where
         at_consensus_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
         let bundle_vrf_hash =
-            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+            U256::from_be_bytes(*bundle.sealed_header.header.proof_of_election.vrf_hash());
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
         let mut estimated_bundle_weight = Weight::default();
 
         let runtime_api = self.client.runtime_api();
         let consensus_runtime_api = self.consensus_client.runtime_api();
-        let api_version = runtime_api
-            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(
-                parent_domain_hash,
-            )
-            .map_err(sp_blockchain::Error::RuntimeApiError)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("MessengerApi not found at: {:?}", parent_domain_hash).into(),
-                ))
-            })?;
 
         // Check the validity of each extrinsic
         //
@@ -381,24 +371,22 @@ where
                 ));
             }
 
-            if api_version >= 4 {
-                if let Some(xdm_mmr_proof) =
-                    runtime_api.extract_xdm_mmr_proof(parent_domain_hash, &extrinsic)?
-                {
-                    let ConsensusChainMmrLeafProof {
-                        opaque_mmr_leaf,
-                        proof,
-                        ..
-                    } = xdm_mmr_proof;
+            if let Some(xdm_mmr_proof) =
+                runtime_api.extract_xdm_mmr_proof(parent_domain_hash, &extrinsic)?
+            {
+                let ConsensusChainMmrLeafProof {
+                    opaque_mmr_leaf,
+                    proof,
+                    ..
+                } = xdm_mmr_proof;
 
-                    if consensus_runtime_api
-                        .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
-                        .is_err()
-                    {
-                        return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
-                            index as u32,
-                        )));
-                    }
+                if consensus_runtime_api
+                    .verify_proof(at_consensus_hash, vec![opaque_mmr_leaf], proof)?
+                    .is_err()
+                {
+                    return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
+                        index as u32,
+                    )));
                 }
             }
 

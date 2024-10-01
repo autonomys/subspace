@@ -55,7 +55,7 @@ where
         domain_id: DomainId,
         operator_id: OperatorId,
         proof_of_time: PotOutput,
-    ) -> sp_blockchain::Result<Option<(ProofOfElection<CBlock::Hash>, OperatorPublicKey)>> {
+    ) -> sp_blockchain::Result<Option<(ProofOfElection, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             total_domain_stake,
             bundle_slot_probability,
@@ -102,7 +102,6 @@ where
                             proof_of_time,
                             vrf_signature,
                             operator_id,
-                            consensus_block_hash,
                         };
                         return Ok(Some((proof_of_election, operator_signing_key)));
                     }

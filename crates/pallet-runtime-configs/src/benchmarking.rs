@@ -30,12 +30,4 @@ mod benchmarks {
 
         assert!(Pallet::<T>::enable_balance_transfers());
     }
-
-    #[benchmark]
-    fn set_enable_non_root_calls() {
-        #[extrinsic_call]
-        _(RawOrigin::Root, true);
-
-        assert!(Pallet::<T>::enable_non_root_calls());
-    }
 }

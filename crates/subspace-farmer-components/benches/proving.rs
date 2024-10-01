@@ -161,7 +161,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Searching for solutions");
     let (global_challenge, solution_candidates) = &loop {
         let mut global_challenge = Blake3Hash::default();
-        rng.fill_bytes(&mut global_challenge);
+        rng.fill_bytes(global_challenge.as_mut());
 
         let audit_results = audit_plot_sync(
             public_key,

@@ -11,11 +11,11 @@ use crate::pallet::{
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
-    BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
+    BalanceOf, Config, DepositOnHold, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
     OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
 };
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{Inspect, InspectHold, MutateHold};
+use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
@@ -122,6 +122,8 @@ pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
     /// Total withdrawal amount requested by the nominator that are in unlocking state excluding withdrawal
     /// in shares and the storage fee
     pub(crate) total_withdrawal_amount: Balance,
+    /// Total amount of storage fee on withdraw (including withdrawal in shares)
+    pub(crate) total_storage_fee_withdrawal: Balance,
     /// Individual withdrawal amounts with their unlocking block for a given domain
     pub(crate) withdrawals: VecDeque<WithdrawalInBalance<DomainBlockNumber, Balance>>,
     /// Withdrawal that was initiated by nominator and not converted to balance due to
@@ -131,7 +133,6 @@ pub(crate) struct Withdrawal<Balance, Share, DomainBlockNumber> {
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub(crate) struct WithdrawalInBalance<DomainBlockNumber, Balance> {
-    pub(crate) domain_id: DomainId,
     pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
     pub(crate) amount_to_unlock: Balance,
     pub(crate) storage_fee_refund: Balance,
@@ -189,8 +190,7 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
     /// The status of the operator, it may be stale due to the `OperatorStatus::PendingSlash` is
     /// not assigned to this field directly, thus MUST use the `status()` method to query the status
     /// instead.
-    /// TODO: update the filed to `_status` to avoid accidental access in next network reset
-    status: OperatorStatus<DomainBlockNumber>,
+    partial_status: OperatorStatus<DomainBlockNumber>,
     /// Total deposits during the previous epoch
     pub deposits_in_epoch: Balance,
     /// Total withdrew shares during the previous epoch
@@ -201,17 +201,17 @@ pub struct Operator<Balance, Share, DomainBlockNumber> {
 
 impl<Balance, Share, DomainBlockNumber> Operator<Balance, Share, DomainBlockNumber> {
     pub fn status<T: Config>(&self, operator_id: OperatorId) -> &OperatorStatus<DomainBlockNumber> {
-        if matches!(self.status, OperatorStatus::Slashed) {
+        if matches!(self.partial_status, OperatorStatus::Slashed) {
             &OperatorStatus::Slashed
         } else if Pallet::<T>::is_operator_pending_to_slash(self.current_domain_id, operator_id) {
             &OperatorStatus::PendingSlash
         } else {
-            &self.status
+            &self.partial_status
         }
     }
 
     pub fn update_status(&mut self, new_status: OperatorStatus<DomainBlockNumber>) {
-        self.status = new_status;
+        self.partial_status = new_status;
     }
 }
 
@@ -231,7 +231,7 @@ impl<Balance: Zero, Share: Zero, DomainBlockNumber> Operator<Balance, Share, Dom
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
-            status: OperatorStatus::Registered,
+            partial_status: OperatorStatus::Registered,
             deposits_in_epoch: Zero::zero(),
             withdrawals_in_epoch: Zero::zero(),
             total_storage_fee_deposit: Zero::zero(),
@@ -297,6 +297,7 @@ pub enum Error {
     UnconfirmedER,
     /// Invalid signature from Signing key owner.
     InvalidSigningKeySignature,
+    TooManyWithdrawals,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -398,7 +399,7 @@ pub fn do_register_operator<T: Config>(
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
             current_total_shares: Zero::zero(),
-            status: OperatorStatus::Registered,
+            partial_status: OperatorStatus::Registered,
             // sum total deposits added during this epoch.
             deposits_in_epoch: new_deposit.staking,
             withdrawals_in_epoch: Zero::zero(),
@@ -541,10 +542,10 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
     };
 
     if let Some(WithdrawalInShares {
-        domain_epoch,
         unlock_at_confirmed_domain_block_number,
         shares,
         storage_fee_refund,
+        domain_epoch: _,
     }) = withdrawal.withdrawal_in_shares.take()
     {
         let withdrawal_amount = epoch_share_price.shares_to_stake::<T>(shares);
@@ -552,10 +553,8 @@ pub(crate) fn do_convert_previous_epoch_withdrawal<T: Config>(
             .total_withdrawal_amount
             .checked_add(&withdrawal_amount)
             .ok_or(Error::BalanceOverflow)?;
-        let (domain_id, _) = domain_epoch.deconstruct();
 
         let withdraw_in_balance = WithdrawalInBalance {
-            domain_id,
             unlock_at_confirmed_domain_block_number,
             amount_to_unlock: withdrawal_amount,
             storage_fee_refund,
@@ -660,7 +659,14 @@ pub(crate) fn hold_deposit<T: Config>(
         Error::InsufficientBalance
     );
 
-    let pending_deposit_hold_id = T::HoldIdentifier::staking_staked(operator_id);
+    DepositOnHold::<T>::try_mutate((operator_id, who), |deposit_on_hold| {
+        *deposit_on_hold = deposit_on_hold
+            .checked_add(&amount)
+            .ok_or(Error::BalanceOverflow)?;
+        Ok(())
+    })?;
+
+    let pending_deposit_hold_id = T::HoldIdentifier::staking_staked();
     T::Currency::hold(&pending_deposit_hold_id, who, amount).map_err(|_| Error::BalanceFreeze)?;
 
     Ok(())
@@ -801,8 +807,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawal| {
             if let Some(withdrawal) = maybe_withdrawal {
                 do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
+                if withdrawal.withdrawals.len() as u32 >= T::WithdrawalLimit::get() {
+                    return Err(Error::TooManyWithdrawals);
+                }
             }
-
             Ok(())
         })?;
 
@@ -952,6 +960,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     },
                 };
                 withdrawal.withdrawal_in_shares = Some(new_withdrawal_in_shares);
+                withdrawal.total_storage_fee_withdrawal = withdrawal
+                    .total_storage_fee_withdrawal
+                    .checked_add(&withdraw_storage_fee)
+                    .ok_or(Error::BalanceOverflow)?;
 
                 *maybe_withdrawal = Some(withdrawal);
                 Ok(())
@@ -974,64 +986,102 @@ pub(crate) fn do_unlock_funds<T: Config>(
     Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawal| {
         let withdrawal = maybe_withdrawal.as_mut().ok_or(Error::MissingWithdrawal)?;
         do_convert_previous_epoch_withdrawal::<T>(operator_id, withdrawal)?;
-        let WithdrawalInBalance {
-            domain_id,
-            unlock_at_confirmed_domain_block_number,
-            amount_to_unlock,
-            storage_fee_refund,
-        } = withdrawal
-            .withdrawals
-            .pop_front()
-            .ok_or(Error::MissingWithdrawal)?;
+
+        ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
 
         let latest_confirmed_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
+            Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
+
+        let mut total_unlocked_amount = BalanceOf::<T>::zero();
+        let mut total_storage_fee_refund = BalanceOf::<T>::zero();
+        loop {
+            if withdrawal
+                .withdrawals
+                .front()
+                .map(|w| w.unlock_at_confirmed_domain_block_number > latest_confirmed_block_number)
+                .unwrap_or(true)
+            {
+                break;
+            }
+
+            let WithdrawalInBalance {
+                amount_to_unlock,
+                storage_fee_refund,
+                ..
+            } = withdrawal
+                .withdrawals
+                .pop_front()
+                .expect("Must not empty as checked above; qed");
+
+            total_unlocked_amount = total_unlocked_amount
+                .checked_add(&amount_to_unlock)
+                .ok_or(Error::BalanceOverflow)?;
+
+            total_storage_fee_refund = total_storage_fee_refund
+                .checked_add(&storage_fee_refund)
+                .ok_or(Error::BalanceOverflow)?;
+        }
+
+        // There is withdrawal but none being processed meaning the first withdrawal's unlock period has
+        // not completed yet
         ensure!(
-            unlock_at_confirmed_domain_block_number <= latest_confirmed_block_number,
+            !total_unlocked_amount.is_zero() || !total_storage_fee_refund.is_zero(),
             Error::UnlockPeriodNotComplete
         );
 
         // deduct the amount unlocked from total
         withdrawal.total_withdrawal_amount = withdrawal
             .total_withdrawal_amount
-            .checked_sub(&amount_to_unlock)
+            .checked_sub(&total_unlocked_amount)
             .ok_or(Error::BalanceUnderflow)?;
 
-        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
-        let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
-        let amount_to_release: BalanceOf<T> = {
-            // if the amount to release is more than currently locked,
-            // mint the diff and release the rest
-            if let Some(amount_to_mint) = amount_to_unlock.checked_sub(&locked_amount) {
-                // mint any gains
-                mint_funds::<T>(&nominator_id, amount_to_mint)?;
-                locked_amount
-            } else {
-                amount_to_unlock
-            }
-        };
+        withdrawal.total_storage_fee_withdrawal = withdrawal
+            .total_storage_fee_withdrawal
+            .checked_sub(&total_storage_fee_refund)
+            .ok_or(Error::BalanceUnderflow)?;
 
+        // If the amount to release is more than currently locked,
+        // mint the diff and release the rest
+        let (amount_to_mint, amount_to_release) = DepositOnHold::<T>::try_mutate(
+            (operator_id, nominator_id.clone()),
+            |deposit_on_hold| {
+                let amount_to_release = total_unlocked_amount.min(*deposit_on_hold);
+                let amount_to_mint = total_unlocked_amount.saturating_sub(*deposit_on_hold);
+
+                *deposit_on_hold = deposit_on_hold.saturating_sub(amount_to_release);
+
+                Ok((amount_to_mint, amount_to_release))
+            },
+        )?;
+
+        // Mint any gains
+        if !amount_to_mint.is_zero() {
+            mint_funds::<T>(&nominator_id, amount_to_mint)?;
+        }
         // Release staking fund
-        T::Currency::release(
-            &staked_hold_id,
-            &nominator_id,
-            amount_to_release,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
+        if !amount_to_release.is_zero() {
+            let staked_hold_id = T::HoldIdentifier::staking_staked();
+            T::Currency::release(
+                &staked_hold_id,
+                &nominator_id,
+                amount_to_release,
+                Precision::Exact,
+            )
+            .map_err(|_| Error::RemoveLock)?;
+        }
 
         Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            unlocked_amount: amount_to_unlock,
+            unlocked_amount: total_unlocked_amount,
         });
 
         // Release storage fund
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
         T::Currency::release(
             &storage_fund_hold_id,
             &nominator_id,
-            storage_fee_refund,
+            total_storage_fee_refund,
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
@@ -1039,7 +1089,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            storage_fee: storage_fee_refund,
+            storage_fee: total_storage_fee_refund,
         });
 
         // if there are no withdrawals, then delete the storage as well
@@ -1097,39 +1147,38 @@ pub(crate) fn do_unlock_nominator<T: Config>(
 
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
-        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
-
         let mut total_storage_fee_deposit = operator.total_storage_fee_deposit;
         let storage_fund_redeem_price = bundle_storage_fund::storage_fund_redeem_price::<T>(
             operator_id,
             total_storage_fee_deposit,
         );
-        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal(operator_id);
         let mut deposit = Deposits::<T>::take(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
 
         // convert any deposits from the previous epoch to shares
         do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit)?;
 
-        let current_locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
-
         // if there are any withdrawals from this operator, account for them
         // if the withdrawals has share price noted, then convert them to SSC
         // if no share price, then it must be intitated in the epoch before operator de-registered,
         // so get the shares as is and include them in the total staked shares.
-        let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
-            Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                .map(|mut withdrawal| {
-                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
-                    Ok((
-                        withdrawal.total_withdrawal_amount,
-                        withdrawal
-                            .withdrawal_in_shares
-                            .map(|WithdrawalInShares { shares, .. }| shares)
-                            .unwrap_or_default(),
-                    ))
-                })
-                .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
+        let (
+            amount_ready_to_withdraw,
+            total_storage_fee_withdrawal,
+            shares_withdrew_in_current_epoch,
+        ) = Withdrawals::<T>::take(operator_id, nominator_id.clone())
+            .map(|mut withdrawal| {
+                do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
+                Ok((
+                    withdrawal.total_withdrawal_amount,
+                    withdrawal.total_storage_fee_withdrawal,
+                    withdrawal
+                        .withdrawal_in_shares
+                        .map(|WithdrawalInShares { shares, .. }| shares)
+                        .unwrap_or_default(),
+                ))
+            })
+            .unwrap_or(Ok((Zero::zero(), Zero::zero(), Zero::zero())))?;
 
         // include all the known shares and shares that were withdrawn in the current epoch
         let nominator_shares = deposit
@@ -1152,20 +1201,21 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .and_then(|amount| amount.checked_add(&amount_deposited_in_epoch))
             .ok_or(Error::BalanceOverflow)?;
 
-        let amount_to_mint = total_amount_to_unlock
-            .checked_sub(&current_locked_amount)
-            .unwrap_or(Zero::zero());
-
-        // remove the lock and mint any gains
-        mint_funds::<T>(&nominator_id, amount_to_mint)?;
-
-        T::Currency::release(
-            &staked_hold_id,
-            &nominator_id,
-            current_locked_amount,
-            Precision::Exact,
-        )
-        .map_err(|_| Error::RemoveLock)?;
+        // Remove the lock and mint any gains
+        let current_locked_amount = DepositOnHold::<T>::take((operator_id, nominator_id.clone()));
+        if let Some(amount_to_mint) = total_amount_to_unlock.checked_sub(&current_locked_amount) {
+            mint_funds::<T>(&nominator_id, amount_to_mint)?;
+        }
+        if !current_locked_amount.is_zero() {
+            let staked_hold_id = T::HoldIdentifier::staking_staked();
+            T::Currency::release(
+                &staked_hold_id,
+                &nominator_id,
+                current_locked_amount,
+                Precision::Exact,
+            )
+            .map_err(|_| Error::RemoveLock)?;
+        }
 
         Pallet::<T>::deposit_event(Event::NominatedStakedUnlocked {
             operator_id,
@@ -1184,22 +1234,27 @@ pub(crate) fn do_unlock_nominator<T: Config>(
             .checked_add(&deposit.known.storage_fee_deposit)
             .ok_or(Error::BalanceOverflow)?;
 
-        bundle_storage_fund::withdraw_and_hold::<T>(
+        bundle_storage_fund::withdraw_to::<T>(
             operator_id,
             &nominator_id,
             storage_fund_redeem_price.redeem(nominator_total_storage_fee_deposit),
         )
         .map_err(Error::BundleStorageFund)?;
 
-        // Release all storage fee that of the nominator.
-        let storage_fee_refund =
-            T::Currency::release_all(&storage_fund_hold_id, &nominator_id, Precision::Exact)
-                .map_err(|_| Error::RemoveLock)?;
+        // Release all storage fee on withdraw of the nominator
+        let storage_fund_hold_id = T::HoldIdentifier::storage_fund_withdrawal();
+        T::Currency::release(
+            &storage_fund_hold_id,
+            &nominator_id,
+            total_storage_fee_withdrawal,
+            Precision::Exact,
+        )
+        .map_err(|_| Error::RemoveLock)?;
 
         Pallet::<T>::deposit_event(Event::StorageFeeUnlocked {
             operator_id,
             nominator_id: nominator_id.clone(),
-            storage_fee: storage_fee_refund,
+            storage_fee: total_storage_fee_withdrawal,
         });
 
         // reduce total storage fee deposit with nominator total fee deposit
@@ -1403,8 +1458,8 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, Error, ExecutionReceiptOf, NominatorId, SlashedReason,
-        MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, DomainBlockNumberFor, Error, ExecutionReceiptOf,
+        NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
     };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
@@ -1464,6 +1519,7 @@ pub(crate) mod tests {
                 genesis_receipt_hash: Default::default(),
                 domain_config,
                 domain_runtime_info: Default::default(),
+                domain_instantiation_deposit: Default::default(),
             };
 
             DomainRegistry::<Test>::insert(domain_id, domain_obj);
@@ -1623,7 +1679,7 @@ pub(crate) mod tests {
                     current_total_stake: operator_stake,
                     current_epoch_rewards: 0,
                     current_total_shares: operator_stake,
-                    status: OperatorStatus::Registered,
+                    partial_status: OperatorStatus::Registered,
                     deposits_in_epoch: 0,
                     withdrawals_in_epoch: 0,
                     total_storage_fee_deposit: operator_storage_fee_deposit,
@@ -1860,6 +1916,7 @@ pub(crate) mod tests {
                 genesis_receipt_hash: Default::default(),
                 domain_config,
                 domain_runtime_info: Default::default(),
+                domain_instantiation_deposit: Default::default(),
             };
 
             DomainRegistry::<Test>::insert(new_domain_id, domain_obj);
@@ -2590,6 +2647,162 @@ pub(crate) mod tests {
             expected_withdraw: Some((20 * SSC - 2 * SSC - 33331097576, false)),
             expected_nominator_count_reduced_by: 0,
         })
+    }
+
+    fn dummy_receipt(domain_block_number: DomainBlockNumberFor<Test>) -> ExecutionReceiptOf<Test> {
+        ExecutionReceiptOf::<Test> {
+            domain_block_number,
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_number: Default::default(),
+            consensus_block_hash: Default::default(),
+            inboxed_bundles: vec![],
+            final_state_root: Default::default(),
+            execution_trace: vec![],
+            execution_trace_root: Default::default(),
+            block_fees: BlockFees::default(),
+            transfers: Transfers::default(),
+        }
+    }
+
+    #[test]
+    fn unlock_multiple_withdrawals() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let data = OperatorSigningKeyProofOfOwnershipData {
+            operator_owner: operator_account,
+        };
+        let signature = pair.sign(&data.encode());
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let nominators = vec![
+            (operator_account, (operator_free_balance, operator_stake)),
+            (nominator_account, (nominator_free_balance, nominator_stake)),
+        ];
+
+        let total_deposit = 300 * SSC;
+        let init_total_stake = STORAGE_FEE_RESERVE.left_from_one() * total_deposit;
+        let init_total_storage_fund = STORAGE_FEE_RESERVE * total_deposit;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                signature,
+                BTreeMap::from_iter(nominators),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_stake_summary.current_total_stake, init_total_stake);
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, init_total_stake);
+            assert_eq!(operator.total_storage_fee_deposit, init_total_storage_fund);
+            assert_eq!(
+                operator.total_storage_fee_deposit,
+                bundle_storage_fund::total_balance::<Test>(operator_id)
+            );
+
+            let amount_per_withdraw = init_total_stake / 100;
+            let latest_confirmed_block_number =
+                Domains::latest_confirmed_domain_block_number(domain_id);
+
+            // Request `WithdrawalLimit - 1` number of withdrawal
+            for _ in 1..<Test as crate::Config>::WithdrawalLimit::get() {
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                )
+                .unwrap();
+                do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+            }
+            // Increase the latest confirmed domain block by 1
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(latest_confirmed_block_number + 1),
+            );
+
+            // All withdrawals of a given nominator submitted in the same epoch will merge into one,
+            // so we submit can submit as many as we want even though the withdrawal limit is met
+            for _ in 0..5 {
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                )
+                .unwrap();
+            }
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
+
+            // After the withdrawal limit is met, any new withdraw will be rejected in the next epoch
+            assert_err!(
+                do_withdraw_stake::<Test>(
+                    operator_id,
+                    nominator_account,
+                    WithdrawStake::Stake(amount_per_withdraw),
+                ),
+                StakingError::TooManyWithdrawals
+            );
+            Withdrawals::<Test>::try_mutate(operator_id, nominator_account, |maybe_withdrawal| {
+                let withdrawal = maybe_withdrawal.as_mut().unwrap();
+                do_convert_previous_epoch_withdrawal::<Test>(operator_id, withdrawal).unwrap();
+                assert_eq!(
+                    withdrawal.withdrawals.len() as u32,
+                    <Test as crate::Config>::WithdrawalLimit::get()
+                );
+                Ok::<(), StakingError>(())
+            })
+            .unwrap();
+
+            // Make the first set of withdrawals pass the unlock period then unlock fund
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(
+                    latest_confirmed_block_number
+                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
+                ),
+            );
+            let total_balance = Balances::usable_balance(nominator_account);
+            assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
+            assert_eq!(
+                Balances::usable_balance(nominator_account) + 60246126106, // `60246126106` is a minior rounding dust
+                total_balance
+                    + (<Test as crate::Config>::WithdrawalLimit::get() as u128 - 1) * total_deposit
+                        / 100
+            );
+            let withdrawal = Withdrawals::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(withdrawal.withdrawals.len(), 1);
+
+            // Make the second set of withdrawals pass the unlock period then unlock funds
+            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                domain_id,
+                dummy_receipt(
+                    latest_confirmed_block_number
+                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
+                        + 1,
+                ),
+            );
+            let total_balance = Balances::usable_balance(nominator_account);
+            assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
+            assert_eq!(
+                Balances::usable_balance(nominator_account) + 18473897451, // `18473897451` is a minor rounding dust
+                total_balance + 5 * total_deposit / 100
+            );
+            assert!(Withdrawals::<Test>::get(operator_id, nominator_account).is_none());
+        });
     }
 
     #[test]

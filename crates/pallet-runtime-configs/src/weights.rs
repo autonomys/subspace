@@ -34,7 +34,6 @@ pub trait WeightInfo {
 	fn set_enable_domains() -> Weight;
 	fn set_enable_dynamic_cost_of_storage() -> Weight;
 	fn set_enable_balance_transfers() -> Weight;
-	fn set_enable_non_root_calls() -> Weight;
 }
 
 /// Weights for pallet_runtime_configs using the Substrate node and recommended hardware.
@@ -70,16 +69,6 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 		Weight::from_parts(3_216_000, 0)
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
-	/// Storage: `RuntimeConfigs::EnableNonRootCalls` (r:0 w:1)
-	/// Proof: `RuntimeConfigs::EnableNonRootCalls` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
-	fn set_enable_non_root_calls() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 3_095_000 picoseconds.
-		Weight::from_parts(3_249_000, 0)
-			.saturating_add(T::DbWeight::get().writes(1_u64))
-	}
 }
 
 // For backwards compatibility and tests
@@ -112,16 +101,6 @@ impl WeightInfo for () {
 		//  Estimated: `0`
 		// Minimum execution time: 3_078_000 picoseconds.
 		Weight::from_parts(3_216_000, 0)
-			.saturating_add(ParityDbWeight::get().writes(1_u64))
-	}
-	/// Storage: `RuntimeConfigs::EnableNonRootCalls` (r:0 w:1)
-	/// Proof: `RuntimeConfigs::EnableNonRootCalls` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
-	fn set_enable_non_root_calls() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 3_095_000 picoseconds.
-		Weight::from_parts(3_249_000, 0)
 			.saturating_add(ParityDbWeight::get().writes(1_u64))
 	}
 }

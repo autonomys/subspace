@@ -8,7 +8,7 @@ use sc_client_api::AuxStore;
 use sc_executor::RuntimeVersionOf;
 use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi, StorageProof};
+use sp_api::{ApiError, ProvideRuntimeApi, StorageProof};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_core::crypto::AccountId32;
@@ -155,26 +155,13 @@ pub async fn start_cross_chain_message_listener<
 
                 handle_xdm_message(&client, &tx_pool, chain_id, ext).await;
             }
-            MessageData::ChannelUpdate(channel_update) => {
-                // TODO: remove api version check before next network.
-                let is_runtime_apis_available =
-                    is_runtime_apis_available(&consensus_client, &client).unwrap_or(false);
-
-                if !is_runtime_apis_available {
-                    tracing::debug!(
-                        target: LOG_TARGET,
-                        "Runtime apis not available. Skipping channel update..."
-                    );
-                    continue;
-                }
-                handle_channel_update::<_, _, _, Block>(
-                    chain_id,
-                    channel_update,
-                    &consensus_client,
-                    domain_executor.clone(),
-                    &mut domain_storage_key_cache,
-                )
-            }
+            MessageData::ChannelUpdate(channel_update) => handle_channel_update::<_, _, _, Block>(
+                chain_id,
+                channel_update,
+                &consensus_client,
+                domain_executor.clone(),
+                &mut domain_storage_key_cache,
+            ),
         }
     }
 }
@@ -471,70 +458,6 @@ where
         channel_detail,
     )?;
     Ok(())
-}
-
-fn is_runtime_apis_available<CClient, CBlock, Client, Block>(
-    consensus_client: &Arc<CClient>,
-    domain_client: &Arc<Client>,
-) -> Result<bool, sp_blockchain::Error>
-where
-    CBlock: BlockT,
-    Block: BlockT,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-{
-    let best_hash = consensus_client.info().best_hash;
-    let consensus_runtime_api = consensus_client.runtime_api();
-    let api_version = consensus_runtime_api
-        .api_version::<dyn DomainsApi<CBlock, Block::Header>>(best_hash)
-        .map_err(sp_blockchain::Error::RuntimeApiError)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                format!("DomainsApi not found at: {:?}", best_hash).into(),
-            ))
-        })?;
-
-    // Domains api must be atleast version 4
-    if api_version < 4 {
-        return Ok(false);
-    }
-
-    let api_version = consensus_runtime_api
-        .api_version::<dyn RelayerApi<CBlock, NumberFor<CBlock>, NumberFor<CBlock>, CBlock::Hash>>(
-            best_hash,
-        )
-        .map_err(sp_blockchain::Error::RuntimeApiError)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                format!("RelayerApi not found at: {:?}", best_hash).into(),
-            ))
-        })?;
-
-    // consensus relayer api must be atleast version 2
-    if api_version < 2 {
-        return Ok(false);
-    }
-
-    let domain_best_hash = domain_client.info().best_hash;
-    let domain_runtime_api = domain_client.runtime_api();
-
-    let api_version = domain_runtime_api
-        .api_version::<dyn RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, CBlock::Hash>>(
-            domain_best_hash,
-        )
-        .map_err(sp_blockchain::Error::RuntimeApiError)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                format!("RelayerApi not found at: {:?}", domain_best_hash).into(),
-            ))
-        })?;
-
-    // domain relayer api must be atleast version 2
-    if api_version < 2 {
-        return Ok(false);
-    }
-
-    Ok(true)
 }
 
 async fn handle_xdm_message<TxPool, Client>(

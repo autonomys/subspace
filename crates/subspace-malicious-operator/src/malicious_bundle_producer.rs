@@ -32,7 +32,7 @@ use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::PotOutput;
 use subspace_runtime::{
-    CheckStorageAccess, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
+    CheckHistorySeeder, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
 };
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
@@ -427,8 +427,8 @@ pub fn construct_signed_extrinsic(
         frame_system::CheckNonce::<Runtime>::from(nonce),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        CheckStorageAccess,
         DisablePallets,
+        CheckHistorySeeder::<Runtime>::new(),
     );
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
         call.clone(),

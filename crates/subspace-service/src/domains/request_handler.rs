@@ -21,7 +21,7 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{BlockBackend, ProofProvider};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceiptFor};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -174,19 +174,6 @@ where
                 info.best_hash
             };
 
-            let consensus_api_version = self
-                .client
-                .runtime_api()
-                .api_version::<dyn DomainsApi<Block, Block::Header>>(target_block_hash)
-                .map_err(sp_blockchain::Error::RuntimeApiError)?
-                .ok_or_else(|| HandleRequestError::ApiVersionNotSupported)?;
-
-            if consensus_api_version < 6 {
-                debug!("Incorrect API version to support the last confirmed block request: {consensus_api_version}");
-
-                return Err(HandleRequestError::ApiVersionNotSupported);
-            }
-
             let last_confirmed_block_receipt = self
                 .client
                 .runtime_api()
@@ -244,9 +231,6 @@ enum HandleRequestError {
 
     #[error("Failed to send response.")]
     SendResponse,
-
-    #[error("Api version is not supported.")]
-    ApiVersionNotSupported,
 
     #[error("Failed to decode request: {0}.")]
     Decode(#[from] codec::Error),

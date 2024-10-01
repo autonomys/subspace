@@ -25,12 +25,6 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
-    #[pallet::error]
-    pub enum Error<T> {
-        /// The sender is not authorized to seed history
-        NotAuthorized,
-    }
-
     #[pallet::storage]
     #[pallet::getter(fn history_seeder)]
     pub(super) type HistorySeeder<T: Config> = StorageValue<_, T::AccountId, OptionQuery>;
@@ -40,14 +34,7 @@ pub mod pallet {
         /// Seed history with a remark
         #[pallet::call_index(0)]
         #[pallet::weight((T::WeightInfo::seed_history(remark.len() as u32), Pays::No))]
-        pub fn seed_history(origin: OriginFor<T>, remark: Vec<u8>) -> DispatchResult {
-            let who = ensure_signed(origin.clone())?;
-
-            ensure!(
-                Some(who.clone()) == Self::history_seeder(),
-                Error::<T>::NotAuthorized
-            );
-
+        pub fn seed_history(_origin: OriginFor<T>, remark: Vec<u8>) -> DispatchResult {
             let _ = remark;
 
             Ok(())

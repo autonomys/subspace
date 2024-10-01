@@ -37,6 +37,7 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
+pub use subspace_runtime_primitives::HoldIdentifier;
 use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON, SLOT_PROBABILITY};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -249,10 +250,12 @@ pub struct DecodeExtrinsicError(pub String);
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
-/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
-/// the specifics of the runtime. They can then be made to be agnostic over specific formats
-/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
-/// to even the core data structures.
+/// Opaque types.
+///
+/// These are used by the CLI to instantiate machinery that don't need to know the specifics of the
+/// runtime. They can then be made to be agnostic over specific formats of data like extrinsics,
+/// allowing for them to continue syncing the network through upgrades to even the core data
+/// structures.
 pub mod opaque {
     use crate::BlockNumber;
     #[cfg(not(feature = "std"))]

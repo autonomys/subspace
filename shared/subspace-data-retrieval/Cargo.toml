@@ -13,7 +13,7 @@ include = [
 
 [dependencies]
 async-lock = "3.3.0"
-async-trait = "0.1.81"
+async-trait = "0.1.83"
 futures = "0.3.29"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 subspace-archiving = { version = "0.1.0", path = "../../crates/subspace-archiving" }

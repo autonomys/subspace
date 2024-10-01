@@ -1,18 +1,18 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use crate::farm::MaybePieceStoredResult;
+use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
 use crate::single_disk_farm::plot_cache::DiskPlotCache;
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
-#[cfg(not(windows))]
-use std::fs::OpenOptions;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use subspace_core_primitives::{HistorySize, Piece, PieceIndex, Record, SectorIndex};
 use subspace_farmer_components::file_ext::FileExt;
-#[cfg(not(windows))]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::sector::{SectorMetadata, SectorMetadataChecksummed};
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -31,17 +31,7 @@ async fn basic() {
     });
 
     let tempdir = tempdir().unwrap();
-    #[cfg(not(windows))]
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .advise_random_access()
-        .open(tempdir.path().join("plot.bin"))
-        .unwrap();
-
-    #[cfg(windows)]
-    let file = UnbufferedIoFileWindows::open(&tempdir.path().join("plot.bin")).unwrap();
+    let file = DirectIoFile::open(&tempdir.path().join("plot.bin")).unwrap();
 
     // Align plot file size for disk sector size
     file.preallocate(

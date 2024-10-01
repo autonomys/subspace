@@ -9,11 +9,11 @@ use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{Record, SolutionRange};
+use subspace_core_primitives::{Blake3Hash, Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::single_disk_farm::direct_io_file::DirectIoFile;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
-use subspace_farmer::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmInfo, SingleDiskFarmSummary,
 };
@@ -181,14 +181,14 @@ where
 
             group.bench_function("plot/single", |b| {
                 b.iter_batched(
-                    rand::random,
+                    rand::random::<[u8; 32]>,
                     |global_challenge| {
                         let options = PlotAuditOptions::<PosTable> {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
                                 slot_number: 0,
-                                global_challenge,
+                                global_challenge: Blake3Hash::from(global_challenge),
                                 // No solution will be found, pure audit
                                 solution_range: SolutionRange::MIN,
                                 // No solution will be found, pure audit
@@ -209,24 +209,24 @@ where
                 )
             });
         }
-        if cfg!(windows) {
+        {
             let plot = RayonFiles::open_with(
                 &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                UnbufferedIoFileWindows::open,
+                DirectIoFile::open,
             )
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
 
             group.bench_function("plot/rayon/unbuffered", |b| {
                 b.iter_batched(
-                    rand::random,
+                    rand::random::<[u8; 32]>,
                     |global_challenge| {
                         let options = PlotAuditOptions::<PosTable> {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
                                 slot_number: 0,
-                                global_challenge,
+                                global_challenge: Blake3Hash::from(global_challenge),
                                 // No solution will be found, pure audit
                                 solution_range: SolutionRange::MIN,
                                 // No solution will be found, pure audit
@@ -254,14 +254,14 @@ where
 
             group.bench_function("plot/rayon/regular", |b| {
                 b.iter_batched(
-                    rand::random,
+                    rand::random::<[u8; 32]>,
                     |global_challenge| {
                         let options = PlotAuditOptions::<PosTable> {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
                                 slot_number: 0,
-                                global_challenge,
+                                global_challenge: Blake3Hash::from(global_challenge),
                                 // No solution will be found, pure audit
                                 solution_range: SolutionRange::MIN,
                                 // No solution will be found, pure audit
@@ -363,7 +363,7 @@ where
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
                     slot_number: 0,
-                    global_challenge: rand::random(),
+                    global_challenge: Blake3Hash::from(rand::random::<[u8; 32]>()),
                     // Solution is guaranteed to be found
                     solution_range: SolutionRange::MAX,
                     // Solution is guaranteed to be found
@@ -386,7 +386,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
@@ -410,7 +411,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
@@ -424,10 +426,10 @@ where
                 )
             });
         }
-        if cfg!(windows) {
+        {
             let plot = RayonFiles::open_with(
                 &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                UnbufferedIoFileWindows::open,
+                DirectIoFile::open,
             )
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
@@ -436,7 +438,7 @@ where
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
                     slot_number: 0,
-                    global_challenge: rand::random(),
+                    global_challenge: Blake3Hash::from(rand::random::<[u8; 32]>()),
                     // Solution is guaranteed to be found
                     solution_range: SolutionRange::MAX,
                     // Solution is guaranteed to be found
@@ -459,7 +461,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
@@ -483,7 +486,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
@@ -506,7 +510,7 @@ where
                 reward_address: single_disk_farm_info.public_key(),
                 slot_info: SlotInfo {
                     slot_number: 0,
-                    global_challenge: rand::random(),
+                    global_challenge: Blake3Hash::from(rand::random::<[u8; 32]>()),
                     // Solution is guaranteed to be found
                     solution_range: SolutionRange::MAX,
                     // Solution is guaranteed to be found
@@ -529,7 +533,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()
@@ -553,7 +558,8 @@ where
                             return result;
                         }
 
-                        options.slot_info.global_challenge = rand::random();
+                        options.slot_info.global_challenge =
+                            Blake3Hash::from(rand::random::<[u8; 32]>());
                         audit_results = plot_audit.audit(options).unwrap();
 
                         audit_results.pop().unwrap()

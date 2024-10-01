@@ -3,13 +3,13 @@ use codec::Encode;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
-    BundleHeader, DomainBundleLimit, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor,
-    OperatorId, ProofOfElection,
+    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, OperatorId,
+    ProofOfElection,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
@@ -120,90 +120,9 @@ where
         }
     }
 
-    pub(crate) fn fetch_storage_fund_balance_and_fee(
-        &self,
-        operator_id: OperatorId,
-    ) -> sp_blockchain::Result<(Balance, Balance)> {
-        let best_hash = self.consensus_client.info().best_hash;
-        let consensus_runtime_api = self.consensus_client.runtime_api();
-        let api_version = consensus_runtime_api
-            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(best_hash)
-            .map_err(sp_blockchain::Error::RuntimeApiError)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("DomainsApi not found at: {:?}", best_hash).into(),
-                ))
-            })?;
-
-        let transaction_byte_fee = consensus_runtime_api.consensus_chain_byte_fee(best_hash)?;
-
-        // TODO: This is used to keep compatible with gemini-3h, remove before next network
-        if api_version >= 3 {
-            let storage_fund_balance =
-                consensus_runtime_api.storage_fund_account_balance(best_hash, operator_id)?;
-
-            Ok((storage_fund_balance, transaction_byte_fee))
-        } else {
-            Ok((Balance::MAX, transaction_byte_fee))
-        }
-    }
-
-    pub(crate) fn fetch_domain_bundle_limit(&self) -> sp_blockchain::Result<DomainBundleLimit> {
-        let best_hash = self.consensus_client.info().best_hash;
-        let consensus_runtime_api = self.consensus_client.runtime_api();
-        let api_version = consensus_runtime_api
-            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(best_hash)
-            .map_err(sp_blockchain::Error::RuntimeApiError)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("DomainsApi not found at: {:?}", best_hash).into(),
-                ))
-            })?;
-
-        // TODO: This is used to keep compatible with gemini-3h, remove before next network
-        if api_version >= 2 {
-            self.consensus_client
-                .runtime_api()
-                .domain_bundle_limit(best_hash, self.domain_id)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Application(
-                        format!("Domain bundle limit for {:?} not found", self.domain_id).into(),
-                    )
-                })
-        } else {
-            // If bundle limit runtime api is not available, we need to revert to old behaviour and
-            // fetch domain block limit.
-            let domain_block_limit = self
-                .consensus_client
-                .runtime_api()
-                .domain_block_limit(best_hash, self.domain_id)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Application(
-                        format!("Domain block limit for {:?} not found", self.domain_id).into(),
-                    )
-                })?;
-
-            Ok(DomainBundleLimit {
-                max_bundle_weight: domain_block_limit.max_block_weight,
-                max_bundle_size: domain_block_limit.max_block_size,
-            })
-        }
-    }
-
-    pub(crate) fn messenger_api_version(&self, at: Block::Hash) -> sp_blockchain::Result<u32> {
-        self.client
-            .runtime_api()
-            .api_version::<dyn MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>>(at)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                    format!("MessengerApi not found at: {at:?}").into(),
-                ))
-            })
-    }
-
     pub(crate) async fn propose_bundle_at(
         &mut self,
-        proof_of_election: ProofOfElection<CBlock::Hash>,
+        proof_of_election: ProofOfElection,
         tx_range: U256,
         operator_id: OperatorId,
         receipt: ExecutionReceiptFor<Block, CBlock>,
@@ -211,6 +130,7 @@ where
         // NOTE: use the domain block that derive the ER to validate the extrinsic to be included
         // in the bundle, so the validity of the extrinsic is committed to the ER that submited together.
         let (parent_number, parent_hash) = (receipt.domain_block_number, receipt.domain_block_hash);
+        let consensus_best_hash = self.consensus_client.info().best_hash;
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
         // TODO: proper timeout
@@ -230,15 +150,33 @@ where
         // Clear the previous bundled tx info whenever the consensus chain tip is changed,
         // this allow the operator to retry for the previous bundled tx in case the previous
         // bundle fail to submit to the consensus chain due to any reason.
-        self.previous_bundled_tx
-            .maybe_clear(self.consensus_client.info().best_hash);
+        self.previous_bundled_tx.maybe_clear(consensus_best_hash);
 
-        let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
+        let (domain_bundle_limit, storage_fund_balance, transaction_byte_fee) = {
+            let consensus_runtime_api = self.consensus_client.runtime_api();
 
-        let domain_bundle_limit = self.fetch_domain_bundle_limit()?;
+            let domain_bundle_limit = consensus_runtime_api
+                .domain_bundle_limit(consensus_best_hash, self.domain_id)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Application(
+                        format!("Domain bundle limit for {:?} not found", self.domain_id).into(),
+                    )
+                })?;
 
-        let (storage_fund_balance, transaction_byte_fee) =
-            self.fetch_storage_fund_balance_and_fee(operator_id)?;
+            let storage_fund_balance = consensus_runtime_api
+                .storage_fund_account_balance(consensus_best_hash, operator_id)?;
+
+            let transaction_byte_fee =
+                consensus_runtime_api.consensus_chain_byte_fee(consensus_best_hash)?;
+
+            (
+                domain_bundle_limit,
+                storage_fund_balance,
+                transaction_byte_fee,
+            )
+        };
+
+        let bundle_vrf_hash = U256::from_be_bytes(*proof_of_election.vrf_hash());
 
         let header_size = receipt.encoded_size()
             + proof_of_election.encoded_size()
@@ -247,8 +185,6 @@ where
             + 32
             // Header signature size
             + 64;
-
-        let messenger_api_version = self.messenger_api_version(parent_hash)?;
 
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
@@ -333,12 +269,10 @@ where
                 }
 
                 // Double check XDM before adding it to the bundle
-                if messenger_api_version >= 4 {
-                    if let Some(false) =
-                        runtime_api_instance.is_xdm_mmr_proof_valid(parent_hash, pending_tx_data)?
-                    {
-                        continue;
-                    }
+                if let Some(false) =
+                    runtime_api_instance.is_xdm_mmr_proof_valid(parent_hash, pending_tx_data)?
+                {
+                    continue;
                 }
 
                 // Double check the transaction validity, because the tx pool are re-validate the transaction

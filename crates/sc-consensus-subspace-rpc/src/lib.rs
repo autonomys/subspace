@@ -56,8 +56,8 @@ use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_core_primitives::{
-    Blake3Hash, Blake3HashHex, BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader,
-    SegmentIndex, SlotNumber, Solution,
+    Blake3Hash, BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex,
+    SlotNumber, Solution,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -181,7 +181,7 @@ pub trait SubspaceRpcApi {
         unsubscribe = "subspace_unsubscribeFilteredObjectMappings",
         item = GlobalObjectMapping,
     )]
-    fn subscribe_filtered_object_mappings(&self, hashes: Vec<Blake3HashHex>);
+    fn subscribe_filtered_object_mappings(&self, hashes: Vec<Blake3Hash>);
 }
 
 #[derive(Default)]
@@ -850,7 +850,7 @@ where
     fn subscribe_filtered_object_mappings(
         &self,
         pending: PendingSubscriptionSink,
-        hashes: Vec<Blake3HashHex>,
+        hashes: Vec<Blake3Hash>,
     ) {
         // TODO: deny unsafe subscriptions?
 
@@ -876,7 +876,7 @@ where
             return;
         };
 
-        let mut hashes = HashSet::<Blake3Hash>::from_iter(hashes.into_iter().map(|hash| *hash));
+        let mut hashes = HashSet::<Blake3Hash>::from_iter(hashes);
         let hash_count = hashes.len();
 
         // The genesis segment isn't included in this stream, see
@@ -888,7 +888,7 @@ where
                 let objects = archived_segment_notification
                     .archived_segment
                     .global_object_mappings()
-                    .filter(|object| hashes.remove(&*object.hash))
+                    .filter(|object| hashes.remove(&object.hash))
                     .collect::<Vec<_>>();
 
                 stream::iter(objects)

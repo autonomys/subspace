@@ -518,9 +518,12 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
         .build()
 }
 
-/// Creates thread pool pairs for each of CPU core set pair with number of plotting and replotting threads corresponding
-/// to number of cores in each set and pins threads to all of those CPU cores (each thread to all cors in a set, not
-/// thread per core). Each thread will also have Tokio context available.
+/// Create thread pools manager.
+///
+/// Creates thread pool pairs for each of CPU core set pair with number of plotting and replotting
+/// threads corresponding to number of cores in each set and pins threads to all of those CPU cores
+/// (each thread to all cors in a set, not thread per core). Each thread will also have Tokio
+/// context available.
 ///
 /// The easiest way to obtain CPUs is using [`all_cpu_cores`], but [`thread_pool_core_indices`] in case
 /// support for user customizations is desired. They will then have to be composed into pairs for this function.
