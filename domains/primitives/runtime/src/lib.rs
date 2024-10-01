@@ -38,7 +38,7 @@ use sp_runtime::{MultiAddress, MultiSignature, Perbill};
 use sp_weights::constants::WEIGHT_REF_TIME_PER_SECOND;
 use sp_weights::Weight;
 pub use subspace_runtime_primitives::HoldIdentifier;
-use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON, SLOT_PROBABILITY};
+use subspace_runtime_primitives::{MAX_BLOCK_LENGTH, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -100,50 +100,15 @@ pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
 /// used to limit the maximal weight of a single extrinsic.
 const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 
-/// Calculates the max bundle weight
-// See https://forum.subspace.network/t/on-bundle-weight-limits-sum/2277 for more details
-// about the formula
-pub fn calculate_max_bundle_weight(
-    max_domain_block_weight: Weight,
-    consensus_slot_probability: (u64, u64),
-    bundle_slot_probability: (u64, u64),
-) -> Option<(u64, Weight)> {
-    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
-    // This represents: bundle_slot_probability/SLOT_PROBABILITY
-    let expected_bundles_per_block = bundle_slot_probability
-        .0
-        .checked_mul(consensus_slot_probability.1)?
-        .checked_div(
-            bundle_slot_probability
-                .1
-                .checked_mul(consensus_slot_probability.0)?,
-        )?;
-
-    // set the proof size for bundle to be proof size of max domain weight
-    // so that each domain extrinsic can use the full proof size if required
-    let max_proof_size = max_domain_block_weight.proof_size();
-    let max_bundle_weight = max_domain_block_weight.checked_div(expected_bundles_per_block)?;
-    Some((
-        expected_bundles_per_block,
-        max_bundle_weight.set_proof_size(max_proof_size),
-    ))
-}
-
-/// Calculates the maximum extrinsic weight for domains.
-/// We take bundle slot probability to be always at the maximum i.e 1 such that
-/// operator can produce bundle in each slot
-/// we also set the maximum extrinsic POV to be 3.75 MiB which is what Consensus allows
-fn maximum_domain_extrinsic_weight() -> Option<Weight> {
-    let (_, max_bundle_weight) =
-        calculate_max_bundle_weight(maximum_domain_block_weight(), SLOT_PROBABILITY, (1, 1))?;
-    Some(max_bundle_weight)
-}
-
 pub fn block_weights() -> BlockWeights {
-    // allow u64::MAX for ref_time and proof size for total domain weight
+    // Allow u64::MAX for ref_time and proof size for total domain weight
     let maximum_block_weight = Weight::from_parts(u64::MAX, u64::MAX);
-    let max_extrinsic_weight =
-        maximum_domain_extrinsic_weight().expect("Maximum extrinsic weight must always be valid");
+
+    // If the bundle slot probability is the same as the consensus slot probability then
+    // there is one bundle per block, such bundle is allowed to contains the whole domain
+    // block weight
+    let max_extrinsic_weight = maximum_domain_block_weight();
+
     BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
         .for_class(DispatchClass::all(), |weights| {

@@ -41,7 +41,7 @@ use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionErro
 use core::num::ParseIntError;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use domain_runtime_primitives::{calculate_max_bundle_weight, MultiAccountId};
+use domain_runtime_primitives::MultiAccountId;
 use frame_support::storage::storage_prefix;
 use frame_support::{Blake2_128Concat, StorageHasher};
 use hexlit::hex;
@@ -1077,15 +1077,29 @@ pub fn calculate_max_bundle_weight_and_size(
     consensus_slot_probability: (u64, u64),
     bundle_slot_probability: (u64, u64),
 ) -> Option<DomainBundleLimit> {
-    let (expected_bundles_per_block, max_bundle_weight) = calculate_max_bundle_weight(
-        max_domain_block_weight,
-        consensus_slot_probability,
-        bundle_slot_probability,
-    )?;
-    let max_bundle_size = (max_domain_block_size as u64).checked_div(expected_bundles_per_block)?;
+    // (n1 / d1) / (n2 / d2) is equal to (n1 * d2) / (d1 * n2)
+    // This represents: bundle_slot_probability/SLOT_PROBABILITY
+    let expected_bundles_per_block = bundle_slot_probability
+        .0
+        .checked_mul(consensus_slot_probability.1)?
+        .checked_div(
+            bundle_slot_probability
+                .1
+                .checked_mul(consensus_slot_probability.0)?,
+        )?;
+
+    // set the proof size for bundle to be proof size of max domain weight
+    // so that each domain extrinsic can use the full proof size if required
+    let max_proof_size = max_domain_block_weight.proof_size();
+    let max_bundle_weight = max_domain_block_weight
+        .checked_div(expected_bundles_per_block)?
+        .set_proof_size(max_proof_size);
+
+    let max_bundle_size =
+        (max_domain_block_size as u64).checked_div(expected_bundles_per_block)? as u32;
 
     Some(DomainBundleLimit {
-        max_bundle_size: max_bundle_size as u32,
+        max_bundle_size,
         max_bundle_weight,
     })
 }
