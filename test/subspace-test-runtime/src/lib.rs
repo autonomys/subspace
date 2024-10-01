@@ -293,6 +293,10 @@ parameter_types! {
     pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
+impl pallet_history_seeding::Config for Runtime {
+    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
+}
+
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type BlockAuthoringDelay = BlockAuthoringDelay;
@@ -861,6 +865,8 @@ construct_runtime!(
         Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
 
+        HistorySeeding: pallet_history_seeding = 91,
+
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
     }
@@ -1013,6 +1019,21 @@ fn extract_call_block_object_mapping(
                 offset: base_offset + 1,
             });
         }
+        RuntimeCall::System(frame_system::Call::remark_with_event { remark }) => {
+            objects.push(BlockObject {
+                hash: crypto::blake3_hash(remark),
+                // Add frame_system::Call enum variant to the base offset.
+                offset: base_offset + 1,
+            });
+        }
+        RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
+            objects.push(BlockObject {
+                hash: crypto::blake3_hash(remark),
+                // Add pallet_history_seeding::Call enum variant to the base offset.
+                offset: base_offset + 1,
+            });
+        }
+
         // Recursively extract object mappings for the call.
         RuntimeCall::Utility(call) => {
             extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left)
