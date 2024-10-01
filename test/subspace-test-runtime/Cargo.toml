@@ -80,6 +80,7 @@ std = [
     "frame-system-rpc-runtime-api/std",
     "pallet-balances/std",
     "pallet-domains/std",
+    "pallet-history-seeding/std",
     "pallet-messenger/std",
     "pallet-mmr/std",
     "pallet-rewards/std",
