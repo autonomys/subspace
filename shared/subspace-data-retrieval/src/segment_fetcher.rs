@@ -16,6 +16,7 @@
 //! Fetching segments of the archived history of Subspace Network.
 
 use crate::piece_getter::ObjectPieceGetter;
+use async_lock::Semaphore;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use subspace_archiving::archiver::Segment;
@@ -24,9 +25,8 @@ use subspace_core_primitives::{
     ArchivedHistorySegment, Piece, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 /// Segment getter errors.
 #[derive(Debug, thiserror::Error)]
@@ -91,24 +91,14 @@ where
         .into_iter()
         .map(|piece_index| {
             // Source pieces will acquire permit here right away
-            let maybe_permit = semaphore.try_acquire().ok();
+            let maybe_permit = semaphore.try_acquire();
 
             async move {
                 let permit = match maybe_permit {
                     Some(permit) => permit,
                     None => {
                         // Other pieces will acquire permit here instead
-                        match semaphore.acquire().await {
-                            Ok(permit) => permit,
-                            Err(error) => {
-                                warn!(
-                                    %piece_index,
-                                    %error,
-                                    "Semaphore was closed, interrupting piece retrieval"
-                                );
-                                return None;
-                            }
-                        }
+                        semaphore.acquire().await
                     }
                 };
                 let piece = match piece_getter.get_piece(piece_index).await {
