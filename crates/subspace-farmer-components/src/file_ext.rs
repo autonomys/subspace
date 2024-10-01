@@ -16,8 +16,8 @@ pub trait OpenOptionsExt {
     /// Use Direct I/O on Linux and disable buffering on Windows.
     ///
     /// NOTE: There are major alignment requirements described here:
-    /// https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements
-    /// https://man7.org/linux/man-pages/man2/open.2.html
+    /// <https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements>
+    /// <https://man7.org/linux/man-pages/man2/open.2.html>
     fn use_direct_io(&mut self) -> &mut Self;
 }
 

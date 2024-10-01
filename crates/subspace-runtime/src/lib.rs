@@ -441,6 +441,11 @@ parameter_types! {
     pub MaxProposalWeight: Weight = Perbill::from_percent(50) * SubspaceBlockWeights::get().max_block;
 }
 
+pub type EnsureRootOr<O> = EitherOfDiverse<EnsureRoot<AccountId>, O>;
+pub type AllCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
+pub type TwoThirdsCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
+pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
+
 // TODO: update params for mainnnet
 impl pallet_collective::Config<CouncilCollective> for Runtime {
     type DefaultVote = pallet_collective::PrimeDefaultVote;
@@ -452,7 +457,7 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
     type Proposal = RuntimeCall;
     type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
-    type SetMembersOrigin = EnsureRoot<AccountId>;
+    type SetMembersOrigin = EnsureRootOr<AllCouncil>;
     type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
 }
 
@@ -494,12 +499,6 @@ impl pallet_scheduler::Config for Runtime {
     type ScheduleOrigin = EnsureRoot<AccountId>;
     type WeightInfo = pallet_scheduler::weights::SubstrateWeight<Runtime>;
 }
-
-// TODO: update params for mainnnet
-pub type EnsureRootOr<O> = EitherOfDiverse<EnsureRoot<AccountId>, O>;
-pub type AllCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
-pub type TwoThirdsCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
-pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
