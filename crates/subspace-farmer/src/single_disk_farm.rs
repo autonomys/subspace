@@ -173,7 +173,7 @@ impl SingleDiskFarmInfo {
             .create(true)
             .truncate(true)
             .open(directory.join(Self::FILE_NAME))?;
-        fs4::FileExt::try_lock_exclusive(&file)?;
+        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
         file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
     }
 
@@ -181,7 +181,7 @@ impl SingleDiskFarmInfo {
     /// processes is done
     pub fn try_lock(directory: &Path) -> io::Result<SingleDiskFarmInfoLock> {
         let file = File::open(directory.join(Self::FILE_NAME))?;
-        fs4::FileExt::try_lock_exclusive(&file)?;
+        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
 
         Ok(SingleDiskFarmInfoLock { _file: file })
     }

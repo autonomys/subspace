@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 async-trait = "0.1.83"
 codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
-futures = "0.3.29"
+futures = "0.3.30"
 parking_lot = "0.12.2"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
@@ -44,8 +44,8 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.63"
-tokio = { version = "1.39.2", features = ["sync", "time"] }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["sync", "time"] }
 tracing = "0.1.40"
 
 [dev-dependencies]

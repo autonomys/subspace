@@ -21,7 +21,7 @@ codec = { package = "parity-scale-codec", version = "3.6.12", features = ["deriv
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-futures = "0.3.29"
+futures = "0.3.30"
 jsonrpsee = { version = "0.24.5", features = ["server"] }
 pallet-transaction-payment = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
@@ -65,7 +65,7 @@ subspace-test-primitives = { version = "0.1.0", path = "../subspace-test-primiti
 subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 substrate-test-client = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-tokio = "1.39.2"
+tokio = "1.40.0"
 tracing = "0.1.40"
 
 [dev-dependencies]

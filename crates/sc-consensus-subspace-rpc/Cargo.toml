@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-oneshot = "0.5.9"
-futures = "0.3.29"
+futures = "0.3.30"
 futures-timer = "3.0.3"
 jsonrpsee = { version = "0.24.5", features = ["server", "macros"] }
 parking_lot = "0.12.2"
@@ -37,5 +37,5 @@ subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-codin
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-thiserror = "1.0.63"
+thiserror = "1.0.64"
 tracing = "0.1.40"

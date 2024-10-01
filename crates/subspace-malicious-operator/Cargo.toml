@@ -20,7 +20,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 auto-id-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/auto-id" }
-clap = { version = "4.5.15", features = ["derive"] }
+clap = { version = "4.5.18", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-client-message-relayer = { version = "0.1.0", path = "../../domains/client/relayer" }
 domain-client-operator = { version = "0.1.0", path = "../../domains/client/domain-operator" }
@@ -31,7 +31,7 @@ evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-futures = "0.3.29"
+futures = "0.3.30"
 hex-literal = "0.4.1"
 log = "0.4.22"
 mimalloc = "0.1.43"
@@ -74,8 +74,8 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-thiserror = "1.0.63"
-tokio = "1.39.2"
+thiserror = "1.0.64"
+tokio = "1.40.0"
 rand = "0.8.5"
 tracing = "0.1.40"
 

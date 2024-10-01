@@ -32,7 +32,7 @@ sp-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "587181
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", default-features = false }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
-thiserror = { version = "1.0.63", optional = true }
+thiserror = { version = "1.0.64", optional = true }
 
 [features]
 default = ["std"]

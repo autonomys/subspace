@@ -53,5 +53,5 @@ subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 substrate-test-client = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-tokio = { version = "1.39.2", features = ["macros"] }
+tokio = { version = "1.40.0", features = ["macros"] }
 tracing = "0.1.40"
