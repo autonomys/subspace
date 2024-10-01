@@ -905,8 +905,8 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
     // Domain config items
     pub owner_account_id: AccountId,
     pub domain_name: String,
-    pub max_block_size: u32,
-    pub max_block_weight: Weight,
+    pub max_bundle_size: u32,
+    pub max_bundle_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub operator_allow_list: OperatorAllowList<AccountId>,
 

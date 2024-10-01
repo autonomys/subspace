@@ -7,7 +7,10 @@ use sc_service::{ChainSpec, ChainType};
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{OperatorAllowList, OperatorPublicKey, PermissionedActionAllowedBy, RuntimeType};
+use sp_domains::{
+    calculate_max_bundle_weight_and_size, DomainBundleLimit, OperatorAllowList, OperatorPublicKey,
+    PermissionedActionAllowedBy, RuntimeType,
+};
 use sp_runtime::traits::{Convert, IdentifyAccount};
 use sp_runtime::{BuildStorage, MultiSigner, Percent};
 use std::marker::PhantomData;
@@ -18,7 +21,7 @@ use subspace_runtime::{
     RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
+    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SLOT_PROBABILITY, SSC,
 };
 
 fn endowed_accounts() -> Vec<(MultiAccountId, Balance)> {
@@ -217,6 +220,19 @@ fn subspace_genesis_config(
         rewards_config,
     } = genesis_params;
 
+    let bundle_slot_probability = (1, 1);
+
+    let DomainBundleLimit {
+        max_bundle_size,
+        max_bundle_weight,
+    } = calculate_max_bundle_weight_and_size(
+        MaxDomainBlockSize::get(),
+        MaxDomainBlockWeight::get(),
+        SLOT_PROBABILITY,
+        bundle_slot_probability,
+    )
+    .expect("No arithmetic error");
+
     subspace_runtime::RuntimeGenesisConfig {
         system: subspace_runtime::SystemConfig::default(),
         balances: subspace_runtime::BalancesConfig { balances },
@@ -255,9 +271,9 @@ fn subspace_genesis_config(
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account.clone(),
                 domain_name: genesis_domain_params.domain_name,
-                max_block_size: MaxDomainBlockSize::get(),
-                max_block_weight: MaxDomainBlockWeight::get(),
-                bundle_slot_probability: (1, 1),
+                max_bundle_size,
+                max_bundle_weight,
+                bundle_slot_probability,
                 operator_allow_list: genesis_domain_params.operator_allow_list,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),

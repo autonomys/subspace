@@ -531,8 +531,8 @@ mod benchmarks {
         let domain_config = DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id,
-            max_block_size: 1024,
-            max_block_weight: Weight::from_parts(1, 0),
+            max_bundle_size: 1024,
+            max_bundle_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
@@ -948,8 +948,8 @@ mod benchmarks {
         let domain_config = DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id,
-            max_block_size: 1024,
-            max_block_weight: Weight::from_parts(1, 0),
+            max_bundle_size: 1024,
+            max_bundle_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),

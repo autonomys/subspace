@@ -25,9 +25,8 @@ use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    calculate_max_bundle_weight_and_size, derive_domain_block_hash, DomainBundleLimit, DomainId,
-    DomainSudoCall, DomainsDigestItem, DomainsTransfersTracker, OnDomainInstantiated,
-    OperatorAllowList, RuntimeId, RuntimeType,
+    derive_domain_block_hash, DomainId, DomainSudoCall, DomainsDigestItem, DomainsTransfersTracker,
+    OnDomainInstantiated, OperatorAllowList, RuntimeId, RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -64,10 +63,10 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
     pub domain_name: String,
     /// A pointer to the `RuntimeRegistry` entry for this domain.
     pub runtime_id: RuntimeId,
-    /// The max block size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
-    pub max_block_size: u32,
-    /// The max block weight for this domain, may not exceed the system-wide `MaxDomainBlockWeight` limit.
-    pub max_block_weight: Weight,
+    /// The max bundle size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
+    pub max_bundle_size: u32,
+    /// The max bundle weight for this domain, may not exceed the system-wide `MaxDomainBlockWeight` limit.
+    pub max_bundle_weight: Weight,
     /// The probability of successful bundle in a slot (active slots coefficient). This defines the
     /// expected bundle production rate, must be `> 0` and `≤ 1`.
     pub bundle_slot_probability: (u64, u64),
@@ -120,16 +119,6 @@ where
 
         Ok(())
     }
-
-    pub(crate) fn calculate_bundle_limit<T: Config>(&self) -> Result<DomainBundleLimit, Error> {
-        calculate_max_bundle_weight_and_size(
-            self.max_block_size,
-            self.max_block_weight,
-            T::ConsensusSlotProbability::get(),
-            self.bundle_slot_probability,
-        )
-        .ok_or(Error::BundleLimitCalculationOverflow)
-    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -161,12 +150,12 @@ pub(crate) fn can_instantiate_domain<T: Config>(
         Error::RuntimeNotFound
     );
     ensure!(
-        domain_config.max_block_size <= T::MaxDomainBlockSize::get(),
+        domain_config.max_bundle_size <= T::MaxDomainBlockSize::get(),
         Error::ExceedMaxDomainBlockSize
     );
     ensure!(
         domain_config
-            .max_block_weight
+            .max_bundle_weight
             .all_lte(T::MaxDomainBlockWeight::get()),
         Error::ExceedMaxDomainBlockWeight
     );
@@ -177,9 +166,6 @@ pub(crate) fn can_instantiate_domain<T: Config>(
         numerator != 0 && denominator != 0 && numerator <= denominator,
         Error::InvalidSlotProbability
     );
-
-    // Ensure the bundle limit can be calculated successfully
-    let _ = domain_config.calculate_bundle_limit::<T>()?;
 
     ensure!(
         T::Currency::reducible_balance(owner_account_id, Preservation::Protect, Fortitude::Polite)
@@ -350,8 +336,8 @@ mod tests {
         let mut domain_config = DomainConfig {
             domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
             runtime_id: 0,
-            max_block_size: u32::MAX,
-            max_block_weight: Weight::MAX,
+            max_bundle_size: u32::MAX,
+            max_bundle_weight: Weight::MAX,
             bundle_slot_probability: (0, 0),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
@@ -401,16 +387,16 @@ mod tests {
                 do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockSize)
             );
-            // Recorrect `max_block_size`
-            domain_config.max_block_size = 1;
+            // Recorrect `max_bundle_size`
+            domain_config.max_bundle_size = 1;
 
             // Failed to instantiate domain due to exceed max domain block weight limit
             assert_eq!(
                 do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockWeight)
             );
-            // Recorrect `max_block_weight`
-            domain_config.max_block_weight = Weight::from_parts(1, 0);
+            // Recorrect `max_bundle_weight`
+            domain_config.max_bundle_weight = Weight::from_parts(1, 0);
 
             // Failed to instantiate domain due to invalid `bundle_slot_probability`
             assert_eq!(
@@ -493,8 +479,8 @@ mod tests {
         let mut domain_config = DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
-            max_block_size: 10,
-            max_block_weight: Weight::from_parts(1, 0),
+            max_bundle_size: 10,
+            max_bundle_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * SSC)],

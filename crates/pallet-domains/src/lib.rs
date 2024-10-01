@@ -755,8 +755,6 @@ mod pallet {
         SlotInTheFuture,
         /// The bundle is built on a slot in the past
         SlotInThePast,
-        /// Unable to calculate bundle limit
-        UnableToCalculateBundleLimit,
         /// Bundle weight exceeds the max bundle weight limit
         BundleTooHeavy,
         /// The bundle slot is smaller then the highest slot from previous slot
@@ -1822,8 +1820,8 @@ mod pallet {
                     let domain_config = DomainConfig {
                         domain_name: genesis_domain.domain_name,
                         runtime_id,
-                        max_block_size: genesis_domain.max_block_size,
-                        max_block_weight: genesis_domain.max_block_weight,
+                        max_bundle_size: genesis_domain.max_bundle_size,
+                        max_bundle_weight: genesis_domain.max_bundle_weight,
                         bundle_slot_probability: genesis_domain.bundle_slot_probability,
                         operator_allow_list: genesis_domain.operator_allow_list,
                         initial_balances: genesis_domain.initial_balances,
@@ -2209,19 +2207,15 @@ impl<T: Config> Pallet<T> {
         opaque_bundle: &OpaqueBundleOf<T>,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
     ) -> Result<(), BundleError> {
-        let domain_bundle_limit = domain_config
-            .calculate_bundle_limit::<T>()
-            .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
-
         ensure!(
-            opaque_bundle.body_size() <= domain_bundle_limit.max_bundle_size,
+            opaque_bundle.body_size() <= domain_config.max_bundle_size,
             BundleError::BundleTooLarge
         );
 
         ensure!(
             opaque_bundle
                 .estimated_weight()
-                .all_lte(domain_bundle_limit.max_bundle_weight),
+                .all_lte(domain_config.max_bundle_weight),
             BundleError::BundleTooHeavy
         );
 
@@ -2691,9 +2685,10 @@ impl<T: Config> Pallet<T> {
             Some(domain_obj) => domain_obj.domain_config,
         };
 
-        let bundle_limit = domain_config.calculate_bundle_limit::<T>()?;
-
-        Ok(Some(bundle_limit))
+        Ok(Some(DomainBundleLimit {
+            max_bundle_size: domain_config.max_bundle_size,
+            max_bundle_weight: domain_config.max_bundle_weight,
+        }))
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.

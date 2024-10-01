@@ -464,8 +464,8 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
         DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
-            max_block_size: 1u32,
-            max_block_weight: Weight::from_parts(1, 0),
+            max_bundle_size: 1u32,
+            max_bundle_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
@@ -619,12 +619,12 @@ fn test_bundle_fromat_verification() {
     new_test_ext().execute_with(|| {
         let domain_id = DomainId::new(0);
         let max_extrincis_count = 10;
-        let max_block_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
+        let max_bundle_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
         let domain_config = DomainConfig {
             domain_name: "test-domain".to_owned(),
             runtime_id: 0u32,
-            max_block_size,
-            max_block_weight: Weight::MAX,
+            max_bundle_size,
+            max_bundle_weight: Weight::MAX,
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
@@ -661,7 +661,7 @@ fn test_bundle_fromat_verification() {
                 .extrinsics
                 .push(opaque_extrinsic(i as u128, i as u128));
         }
-        assert!(too_large_bundle.size() > max_block_size);
+        assert!(too_large_bundle.size() > max_bundle_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
