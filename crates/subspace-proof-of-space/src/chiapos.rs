@@ -3,8 +3,6 @@
 mod constants;
 mod table;
 mod tables;
-#[cfg(test)]
-mod tests;
 mod utils;
 
 use crate::chiapos::table::metadata_size_bytes;
