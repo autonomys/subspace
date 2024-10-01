@@ -293,6 +293,10 @@ parameter_types! {
     pub TransactionWeightFee: Balance = 100_000 * SHANNON;
 }
 
+impl pallet_history_seeding::Config for Runtime {
+    type WeightInfo = pallet_history_seeding::weights::SubstrateWeight<Runtime>;
+}
+
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type BlockAuthoringDelay = BlockAuthoringDelay;
@@ -860,6 +864,8 @@ construct_runtime!(
         // Note: Indexes should match with indexes on other chains and domains
         Messenger: pallet_messenger exclude_parts { Inherent } = 60,
         Transporter: pallet_transporter = 61,
+
+        HistorySeeding: pallet_history_seeding = 91,
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,

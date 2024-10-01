@@ -13127,6 +13127,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-domains",
+ "pallet-history-seeding",
  "pallet-messenger",
  "pallet-mmr",
  "pallet-offences-subspace",

@@ -7,8 +7,9 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime_primitives::{AccountId, Balance, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, RewardsConfig,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, SSC, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, HistorySeedingConfig,
+    RewardsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, SSC,
+    WASM_BINARY,
 };
 
 /// Generate a crypto pair from seed.
@@ -90,9 +91,12 @@ fn create_genesis_config(
             genesis_domains: vec![
                 crate::evm_domain_chain_spec::get_genesis_domain(sudo_account.clone())
                     .expect("Must success"),
-                crate::auto_id_domain_chain_spec::get_genesis_domain(sudo_account)
+                crate::auto_id_domain_chain_spec::get_genesis_domain(sudo_account.clone())
                     .expect("Must success"),
             ],
+        },
+        history_seeding: HistorySeedingConfig {
+            history_seeder: Some(sudo_account),
         },
         runtime_configs: Default::default(),
     })
