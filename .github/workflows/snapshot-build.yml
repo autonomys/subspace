@@ -227,8 +227,9 @@ jobs:
           echo "Notarizing ZIP archive file"
           xcrun notarytool submit subspace-binaries.zip --apple-id "${{ secrets.MACOS_APPLE_ID }}" --password "${{ secrets.MACOS_APP_PW }}" --team-id "${{ secrets.MACOS_TEAM_ID }}" --wait
 
-          echo "Stapling notarization to ZIP file"
-          xcrun stapler staple subspace-binaries.zip
+          # stapling does not work for .zip archives only .app bundles and .dmg files. Commenting this for now!
+          # echo "Stapling notarization to ZIP file"
+          # xcrun stapler staple subspace-binaries.zip
 
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
