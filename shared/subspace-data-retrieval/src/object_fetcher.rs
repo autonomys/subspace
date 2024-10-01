@@ -15,14 +15,16 @@
 
 //! Fetching objects stored in the archived history of Subspace Network.
 
-use async_trait::async_trait;
+use crate::piece_fetcher::download_pieces;
+use crate::piece_getter::{BoxError, ObjectPieceGetter};
+use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
-use std::fmt;
 use std::sync::Arc;
-use subspace_archiving::archiver::{NewArchivedSegment, Segment, SegmentItem};
+use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{
     Piece, PieceIndex, RawRecord, RecordedHistorySegment, SegmentIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, trace};
 
 /// Object fetching errors.
@@ -31,6 +33,13 @@ pub enum Error {
     /// Supplied piece index is not a source piece
     #[error("Piece index {piece_index} is not a source piece, offset: {piece_offset}")]
     NotSourcePiece {
+        piece_index: PieceIndex,
+        piece_offset: u32,
+    },
+
+    /// Supplied piece offset is too large
+    #[error("Piece offset {piece_offset} is too large, must be less than {}, piece index: {piece_index}", RawRecord::SIZE)]
+    PieceOffsetTooLarge {
         piece_index: PieceIndex,
         piece_offset: u32,
     },
@@ -112,119 +121,15 @@ pub enum Error {
     },
 
     /// Piece getter error
-    #[error("Getting piece failed temporarily: {source:?}")]
-    PieceGetterTemporary {
+    #[error("Getting piece caused an error: {source:?}")]
+    PieceGetterError {
         #[from]
-        source: PieceGetterError,
+        source: BoxError,
     },
 
-    /// Piece getter custom error type
-    #[error("Getting piece failed permanently: {source:?}")]
-    PieceGetterPermanent { source: BoxError },
-}
-
-/// Segment getter errors.
-#[derive(Debug, thiserror::Error)]
-pub enum SegmentGetterError {
-    /// Segment not found
-    #[error("Segment index {segment_index} is not available")]
-    NotFound { segment_index: PieceIndex },
-
-    /// Segment decoding error
-    #[error("Segment data decoding error: {source:?}")]
-    SegmentDecoding {
-        #[from]
-        source: parity_scale_codec::Error,
-    },
-
-    /// Piece getter error
-    #[error("Getting piece failed: {source:?}")]
-    PieceGetter {
-        #[from]
-        source: PieceGetterError,
-    },
-}
-
-/// Piece getter errors.
-#[derive(Debug, thiserror::Error)]
-pub enum PieceGetterError {
-    /// Piece not found
-    #[error("Piece index {piece_index} is not available from this provider")]
-    NotFound { piece_index: PieceIndex },
-
-    /// Piece decoding error
-    #[error("Piece data decoding error: {source:?}")]
-    PieceDecoding {
-        #[from]
-        source: parity_scale_codec::Error,
-    },
-}
-
-/// A type-erased error
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-/// Something that can be used to get decoded pieces by index
-#[async_trait]
-pub trait ObjectPieceGetter: fmt::Debug {
-    /// Get piece by index.
-    ///
-    /// Returns `Ok(None)` for temporary errors: the piece is not found, but immediately retrying
-    /// this provider might return it.
-    /// Returns `Err(_)` for permanent errors: this provider can't provide the piece at this time,
-    /// and another provider should be attempted.
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError>;
-}
-
-#[async_trait]
-impl<PG> ObjectPieceGetter for Arc<PG>
-where
-    PG: ObjectPieceGetter + Send + Sync + ?Sized,
-{
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        self.as_ref().get_piece(piece_index).await
-    }
-}
-
-// Convenience methods, mainly used in testing
-#[async_trait]
-impl ObjectPieceGetter for NewArchivedSegment {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        if piece_index.segment_index() == self.segment_header.segment_index() {
-            return Ok(Some(
-                self.pieces
-                    .pieces()
-                    .nth(piece_index.position() as usize)
-                    .expect("checked segment index in if; piece must be present; qed"),
-            ));
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
-}
-
-#[async_trait]
-impl ObjectPieceGetter for (PieceIndex, Piece) {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        if self.0 == piece_index {
-            return Ok(Some(self.1.clone()));
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
-}
-
-// TODO: impl for IntoIterator instead?
-#[async_trait]
-impl ObjectPieceGetter for Vec<(PieceIndex, Piece)> {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
-        for (index, piece) in self.iter() {
-            if *index == piece_index {
-                return Ok(Some(piece.clone()));
-            }
-        }
-
-        Err(PieceGetterError::NotFound { piece_index }.into())
-    }
+    /// Piece getter couldn't find the piece
+    #[error("Piece {piece_index:?} was not found by piece getter")]
+    PieceGetterNotFound { piece_index: PieceIndex },
 }
 
 /// Object fetcher for the Subspace DSN.
@@ -232,21 +137,29 @@ pub struct ObjectFetcher {
     /// The piece getter used to fetch pieces.
     piece_getter: Arc<dyn ObjectPieceGetter + Send + Sync + 'static>,
 
+    /// The erasure coding configuration of those pieces.
+    erasure_coding: ErasureCoding,
+
     /// The maximum number of data bytes we'll read for a single object.
     max_object_len: usize,
 }
 
 impl ObjectFetcher {
-    /// Create a new object fetcher with the given piece getter.
+    /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
     /// up and returning an error, or `None` for no limit (`usize::MAX`).
-    pub fn new<PG>(piece_getter: PG, max_object_len: Option<usize>) -> Self
+    pub fn new<PG>(
+        piece_getter: PG,
+        erasure_coding: ErasureCoding,
+        max_object_len: Option<usize>,
+    ) -> Self
     where
         PG: ObjectPieceGetter + Send + Sync + 'static,
     {
         Self {
             piece_getter: Arc::new(piece_getter),
+            erasure_coding,
             max_object_len: max_object_len.unwrap_or(usize::MAX),
         }
     }
@@ -260,6 +173,7 @@ impl ObjectFetcher {
         piece_index: PieceIndex,
         piece_offset: u32,
     ) -> Result<Vec<u8>, Error> {
+        // Validate parameters
         if !piece_index.is_source() {
             tracing::debug!(
                 %piece_index,
@@ -269,6 +183,20 @@ impl ObjectFetcher {
 
             // Parity pieces contain effectively random data, and can't be used to fetch objects
             return Err(Error::NotSourcePiece {
+                piece_index,
+                piece_offset,
+            });
+        }
+
+        if piece_offset >= RawRecord::SIZE as u32 {
+            tracing::debug!(
+                %piece_index,
+                piece_offset,
+                RawRecord_SIZE = RawRecord::SIZE,
+                "Invalid piece offset for object: must be less than the size of a raw record",
+            );
+
+            return Err(Error::PieceOffsetTooLarge {
                 piece_index,
                 piece_offset,
             });
@@ -317,6 +245,14 @@ impl ObjectFetcher {
         let last_data_piece_in_segment = piece_position_in_segment >= data_shards - 1;
 
         if last_data_piece_in_segment && !before_last_two_bytes {
+            trace!(
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: last source piece in segment, \
+                and start of object length bytes is in potential segment padding",
+            );
+
             // Fast retrieval possibility is not guaranteed
             return Ok(None);
         }
@@ -354,6 +290,15 @@ impl ObjectFetcher {
         } else if !last_data_piece_in_segment {
             // Need the next piece to read the length of data, but we can only use it if there was
             // no segment padding
+            trace!(
+                %next_source_piece_index,
+                piece_position_in_segment,
+                bytes_available_in_segment,
+                %piece_index,
+                piece_offset,
+                "Part of object length bytes is in next piece, fetching",
+            );
+
             let piece = self
                 .read_piece(next_source_piece_index, piece_index, piece_offset)
                 .await?;
@@ -367,12 +312,31 @@ impl ObjectFetcher {
             )?
             .expect("Extra RawRecord is larger than the length encoding; qed")
         } else {
+            trace!(
+                piece_position_in_segment,
+                bytes_available_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: last source piece in segment, \
+                and part of object length bytes is in potential segment padding",
+            );
+
             // Super fast read is not possible, because we removed potential segment padding, so
             // the piece bytes are not guaranteed to be continuous
             return Ok(None);
         };
 
         if data_length > bytes_available_in_segment as usize {
+            trace!(
+                data_length,
+                bytes_available_in_segment,
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                "Fast object retrieval not possible: part of object data bytes is in \
+                potential segment padding",
+            );
+
             // Not enough data without crossing segment boundary
             return Ok(None);
         }
@@ -382,16 +346,20 @@ impl ObjectFetcher {
         drop(read_records_data);
 
         // Read more pieces until we have enough data
-        let remaining_piece_count = (data_length as usize - data.len()) / RawRecord::SIZE;
-        let remaining_piece_indexes = (next_source_piece_index..)
-            .filter(|i| i.is_source())
-            .take(remaining_piece_count);
-        self.read_pieces(remaining_piece_indexes, piece_index, piece_offset)
-            .await?
-            .into_iter()
-            .for_each(|piece| {
-                data.extend(piece.record().to_raw_record_chunks().flatten().copied())
-            });
+        if data_length as usize > data.len() {
+            let remaining_piece_count =
+                (data_length as usize - data.len()).div_ceil(RawRecord::SIZE);
+            let remaining_piece_indexes = (next_source_piece_index..)
+                .filter(|i| i.is_source())
+                .take(remaining_piece_count)
+                .collect::<Vec<_>>();
+            self.read_pieces(&remaining_piece_indexes)
+                .await?
+                .into_iter()
+                .for_each(|piece| {
+                    data.extend(piece.record().to_raw_record_chunks().flatten().copied())
+                });
+        }
 
         // Decode the data, and return it if it's valid
         let data = Vec::<u8>::decode(&mut data.as_slice())?;
@@ -406,16 +374,23 @@ impl ObjectFetcher {
         piece_index: PieceIndex,
         piece_offset: u32,
     ) -> Result<Vec<u8>, Error> {
-        let segment_index = piece_index.segment_index();
+        let mut segment_index = piece_index.segment_index();
         let piece_position_in_segment = piece_index.position();
         // Used to access the data after it is converted to raw bytes
         let offset_in_segment =
             piece_position_in_segment as usize * RawRecord::SIZE + piece_offset as usize;
 
+        tracing::trace!(
+            %segment_index,
+            offset_in_segment,
+            piece_position_in_segment,
+            %piece_index,
+            piece_offset,
+            "Fetching object from segment(s)",
+        );
+
         let mut data = {
-            let Segment::V0 { items } = self
-                .read_segment(segment_index, piece_index, piece_offset)
-                .await?;
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
             // Go through the segment until we reach the offset.
             // Unconditional progress is enum variant + compact encoding of number of elements
             let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
@@ -448,14 +423,25 @@ impl ObjectFetcher {
                     }
                 })?;
 
+            tracing::trace!(
+                progress,
+                %segment_index,
+                offset_in_segment,
+                piece_position_in_segment,
+                %piece_index,
+                piece_offset,
+                segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
+                "Found item at offset in first segment",
+            );
+
             // Look at the item after the offset, collecting block bytes
             match segment_item {
                 SegmentItem::Block { bytes, .. }
                 | SegmentItem::BlockStart { bytes, .. }
                 | SegmentItem::BlockContinuation { bytes, .. } => {
-                    // Rewind back progress to the beginning of the number of bytes
+                    // Rewind back progress to the beginning of this item
                     progress -= bytes.len();
-                    // Get a chunk of the bytes starting at the position we care about
+                    // Get a chunk of the bytes starting at the offset in this item
                     Vec::from(&bytes[offset_in_segment - progress..])
                 }
                 segment_item @ SegmentItem::Padding
@@ -468,7 +454,7 @@ impl ObjectFetcher {
                         %segment_index,
                         %piece_index,
                         piece_offset,
-                        ?segment_item,
+                        segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
                         "Unexpected segment item in first segment",
                     );
 
@@ -483,6 +469,16 @@ impl ObjectFetcher {
                 }
             }
         };
+
+        tracing::trace!(
+            %segment_index,
+            offset_in_segment,
+            piece_position_in_segment,
+            %piece_index,
+            piece_offset,
+            data_len = data.len(),
+            "Got data at offset in first segment",
+        );
 
         // Return an error if the length is unreasonably large, before we get the next segment
         if let Some(data_length) =
@@ -499,9 +495,8 @@ impl ObjectFetcher {
         // We don't attempt to calculate the number of segments needed, because it involves
         // headers and optional padding.
         loop {
-            let Segment::V0 { items } = self
-                .read_segment(segment_index + SegmentIndex::ONE, piece_index, piece_offset)
-                .await?;
+            segment_index += SegmentIndex::ONE;
+            let Segment::V0 { items } = self.read_segment(segment_index).await?;
             for segment_item in items {
                 match segment_item {
                     SegmentItem::BlockContinuation { bytes, .. } => {
@@ -528,7 +523,7 @@ impl ObjectFetcher {
                             %segment_index,
                             %piece_index,
                             piece_offset,
-                            ?segment_item,
+                            segment_item = format!("{segment_item:?}").chars().take(50).collect::<String>(),
                             "Unexpected segment item in continuing segment",
                         );
 
@@ -546,29 +541,20 @@ impl ObjectFetcher {
     }
 
     /// Read the whole segment by its index (just records, skipping witnesses).
-    ///
-    /// The mapping piece index and offset are only used for error reporting.
-    // TODO: replace with a refactored subspace-service::sync_from_dsn::import_blocks::download_and_reconstruct_blocks()
-    async fn read_segment(
-        &self,
-        _segment_index: SegmentIndex,
-        _mapping_piece_index: PieceIndex,
-        _mapping_piece_offset: u32,
-    ) -> Result<Segment, Error> {
-        unimplemented!("read_segment will be implemented as part of a refactoring")
+    async fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
+        Ok(download_segment(
+            segment_index,
+            &self.piece_getter,
+            self.erasure_coding.clone(),
+        )
+        .await?)
     }
 
-    /// Concurrently read multiple pieces by their indexes
-    ///
-    /// The mapping piece index and offset are only used for error reporting.
-    // TODO: replace with a refactored method that fetches pieces
-    async fn read_pieces(
-        &self,
-        _piece_indexes: impl IntoIterator<Item = PieceIndex>,
-        _mapping_piece_index: PieceIndex,
-        _mapping_piece_offset: u32,
-    ) -> Result<Vec<Piece>, Error> {
-        unimplemented!("read_pieces will be implemented as part of a refactoring")
+    /// Concurrently read multiple pieces, and return them in the supplied order.
+    async fn read_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<Vec<Piece>, Error> {
+        download_pieces(piece_indexes, &self.piece_getter)
+            .await
+            .map_err(|source| Error::PieceGetterError { source })
     }
 
     /// Read and return a single piece.
@@ -584,16 +570,14 @@ impl ObjectFetcher {
             .piece_getter
             .get_piece(piece_index)
             .await
-            .map_err(|source| {
+            .inspect_err(|source| {
                 debug!(
                     %piece_index,
                     error = ?source,
                     %mapping_piece_index,
                     mapping_piece_offset,
-                    "Permanent error fetching piece during object assembling"
+                    "Error fetching piece during object assembling"
                 );
-
-                Error::PieceGetterPermanent { source }
             })?;
 
         if let Some(piece) = piece {
@@ -610,10 +594,10 @@ impl ObjectFetcher {
                 %piece_index,
                 %mapping_piece_index,
                 mapping_piece_offset,
-                "Temporary error fetching piece during object assembling"
+                "Piece not found during object assembling"
             );
 
-            Err(PieceGetterError::NotFound {
+            Err(Error::PieceGetterNotFound {
                 piece_index: mapping_piece_index,
             })?
         }

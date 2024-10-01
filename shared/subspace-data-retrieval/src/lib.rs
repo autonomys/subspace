@@ -17,4 +17,5 @@
 
 pub mod object_fetcher;
 pub mod piece_fetcher;
+pub mod piece_getter;
 pub mod segment_fetcher;

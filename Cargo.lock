@@ -12519,12 +12519,15 @@ dependencies = [
 name = "subspace-data-retrieval"
 version = "0.1.0"
 dependencies = [
+ "async-lock 3.4.0",
  "async-trait",
+ "futures",
  "parity-scale-codec",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
