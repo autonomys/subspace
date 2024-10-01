@@ -523,21 +523,6 @@ where
                 }
             }
 
-            // TODO: We need also need to check for equivocation of farmers connected to *this node*
-            //  during block import, currently farmers connected to this node are considered trusted
-            if runtime_api
-                .is_in_block_list(parent_hash, &solution.public_key)
-                .ok()?
-            {
-                warn!(
-                    %slot,
-                    public_key = %solution.public_key,
-                    "Ignoring solution provided by farmer in block list",
-                );
-
-                continue;
-            }
-
             let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
 
             let history_size = runtime_api.history_size(parent_hash).ok()?;

@@ -24,11 +24,7 @@ extern crate alloc;
 
 pub mod digests;
 pub mod inherents;
-pub mod offence;
-#[cfg(test)]
-mod tests;
 
-use crate::digests::{CompatibleDigestItem, PreDigest};
 use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -49,7 +45,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake3Hash, BlockHash, BlockNumber, HistorySize, PotCheckpoints, PotOutput, PotSeed, PublicKey,
     RewardSignature, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
-    SolutionRange, REWARD_SIGNING_CONTEXT,
+    SolutionRange,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -59,7 +55,7 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
-use subspace_verification::{check_reward_signature, VerifySolutionParams};
+use subspace_verification::VerifySolutionParams;
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
@@ -103,9 +99,6 @@ impl SubspaceJustification {
         }
     }
 }
-
-/// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
-pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, PublicKey>;
 
 /// Next slot input for proof of time evaluation
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
@@ -249,93 +242,6 @@ pub struct SignedVote<Number, Hash, RewardAddress> {
     pub vote: Vote<Number, Hash, RewardAddress>,
     /// Signature.
     pub signature: RewardSignature,
-}
-
-fn find_pre_digest<Header, RewardAddress>(header: &Header) -> Option<PreDigest<RewardAddress>>
-where
-    Header: HeaderT,
-    RewardAddress: Decode,
-{
-    header
-        .digest()
-        .logs()
-        .iter()
-        .find_map(|log| log.as_subspace_pre_digest())
-}
-
-fn is_seal_signature_valid<Header>(mut header: Header, offender: &PublicKey) -> bool
-where
-    Header: HeaderT,
-{
-    let seal = match header.digest_mut().pop() {
-        Some(seal) => seal,
-        None => {
-            return false;
-        }
-    };
-    let seal = match seal.as_subspace_seal() {
-        Some(seal) => seal,
-        None => {
-            return false;
-        }
-    };
-    let pre_hash = header.hash();
-
-    check_reward_signature(
-        pre_hash.as_ref(),
-        &seal,
-        offender,
-        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
-    )
-    .is_ok()
-}
-
-/// Verifies the equivocation proof by making sure that: both headers have
-/// different hashes, are targeting the same slot, and have valid signatures by
-/// the same authority.
-pub fn is_equivocation_proof_valid<Header, RewardAddress>(proof: &EquivocationProof<Header>) -> bool
-where
-    Header: HeaderT,
-    RewardAddress: Decode,
-{
-    // we must have different headers for the equivocation to be valid
-    if proof.first_header.hash() == proof.second_header.hash() {
-        return false;
-    }
-
-    let first_pre_digest = match find_pre_digest::<_, RewardAddress>(&proof.first_header) {
-        Some(pre_digest) => pre_digest,
-        None => {
-            return false;
-        }
-    };
-    let second_pre_digest = match find_pre_digest::<_, RewardAddress>(&proof.second_header) {
-        Some(pre_digest) => pre_digest,
-        None => {
-            return false;
-        }
-    };
-
-    // both headers must be targeting the same slot and it must
-    // be the same as the one in the proof.
-    if !(proof.slot == first_pre_digest.slot() && proof.slot == second_pre_digest.slot()) {
-        return false;
-    }
-
-    // both headers must have the same sector index
-    if first_pre_digest.solution().sector_index != second_pre_digest.solution().sector_index {
-        return false;
-    }
-
-    // both headers must have been authored by the same farmer
-    if first_pre_digest.solution().public_key != second_pre_digest.solution().public_key {
-        return false;
-    }
-
-    // we finally verify that the expected farmer has signed both headers and
-    // that the signature is valid.
-    is_seal_signature_valid(proof.first_header.clone(), &proof.offender)
-        && is_seal_signature_valid(proof.second_header.clone(), &proof.offender)
 }
 
 /// Subspace solution ranges used for challenges.
@@ -660,16 +566,6 @@ sp_api::decl_runtime_apis! {
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;
 
-        /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
-        /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local
-        /// authorship (not to be broadcast to the network). This method returns `None` when
-        /// creation of the extrinsic fails, e.g. if equivocation reporting is disabled for the
-        /// given runtime (i.e. this method is hardcoded to return `None`). Only useful in an
-        /// offchain context.
-        fn submit_report_equivocation_extrinsic(
-            equivocation_proof: EquivocationProof<Block::Header>,
-        ) -> Option<()>;
-
         /// Submit farmer vote vote that is essentially a header with bigger solution range than
         /// acceptable for block authoring. Only useful in an offchain context.
         fn submit_vote_extrinsic(
@@ -679,9 +575,6 @@ sp_api::decl_runtime_apis! {
                 RewardAddress,
             >,
         );
-
-        /// Check if `farmer_public_key` is in block list (due to equivocation)
-        fn is_in_block_list(farmer_public_key: &PublicKey) -> bool;
 
         /// Size of the blockchain history
         fn history_size() -> HistorySize;

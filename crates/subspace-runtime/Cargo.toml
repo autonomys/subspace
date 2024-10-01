@@ -31,7 +31,6 @@ pallet-domains = { version = "0.1.0", default-features = false, path = "../palle
 pallet-history-seeding = { version = "0.1.0", default-features = false, path = "../pallet-history-seeding" }
 pallet-messenger = { version = "0.1.0", path = "../../domains/pallets/messenger", default-features = false }
 pallet-mmr = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
 pallet-preimage = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
@@ -96,7 +95,6 @@ std = [
     "pallet-history-seeding/std",
     "pallet-messenger/std",
     "pallet-mmr/std",
-    "pallet-offences-subspace/std",
     "pallet-preimage/std",
     "pallet-rewards/std",
     "pallet-runtime-configs/std",

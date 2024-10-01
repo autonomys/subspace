@@ -631,13 +631,11 @@ where
         client.clone(),
     )?;
 
-    let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {
+    let verifier = SubspaceVerifier::<PosTable, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
         chain_constants,
         kzg,
-        select_chain: select_chain.clone(),
         telemetry: telemetry.as_ref().map(|x| x.handle()),
-        offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         sync_target_block_number: Arc::clone(&sync_target_block_number),
         is_authoring_blocks: config.role.is_authority(),

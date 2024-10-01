@@ -33,7 +33,6 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 env_logger = "0.11.5"
 futures = "0.3.29"
 pallet-balances = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subspace" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
@@ -56,7 +55,8 @@ std = [
     "log/std",
     "scale-info/std",
     "schnorrkel/std",
-    "serde?/std",
+    "serde",
+    "serde/std",
     "sp-consensus-subspace/std",
     "sp-consensus-slots/std",
     "sp-io/std",

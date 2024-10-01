@@ -21,8 +21,6 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod equivocation;
-
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -37,8 +35,7 @@ pub mod weights;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
-use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
-use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
+use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Get;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use frame_system::pallet_prelude::*;
@@ -49,9 +46,8 @@ use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::consensus::{is_proof_of_time_valid, verify_solution};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
-use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    EquivocationProof, PotParameters, PotParametersChange, SignedVote, Vote, WrappedPotOutput,
+    PotParameters, PotParametersChange, SignedVote, Vote, WrappedPotOutput,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
@@ -59,7 +55,6 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
 };
-use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
@@ -103,14 +98,13 @@ struct VoteVerificationData {
 #[frame_support::pallet]
 pub mod pallet {
     use super::{EraChangeTrigger, VoteVerificationData};
-    use crate::equivocation::HandleEquivocation;
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
-    use sp_consensus_subspace::{EquivocationProof, SignedVote};
+    use sp_consensus_subspace::SignedVote;
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
@@ -231,14 +225,6 @@ pub mod pallet {
         ///
         /// Era is normally used to update solution range used for challenges.
         type EraChangeTrigger: EraChangeTrigger;
-
-        /// The equivocation handling subsystem, defines methods to report an offence (after the
-        /// equivocation has been validated) and for submitting a transaction to report an
-        /// equivocation (from an offchain context).
-        ///
-        /// NOTE: when enabling equivocation handling (i.e. this type isn't set to `()`) you must
-        /// use this pallet's `ValidateUnsigned` in the runtime definition.
-        type HandleEquivocation: HandleEquivocation<Self>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -379,8 +365,6 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// A given equivocation report is valid but already previously reported.
-        DuplicateOffenceReport,
         /// Solution range adjustment already enabled.
         SolutionRangeAdjustmentAlreadyEnabled,
         /// Rewards already active.
@@ -422,10 +406,6 @@ pub mod pallet {
     /// Slot at which current era started.
     #[pallet::storage]
     pub(super) type EraStartSlot<T> = StorageValue<_, Slot>;
-
-    /// A set of blocked farmers keyed by their public key.
-    #[pallet::storage]
-    pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, PublicKey, ()>;
 
     /// Mapping from segment index to corresponding segment commitment of contained records.
     #[pallet::storage]
@@ -471,7 +451,7 @@ pub mod pallet {
             PieceOffset,
             Scalar,
             Slot,
-            T::AccountId,
+            Option<T::AccountId>,
         ),
     >;
 
@@ -481,7 +461,7 @@ pub mod pallet {
         _,
         BTreeMap<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, RewardSignature),
+            (Option<T::AccountId>, RewardSignature),
         >,
         ValueQuery,
     >;
@@ -492,7 +472,7 @@ pub mod pallet {
         _,
         BTreeMap<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, RewardSignature),
+            (Option<T::AccountId>, RewardSignature),
         >,
     >;
 
@@ -536,29 +516,9 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Report farmer equivocation/misbehavior. This method will verify the equivocation proof.
-        /// If valid, the offence will be reported.
-        ///
-        /// This extrinsic must be called unsigned and it is expected that only block authors will
-        /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
-        /// will be defined as the equivocation reporter.
-        #[pallet::call_index(0)]
-        #[pallet::weight((< T as Config >::WeightInfo::report_equivocation(), DispatchClass::Operational))]
-        // Suppression because the custom syntax will also generate an enum and we need enum to have
-        // boxed value.
-        #[allow(clippy::boxed_local)]
-        pub fn report_equivocation(
-            origin: OriginFor<T>,
-            equivocation_proof: Box<EquivocationProof<HeaderFor<T>>>,
-        ) -> DispatchResultWithPostInfo {
-            ensure_none(origin)?;
-
-            Self::do_report_equivocation(*equivocation_proof)
-        }
-
         /// Submit new segment header to the blockchain. This is an inherent extrinsic and part of
         /// the Subspace consensus logic.
-        #[pallet::call_index(1)]
+        #[pallet::call_index(0)]
         #[pallet::weight((< T as Config >::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory))]
         pub fn store_segment_headers(
             origin: OriginFor<T>,
@@ -570,7 +530,7 @@ pub mod pallet {
 
         /// Enable solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
-        #[pallet::call_index(2)]
+        #[pallet::call_index(1)]
         #[pallet::weight(< T as Config >::WeightInfo::enable_solution_range_adjustment())]
         pub fn enable_solution_range_adjustment(
             origin: OriginFor<T>,
@@ -592,7 +552,7 @@ pub mod pallet {
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.
-        #[pallet::call_index(3)]
+        #[pallet::call_index(2)]
         #[pallet::weight((< T as Config >::WeightInfo::vote(), DispatchClass::Operational))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
@@ -607,7 +567,7 @@ pub mod pallet {
         }
 
         /// Enable rewards for blocks and votes at specified block height.
-        #[pallet::call_index(4)]
+        #[pallet::call_index(3)]
         #[pallet::weight(< T as Config >::WeightInfo::enable_rewards_at())]
         pub fn enable_rewards_at(
             origin: OriginFor<T>,
@@ -619,7 +579,7 @@ pub mod pallet {
         }
 
         /// Enable storage access for all users.
-        #[pallet::call_index(5)]
+        #[pallet::call_index(4)]
         #[pallet::weight(< T as Config >::WeightInfo::enable_authoring_by_anyone())]
         pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
@@ -633,7 +593,7 @@ pub mod pallet {
         }
 
         /// Update proof of time slot iterations
-        #[pallet::call_index(6)]
+        #[pallet::call_index(5)]
         #[pallet::weight(< T as Config >::WeightInfo::set_pot_slot_iterations())]
         pub fn set_pot_slot_iterations(
             origin: OriginFor<T>,
@@ -732,9 +692,6 @@ pub mod pallet {
         type Call = Call<T>;
         fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::report_equivocation { equivocation_proof } => {
-                    Self::validate_equivocation_report(source, equivocation_proof)
-                }
                 Call::store_segment_headers { segment_headers } => {
                     Self::validate_segment_header(source, segment_headers)
                 }
@@ -745,9 +702,6 @@ pub mod pallet {
 
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::report_equivocation { equivocation_proof } => {
-                    Self::pre_dispatch_equivocation_report(equivocation_proof)
-                }
                 Call::store_segment_headers { segment_headers } => {
                     Self::pre_dispatch_segment_header(segment_headers)
                 }
@@ -872,24 +826,7 @@ impl<T: Config> Pallet<T> {
                 pre_digest.solution().chunk,
                 current_slot,
             );
-            if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, _sector_index, _piece_offset, _chunk, slot) = key;
-
-                let offence = SubspaceEquivocationOffence {
-                    slot,
-                    offender: public_key,
-                };
-
-                // Report equivocation, we don't care about duplicate report here
-                if let Err(OffenceError::Other(code)) =
-                    T::HandleEquivocation::report_offence(offence)
-                {
-                    warn!(
-                        target: "runtime::subspace",
-                        "Failed to submit block author offence report with code {code}"
-                    );
-                }
-            } else {
+            if !ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, sector_index, piece_offset, chunk, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
@@ -898,13 +835,13 @@ impl<T: Config> Pallet<T> {
                     piece_offset,
                     chunk,
                     slot,
-                    pre_digest.solution().reward_address.clone(),
+                    Some(pre_digest.solution().reward_address.clone()),
                 ));
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
             (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
-            (T::AccountId, RewardSignature),
+            (Option<T::AccountId>, RewardSignature),
         >::default());
 
         // If solution range was updated in previous block, set it as current.
@@ -1090,21 +1027,6 @@ impl<T: Config> Pallet<T> {
         DidProcessSegmentHeaders::<T>::take();
     }
 
-    fn do_report_equivocation(
-        equivocation_proof: EquivocationProof<HeaderFor<T>>,
-    ) -> DispatchResultWithPostInfo {
-        let offender = equivocation_proof.offender;
-        let slot = equivocation_proof.slot;
-
-        let offence = SubspaceEquivocationOffence { slot, offender };
-
-        T::HandleEquivocation::report_offence(offence)
-            .map_err(|_| Error::<T>::DuplicateOffenceReport)?;
-
-        // waive the fee since the report is valid and beneficial
-        Ok(Pays::No.into())
-    }
-
     fn do_store_segment_headers(segment_headers: Vec<SegmentHeader>) -> DispatchResult {
         assert!(
             !DidProcessSegmentHeaders::<T>::exists(),
@@ -1177,18 +1099,14 @@ impl<T: Config> Pallet<T> {
             ..
         } = signed_vote.vote;
 
-        if BlockList::<T>::contains_key(solution.public_key) {
-            Err(DispatchError::Other("Equivocated"))
-        } else {
-            Self::deposit_event(Event::FarmerVote {
-                public_key: solution.public_key,
-                reward_address: solution.reward_address,
-                height,
-                parent_hash,
-            });
+        Self::deposit_event(Event::FarmerVote {
+            public_key: solution.public_key,
+            reward_address: solution.reward_address,
+            height,
+            parent_hash,
+        });
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn do_enable_rewards_at(
@@ -1219,23 +1137,6 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(())
-    }
-
-    /// Submits an extrinsic to report an equivocation. This method will create an unsigned
-    /// extrinsic with a call to `report_equivocation` and will push the transaction to the pool.
-    /// Only useful in an offchain context.
-    pub fn submit_equivocation_report(
-        equivocation_proof: EquivocationProof<HeaderFor<T>>,
-    ) -> Option<()> {
-        T::HandleEquivocation::submit_equivocation_report(equivocation_proof).ok()
-    }
-
-    /// Just stores offender from equivocation report in block list, only used for tests.
-    pub fn submit_test_equivocation_report(
-        equivocation_proof: EquivocationProof<HeaderFor<T>>,
-    ) -> Option<()> {
-        BlockList::<T>::insert(equivocation_proof.offender, ());
-        Some(())
     }
 
     /// Proof of time parameters
@@ -1295,11 +1196,6 @@ impl<T: Config> Pallet<T> {
             .last_key_value()
             .map(|(_block, slot)| *slot)
             .unwrap_or_default()
-    }
-
-    /// Check if `farmer_public_key` is in block list (due to equivocation)
-    pub fn is_in_block_list(farmer_public_key: &PublicKey) -> bool {
-        BlockList::<T>::contains_key(farmer_public_key)
     }
 
     /// Size of the archived history of the blockchain in bytes
@@ -1392,17 +1288,7 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), TransactionValidityError> {
         match check_vote::<T>(signed_vote, true) {
             Ok(()) => Ok(()),
-            Err(CheckVoteError::Equivocated(offence)) => {
-                // Report equivocation, we don't care about duplicate report here
-                if let Err(OffenceError::Other(code)) =
-                    T::HandleEquivocation::report_offence(offence)
-                {
-                    debug!(
-                        target: "runtime::subspace",
-                        "Failed to submit voter offence report with code {code}"
-                    );
-                }
-
+            Err(CheckVoteError::Equivocated { .. }) => {
                 // Return Ok such that changes from this pre-dispatch are persisted
                 Ok(())
             }
@@ -1445,7 +1331,6 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
 
 #[derive(Debug, Eq, PartialEq)]
 enum CheckVoteError {
-    BlockListed,
     UnexpectedBeforeHeightTwo,
     HeightInTheFuture,
     HeightInThePast,
@@ -1460,14 +1345,13 @@ enum CheckVoteError {
     InvalidProofOfTime,
     InvalidFutureProofOfTime,
     DuplicateVote,
-    Equivocated(SubspaceEquivocationOffence),
+    Equivocated { slot: Slot, offender: PublicKey },
 }
 
 impl From<CheckVoteError> for TransactionValidityError {
     #[inline]
     fn from(error: CheckVoteError) -> Self {
         TransactionValidityError::Invalid(match error {
-            CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
             CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
             CheckVoteError::HeightInTheFuture => InvalidTransaction::Future,
             CheckVoteError::HeightInThePast => InvalidTransaction::Stale,
@@ -1482,7 +1366,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::InvalidProofOfTime => InvalidTransaction::Future,
             CheckVoteError::InvalidFutureProofOfTime => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
-            CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
+            CheckVoteError::Equivocated { .. } => InvalidTransaction::BadSigner,
         })
     }
 }
@@ -1501,10 +1385,6 @@ fn check_vote<T: Config>(
     } = &signed_vote.vote;
     let height = *height;
     let slot = *slot;
-
-    if BlockList::<T>::contains_key(solution.public_key) {
-        return Err(CheckVoteError::BlockListed);
-    }
 
     let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
@@ -1759,22 +1639,6 @@ fn check_vote<T: Config>(
         }
     }
 
-    if is_equivocating {
-        // Revoke reward if assigned in current block.
-        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
-            if let Some(current_reward_receivers) = current_reward_receivers {
-                current_reward_receivers.remove(&key);
-            }
-        });
-
-        let (public_key, _sector_index, _piece_offset, _chunk, _slot) = key;
-
-        return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
-            slot,
-            offender: public_key,
-        }));
-    }
-
     if pre_dispatch {
         // During `pre_dispatch` call put farmer into the list of reward receivers.
         CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
@@ -1783,9 +1647,48 @@ fn check_vote<T: Config>(
                 .expect("Always set during block initialization")
                 .insert(
                     key,
-                    (solution.reward_address.clone(), signed_vote.signature),
+                    (
+                        if is_equivocating {
+                            None
+                        } else {
+                            Some(solution.reward_address.clone())
+                        },
+                        signed_vote.signature,
+                    ),
                 );
         });
+    }
+
+    if is_equivocating {
+        let offender = solution.public_key;
+
+        CurrentBlockAuthorInfo::<T>::mutate(|maybe_info| {
+            if let Some((public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)) =
+                maybe_info
+            {
+                if public_key == &offender {
+                    // Revoke reward for block author
+                    reward_address.take();
+                }
+            }
+        });
+
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            if let Some(current_reward_receivers) = current_reward_receivers {
+                for (
+                    (public_key, _sector_index, _piece_offset, _chunk, _slot),
+                    (reward_address, _signature),
+                ) in current_reward_receivers.iter_mut()
+                {
+                    if public_key != &offender {
+                        // Revoke reward if assigned in current block.
+                        reward_address.take();
+                    }
+                }
+            }
+        });
+
+        return Err(CheckVoteError::Equivocated { slot, offender });
     }
 
     Ok(())
@@ -1852,15 +1755,11 @@ impl<T: Config> subspace_runtime_primitives::RewardsEnabled for Pallet<T> {
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
         CurrentBlockAuthorInfo::<T>::get().and_then(
-            |(public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)| {
-                // Equivocation might have happened in this block, if so - no reward for block
-                // author
-                if !BlockList::<T>::contains_key(public_key) {
-                    // Rewards might be disabled, in which case no block reward either
-                    if let Some(height) = EnableRewards::<T>::get() {
-                        if frame_system::Pallet::<T>::current_block_number() >= height {
-                            return Some(reward_address);
-                        }
+            |(_public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)| {
+                // Rewards might be disabled, in which case no block reward
+                if let Some(height) = EnableRewards::<T>::get() {
+                    if frame_system::Pallet::<T>::current_block_number() >= height {
+                        return reward_address;
                     }
                 }
 
@@ -1880,7 +1779,7 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
                 return CurrentBlockVoters::<T>::get()
                     .unwrap_or_else(ParentBlockVoters::<T>::get)
                     .into_values()
-                    .map(|(reward_address, _signature)| reward_address)
+                    .filter_map(|(reward_address, _signature)| reward_address)
                     .collect();
             }
         }
@@ -1913,13 +1812,5 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, BlockNumberFor<T>> fo
             ),
             frame_system::Pallet::<T>::current_block_number(),
         )
-    }
-}
-
-impl<T: Config> OnOffenceHandler<PublicKey> for Pallet<T> {
-    fn on_offence(offenders: &[OffenceDetails<PublicKey>]) {
-        for offender in offenders {
-            BlockList::<T>::insert(offender.offender, ());
-        }
     }
 }

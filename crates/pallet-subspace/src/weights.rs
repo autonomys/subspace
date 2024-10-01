@@ -31,7 +31,6 @@ use core::marker::PhantomData;
 
 /// Weight functions needed for pallet_subspace.
 pub trait WeightInfo {
-	fn report_equivocation() -> Weight;
 	fn store_segment_headers(x: u32, ) -> Weight;
 	fn enable_solution_range_adjustment() -> Weight;
 	fn vote() -> Weight;
@@ -43,23 +42,6 @@ pub trait WeightInfo {
 /// Weights for pallet_subspace using the Substrate node and recommended hardware.
 pub struct SubstrateWeight<T>(PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-	/// Storage: `OffencesSubspace::ReportsByKindIndex` (r:1 w:1)
-	/// Proof: `OffencesSubspace::ReportsByKindIndex` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `OffencesSubspace::ConcurrentReportsIndex` (r:1 w:1)
-	/// Proof: `OffencesSubspace::ConcurrentReportsIndex` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `OffencesSubspace::Reports` (r:1 w:1)
-	/// Proof: `OffencesSubspace::Reports` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Subspace::BlockList` (r:0 w:1)
-	/// Proof: `Subspace::BlockList` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	fn report_equivocation() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `3465`
-		// Minimum execution time: 27_544_000 picoseconds.
-		Weight::from_parts(28_117_000, 3465)
-			.saturating_add(T::DbWeight::get().reads(3_u64))
-			.saturating_add(T::DbWeight::get().writes(4_u64))
-	}
 	/// Storage: `Subspace::DidProcessSegmentHeaders` (r:1 w:1)
 	/// Proof: `Subspace::DidProcessSegmentHeaders` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
 	/// Storage: `Subspace::SegmentCommitment` (r:20 w:20)
@@ -153,23 +135,6 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
 // For backwards compatibility and tests
 impl WeightInfo for () {
-	/// Storage: `OffencesSubspace::ReportsByKindIndex` (r:1 w:1)
-	/// Proof: `OffencesSubspace::ReportsByKindIndex` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `OffencesSubspace::ConcurrentReportsIndex` (r:1 w:1)
-	/// Proof: `OffencesSubspace::ConcurrentReportsIndex` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `OffencesSubspace::Reports` (r:1 w:1)
-	/// Proof: `OffencesSubspace::Reports` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	/// Storage: `Subspace::BlockList` (r:0 w:1)
-	/// Proof: `Subspace::BlockList` (`max_values`: None, `max_size`: None, mode: `Measured`)
-	fn report_equivocation() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `3465`
-		// Minimum execution time: 27_544_000 picoseconds.
-		Weight::from_parts(28_117_000, 3465)
-			.saturating_add(ParityDbWeight::get().reads(3_u64))
-			.saturating_add(ParityDbWeight::get().writes(4_u64))
-	}
 	/// Storage: `Subspace::DidProcessSegmentHeaders` (r:1 w:1)
 	/// Proof: `Subspace::DidProcessSegmentHeaders` (`max_values`: Some(1), `max_size`: None, mode: `Measured`)
 	/// Storage: `Subspace::SegmentCommitment` (r:20 w:20)

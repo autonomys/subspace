@@ -166,9 +166,6 @@ pub enum Error<Header: HeaderT> {
         below archiving point"
     )]
     DifferentSegmentCommitment(SegmentIndex),
-    /// Farmer in block list
-    #[error("Farmer {0} is in block list")]
-    FarmerInBlockList(PublicKey),
     /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
@@ -351,20 +348,6 @@ where
                 // Only root plot public key is allowed.
                 return Err(Error::OnlyRootPlotPublicKeyAllowed);
             }
-        }
-
-        // Check if farmer's plot is burned.
-        if self
-            .client
-            .runtime_api()
-            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)?
-        {
-            warn!(
-                public_key = %pre_digest.solution().public_key,
-                "Ignoring block with solution provided by farmer in block list",
-            );
-
-            return Err(Error::FarmerInBlockList(pre_digest.solution().public_key));
         }
 
         let parent_header = self

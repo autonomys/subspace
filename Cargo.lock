@@ -7792,23 +7792,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-offences-subspace"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "schnorrkel",
- "sp-consensus-subspace",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "subspace-core-primitives",
-]
-
-[[package]]
 name = "pallet-preimage"
 version = "38.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=5871818e1d736f1843eb9078f886290695165c42#5871818e1d736f1843eb9078f886290695165c42"
@@ -7885,7 +7868,6 @@ dependencies = [
  "futures",
  "log",
  "pallet-balances",
- "pallet-offences-subspace",
  "parity-scale-codec",
  "rand",
  "scale-info",
@@ -12456,12 +12438,15 @@ dependencies = [
 name = "subspace-data-retrieval"
 version = "0.1.0"
 dependencies = [
+ "async-lock 3.4.0",
  "async-trait",
+ "futures",
  "parity-scale-codec",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -12860,7 +12845,6 @@ dependencies = [
  "pallet-history-seeding",
  "pallet-messenger",
  "pallet-mmr",
- "pallet-offences-subspace",
  "pallet-preimage",
  "pallet-rewards",
  "pallet-runtime-configs",
@@ -13061,9 +13045,9 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-domains",
+ "pallet-history-seeding",
  "pallet-messenger",
  "pallet-mmr",
- "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",

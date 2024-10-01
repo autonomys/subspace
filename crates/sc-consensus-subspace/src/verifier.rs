@@ -22,9 +22,8 @@ use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
-use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -46,11 +45,7 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use tokio::runtime::Handle;
-use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
-
-/// This corresponds to default value of `--max-runtime-instances` in Substrate
-const BLOCKS_LIST_CHECK_CONCURRENCY: usize = 8;
 
 /// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -106,24 +101,15 @@ where
 }
 
 /// Options for Subspace block verifier
-pub struct SubspaceVerifierOptions<Block, Client, SelectChain>
-where
-    Block: BlockT,
-{
+pub struct SubspaceVerifierOptions<Client> {
     /// Substrate client
     pub client: Arc<Client>,
     /// Subspace chain constants
     pub chain_constants: ChainConstants,
     /// Kzg instance
     pub kzg: Kzg,
-    /// Chain selection rule
-    pub select_chain: SelectChain,
     /// Telemetry
     pub telemetry: Option<TelemetryHandle>,
-    /// The offchain transaction pool factory.
-    ///
-    /// Will be used when sending equivocation reports and votes.
-    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     /// Context for reward signing
     pub reward_signing_context: SigningContext,
     /// Approximate target block number for syncing purposes
@@ -135,44 +121,38 @@ where
 }
 
 /// A verifier for Subspace blocks.
-pub struct Inner<PosTable, Block, Client, SelectChain>
+struct Inner<PosTable, Block, Client>
 where
     Block: BlockT,
 {
     client: Arc<Client>,
     kzg: Kzg,
-    select_chain: SelectChain,
     telemetry: Option<TelemetryHandle>,
-    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
     sync_target_block_number: Arc<AtomicU32>,
     is_authoring_blocks: bool,
     pot_verifier: PotVerifier,
     equivocation_mutex: Mutex<()>,
-    block_list_verification_semaphore: Semaphore,
     _pos_table: PhantomData<PosTable>,
     _block: PhantomData<Block>,
 }
 
-impl<PosTable, Block, Client, SelectChain> Inner<PosTable, Block, Client, SelectChain>
+impl<PosTable, Block, Client> Inner<PosTable, Block, Client>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
 {
     /// Create new instance
-    fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
+    fn new(options: SubspaceVerifierOptions<Client>) -> Self {
         let SubspaceVerifierOptions {
             client,
             chain_constants,
             kzg,
-            select_chain,
             telemetry,
-            offchain_tx_pool_factory,
             reward_signing_context,
             sync_target_block_number,
             is_authoring_blocks,
@@ -182,16 +162,13 @@ where
         Self {
             client,
             kzg,
-            select_chain,
             telemetry,
-            offchain_tx_pool_factory,
             chain_constants,
             reward_signing_context,
             sync_target_block_number,
             is_authoring_blocks,
             pot_verifier,
             equivocation_mutex: Mutex::default(),
-            block_list_verification_semaphore: Semaphore::new(BLOCKS_LIST_CHECK_CONCURRENCY),
             _pos_table: Default::default(),
             _block: Default::default(),
         }
@@ -422,26 +399,7 @@ where
         );
 
         if self.is_authoring_blocks {
-            // get the best block on which we will build and send the equivocation report.
-            let best_hash = self
-                .select_chain
-                .best_chain()
-                .await
-                .map(|h| h.hash())
-                .map_err(|error| error.to_string())?;
-
-            // submit equivocation report at best block.
-            let mut runtime_api = self.client.runtime_api();
-            // Register the offchain tx pool to be able to use it from the runtime.
-            runtime_api.register_extension(
-                self.offchain_tx_pool_factory
-                    .offchain_transaction_pool(best_hash),
-            );
-            runtime_api
-                .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
-                .map_err(|error| error.to_string())?;
-
-            info!(%author, "Submitted equivocation report for author");
+            // TODO: Handle equivocation
         } else {
             info!("Not submitting equivocation report because node is not authoring blocks");
         }
@@ -487,40 +445,6 @@ where
 
         let subspace_digest_items =
             extract_subspace_digest_items::<Block::Header, PublicKey>(&block.header)?;
-
-        // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
-        // during block import anyway
-        {
-            // We need to limit number of threads to avoid running out of WASM instances
-            let _permit = self
-                .block_list_verification_semaphore
-                .acquire()
-                .await
-                .expect("Never closed; qed");
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(
-                    *block.header.parent_hash(),
-                    &subspace_digest_items.pre_digest.solution().public_key,
-                )
-                .unwrap_or_default()
-            {
-                warn!(
-                    public_key = %subspace_digest_items.pre_digest.solution().public_key,
-                    "Verifying block with solution provided by farmer in block list"
-                );
-
-                return Err(format!(
-                    "Farmer {} is in block list",
-                    subspace_digest_items
-                        .pre_digest
-                        .solution()
-                        .public_key
-                        .clone(),
-                ));
-            }
-        }
 
         let full_pot_verification = self.full_pot_verification(*block.header.number());
 
@@ -605,24 +529,23 @@ where
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain>
+pub struct SubspaceVerifier<PosTable, Block, Client>
 where
     Block: BlockT,
 {
-    inner: Arc<Inner<PosTable, Block, Client, SelectChain>>,
+    inner: Arc<Inner<PosTable, Block, Client>>,
 }
 
-impl<PosTable, Block, Client, SelectChain> SubspaceVerifier<PosTable, Block, Client, SelectChain>
+impl<PosTable, Block, Client> SubspaceVerifier<PosTable, Block, Client>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
 {
     /// Create new instance
-    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
+    pub fn new(options: SubspaceVerifierOptions<Client>) -> Self {
         Self {
             inner: Arc::new(Inner::new(options)),
         }
@@ -630,15 +553,13 @@ where
 }
 
 #[async_trait::async_trait]
-impl<PosTable, Block, Client, SelectChain> Verifier<Block>
-    for SubspaceVerifier<PosTable, Block, Client, SelectChain>
+impl<PosTable, Block, Client> Verifier<Block> for SubspaceVerifier<PosTable, Block, Client>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
 {
     fn verification_concurrency(&self) -> NonZeroUsize {
         available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
