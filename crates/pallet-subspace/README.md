@@ -12,8 +12,6 @@ Pallet maintains crucial state required for Subspace Proof-of-Archival-Storage c
 * inherents for:
   * storing segment headers and maintaining mapping from segment index to corresponding segment commitment such that
     validity of piece from solution can be checked later
-  * handling of farmer equivocation (together with `pallet-offences-subspace`) and maintaining list of blocked farmers
-    (effectively burned plots)
 
 Pallet also provides handy API for finding block author, block reward address, randomness and some others.
 

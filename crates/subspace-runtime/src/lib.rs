@@ -63,9 +63,7 @@ use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
-use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, PotParameters, SignedVote, SolutionRanges, Vote,
-};
+use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
@@ -162,8 +160,6 @@ const_assert!(POT_ENTROPY_INJECTION_DELAY > BLOCK_AUTHORING_DELAY + 1);
 
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
-
-const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
@@ -304,12 +300,6 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
-
-    type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
-        OffencesSubspace,
-        ConstU64<{ EQUIVOCATION_REPORT_LONGEVITY as u64 }>,
-    >;
-
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
 }
 
@@ -722,11 +712,6 @@ impl pallet_transporter::Config for Runtime {
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_offences_subspace::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type OnOffenceHandler = Subspace;
-}
-
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
@@ -917,7 +902,6 @@ construct_runtime!(
         Timestamp: pallet_timestamp = 1,
 
         Subspace: pallet_subspace = 2,
-        OffencesSubspace: pallet_offences_subspace = 3,
         Rewards: pallet_rewards = 4,
 
         Balances: pallet_balances = 5,
@@ -1176,12 +1160,6 @@ impl_runtime_apis! {
             Subspace::solution_ranges()
         }
 
-        fn submit_report_equivocation_extrinsic(
-            equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
-        ) -> Option<()> {
-            Subspace::submit_equivocation_report(equivocation_proof)
-        }
-
         fn submit_vote_extrinsic(
             signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
@@ -1206,12 +1184,6 @@ impl_runtime_apis! {
                 },
                 signature,
             })
-        }
-
-        fn is_in_block_list(farmer_public_key: &PublicKey) -> bool {
-            // TODO: Either check tx pool too for pending equivocations or replace equivocation
-            //  mechanism with an alternative one, so that blocking happens faster
-            Subspace::is_in_block_list(farmer_public_key)
         }
 
         fn history_size() -> HistorySize {
