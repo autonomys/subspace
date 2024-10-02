@@ -44,12 +44,6 @@ extern crate alloc;
 use crate::crypto::{blake3_hash, blake3_hash_list, blake3_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
-#[cfg(not(feature = "std"))]
-use alloc::vec;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use core::array::TryFromSliceError;
 use core::fmt;
 use core::num::{NonZeroU64, NonZeroU8};

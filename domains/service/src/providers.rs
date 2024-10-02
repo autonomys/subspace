@@ -5,7 +5,8 @@ use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, Backend, BlockBackend, StorageProvider};
 use sc_consensus::BlockImport;
-use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
+use sc_rpc::SubscriptionTaskExecutor;
+use sc_rpc_server::SubscriptionIdProvider;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
@@ -62,7 +63,7 @@ where
         full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error>;
 
-    fn rpc_id(&self) -> Option<Box<dyn RpcSubscriptionIdProvider>>;
+    fn rpc_id(&self) -> Option<Box<dyn SubscriptionIdProvider>>;
 
     fn rpc_builder<SE>(
         &self,
@@ -105,7 +106,7 @@ where
         Ok(full_deps)
     }
 
-    fn rpc_id(&self) -> Option<Box<dyn RpcSubscriptionIdProvider>> {
+    fn rpc_id(&self) -> Option<Box<dyn SubscriptionIdProvider>> {
         None
     }
 

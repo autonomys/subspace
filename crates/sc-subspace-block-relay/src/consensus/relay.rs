@@ -31,6 +31,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
+use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -65,6 +66,19 @@ where
     backend: Arc<ConsensusClientBackend<Pool>>,
     metrics: ConsensusClientMetrics,
     _phantom_data: std::marker::PhantomData<(Block, Pool)>,
+}
+
+impl<Block, Pool> fmt::Debug for ConsensusRelayClient<Block, Pool>
+where
+    Block: BlockT,
+    Pool: TransactionPool,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConsensusRelayClient")
+            .field("protocol_name", &self.protocol_name)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<Block, Pool> ConsensusRelayClient<Block, Pool>
@@ -223,6 +237,10 @@ where
     Block: BlockT,
     Pool: TransactionPool<Block = Block> + 'static,
 {
+    fn protocol_name(&self) -> &ProtocolName {
+        &self.protocol_name
+    }
+
     async fn download_blocks(
         &self,
         who: PeerId,

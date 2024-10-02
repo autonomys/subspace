@@ -35,4 +35,4 @@
 
 mod import_queue;
 
-pub use import_queue::{import_queue, Verifier};
+pub use import_queue::Verifier;

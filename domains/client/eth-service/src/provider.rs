@@ -14,7 +14,8 @@ use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRP
 use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StorageProvider};
-use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
+use sc_rpc::SubscriptionTaskExecutor;
+use sc_rpc_server::SubscriptionIdProvider;
 use sc_service::BasePath;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
@@ -152,7 +153,7 @@ where
         })
     }
 
-    fn rpc_id(&self) -> Option<Box<dyn RpcSubscriptionIdProvider>> {
+    fn rpc_id(&self) -> Option<Box<dyn SubscriptionIdProvider>> {
         Some(Box::new(fc_rpc::EthereumSubIdProvider))
     }
 

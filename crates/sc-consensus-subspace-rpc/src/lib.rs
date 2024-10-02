@@ -24,7 +24,7 @@ use futures::{future, stream, FutureExt, StreamExt};
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned};
-use jsonrpsee::PendingSubscriptionSink;
+use jsonrpsee::{Extensions, PendingSubscriptionSink};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::archiver::{
@@ -34,9 +34,9 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
     NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
-use sc_rpc::utils::pipe_from_stream;
+use sc_rpc::utils::{BoundedVecDeque, PendingSubscription};
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_rpc_api::{DenyUnsafe, UnsafeRpcError};
+use sc_rpc_api::{check_if_safe, UnsafeRpcError};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnellru::{ByLength, LruMap};
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -116,7 +116,7 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_getFarmerAppInfo")]
     fn get_farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 
-    #[method(name = "subspace_submitSolutionResponse")]
+    #[method(name = "subspace_submitSolutionResponse", with_extensions)]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> Result<(), Error>;
 
     /// Slot info subscription
@@ -124,6 +124,7 @@ pub trait SubspaceRpcApi {
         name = "subspace_subscribeSlotInfo" => "subspace_slot_info",
         unsubscribe = "subspace_unsubscribeSlotInfo",
         item = SlotInfo,
+        with_extensions,
     )]
     fn subscribe_slot_info(&self);
 
@@ -132,10 +133,11 @@ pub trait SubspaceRpcApi {
         name = "subspace_subscribeRewardSigning" => "subspace_reward_signing",
         unsubscribe = "subspace_unsubscribeRewardSigning",
         item = RewardSigningInfo,
+        with_extensions,
     )]
     fn subscribe_reward_signing(&self);
 
-    #[method(name = "subspace_submitRewardSignature")]
+    #[method(name = "subspace_submitRewardSignature", with_extensions)]
     fn submit_reward_signature(
         &self,
         reward_signature: RewardSignatureResponse,
@@ -146,6 +148,7 @@ pub trait SubspaceRpcApi {
         name = "subspace_subscribeArchivedSegmentHeader" => "subspace_archived_segment_header",
         unsubscribe = "subspace_unsubscribeArchivedSegmentHeader",
         item = SegmentHeader,
+        with_extensions,
     )]
     fn subscribe_archived_segment_header(&self);
 
@@ -155,10 +158,10 @@ pub trait SubspaceRpcApi {
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
-    #[method(name = "subspace_piece", blocking)]
+    #[method(name = "subspace_piece", blocking, with_extensions)]
     fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
 
-    #[method(name = "subspace_acknowledgeArchivedSegmentHeader")]
+    #[method(name = "subspace_acknowledgeArchivedSegmentHeader", with_extensions)]
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
@@ -239,8 +242,6 @@ where
     pub segment_headers_store: SegmentHeadersStore<AS>,
     /// Subspace sync oracle
     pub sync_oracle: SubspaceSyncOracle<SO>,
-    /// Signifies whether a potentially unsafe RPC should be denied
-    pub deny_unsafe: DenyUnsafe,
     /// Kzg instance
     pub kzg: Kzg,
     /// Erasure coding instance
@@ -273,7 +274,6 @@ where
     max_pieces_in_sector: u16,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
-    deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
 }
 
@@ -331,7 +331,6 @@ where
             max_pieces_in_sector,
             kzg: config.kzg,
             erasure_coding: config.erasure_coding,
-            deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
         })
     }
@@ -385,8 +384,12 @@ where
         })
     }
 
-    fn submit_solution_response(&self, solution_response: SolutionResponse) -> Result<(), Error> {
-        self.deny_unsafe.check_if_safe()?;
+    fn submit_solution_response(
+        &self,
+        ext: &Extensions,
+        solution_response: SolutionResponse,
+    ) -> Result<(), Error> {
+        check_if_safe(ext)?;
 
         let slot = solution_response.slot_number;
         let mut solution_response_senders = self.solution_response_senders.lock();
@@ -408,10 +411,10 @@ where
         Ok(())
     }
 
-    fn subscribe_slot_info(&self, pending: PendingSubscriptionSink) {
+    fn subscribe_slot_info(&self, pending: PendingSubscriptionSink, ext: &Extensions) {
         let executor = self.subscription_executor.clone();
         let solution_response_senders = self.solution_response_senders.clone();
-        let allow_solutions = self.deny_unsafe.check_if_safe().is_ok();
+        let allow_solutions = check_if_safe(ext).is_ok();
 
         let handle_slot_notification = move |new_slot_notification| {
             let NewSlotNotification {
@@ -492,12 +495,14 @@ where
         self.subscription_executor.spawn(
             "subspace-slot-info-subscription",
             Some("rpc"),
-            pipe_from_stream(pending, stream).boxed(),
+            PendingSubscription::from(pending)
+                .pipe_from_stream(stream, BoundedVecDeque::default())
+                .boxed(),
         );
     }
 
-    fn subscribe_reward_signing(&self, pending: PendingSubscriptionSink) {
-        if self.deny_unsafe.check_if_safe().is_err() {
+    fn subscribe_reward_signing(&self, pending: PendingSubscriptionSink, ext: &Extensions) {
+        if check_if_safe(ext).is_err() {
             debug!("Unsafe subscribe_reward_signing ignored");
             return;
         }
@@ -561,15 +566,18 @@ where
         self.subscription_executor.spawn(
             "subspace-block-signing-subscription",
             Some("rpc"),
-            pipe_from_stream(pending, stream).boxed(),
+            PendingSubscription::from(pending)
+                .pipe_from_stream(stream, BoundedVecDeque::default())
+                .boxed(),
         );
     }
 
     fn submit_reward_signature(
         &self,
+        ext: &Extensions,
         reward_signature: RewardSignatureResponse,
     ) -> Result<(), Error> {
-        self.deny_unsafe.check_if_safe()?;
+        check_if_safe(ext)?;
 
         let reward_signature_senders = self.reward_signature_senders.clone();
 
@@ -586,13 +594,17 @@ where
         Ok(())
     }
 
-    fn subscribe_archived_segment_header(&self, pending: PendingSubscriptionSink) {
+    fn subscribe_archived_segment_header(
+        &self,
+        pending: PendingSubscriptionSink,
+        ext: &Extensions,
+    ) {
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
         let cached_archived_segment = Arc::clone(&self.cached_archived_segment);
         let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
-        let allow_acknowledgements = self.deny_unsafe.check_if_safe().is_ok();
+        let allow_acknowledgements = check_if_safe(ext).is_ok();
 
         let stream = self
             .archived_segment_notification_stream
@@ -652,7 +664,9 @@ where
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
         let fut = async move {
-            pipe_from_stream(pending, stream).await;
+            PendingSubscription::from(pending)
+                .pipe_from_stream(stream, BoundedVecDeque::default())
+                .await;
 
             let mut archived_segment_acknowledgement_senders =
                 archived_segment_acknowledgement_senders.lock();
@@ -671,9 +685,10 @@ where
 
     async fn acknowledge_archived_segment_header(
         &self,
+        ext: &Extensions,
         segment_index: SegmentIndex,
     ) -> Result<(), Error> {
-        self.deny_unsafe.check_if_safe()?;
+        check_if_safe(ext)?;
 
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
@@ -710,8 +725,12 @@ where
     }
 
     // Note: this RPC uses the cached archived segment, which is only updated by archived segments subscriptions
-    fn piece(&self, requested_piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
-        self.deny_unsafe.check_if_safe()?;
+    fn piece(
+        &self,
+        ext: &Extensions,
+        requested_piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Error> {
+        check_if_safe(ext)?;
 
         let archived_segment = {
             let mut cached_archived_segment = self.cached_archived_segment.lock();
@@ -843,7 +862,9 @@ where
         self.subscription_executor.spawn(
             "subspace-archived-object-mappings-subscription",
             Some("rpc"),
-            pipe_from_stream(pending, mapping_stream).boxed(),
+            PendingSubscription::from(pending)
+                .pipe_from_stream(mapping_stream, BoundedVecDeque::default())
+                .boxed(),
         );
     }
 
@@ -904,7 +925,9 @@ where
         self.subscription_executor.spawn(
             "subspace-filtered-object-mappings-subscription",
             Some("rpc"),
-            pipe_from_stream(pending, mapping_stream).boxed(),
+            PendingSubscription::from(pending)
+                .pipe_from_stream(mapping_stream, BoundedVecDeque::default())
+                .boxed(),
         );
     }
 }

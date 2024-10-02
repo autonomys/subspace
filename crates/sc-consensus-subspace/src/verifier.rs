@@ -44,6 +44,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
 
 /// Errors encountered by the Subspace verification task.
@@ -120,7 +121,7 @@ pub struct SubspaceVerifierOptions<Client> {
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block, Client>
+struct Inner<PosTable, Block, Client>
 where
     Block: BlockT,
 {
@@ -137,16 +138,16 @@ where
     _block: PhantomData<Block>,
 }
 
-impl<PosTable, Block, Client> SubspaceVerifier<PosTable, Block, Client>
+impl<PosTable, Block, Client> Inner<PosTable, Block, Client>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
-    Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
 {
     /// Create new instance
-    pub fn new(options: SubspaceVerifierOptions<Client>) -> Self {
+    fn new(options: SubspaceVerifierOptions<Client>) -> Self {
         let SubspaceVerifierOptions {
             client,
             chain_constants,
@@ -208,7 +209,7 @@ where
     ///
     /// `pre_digest` argument is optional in case it is available to avoid doing the work of
     /// extracting it from the header twice.
-    async fn check_header(
+    fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
         subspace_digest_items: SubspaceDigestItems<PublicKey>,
@@ -405,20 +406,6 @@ where
 
         Ok(())
     }
-}
-
-#[async_trait::async_trait]
-impl<PosTable, Block, Client> Verifier<Block> for SubspaceVerifier<PosTable, Block, Client>
-where
-    PosTable: Table,
-    Block: BlockT,
-    BlockNumber: From<NumberFor<Block>>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
-{
-    fn verification_concurrency(&self) -> NonZeroUsize {
-        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
-    }
 
     async fn verify(
         &self,
@@ -482,7 +469,6 @@ where
                 full_pot_verification,
                 &block.justifications,
             )
-            .await
             .map_err(|error| error.to_string())?;
 
         let CheckedHeader {
@@ -539,5 +525,53 @@ where
         block.post_hash = Some(hash);
 
         Ok(block)
+    }
+}
+
+/// A verifier for Subspace blocks.
+pub struct SubspaceVerifier<PosTable, Block, Client>
+where
+    Block: BlockT,
+{
+    inner: Arc<Inner<PosTable, Block, Client>>,
+}
+
+impl<PosTable, Block, Client> SubspaceVerifier<PosTable, Block, Client>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+{
+    /// Create new instance
+    pub fn new(options: SubspaceVerifierOptions<Client>) -> Self {
+        Self {
+            inner: Arc::new(Inner::new(options)),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<PosTable, Block, Client> Verifier<Block> for SubspaceVerifier<PosTable, Block, Client>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+{
+    fn verification_concurrency(&self) -> NonZeroUsize {
+        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
+    }
+
+    async fn verify(
+        &self,
+        block: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
+        let inner = Arc::clone(&self.inner);
+        tokio::task::spawn_blocking(move || Handle::current().block_on(inner.verify(block)))
+            .await
+            .map_err(|error| format!("Failed to join block verification task: {error}"))?
     }
 }

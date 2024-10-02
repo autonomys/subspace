@@ -8,7 +8,7 @@ use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
-    BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
+    BlockImportParams, BoxBlockImport, ForkChoiceStrategy, ImportResult, StateAction,
     StorageChanges,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -62,7 +62,7 @@ where
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
-    pub(crate) block_import: SharedBlockImport<Block>,
+    pub(crate) block_import: Arc<BoxBlockImport<Block>>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
     pub(crate) consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
 }
@@ -480,11 +480,7 @@ where
             *block_import_params.header.parent_hash(),
         );
 
-        let import_result = (*self.block_import)
-            .write()
-            .await
-            .import_block(block_import_params)
-            .await?;
+        let import_result = self.block_import.import_block(block_import_params).await?;
 
         match import_result {
             ImportResult::Imported(..) => {}

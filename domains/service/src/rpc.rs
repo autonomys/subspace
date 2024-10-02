@@ -10,10 +10,8 @@ use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_network::NetworkService;
+use sc_network::service::traits::NetworkService;
 use sc_network_sync::SyncingService;
-use sc_rpc::DenyUnsafe;
-use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
 use sc_service::{DatabaseSource, SpawnTaskHandle};
 use sc_transaction_pool::{ChainApi, Pool};
 use sc_transaction_pool_api::TransactionPool;
@@ -38,12 +36,8 @@ pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP> {
     pub pool: Arc<TP>,
     /// Graph pool instance.
     pub graph: Arc<Pool<CA>>,
-    /// A copy of the chain spec.
-    pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
-    /// Whether to deny unsafe calls
-    pub deny_unsafe: DenyUnsafe,
     /// Network service
-    pub network: Arc<NetworkService<Block, Block::Hash>>,
+    pub network: Arc<dyn NetworkService>,
     /// Chain syncing service
     pub sync: Arc<SyncingService<Block>>,
     /// Is node running as authority.
@@ -67,8 +61,6 @@ impl<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP: Clone> Clone
             backend: self.backend.clone(),
             pool: self.pool.clone(),
             graph: self.graph.clone(),
-            chain_spec: self.chain_spec.cloned_box(),
-            deny_unsafe: self.deny_unsafe,
             network: self.network.clone(),
             sync: self.sync.clone(),
             is_authority: self.is_authority,
@@ -102,20 +94,9 @@ where
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
 {
     let mut module = RpcModule::new(());
-    let FullDeps {
-        client,
-        pool,
-        chain_spec,
-        deny_unsafe,
-        ..
-    } = deps;
+    let FullDeps { client, pool, .. } = deps;
 
-    let chain_name = chain_spec.name().to_string();
-    let genesis_hash = client.info().genesis_hash;
-    let properties = chain_spec.properties();
-    module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
-
-    module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(System::new(client.clone(), pool).into_rpc())?;
     module.merge(TransactionPayment::new(client).into_rpc())?;
 
     Ok(module)

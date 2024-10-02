@@ -15,7 +15,7 @@ include = [
 [dependencies]
 hex = { version = "0.4.3", features = ["serde"] }
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
-serde = { version = "1.0.206", features = ["derive"] }
+serde = { version = "1.0.110", features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }

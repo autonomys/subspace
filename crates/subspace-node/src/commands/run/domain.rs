@@ -19,7 +19,6 @@ use sc_cli::{
 };
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::NetworkPeers;
 use sc_proof_of_time::source::PotSlotInfo;
@@ -142,7 +141,6 @@ pub(super) fn create_domain_configuration(
     consensus_chain_configuration: &Configuration,
     dev: bool,
     domain_options: DomainOptions,
-    enable_color: bool,
 ) -> Result<DomainConfiguration, Error> {
     let DomainOptions {
         domain_id: maybe_domain_id,
@@ -326,7 +324,13 @@ pub(super) fn create_domain_configuration(
                     unreachable!("Memory transport not used in CLI; qed")
                 }
             },
-            force_synced: false,
+            // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
+            // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
+            // It would have been ideal to use `Consensus` chain sync service to respond to `is_major_sync` requests but this
+            // would require upstream changes and with some refactoring. This is not worth the effort at the moment since
+            // we are planning to enable domain's block request and state sync mechanism in the near future.
+            // Until such change has been made, domain's sync service needs to be in force_synced state.
+            force_synced: true,
         },
         keystore,
         state_pruning: pruning_params.state_pruning()?,
@@ -359,7 +363,6 @@ pub(super) fn create_domain_configuration(
         telemetry_endpoints: consensus_chain_configuration.telemetry_endpoints.clone(),
         force_authoring: false,
         chain_spec: Box::new(chain_spec),
-        informant_output_format: OutputFormat { enable_color },
     };
 
     Ok(DomainConfiguration {

@@ -35,7 +35,7 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
     .with_name("Local Testnet")
     .with_id("local_testnet")
     .with_chain_type(ChainType::Local)
-    .with_genesis_config(patch_domain_runtime_version(
+    .with_genesis_config(
         serde_json::to_value(create_genesis_config(
             // Sudo account
             get_account_id_from_seed("Alice"),
@@ -57,7 +57,7 @@ pub fn subspace_local_testnet_config() -> Result<GenericChainSpec, String> {
             ],
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-    ))
+    )
     .with_protocol_id("subspace-test")
     .build())
 }
@@ -100,43 +100,4 @@ fn create_genesis_config(
         },
         runtime_configs: Default::default(),
     })
-}
-
-// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
-fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
-    let Some(genesis_domains) = genesis_config
-        .get_mut("domains")
-        .and_then(|domains| domains.get_mut("genesisDomains"))
-        .and_then(|genesis_domains| genesis_domains.as_array_mut())
-    else {
-        return genesis_config;
-    };
-
-    for genesis_domain in genesis_domains {
-        let Some(runtime_version) = genesis_domain.get_mut("runtime_version") else {
-            continue;
-        };
-
-        if let Some(spec_name) = runtime_version.get_mut("specName") {
-            if let Some(spec_name_bytes) = spec_name
-                .as_str()
-                .map(|spec_name| spec_name.as_bytes().to_vec())
-            {
-                *spec_name = serde_json::to_value(spec_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-
-        if let Some(impl_name) = runtime_version.get_mut("implName") {
-            if let Some(impl_name_bytes) = impl_name
-                .as_str()
-                .map(|impl_name| impl_name.as_bytes().to_vec())
-            {
-                *impl_name = serde_json::to_value(impl_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-    }
-
-    genesis_config
 }

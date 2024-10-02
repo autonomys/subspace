@@ -27,7 +27,9 @@ use sc_cli::{
     generate_node_name, ChainSpec, CliConfiguration, Role, RunCmd as SubstrateRunCmd, RunCmd,
     SubstrateCli,
 };
-use sc_service::config::{KeystoreConfig, NetworkConfiguration};
+use sc_service::config::{
+    ExecutorConfiguration, KeystoreConfig, NetworkConfiguration, RpcConfiguration,
+};
 use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_domains::DomainId;
@@ -199,7 +201,7 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
     let client_id = Cli::client_id();
     let node_key = domain_cli_args
         .node_key_params()
-        .map(|x| x.node_key(&net_config_dir, role.clone(), is_dev))
+        .map(|x| x.node_key(&net_config_dir, role, is_dev))
         .unwrap_or_else(|| Ok(Default::default()))?;
     let max_runtime_instances = 8;
     let is_validator = role.is_authority();
@@ -229,6 +231,11 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         *net_config_path = base_path.path().join("network");
     }
 
+    let rpc_addrs: Option<Vec<sc_service::config::RpcEndpoint>> = domain_cli
+        .run
+        .rpc_addr(9945)?
+        .map(|addrs| addrs.into_iter().map(Into::into).collect());
+
     Ok(Configuration {
         impl_name: Cli::impl_name(),
         impl_version: Cli::impl_version(),
@@ -253,31 +260,37 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
             .pruning_params()
             .map(|x| x.blocks_pruning())
             .unwrap_or_else(|| Ok(BlocksPruning::KeepFinalized))?,
-        wasm_method: domain_cli_args
-            .import_params()
-            .map(|x| x.wasm_method())
-            .unwrap_or_default(),
+        executor: ExecutorConfiguration {
+            wasm_method: domain_cli_args
+                .import_params()
+                .map(|x| x.wasm_method())
+                .unwrap_or_default(),
+            max_runtime_instances,
+            default_heap_pages: domain_cli_args.default_heap_pages()?,
+            runtime_cache_size,
+        },
         wasm_runtime_overrides: domain_cli_args
             .import_params()
             .map(|x| x.wasm_runtime_overrides())
             .unwrap_or_default(),
-        rpc_addr: domain_cli_args.rpc_addr(9945)?,
-        rpc_methods: domain_cli_args.rpc_methods()?,
-        rpc_max_connections: domain_cli_args.rpc_max_connections()?,
-        rpc_cors: domain_cli_args.rpc_cors(is_dev)?,
-        rpc_max_request_size: 15,
-        rpc_max_response_size: 15,
-        rpc_id_provider: None,
-        rpc_max_subs_per_conn: 1024,
-        rpc_port: 9945,
-        rpc_message_buffer_capacity: domain_cli_args.rpc_buffer_capacity_per_connection()?,
-        rpc_batch_config: domain_cli_args.rpc_batch_config()?,
-        rpc_rate_limit: domain_cli_args.rpc_rate_limit()?,
-        rpc_rate_limit_whitelisted_ips: vec![],
-        rpc_rate_limit_trust_proxy_headers: false,
+        rpc: RpcConfiguration {
+            addr: rpc_addrs,
+            methods: domain_cli_args.rpc_methods()?,
+            max_connections: domain_cli_args.rpc_max_connections()?,
+            cors: domain_cli_args.rpc_cors(is_dev)?,
+            max_request_size: 15,
+            max_response_size: 15,
+            id_provider: None,
+            max_subs_per_conn: 1024,
+            port: 9945,
+            message_buffer_capacity: domain_cli_args.rpc_buffer_capacity_per_connection()?,
+            batch_config: domain_cli_args.rpc_batch_config()?,
+            rate_limit: domain_cli_args.rpc_rate_limit()?,
+            rate_limit_whitelisted_ips: vec![],
+            rate_limit_trust_proxy_headers: false,
+        },
         prometheus_config: domain_cli_args.prometheus_config(9616, &chain_spec)?,
         telemetry_endpoints,
-        default_heap_pages: domain_cli_args.default_heap_pages()?,
         offchain_worker: domain_cli_args
             .offchain_worker_params()
             .map(|x| x.offchain_worker(&role))
@@ -288,11 +301,8 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         tracing_targets: domain_cli_args.shared_params().tracing_targets(),
         tracing_receiver: domain_cli_args.shared_params().tracing_receiver(),
         chain_spec,
-        max_runtime_instances,
         announce_block: domain_cli_args.announce_block()?,
         role,
         base_path,
-        informant_output_format: Default::default(),
-        runtime_cache_size,
     })
 }

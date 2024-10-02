@@ -25,8 +25,7 @@ fn test_set_code() {
         impl_version: 1,
         apis: Default::default(),
         transaction_version: 1,
-        state_version: 0,
-        extrinsic_state_version: 0,
+        system_version: 2,
     };
     let read_runtime_version = ReadRuntimeVersion(version.encode());
 

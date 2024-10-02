@@ -33,16 +33,15 @@ use sc_client_api::{Backend as BackendT, BlockBackend, ExecutorProvider, Finaliz
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{
-    BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
-};
+use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
 use sc_domains::ExtensionsFactory as DomainsExtensionFactory;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::service::traits::NetworkService;
 use sc_network::{multiaddr, NetworkWorker, NotificationMetrics, NotificationService};
 use sc_service::config::{
-    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, OffchainWorkerConfig,
-    RpcBatchRequestConfig, WasmExecutionMethod, WasmtimeInstantiationStrategy,
+    DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
+    OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, WasmExecutionMethod,
+    WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
@@ -159,27 +158,33 @@ pub fn node_config(
         state_pruning: Default::default(),
         blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: Box::new(spec),
-        wasm_method: WasmExecutionMethod::Compiled {
-            instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+        executor: ExecutorConfiguration {
+            wasm_method: WasmExecutionMethod::Compiled {
+                instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+            },
+            max_runtime_instances: 8,
+            default_heap_pages: None,
+            runtime_cache_size: 2,
         },
         wasm_runtime_overrides: Default::default(),
-        rpc_addr: None,
-        rpc_max_request_size: 0,
-        rpc_max_response_size: 0,
-        rpc_id_provider: None,
-        rpc_max_subs_per_conn: 0,
-        rpc_port: 0,
-        rpc_message_buffer_capacity: 0,
-        rpc_batch_config: RpcBatchRequestConfig::Disabled,
-        rpc_max_connections: 0,
-        rpc_cors: None,
-        rpc_methods: Default::default(),
-        rpc_rate_limit: None,
-        rpc_rate_limit_whitelisted_ips: vec![],
-        rpc_rate_limit_trust_proxy_headers: false,
+        rpc: RpcConfiguration {
+            addr: None,
+            max_request_size: 0,
+            max_response_size: 0,
+            id_provider: None,
+            max_subs_per_conn: 0,
+            port: 0,
+            message_buffer_capacity: 0,
+            batch_config: RpcBatchRequestConfig::Disabled,
+            max_connections: 0,
+            cors: None,
+            methods: Default::default(),
+            rate_limit: None,
+            rate_limit_whitelisted_ips: vec![],
+            rate_limit_trust_proxy_headers: false,
+        },
         prometheus_config: None,
         telemetry_endpoints: None,
-        default_heap_pages: None,
         offchain_worker: OffchainWorkerConfig {
             enabled: false,
             indexing_enabled: true,
@@ -189,12 +194,9 @@ pub fn node_config(
         dev_key_seed: Some(key_seed),
         tracing_targets: None,
         tracing_receiver: Default::default(),
-        max_runtime_instances: 8,
         announce_block: true,
         data_path: base_path.path().into(),
         base_path,
-        informant_output_format: Default::default(),
-        runtime_cache_size: 2,
     }
 }
 
@@ -407,13 +409,13 @@ impl MockConsensusNode {
         );
         let _enter = span.enter();
 
-        let executor = sc_service::new_wasm_executor(&config);
+        let executor = sc_service::new_wasm_executor(&config.executor);
 
         let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
-        let domain_executor = Arc::new(sc_service::new_wasm_executor(&config));
+        let domain_executor = Arc::new(sc_service::new_wasm_executor(&config.executor));
         let client = Arc::new(client);
         let mock_pot_verifier = Arc::new(MockPotVerfier::default());
         let chain_constants = client
@@ -447,10 +449,11 @@ impl MockConsensusNode {
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
-        let mut net_config =
-            sc_network::config::FullNetworkConfiguration::<_, _, NetworkWorker<_, _>>::new(
-                &config.network,
-            );
+        let mut net_config = sc_network::config::FullNetworkConfiguration::<
+            _,
+            _,
+            NetworkWorker<_, _>,
+        >::new(&config.network, None);
         let (xdm_gossip_notification_config, xdm_gossip_notification_service) =
             xdm_gossip_peers_set_config();
         net_config.add_notification_protocol(xdm_gossip_notification_config);
@@ -467,7 +470,7 @@ impl MockConsensusNode {
                     &task_manager.spawn_essential_handle(),
                 ),
                 block_announce_validator_builder: None,
-                warp_sync_params: None,
+                warp_sync_config: None,
                 block_relay: None,
                 metrics: NotificationMetrics::new(None),
             })
@@ -479,7 +482,7 @@ impl MockConsensusNode {
             keystore: keystore_container.keystore(),
             task_manager: &mut task_manager,
             transaction_pool: transaction_pool.clone(),
-            rpc_builder: Box::new(|_, _| Ok(RpcModule::new(()))),
+            rpc_builder: Box::new(|_| Ok(RpcModule::new(()))),
             backend: backend.clone(),
             system_rpc_tx,
             config,
@@ -1108,7 +1111,7 @@ where
 {
     BasicQueue::new(
         MockVerifier::default(),
-        SharedBlockImport::new(block_import),
+        Box::new(block_import),
         None,
         spawner,
         None,
@@ -1191,7 +1194,7 @@ where
     type Error = ConsensusError;
 
     async fn import_block(
-        &mut self,
+        &self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let block_number = *block.header.number();

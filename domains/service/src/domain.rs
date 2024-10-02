@@ -13,10 +13,10 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
     ProofProvider, UsageProvider,
 };
-use sc_consensus::SharedBlockImport;
+use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
-use sc_network::{NetworkPeers, NotificationMetrics};
-use sc_rpc_api::DenyUnsafe;
+use sc_network::service::traits::NetworkService;
+use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -99,7 +99,7 @@ where
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network service.
-    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network_service: Arc<dyn NetworkService>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
@@ -135,7 +135,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             Arc<RuntimeExecutor>,
-            SharedBlockImport<Block>,
+            BoxBlockImport<Block>,
         ),
     >,
     sc_service::Error,
@@ -170,7 +170,7 @@ where
         })
         .transpose()?;
 
-    let executor = sc_service::new_wasm_executor(config);
+    let executor = sc_service::new_wasm_executor(&config.executor);
 
     let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
         config,
@@ -216,25 +216,28 @@ where
         client.usage_info().chain.finalized_hash,
     ));
 
-    let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
-        block_import_provider,
-        client.clone(),
-    ));
-    let import_queue = domain_client_consensus_relay_chain::import_queue(
-        block_import.clone(),
+    let import_queue = BasicQueue::new(
+        domain_client_consensus_relay_chain::Verifier::default(),
+        Box::new(block_import_provider.block_import(client.clone())),
+        None,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-    )?;
+    );
 
     let params = PartialComponents {
         backend,
-        client,
+        client: client.clone(),
         import_queue,
         keystore_container,
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor, block_import),
+        other: (
+            telemetry,
+            telemetry_worker_handle,
+            executor,
+            Box::new(block_import_provider.block_import(client)) as Box<_>,
+        ),
     };
 
     Ok(params)
@@ -366,43 +369,41 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let net_config = sc_network::config::FullNetworkConfiguration::new(&domain_config.network);
+    let net_config = sc_network::config::FullNetworkConfiguration::<_, _, NetworkWorker<_, _>>::new(
+        &domain_config.network,
+        domain_config
+            .prometheus_config
+            .as_ref()
+            .map(|cfg| cfg.registry.clone()),
+    );
 
-    let (
-        network_service,
-        system_rpc_tx,
-        tx_handler_controller,
-        network_starter,
-        sync_service,
-        _block_downloader,
-    ) = crate::build_network(BuildNetworkParams {
-        config: &domain_config,
-        net_config,
-        client: client.clone(),
-        transaction_pool: transaction_pool.clone(),
-        spawn_handle: task_manager.spawn_handle(),
-        import_queue: params.import_queue,
-        // TODO: we might want to re-enable this some day.
-        block_announce_validator_builder: None,
-        warp_sync_params: None,
-        block_relay: None,
-        metrics: NotificationMetrics::new(
-            domain_config
-                .prometheus_config
-                .as_ref()
-                .map(|cfg| &cfg.registry),
-        ),
-    })?;
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
+        sc_service::build_network(BuildNetworkParams {
+            config: &domain_config,
+            net_config,
+            client: client.clone(),
+            transaction_pool: transaction_pool.clone(),
+            spawn_handle: task_manager.spawn_handle(),
+            import_queue: params.import_queue,
+            // TODO: we might want to re-enable this some day.
+            block_announce_validator_builder: None,
+            warp_sync_config: None,
+            block_relay: None,
+            metrics: NotificationMetrics::new(
+                domain_config
+                    .prometheus_config
+                    .as_ref()
+                    .map(|cfg| &cfg.registry),
+            ),
+        })?;
 
     let is_authority = domain_config.role.is_authority();
-    domain_config.rpc_id_provider = provider.rpc_id();
+    domain_config.rpc.id_provider = provider.rpc_id();
     let rpc_builder = {
         let deps = crate::rpc::FullDeps {
             client: client.clone(),
             pool: transaction_pool.clone(),
             graph: transaction_pool.pool().clone(),
-            chain_spec: domain_config.chain_spec.cloned_box(),
-            deny_unsafe: DenyUnsafe::Yes,
             network: network_service.clone(),
             sync: sync_service.clone(),
             is_authority,
@@ -424,7 +425,7 @@ where
 
         let spawn_essential = task_manager.spawn_essential_handle();
         let rpc_deps = provider.deps(deps)?;
-        Box::new(move |_, subscription_task_executor| {
+        Box::new(move |subscription_task_executor| {
             let spawn_essential = spawn_essential.clone();
             provider
                 .rpc_builder(
@@ -479,7 +480,7 @@ where
             bundle_sender: Arc::new(bundle_sender),
             operator_streams,
             domain_confirmation_depth,
-            block_import,
+            block_import: Arc::new(block_import),
             skip_empty_bundle_production,
             skip_out_of_order_slot,
         },
