@@ -42,13 +42,16 @@ mod tests;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::crypto::kzg::Witness;
 use crate::crypto::{blake3_hash, blake3_hash_list, Scalar};
-use crate::pieces::{ChunkWitness, PieceOffset, Record, RecordCommitment, RecordWitness};
+use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
 use crate::pos::PosProof;
 use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -324,6 +327,89 @@ impl AsRef<[u8]> for RewardSignature {
 impl RewardSignature {
     /// Reward signature size in bytes
     pub const SIZE: usize = 64;
+}
+
+/// Witness for chunk contained within a record.
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ChunkWitness(
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
+);
+
+impl Default for ChunkWitness {
+    #[inline]
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for ChunkWitness {
+    type Error = TryFromSliceError;
+
+    #[inline]
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
+    }
+}
+
+impl AsRef<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl ChunkWitness {
+    /// Size of chunk witness in bytes.
+    pub const SIZE: usize = 48;
+}
+
+impl From<Witness> for ChunkWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        Self(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness.0)
+    }
+}
+
+impl TryFrom<ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(witness.0)
+    }
 }
 
 /// Farmer solution for slot challenge.
