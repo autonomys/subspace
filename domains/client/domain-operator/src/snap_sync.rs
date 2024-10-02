@@ -24,7 +24,7 @@ use subspace_service::mmr_sync;
 use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use subspace_service::sync_from_dsn::{wait_for_block_import, wait_for_block_import_ext};
 use tokio::time::sleep;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, Instrument};
 
 pub struct SyncParams<DomainClient, CClient, NR, Block, CBlock, CNR, AS>
 where
@@ -58,46 +58,21 @@ async fn get_last_confirmed_block<Block: BlockT>(
         debug!(%block_number, "Gathering peers for last confirmed block request.");
         let mut tried_peers = HashSet::<PeerId>::new();
 
-        let mut current_get_peers_attempt = 0usize;
-        let current_peer_id = loop {
-            current_get_peers_attempt += 1;
-
-            if current_get_peers_attempt > MAX_GET_PEERS_ATTEMPT_NUMBER {
-                return Err(sp_blockchain::Error::Application(
-                    "Got empty state blocks collection for domain snap sync".into(),
-                ));
+        let current_peer_id = match get_currently_connected_peer(
+            sync_service,
+            &mut tried_peers,
+            LOOP_PAUSE,
+            MAX_GET_PEERS_ATTEMPT_NUMBER,
+        )
+        .instrument(tracing::info_span!("last confirmed block"))
+        .await
+        {
+            Ok(peer_id) => peer_id,
+            Err(err) => {
+                debug!(?err, "Getting peers for the last confirmed block failed");
+                continue;
             }
-            let all_connected_peers = sync_service
-                .peers_info()
-                .await
-                .expect("Network service must be available.");
-
-            debug!(
-                %current_get_peers_attempt,
-                ?all_connected_peers,
-                "Get last confirmed block: all connected peers"
-            );
-
-            let connected_full_peers = all_connected_peers
-                .iter()
-                .filter_map(|(peer_id, info)| (info.roles.is_full()).then_some(*peer_id))
-                .collect::<Vec<_>>();
-
-            debug!(
-                %current_get_peers_attempt,
-                ?tried_peers,
-                "Get last confirmed block: sync peers: {:?}", connected_full_peers
-            );
-
-            let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
-
-            if let Some(peer_id) = active_peers_set.difference(&tried_peers).next().cloned() {
-                break peer_id;
-            }
-
-            sleep(LOOP_PAUSE).await;
         };
-
         tried_peers.insert(current_peer_id);
 
         let id = {
@@ -403,48 +378,21 @@ where
         debug!(%block_number, "Gathering peers for state sync.");
         let mut tried_peers = HashSet::<PeerId>::new();
 
-        let mut current_get_peers_attempt = 0usize;
-        let current_peer_id = loop {
-            current_get_peers_attempt += 1;
-
-            if current_get_peers_attempt > MAX_GET_PEERS_ATTEMPT_NUMBER {
-                return Err(sp_blockchain::Error::Application(
-                    "Got empty state blocks collection for domain snap sync".into(),
-                ));
+        let current_peer_id = match get_currently_connected_peer(
+            sync_service,
+            &mut tried_peers,
+            LOOP_PAUSE,
+            MAX_GET_PEERS_ATTEMPT_NUMBER,
+        )
+        .instrument(tracing::info_span!("download state"))
+        .await
+        {
+            Ok(peer_id) => peer_id,
+            Err(err) => {
+                debug!(?err, "Getting peers for state downloading failed");
+                continue;
             }
-            let all_connected_peers = sync_service
-                .peers_info()
-                .await
-                .expect("Network service must be available.");
-
-            debug!(
-                %block_number,
-                %current_get_peers_attempt,
-                ?all_connected_peers,
-                "Download state: all connected peers"
-            );
-
-            let connected_full_peers = all_connected_peers
-                .iter()
-                .filter_map(|(peer_id, info)| (info.roles.is_full()).then_some(*peer_id))
-                .collect::<Vec<_>>();
-
-            debug!(
-                current_get_peers_attempt,
-                %block_number,
-                ?tried_peers,
-                "Download state: sync peers: {:?}", connected_full_peers
-            );
-
-            let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
-
-            if let Some(peer_id) = active_peers_set.difference(&tried_peers).next().cloned() {
-                break peer_id;
-            }
-
-            sleep(LOOP_PAUSE).await;
         };
-
         tried_peers.insert(current_peer_id);
 
         let sync_engine = SnapSyncingEngine::<Block, NR>::new(
@@ -478,4 +426,49 @@ where
     Err(sp_blockchain::Error::Backend(
         "All snap sync retries failed".into(),
     ))
+}
+
+async fn get_currently_connected_peer<Block>(
+    sync_service: &SyncingService<Block>,
+    tried_peers: &mut HashSet<PeerId>,
+    loop_pause: Duration,
+    max_attempts: usize,
+) -> Result<PeerId, sp_blockchain::Error>
+where
+    Block: BlockT,
+{
+    for current_attempt in 0..max_attempts {
+        let all_connected_peers = sync_service
+            .peers_info()
+            .await
+            .expect("Network service must be available.");
+
+        debug!(
+            %current_attempt,
+            ?all_connected_peers,
+            "Connected peers"
+        );
+
+        let connected_full_peers = all_connected_peers
+            .iter()
+            .filter_map(|(peer_id, info)| (info.roles.is_full()).then_some(*peer_id))
+            .collect::<Vec<_>>();
+
+        debug!(
+            %current_attempt,
+            ?tried_peers,
+            "Sync peers: {:?}", connected_full_peers
+        );
+
+        let active_peers_set = HashSet::from_iter(connected_full_peers.into_iter());
+
+        if let Some(peer_id) = active_peers_set.difference(tried_peers).next().cloned() {
+            tried_peers.insert(peer_id);
+            return Ok(peer_id);
+        }
+
+        sleep(loop_pause).await;
+    }
+
+    Err(sp_blockchain::Error::Backend("All retries failed".into()))
 }
