@@ -289,6 +289,7 @@ pub fn create_archived_segment() -> &'static NewArchivedSegment {
         rand::thread_rng().fill(block.as_mut_slice());
         archiver
             .add_block(block, Default::default(), true)
+            .archived_segments
             .into_iter()
             .next()
             .unwrap()

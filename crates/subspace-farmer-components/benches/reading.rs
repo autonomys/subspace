@@ -63,6 +63,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             Default::default(),
             true,
         )
+        .archived_segments
         .into_iter()
         .next()
         .unwrap()

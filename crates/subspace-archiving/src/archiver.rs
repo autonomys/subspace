@@ -30,9 +30,7 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::hashes::{blake3_254_hash_to_scalar, Blake3Hash};
-use subspace_core_primitives::objects::{
-    BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
-};
+use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, GlobalObject};
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
@@ -169,42 +167,26 @@ pub enum SegmentItem {
     ParentSegmentHeader(SegmentHeader),
 }
 
-/// Newly archived segment as a combination of segment header hash, segment index and corresponding
-/// archived history segment containing pieces
+/// Newly archived segment as a combination of segment header and corresponding archived history
+/// segment containing pieces
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NewArchivedSegment {
     /// Segment header
     pub segment_header: SegmentHeader,
     /// Segment of archived history containing pieces
     pub pieces: ArchivedHistorySegment,
-    /// Mappings for objects stored in corresponding pieces.
-    ///
-    /// NOTE: Only half (source pieces) will have corresponding mapping item in this `Vec`.
-    pub object_mapping: Vec<PieceObjectMapping>,
 }
 
-impl NewArchivedSegment {
-    /// Returns all the object mappings in this archived segment as a lazy iterator.
-    pub fn global_object_mappings(&self) -> impl Iterator<Item = GlobalObject> + 'static {
-        // Save memory by only returning the necessary parts of NewArchivedSegment
-        let object_mapping = self.object_mapping.clone();
-        let piece_indexes = self
-            .segment_header
-            .segment_index()
-            .segment_piece_indexes_source_first();
+/// The outcome of adding a block to the archiver.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ArchiveBlockOutcome {
+    /// The new segments archived after adding the block.
+    /// There can be zero or more segments created after each block.
+    pub archived_segments: Vec<NewArchivedSegment>,
 
-        // Iterate through the object mapping vector for each piece
-        object_mapping.into_iter().zip(piece_indexes).flat_map(
-            move |(piece_mappings, piece_index)| {
-                // And then through each individual object mapping in the piece
-                let piece_mappings = piece_mappings.objects().to_vec();
-
-                piece_mappings
-                    .into_iter()
-                    .map(move |piece_object| GlobalObject::new(piece_index, &piece_object))
-            },
-        )
-    }
+    /// The new object mappings for those segments.
+    /// There can be zero or more mappings created after each block.
+    pub object_mapping: Vec<GlobalObject>,
 }
 
 /// Archiver instantiation error
@@ -355,7 +337,7 @@ impl Archiver {
         bytes: Vec<u8>,
         object_mapping: BlockObjectMapping,
         incremental: bool,
-    ) -> Vec<NewArchivedSegment> {
+    ) -> ArchiveBlockOutcome {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block {
             bytes,
@@ -363,12 +345,18 @@ impl Archiver {
         });
 
         let mut archived_segments = Vec::new();
+        let mut object_mapping = Vec::new();
 
         while let Some(segment) = self.produce_segment(incremental) {
-            archived_segments.push(self.produce_archived_segment(segment));
+            let (archived_segment, segment_object_mapping) = self.produce_archived_segment(segment);
+            archived_segments.push(archived_segment);
+            object_mapping.extend(segment_object_mapping);
         }
 
-        archived_segments
+        ArchiveBlockOutcome {
+            archived_segments,
+            object_mapping,
+        }
     }
 
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
@@ -610,12 +598,16 @@ impl Archiver {
         Some(segment)
     }
 
-    // Take segment as an input, apply necessary transformations and produce archived segment
-    fn produce_archived_segment(&mut self, segment: Segment) -> NewArchivedSegment {
+    /// Take segment as an input, apply necessary transformations and produce archived segment
+    fn produce_archived_segment(
+        &mut self,
+        segment: Segment,
+    ) -> (NewArchivedSegment, Vec<GlobalObject>) {
         // Create mappings
         let object_mapping = {
-            let mut corrected_object_mapping =
-                vec![PieceObjectMapping::default(); RecordedHistorySegment::NUM_RAW_RECORDS];
+            let mut corrected_object_mapping = Vec::new();
+            let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
+                [..RecordedHistorySegment::NUM_RAW_RECORDS];
             let Segment::V0 { items } = &segment;
             // `+1` corresponds to enum variant encoding
             let mut base_offset_in_segment = 1;
@@ -648,14 +640,12 @@ impl Archiver {
                                 (offset_in_segment % RawRecord::SIZE).try_into().expect(
                                     "Offset within piece should always fit in 32-bit integer; qed",
                                 );
-                            if let Some(piece_object_mapping) = corrected_object_mapping
-                                .get_mut(offset_in_segment / RawRecord::SIZE)
-                            {
-                                piece_object_mapping.objects_mut().push(PieceObject {
-                                    hash: block_object.hash,
-                                    offset: raw_piece_offset,
-                                });
-                            }
+                            corrected_object_mapping.push(GlobalObject {
+                                hash: block_object.hash,
+                                piece_index: source_piece_indexes
+                                    [offset_in_segment / RawRecord::SIZE],
+                                offset: raw_piece_offset,
+                            });
                         }
                     }
                     SegmentItem::ParentSegmentHeader(_) => {
@@ -833,10 +823,12 @@ impl Archiver {
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
-        NewArchivedSegment {
-            segment_header,
-            pieces: pieces.to_shared(),
+        (
+            NewArchivedSegment {
+                segment_header,
+                pieces: pieces.to_shared(),
+            },
             object_mapping,
-        }
+        )
     }
 }

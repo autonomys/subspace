@@ -36,7 +36,7 @@ pub mod slot_worker;
 mod tests;
 pub mod verifier;
 
-use crate::archiver::ArchivedSegmentNotification;
+use crate::archiver::{ArchivedSegmentNotification, ObjectMappingNotification};
 use crate::block_import::BlockImportingNotification;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
@@ -52,6 +52,8 @@ pub struct SubspaceLink<Block: BlockT> {
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
+    object_mapping_notification_sender: SubspaceNotificationSender<ObjectMappingNotification>,
+    object_mapping_notification_stream: SubspaceNotificationStream<ObjectMappingNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     block_importing_notification_sender:
@@ -70,6 +72,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
             notification::channel("subspace_new_slot_notification_stream");
         let (reward_signing_notification_sender, reward_signing_notification_stream) =
             notification::channel("subspace_reward_signing_notification_stream");
+        let (object_mapping_notification_sender, object_mapping_notification_stream) =
+            notification::channel("subspace_object_mapping_notification_stream");
         let (archived_segment_notification_sender, archived_segment_notification_stream) =
             notification::channel("subspace_archived_segment_notification_stream");
         let (block_importing_notification_sender, block_importing_notification_stream) =
@@ -80,6 +84,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
             new_slot_notification_stream,
             reward_signing_notification_sender,
             reward_signing_notification_stream,
+            object_mapping_notification_sender,
+            object_mapping_notification_stream,
             archived_segment_notification_sender,
             archived_segment_notification_stream,
             block_importing_notification_sender,
@@ -101,6 +107,13 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self,
     ) -> SubspaceNotificationStream<RewardSigningNotification> {
         self.reward_signing_notification_stream.clone()
+    }
+
+    /// Get stream with notifications about object mappings
+    pub fn object_mapping_notification_stream(
+        &self,
+    ) -> SubspaceNotificationStream<ObjectMappingNotification> {
+        self.object_mapping_notification_stream.clone()
     }
 
     /// Get stream with notifications about archived segment creation

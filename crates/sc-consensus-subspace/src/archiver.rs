@@ -76,7 +76,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::objects::{BlockObjectMapping, GlobalObject};
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
@@ -345,6 +345,17 @@ pub struct ArchivedSegmentNotification {
     pub acknowledgement_sender: TracingUnboundedSender<()>,
 }
 
+/// Notification with incrementally generated object mappings for a block (and any previous block
+/// continuation)
+#[derive(Debug, Clone)]
+pub struct ObjectMappingNotification {
+    /// Incremental object mappings for a block (and any previous block continuation).
+    ///
+    /// The archived data won't be available in pieces until the entire segment is full and archived.
+    pub object_mapping: Vec<GlobalObject>,
+    // TODO: add an acknowledgement_sender for backpressure if needed
+}
+
 fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
     segment_headers_store: &SegmentHeadersStore<AS>,
@@ -432,8 +443,11 @@ where
 
     let encoded_block = encode_block(signed_block);
 
-    let new_archived_segment = Archiver::new(kzg, erasure_coding)
-        .add_block(encoded_block, block_object_mappings, false)
+    // There are no mappings in the genesis block, so they can be ignored
+    let block_outcome =
+        Archiver::new(kzg, erasure_coding).add_block(encoded_block, block_object_mappings, false);
+    let new_archived_segment = block_outcome
+        .archived_segments
         .into_iter()
         .next()
         .expect("Genesis block always results in exactly one archived segment; qed");
@@ -671,9 +685,17 @@ where
                     encoded_block.len() as f32 / 1024.0
                 );
 
-                let archived_segments =
-                    archiver.add_block(encoded_block, block_object_mappings, false);
-                let new_segment_headers: Vec<SegmentHeader> = archived_segments
+                let block_outcome = archiver.add_block(encoded_block, block_object_mappings, false);
+                // RPC clients only want these mappings in full mapping mode
+                // TODO: turn this into a command-line argument named `--full-mapping`
+                if cfg!(feature = "full-archive") {
+                    send_object_mapping_notification(
+                        &subspace_link.object_mapping_notification_sender,
+                        block_outcome.object_mapping,
+                    );
+                }
+                let new_segment_headers: Vec<SegmentHeader> = block_outcome
+                    .archived_segments
                     .iter()
                     .map(|archived_segment| archived_segment.segment_header)
                     .collect();
@@ -753,6 +775,9 @@ fn finalize_block<Block, Backend, Client>(
 /// processing, which is necessary for ensuring that when the next block is imported, inherents will
 /// contain segment header of newly archived block (must happen exactly in the next block).
 ///
+/// When a block with object mappings is produced, notification ([`SubspaceLink::object_mapping_notification_stream`])
+/// will be sent.
+///
 /// Once segment header is archived, notification ([`SubspaceLink::archived_segment_notification_stream`])
 /// will be sent and archiver will be paused until all receivers have provided an acknowledgement
 /// for it.
@@ -811,9 +836,6 @@ where
         } = archiver;
         let (mut best_archived_block_hash, mut best_archived_block_number) = best_archived_block;
 
-        let archived_segment_notification_sender =
-            subspace_link.archived_segment_notification_sender.clone();
-
         while let Some(block_importing_notification) =
             block_importing_notification_stream.next().await
         {
@@ -842,7 +864,7 @@ where
                 "Checking if block needs to be skipped"
             );
 
-            // TODO: replace this cfg! with a CLI option
+            // TODO: turn this into a command-line argument named `--full-mapping`
             let skip_last_archived_blocks = last_archived_block_number > block_number_to_archive
                 && !cfg!(feature = "full-archive");
             if best_archived_block_number >= block_number_to_archive || skip_last_archived_blocks {
@@ -902,7 +924,8 @@ where
                 &*client,
                 &sync_oracle,
                 telemetry.clone(),
-                archived_segment_notification_sender.clone(),
+                subspace_link.object_mapping_notification_sender.clone(),
+                subspace_link.archived_segment_notification_sender.clone(),
                 best_archived_block_hash,
                 block_number_to_archive,
             )
@@ -921,6 +944,7 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     client: &Client,
     sync_oracle: &SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
+    object_mapping_notification_sender: SubspaceNotificationSender<ObjectMappingNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     best_archived_block_hash: Block::Hash,
     block_number_to_archive: NumberFor<Block>,
@@ -985,11 +1009,16 @@ where
     );
 
     let mut new_segment_headers = Vec::new();
-    for archived_segment in archiver.add_block(
+    let block_outcome = archiver.add_block(
         encoded_block,
         block_object_mappings,
         !sync_oracle.is_major_syncing(),
-    ) {
+    );
+    send_object_mapping_notification(
+        &object_mapping_notification_sender,
+        block_outcome.object_mapping,
+    );
+    for archived_segment in block_outcome.archived_segments {
         let segment_header = archived_segment.segment_header;
 
         segment_headers_store.add_segment_headers(slice::from_ref(&segment_header))?;
@@ -1029,6 +1058,15 @@ where
     }
 
     Ok((block_hash_to_archive, block_number_to_archive))
+}
+
+fn send_object_mapping_notification(
+    object_mapping_notification_sender: &SubspaceNotificationSender<ObjectMappingNotification>,
+    object_mapping: Vec<GlobalObject>,
+) {
+    let object_mapping_notification = ObjectMappingNotification { object_mapping };
+
+    object_mapping_notification_sender.notify(move || object_mapping_notification);
 }
 
 async fn send_archived_segment_notification(

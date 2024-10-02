@@ -28,7 +28,8 @@ use jsonrpsee::{Extensions, PendingSubscriptionSink};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::archiver::{
-    recreate_genesis_segment, ArchivedSegmentNotification, SegmentHeadersStore,
+    recreate_genesis_segment, ArchivedSegmentNotification, ObjectMappingNotification,
+    SegmentHeadersStore,
 };
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
@@ -171,15 +172,15 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_lastSegmentHeaders")]
     async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
-    /// Block/transaction archived object mappings subscription
+    /// Block/transaction object mappings subscription
     #[subscription(
-        name = "subspace_subscribeArchivedObjectMappings" => "subspace_archived_object_mappings",
-        unsubscribe = "subspace_unsubscribeArchivedObjectMappings",
+        name = "subspace_subscribeObjectMappings" => "subspace_object_mappings",
+        unsubscribe = "subspace_unsubscribeObjectMappings",
         item = GlobalObjectMapping,
     )]
-    fn subscribe_archived_object_mappings(&self);
+    fn subscribe_object_mappings(&self);
 
-    /// Filtered block/transaction archived object mappings subscription
+    /// Filtered block/transaction object mappings subscription
     #[subscription(
         name = "subspace_subscribeFilteredObjectMappings" => "subspace_filtered_object_mappings",
         unsubscribe = "subspace_unsubscribeFilteredObjectMappings",
@@ -234,6 +235,8 @@ where
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// Reward signing notification stream
     pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
+    /// Archived mapping notification stream
+    pub object_mapping_notification_stream: SubspaceNotificationStream<ObjectMappingNotification>,
     /// Archived segment notification stream
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -259,6 +262,7 @@ where
     subscription_executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
+    object_mapping_notification_stream: SubspaceNotificationStream<ObjectMappingNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     #[allow(clippy::type_complexity)]
     solution_response_senders: Arc<Mutex<LruMap<SlotNumber, mpsc::Sender<Solution<PublicKey>>>>>,
@@ -316,6 +320,7 @@ where
             subscription_executor: config.subscription_executor,
             new_slot_notification_stream: config.new_slot_notification_stream,
             reward_signing_notification_stream: config.reward_signing_notification_stream,
+            object_mapping_notification_stream: config.object_mapping_notification_stream,
             archived_segment_notification_stream: config.archived_segment_notification_stream,
             solution_response_senders: Arc::new(Mutex::new(LruMap::new(ByLength::new(
                 solution_response_senders_capacity,
@@ -841,20 +846,14 @@ where
     // - the number of object mappings in each segment can be very large (hundreds or thousands).
     //   To avoid RPC connection failures, limit the number of mappings returned in each response,
     //   or the number of in-flight responses.
-    fn subscribe_archived_object_mappings(&self, pending: PendingSubscriptionSink) {
+    fn subscribe_object_mappings(&self, pending: PendingSubscriptionSink) {
         // TODO: deny unsafe subscriptions?
 
-        // The genesis segment isn't included in this stream. In other methods we recreate is as the first segment,
-        // but there aren't any mappings in it, so we don't need to recreate it as part of this subscription.
-
         let mapping_stream = self
-            .archived_segment_notification_stream
+            .object_mapping_notification_stream
             .subscribe()
-            .flat_map(|archived_segment_notification| {
-                let objects = archived_segment_notification
-                    .archived_segment
-                    .global_object_mappings();
-
+            .flat_map(|object_mapping_notification| {
+                let objects = object_mapping_notification.object_mapping;
                 stream::iter(objects)
             })
             .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
@@ -902,14 +901,14 @@ where
         let hash_count = hashes.len();
 
         // The genesis segment isn't included in this stream, see
-        // `subscribe_archived_object_mappings` for details.
+        // `subscribe_object_mappings` for details.
         let mapping_stream = self
-            .archived_segment_notification_stream
+            .object_mapping_notification_stream
             .subscribe()
-            .flat_map(move |archived_segment_notification| {
-                let objects = archived_segment_notification
-                    .archived_segment
-                    .global_object_mappings()
+            .flat_map(move |object_mapping_notification| {
+                let objects = object_mapping_notification
+                    .object_mapping
+                    .into_iter()
                     .filter(|object| hashes.remove(&object.hash))
                     .collect::<Vec<_>>();
 
