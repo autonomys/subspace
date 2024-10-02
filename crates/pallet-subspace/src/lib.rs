@@ -57,14 +57,14 @@ use sp_runtime::transaction_validity::{
 };
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::PieceOffset;
 use subspace_core_primitives::sectors::{SectorId, SectorIndex};
 use subspace_core_primitives::segments::{
     ArchivedHistorySegment, HistorySize, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::{
-    BlockHash, PublicKey, RewardSignature, SlotNumber, SolutionRange, REWARD_SIGNING_CONTEXT,
+    BlockHash, PublicKey, RewardSignature, ScalarBytes, SlotNumber, SolutionRange,
+    REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
@@ -112,13 +112,12 @@ pub mod pallet {
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
-    use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::pieces::PieceOffset;
     use subspace_core_primitives::pot::PotCheckpoints;
     use subspace_core_primitives::sectors::SectorIndex;
     use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
     use subspace_core_primitives::{
-        Blake3Hash, PublicKey, Randomness, RewardSignature, SolutionRange,
+        Blake3Hash, PublicKey, Randomness, RewardSignature, ScalarBytes, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -437,7 +436,7 @@ pub mod pallet {
     /// Parent block author information.
     #[pallet::storage]
     pub(super) type ParentBlockAuthorInfo<T> =
-        StorageValue<_, (PublicKey, SectorIndex, PieceOffset, Scalar, Slot)>;
+        StorageValue<_, (PublicKey, SectorIndex, PieceOffset, ScalarBytes, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -455,7 +454,7 @@ pub mod pallet {
             PublicKey,
             SectorIndex,
             PieceOffset,
-            Scalar,
+            ScalarBytes,
             Slot,
             Option<T::AccountId>,
         ),
@@ -466,7 +465,7 @@ pub mod pallet {
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (PublicKey, SectorIndex, PieceOffset, ScalarBytes, Slot),
             (Option<T::AccountId>, RewardSignature),
         >,
         ValueQuery,
@@ -477,7 +476,7 @@ pub mod pallet {
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (PublicKey, SectorIndex, PieceOffset, ScalarBytes, Slot),
             (Option<T::AccountId>, RewardSignature),
         >,
     >;
@@ -846,7 +845,7 @@ impl<T: Config> Pallet<T> {
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (PublicKey, SectorIndex, PieceOffset, Scalar, Slot),
+            (PublicKey, SectorIndex, PieceOffset, ScalarBytes, Slot),
             (Option<T::AccountId>, RewardSignature),
         >::default());
 
@@ -920,7 +919,7 @@ impl<T: Config> Pallet<T> {
 
             if (block_number % pot_entropy_injection_interval).is_zero() {
                 let current_block_entropy = derive_pot_entropy(
-                    pre_digest.solution().chunk,
+                    &pre_digest.solution().chunk,
                     pre_digest.pot_info().proof_of_time(),
                 );
                 // Collect entropy every `T::PotEntropyInjectionInterval` blocks

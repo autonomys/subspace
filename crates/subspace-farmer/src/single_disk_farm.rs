@@ -66,12 +66,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, fs, io, mem};
+use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
-use subspace_core_primitives::{Blake3Hash, PublicKey};
+use subspace_core_primitives::{Blake3Hash, PublicKey, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
@@ -2464,9 +2464,9 @@ where
         {
             let start = Instant::now();
             (0..Record::NUM_CHUNKS).into_par_iter().try_for_each(|_| {
-                let offset = thread_rng().gen_range(0_usize..sector_size / Scalar::FULL_BYTES)
-                    * Scalar::FULL_BYTES;
-                farming_plot.read_at(&mut [0; Scalar::FULL_BYTES], offset as u64)
+                let offset = thread_rng().gen_range(0_usize..sector_size / ScalarBytes::FULL_BYTES)
+                    * ScalarBytes::FULL_BYTES;
+                farming_plot.read_at(&mut [0; ScalarBytes::FULL_BYTES], offset as u64)
             })?;
             let elapsed = start.elapsed();
 

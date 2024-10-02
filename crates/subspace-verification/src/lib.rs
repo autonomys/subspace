@@ -20,23 +20,28 @@
 #![feature(array_chunks, portable_simd)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 use subspace_archiving::archiver;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar, Witness};
 use subspace_core_primitives::crypto::{
-    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
+    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key,
 };
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::sectors::{SectorId, SectorSlotChallenge};
 use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, SlotNumber, Solution,
-    SolutionRange,
+    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
+    Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -83,6 +88,9 @@ pub enum Error {
     /// Invalid audit chunk offset
     #[cfg_attr(feature = "thiserror", error("Invalid audit chunk offset"))]
     InvalidAuditChunkOffset,
+    /// Invalid chunk
+    #[cfg_attr(feature = "thiserror", error("Invalid chunk: {0}"))]
+    InvalidChunk(String),
     /// Invalid chunk witness
     #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
     InvalidChunkWitness,
@@ -212,9 +220,8 @@ where
         return Err(Error::InvalidProofOfSpace);
     };
 
-    let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-        ^ Simd::from(*solution.proof_of_space.hash()))
-    .to_array();
+    let masked_chunk =
+        (Simd::from(*solution.chunk) ^ Simd::from(*solution.proof_of_space.hash())).to_array();
 
     let solution_distance =
         calculate_solution_distance(&global_challenge, &masked_chunk, &sector_slot_challenge);
@@ -233,7 +240,7 @@ where
             .map_err(|_error| Error::InvalidChunkWitness)?,
         Record::NUM_S_BUCKETS,
         s_bucket_audit_index.into(),
-        &solution.chunk,
+        &Scalar::try_from(solution.chunk).map_err(Error::InvalidChunk)?,
         &Witness::try_from(solution.chunk_witness).map_err(|_error| Error::InvalidChunkWitness)?,
     ) {
         return Err(Error::InvalidChunkWitness);
@@ -290,7 +297,10 @@ where
         // Check that piece is part of the blockchain history
         if !archiver::is_record_commitment_hash_valid(
             kzg,
-            &blake3_254_hash_to_scalar(solution.record_commitment.as_ref()),
+            &Scalar::try_from(blake3_254_hash_to_scalar(
+                solution.record_commitment.as_ref(),
+            ))
+            .expect("Create correctly by dedicated hash function; qed"),
             segment_commitment,
             &solution.record_witness,
             position,
@@ -303,8 +313,9 @@ where
 }
 
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.
-pub fn derive_pot_entropy(chunk: Scalar, proof_of_time: PotOutput) -> Blake3Hash {
-    blake3_hash_list(&[&chunk.to_bytes(), proof_of_time.as_ref()])
+#[inline]
+pub fn derive_pot_entropy(chunk: &ScalarBytes, proof_of_time: PotOutput) -> Blake3Hash {
+    blake3_hash_list(&[chunk.as_ref(), proof_of_time.as_ref()])
 }
 
 /// Derives next solution range based on the total era slots and slot probability

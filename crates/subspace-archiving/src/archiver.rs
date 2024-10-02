@@ -29,8 +29,8 @@ use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar, Witness};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
@@ -39,7 +39,7 @@ use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{Blake3Hash, BlockNumber};
+use subspace_core_primitives::{Blake3Hash, BlockNumber, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -683,14 +683,14 @@ impl Archiver {
             // Scratch buffer to avoid re-allocation
             let mut tmp_source_shards_scalars =
                 Vec::<Scalar>::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
-            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            // Iterate over the chunks of `ScalarBytes::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 raw_record_shards
                     .array_chunks::<{ RawRecord::SIZE }>()
                     .map(|record_bytes| {
                         record_bytes
-                            .array_chunks::<{ Scalar::SAFE_BYTES }>()
+                            .array_chunks::<{ ScalarBytes::SAFE_BYTES }>()
                             .nth(record_offset)
                             .expect("Statically known to exist in a record; qed")
                     })
@@ -779,7 +779,10 @@ impl Archiver {
             .poly(
                 &record_commitments
                     .iter()
-                    .map(|commitment| blake3_254_hash_to_scalar(&commitment.to_bytes()))
+                    .map(|commitment| {
+                        Scalar::try_from(blake3_254_hash_to_scalar(&commitment.to_bytes()))
+                            .expect("Create correctly by dedicated hash function; qed")
+                    })
                     .collect::<Vec<_>>(),
             )
             .expect("Internally produced values must never fail; qed");
@@ -889,7 +892,8 @@ pub fn is_piece_valid(
         return false;
     };
 
-    let commitment_hash = blake3_254_hash_to_scalar(commitment.as_ref());
+    let commitment_hash = Scalar::try_from(blake3_254_hash_to_scalar(commitment.as_ref()))
+        .expect("Create correctly by dedicated hash function; qed");
 
     kzg.verify(
         &segment_commitment,

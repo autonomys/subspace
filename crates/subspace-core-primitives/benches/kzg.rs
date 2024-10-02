@@ -1,11 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Scalar};
 use subspace_core_primitives::pieces::RawRecord;
+use subspace_core_primitives::ScalarBytes;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let values = (0..RawRecord::NUM_CHUNKS)
-        .map(|_| Scalar::from(rand::random::<[u8; Scalar::SAFE_BYTES]>()))
+        .map(|_| Scalar::from(rand::random::<[u8; ScalarBytes::SAFE_BYTES]>()))
         .collect::<Vec<_>>();
 
     let kzg = Kzg::new(embedded_kzg_settings());
