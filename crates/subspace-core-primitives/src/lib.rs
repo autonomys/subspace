@@ -212,52 +212,43 @@ pub type SolutionRange = u64;
 
 /// Computes the following:
 /// ```text
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
+/// MAX * slot_probability / chunks * s_buckets / sectors
 /// ```
-pub const fn sectors_to_solution_range(
-    sectors: u64,
-    slot_probability: (u64, u64),
-    pieces_in_sector: u16,
-) -> SolutionRange {
+pub const fn pieces_to_solution_range(pieces: u64, slot_probability: (u64, u64)) -> SolutionRange {
     let solution_range = SolutionRange::MAX
         // Account for slot probability
         / slot_probability.1 * slot_probability.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+        // Now take probability of hitting occupied s-bucket in a piece into account
+        / Record::NUM_CHUNKS as u64
+        * Record::NUM_S_BUCKETS as u64;
 
-    // Take number of sectors into account
-    solution_range / sectors
+    // Take number of pieces into account
+    solution_range / pieces
 }
 
 /// Computes the following:
 /// ```text
-/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
+/// MAX * slot_probability / chunks * s_buckets / solution_range
 /// ```
-pub const fn solution_range_to_sectors(
+pub const fn solution_range_to_pieces(
     solution_range: SolutionRange,
     slot_probability: (u64, u64),
-    pieces_in_sector: u16,
 ) -> u64 {
-    let sectors = SolutionRange::MAX
+    let pieces = SolutionRange::MAX
         // Account for slot probability
         / slot_probability.1 * slot_probability.0
-        // Now take sector size and probability of hitting occupied s-bucket in sector into account
-        / (pieces_in_sector as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+        // Now take probability of hitting occupied s-bucket in sector into account
+        / Record::NUM_CHUNKS as u64
+        * Record::NUM_S_BUCKETS as u64;
 
     // Take solution range into account
-    sectors / solution_range
+    pieces / solution_range
 }
 
 // Quick test to ensure functions above are the inverse of each other
-const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(1, (1, 6), 1000), (1, 6), 1000) == 1
-);
-const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(3, (1, 6), 1000), (1, 6), 1000) == 3
-);
-const_assert!(
-    solution_range_to_sectors(sectors_to_solution_range(5, (1, 6), 1000), (1, 6), 1000) == 5
-);
+const_assert!(solution_range_to_pieces(pieces_to_solution_range(1, (1, 6)), (1, 6)) == 1);
+const_assert!(solution_range_to_pieces(pieces_to_solution_range(3, (1, 6)), (1, 6)) == 3);
+const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 6)) == 5);
 
 /// BlockWeight type for fork choice rules.
 ///
