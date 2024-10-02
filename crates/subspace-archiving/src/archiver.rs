@@ -36,11 +36,10 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::pieces::{PieceArray, RawRecord, RecordWitness};
 use subspace_core_primitives::segments::{
-    ArchivedHistorySegment, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake3Hash, BlockNumber, LastArchivedBlock, SegmentHeader,
-};
+use subspace_core_primitives::{Blake3Hash, BlockNumber};
 use subspace_erasure_coding::ErasureCoding;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {

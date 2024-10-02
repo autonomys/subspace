@@ -8,9 +8,9 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
 use subspace_core_primitives::segments::{
-    ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentIndex,
 };
-use subspace_core_primitives::{ArchivedBlockProgress, LastArchivedBlock};
 use subspace_erasure_coding::ErasureCoding;
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {

@@ -11,11 +11,10 @@ use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::{
-    ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, SegmentHeader,
-};
+use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error

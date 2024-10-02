@@ -1,7 +1,9 @@
 //! Segments-related data structures.
 
+use crate::crypto::blake3_hash;
 use crate::crypto::kzg::Commitment;
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
+use crate::{Blake3Hash, BlockNumber};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
@@ -266,6 +268,138 @@ impl HistorySize {
     /// Returns `None` on overflow.
     pub fn sector_expiration_check(&self, min_sector_lifetime: Self) -> Option<Self> {
         self.0.checked_add(min_sector_lifetime.0.get()).map(Self)
+    }
+}
+
+/// Progress of an archived block.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub enum ArchivedBlockProgress {
+    /// The block has been fully archived.
+    Complete,
+
+    /// Number of partially archived bytes of a block.
+    Partial(u32),
+}
+
+impl Default for ArchivedBlockProgress {
+    /// We assume a block can always fit into the segment initially, but it is definitely possible
+    /// to be transitioned into the partial state after some overflow checking.
+    #[inline]
+    fn default() -> Self {
+        Self::Complete
+    }
+}
+
+impl ArchivedBlockProgress {
+    /// Return the number of partially archived bytes if the progress is not complete.
+    pub fn partial(&self) -> Option<u32> {
+        match self {
+            Self::Complete => None,
+            Self::Partial(number) => Some(*number),
+        }
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial(&mut self, new_partial: u32) {
+        *self = Self::Partial(new_partial);
+    }
+}
+
+/// Last archived block
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct LastArchivedBlock {
+    /// Block number
+    pub number: BlockNumber,
+    /// Progress of an archived block.
+    pub archived_progress: ArchivedBlockProgress,
+}
+
+impl LastArchivedBlock {
+    /// Returns the number of partially archived bytes for a block.
+    pub fn partial_archived(&self) -> Option<u32> {
+        self.archived_progress.partial()
+    }
+
+    /// Sets new number of partially archived bytes.
+    pub fn set_partial_archived(&mut self, new_partial: BlockNumber) {
+        self.archived_progress.set_partial(new_partial);
+    }
+
+    /// Sets the archived state of this block to [`ArchivedBlockProgress::Complete`].
+    pub fn set_complete(&mut self) {
+        self.archived_progress = ArchivedBlockProgress::Complete;
+    }
+}
+
+/// Segment header for a specific segment.
+///
+/// Each segment will have corresponding [`SegmentHeader`] included as the first item in the next
+/// segment. Each `SegmentHeader` includes hash of the previous one and all together form a chain of
+/// segment headers that is used for quick and efficient verification that some [`Piece`]
+/// corresponds to the actual archival history of the blockchain.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub enum SegmentHeader {
+    /// V0 of the segment header data structure
+    #[codec(index = 0)]
+    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+    V0 {
+        /// Segment index
+        segment_index: SegmentIndex,
+        /// Root of commitments of all records in a segment.
+        segment_commitment: SegmentCommitment,
+        /// Hash of the segment header of the previous segment
+        prev_segment_header_hash: Blake3Hash,
+        /// Last archived block
+        last_archived_block: LastArchivedBlock,
+    },
+}
+
+impl SegmentHeader {
+    /// Hash of the whole segment header
+    pub fn hash(&self) -> Blake3Hash {
+        blake3_hash(&self.encode())
+    }
+
+    /// Segment index
+    pub fn segment_index(&self) -> SegmentIndex {
+        match self {
+            Self::V0 { segment_index, .. } => *segment_index,
+        }
+    }
+
+    /// Segment commitment of the records in a segment.
+    pub fn segment_commitment(&self) -> SegmentCommitment {
+        match self {
+            Self::V0 {
+                segment_commitment, ..
+            } => *segment_commitment,
+        }
+    }
+
+    /// Hash of the segment header of the previous segment
+    pub fn prev_segment_header_hash(&self) -> Blake3Hash {
+        match self {
+            Self::V0 {
+                prev_segment_header_hash,
+                ..
+            } => *prev_segment_header_hash,
+        }
+    }
+
+    /// Last archived block
+    pub fn last_archived_block(&self) -> LastArchivedBlock {
+        match self {
+            Self::V0 {
+                last_archived_block,
+                ..
+            } => *last_archived_block,
+        }
     }
 }
 

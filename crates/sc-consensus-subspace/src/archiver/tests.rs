@@ -3,8 +3,9 @@ use parking_lot::RwLock;
 use sc_client_api::AuxStore;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::segments::SegmentIndex;
-use subspace_core_primitives::{ArchivedBlockProgress, LastArchivedBlock, SegmentHeader};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
+};
 
 struct MemAuxStore {
     store: RwLock<HashMap<Vec<u8>, Vec<u8>>>,

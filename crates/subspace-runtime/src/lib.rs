@@ -100,10 +100,12 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::Piece;
-use subspace_core_primitives::segments::{HistorySize, SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
+};
 use subspace_core_primitives::{
-    pieces_to_solution_range, solution_range_to_pieces, PublicKey, Randomness, SegmentHeader,
-    SlotNumber, SolutionRange, U256,
+    pieces_to_solution_range, solution_range_to_pieces, PublicKey, Randomness, SlotNumber,
+    SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,

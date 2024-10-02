@@ -12,11 +12,10 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::pieces::{Piece, Record};
 use subspace_core_primitives::segments::{
-    ArchivedHistorySegment, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, SegmentHeader,
-};
+use subspace_core_primitives::Blake3Hash;
 use subspace_erasure_coding::ErasureCoding;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
