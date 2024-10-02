@@ -148,7 +148,7 @@ impl TryFrom<&ScalarBytes> for Scalar {
 
     #[inline]
     fn try_from(value: &ScalarBytes) -> Result<Self, Self::Error> {
-        Self::try_from(*value)
+        FsFr::from_bytes(value.as_ref()).map(Scalar)
     }
 }
 
@@ -157,7 +157,7 @@ impl TryFrom<ScalarBytes> for Scalar {
 
     #[inline]
     fn try_from(value: ScalarBytes) -> Result<Self, Self::Error> {
-        FsFr::from_bytes(value.as_ref()).map(Scalar)
+        Self::try_from(&value)
     }
 }
 
@@ -497,7 +497,7 @@ impl TryFrom<&RecordCommitment> for Commitment {
 
     #[inline]
     fn try_from(commitment: &RecordCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(*commitment)
+        Commitment::try_from(**commitment)
     }
 }
 
@@ -522,7 +522,7 @@ impl TryFrom<&SegmentCommitment> for Commitment {
 
     #[inline]
     fn try_from(commitment: &SegmentCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(*commitment)
+        Commitment::try_from(**commitment)
     }
 }
 
@@ -599,7 +599,7 @@ impl TryFrom<&RecordWitness> for Witness {
 
     #[inline]
     fn try_from(witness: &RecordWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(*witness)
+        Witness::try_from(**witness)
     }
 }
 
@@ -624,7 +624,7 @@ impl TryFrom<&ChunkWitness> for Witness {
 
     #[inline]
     fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(*witness)
+        Witness::try_from(**witness)
     }
 }
 
