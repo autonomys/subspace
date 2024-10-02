@@ -604,7 +604,7 @@ fn test_calculate_tx_range() {
 }
 
 #[test]
-fn test_bundle_fromat_verification() {
+fn test_bundle_format_verification() {
     let opaque_extrinsic = |dest: u128, value: u128| -> OpaqueExtrinsic {
         UncheckedExtrinsic {
             signature: None,
@@ -617,8 +617,8 @@ fn test_bundle_fromat_verification() {
     };
     new_test_ext().execute_with(|| {
         let domain_id = DomainId::new(0);
-        let max_extrincis_count = 10;
-        let max_bundle_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
+        let max_extrinsics_count = 10;
+        let max_bundle_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrinsics_count;
         let domain_config = DomainConfig {
             domain_name: "test-domain".to_owned(),
             runtime_id: 0u32,
@@ -655,7 +655,7 @@ fn test_bundle_fromat_verification() {
 
         // Bundle exceed max size
         let mut too_large_bundle = valid_bundle.clone();
-        for i in 0..max_extrincis_count {
+        for i in 0..max_extrinsics_count {
             too_large_bundle
                 .extrinsics
                 .push(opaque_extrinsic(i as u128, i as u128));
