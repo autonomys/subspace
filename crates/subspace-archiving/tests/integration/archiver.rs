@@ -10,9 +10,12 @@ use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
+use subspace_core_primitives::pieces::{Piece, Record};
+use subspace_core_primitives::segments::{
+    ArchivedHistorySegment, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, Piece, Record,
-    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, SegmentHeader,
 };
 use subspace_erasure_coding::ErasureCoding;
 

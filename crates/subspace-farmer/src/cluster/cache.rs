@@ -20,7 +20,7 @@ use parity_scale_codec::{Decode, Encode};
 use std::future::{pending, Future};
 use std::pin::{pin, Pin};
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 

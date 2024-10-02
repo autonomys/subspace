@@ -19,7 +19,7 @@ use crate::object_fetcher::Error;
 use crate::piece_getter::{BoxError, ObjectPieceGetter};
 use futures::stream::FuturesOrdered;
 use futures::TryStreamExt;
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace};
 
 /// Concurrently downloads the exact pieces in `piece_indexes`, returning them in that order.

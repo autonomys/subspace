@@ -38,7 +38,8 @@ use std::iter::Empty;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
-use subspace_core_primitives::{crypto, Piece};
+use subspace_core_primitives::crypto;
+use subspace_core_primitives::pieces::Piece;
 use thiserror::Error;
 use tracing::{debug, error, info};
 

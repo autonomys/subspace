@@ -68,9 +68,9 @@ use std::time::{Duration, Instant};
 use std::{fmt, fs, io, mem};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PublicKey, Record, SectorIndex, SegmentIndex,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{Blake3Hash, PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;

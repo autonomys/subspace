@@ -31,8 +31,8 @@
 pub mod checksum;
 pub mod crypto;
 pub mod objects;
-mod pieces;
-mod segments;
+pub mod pieces;
+pub mod segments;
 #[cfg(feature = "serde")]
 mod serde;
 #[cfg(test)]
@@ -53,14 +53,11 @@ use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, 
 use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
-pub use pieces::{
-    ChunkWitness, FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record,
-    RecordCommitment, RecordWitness, SBucket,
+use pieces::{
+    ChunkWitness, PieceIndex, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
-pub use segments::{
-    ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
-};
+use segments::{HistorySize, SegmentCommitment, SegmentIndex};
 use static_assertions::{const_assert, const_assert_eq};
 
 // Refuse to compile on lower than 32-bit platforms

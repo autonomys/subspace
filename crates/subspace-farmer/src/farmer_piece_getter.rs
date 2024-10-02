@@ -18,7 +18,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};

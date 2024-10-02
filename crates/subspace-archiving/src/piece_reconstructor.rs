@@ -9,7 +9,8 @@ use alloc::vec::Vec;
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord};
+use subspace_core_primitives::pieces::{Piece, RawRecord};
+use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error

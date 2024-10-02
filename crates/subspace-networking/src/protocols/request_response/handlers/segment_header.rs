@@ -5,7 +5,8 @@
 
 use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use subspace_core_primitives::{SegmentHeader, SegmentIndex};
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::SegmentHeader;
 
 /// Segment header by segment indexes protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]

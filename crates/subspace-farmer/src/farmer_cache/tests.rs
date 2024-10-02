@@ -18,9 +18,9 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{
-    HistorySize, LastArchivedBlock, Piece, PieceIndex, SegmentHeader, SegmentIndex,
-};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{LastArchivedBlock, SegmentHeader};
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
 use subspace_networking::libp2p::identity;
 use subspace_networking::libp2p::kad::RecordKey;

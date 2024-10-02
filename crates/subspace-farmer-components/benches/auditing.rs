@@ -9,9 +9,9 @@ use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SolutionRange,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::segments::{HistorySize, RecordedHistorySegment};
+use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};

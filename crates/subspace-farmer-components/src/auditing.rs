@@ -11,8 +11,9 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 use std::io;
 use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::pieces::SBucket;
 use subspace_core_primitives::{
-    Blake3Hash, PublicKey, SBucket, SectorId, SectorIndex, SectorSlotChallenge, SolutionRange,
+    Blake3Hash, PublicKey, SectorId, SectorIndex, SectorSlotChallenge, SolutionRange,
 };
 use subspace_verification::is_within_solution_range;
 use thiserror::Error;

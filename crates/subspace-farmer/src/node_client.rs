@@ -15,7 +15,9 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::fmt;
 use std::pin::Pin;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::SegmentHeader;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };

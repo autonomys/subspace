@@ -1,3 +1,5 @@
+//! Segments-related data structures.
+
 use crate::crypto::kzg::Commitment;
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 #[cfg(not(feature = "std"))]

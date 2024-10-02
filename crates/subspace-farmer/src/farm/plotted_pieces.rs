@@ -10,7 +10,8 @@ use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex, PieceOffset};
+use subspace_core_primitives::SectorIndex;
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
 

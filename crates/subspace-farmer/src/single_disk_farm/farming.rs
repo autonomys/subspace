@@ -20,9 +20,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    HistorySize, PosSeed, PublicKey, Record, SectorIndex, SegmentIndex, Solution, SolutionRange,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};

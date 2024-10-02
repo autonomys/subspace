@@ -36,11 +36,14 @@ use std::sync::{Once, OnceLock};
 use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
+use subspace_core_primitives::segments::{
+    ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
-    LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
-    RecordedHistorySegment, RewardSignature, SectorId, SegmentCommitment, SegmentHeader,
-    SegmentIndex, SlotNumber, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
+    ArchivedBlockProgress, Blake3Hash, BlockNumber, LastArchivedBlock, PosSeed, PotOutput,
+    PublicKey, RewardSignature, SectorId, SegmentHeader, SlotNumber, Solution, SolutionRange,
+    REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;

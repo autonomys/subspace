@@ -19,7 +19,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;

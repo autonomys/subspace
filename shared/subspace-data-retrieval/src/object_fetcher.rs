@@ -21,9 +21,8 @@ use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
-use subspace_core_primitives::{
-    Piece, PieceIndex, RawRecord, RecordedHistorySegment, SegmentIndex,
-};
+use subspace_core_primitives::pieces::{Piece, PieceIndex, RawRecord};
+use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, trace};
 

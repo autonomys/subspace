@@ -15,10 +15,8 @@ use futures::FutureExt;
 use std::collections::VecDeque;
 use std::io;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    ChunkWitness, PieceOffset, PosSeed, PublicKey, Record, SBucket, SectorId, Solution,
-    SolutionRange,
-};
+use subspace_core_primitives::pieces::{ChunkWitness, PieceOffset, Record, SBucket};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorId, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::Table;
 use thiserror::Error;

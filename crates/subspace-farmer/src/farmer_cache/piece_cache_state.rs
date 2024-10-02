@@ -3,7 +3,7 @@ use std::collections::btree_map::Values;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::hash::Hash;
-use subspace_core_primitives::PieceIndex;
+use subspace_core_primitives::pieces::PieceIndex;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::KeyWithDistance;

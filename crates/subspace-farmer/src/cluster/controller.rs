@@ -24,7 +24,9 @@ use std::error::Error;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::SegmentHeader;
 use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,

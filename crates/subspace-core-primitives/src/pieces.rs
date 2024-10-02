@@ -1,3 +1,5 @@
+//! Pieces-related data structures.
+
 #[cfg(feature = "serde")]
 mod serde;
 #[cfg(test)]
@@ -7,8 +9,7 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::Scalar;
-use crate::segments::{ArchivedHistorySegment, SegmentIndex};
-use crate::RecordedHistorySegment;
+use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
