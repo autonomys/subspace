@@ -100,8 +100,8 @@ use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    sectors_to_solution_range, solution_range_to_sectors, HistorySize, Piece, PublicKey,
-    Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
+    pieces_to_solution_range, solution_range_to_pieces, HistorySize, Piece, PublicKey, Randomness,
+    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
@@ -164,9 +164,9 @@ const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
-// We assume initial plot size starts with the a single sector.
+// We assume initial plot size starts with a single sector.
 const INITIAL_SOLUTION_RANGE: SolutionRange =
-    sectors_to_solution_range(1, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
+    pieces_to_solution_range(MAX_PIECES_IN_SECTOR as u64, SLOT_PROBABILITY);
 
 /// Number of votes expected per block.
 ///
@@ -366,8 +366,8 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
-        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
-        sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
+        let pieces = solution_range_to_pieces(Subspace::solution_ranges().current, SLOT_PROBABILITY);
+        pieces as u128 * Piece::SIZE as u128
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
     pub DynamicCostOfStorage: bool = RuntimeConfigs::enable_dynamic_cost_of_storage();

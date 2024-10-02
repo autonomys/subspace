@@ -63,7 +63,6 @@ sha3 = { opt-level = 3 }
 smallvec = { opt-level = 3 }
 snow = { opt-level = 3 }
 subspace-archiving = { opt-level = 3 }
-subspace-chiapos = { opt-level = 3 }
 subspace-core-primitives = { opt-level = 3 }
 subspace-erasure-coding = { opt-level = 3 }
 subspace-farmer-components = { opt-level = 3 }
