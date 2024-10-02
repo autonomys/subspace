@@ -905,8 +905,6 @@ pub struct GenesisDomain<AccountId: Ord, Balance> {
     // Domain config items
     pub owner_account_id: AccountId,
     pub domain_name: String,
-    pub max_bundle_size: u32,
-    pub max_bundle_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub operator_allow_list: OperatorAllowList<AccountId>,
 
@@ -1060,7 +1058,7 @@ pub struct DomainInstanceData {
     pub raw_genesis: RawGenesis,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub struct DomainBundleLimit {
     /// The max bundle size for the domain.
     pub max_bundle_size: u32,

@@ -25,21 +25,18 @@ use sc_service::ChainType;
 use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
-use sp_domains::{
-    calculate_max_bundle_weight_and_size, DomainBundleLimit, PermissionedActionAllowedBy,
-};
+use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::{PotKey, PublicKey};
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
-    EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardPoint,
-    RewardsConfig, RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig,
-    SystemConfig, WASM_BINARY,
+    EnableRewardsAt, HistorySeedingConfig, RewardPoint, RewardsConfig, RuntimeConfigsConfig,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use subspace_runtime_primitives::{
-    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SLOT_PROBABILITY, SSC,
+    AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
 };
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
@@ -382,19 +379,6 @@ fn subspace_genesis_config(
     } = genesis_params;
 
     let genesis_domains = if enable_domains {
-        let bundle_slot_probability = (1, 1);
-
-        let DomainBundleLimit {
-            max_bundle_size,
-            max_bundle_weight,
-        } = calculate_max_bundle_weight_and_size(
-            MaxDomainBlockSize::get(),
-            MaxDomainBlockWeight::get(),
-            SLOT_PROBABILITY,
-            bundle_slot_probability,
-        )
-        .expect("No arithmetic error");
-
         genesis_domain_params
             .genesis_domains
             .into_iter()
@@ -408,9 +392,7 @@ fn subspace_genesis_config(
                     // Domain config, mainly for placeholder the concrete value TBD
                     owner_account_id: sudo_account.clone(),
                     domain_name: genesis_domain.domain_name,
-                    max_bundle_size,
-                    max_bundle_weight,
-                    bundle_slot_probability,
+                    bundle_slot_probability: (1, 1),
                     operator_allow_list: genesis_domain.operator_allow_list.clone(),
                     signing_key: genesis_domain.operator_signing_key.clone(),
                     nomination_tax: Percent::from_percent(5),

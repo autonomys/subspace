@@ -181,7 +181,7 @@ mod pallet {
     use crate::bundle_storage_fund::refund_storage_fee;
     use crate::bundle_storage_fund::Error as BundleStorageFundError;
     use crate::domain_registry::{
-        do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
+        do_instantiate_domain, do_update_domain_allow_list, DomainConfigParams, DomainObject,
         Error as DomainRegistryError,
     };
     use crate::runtime_registry::{
@@ -1397,7 +1397,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
-            domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
+            domain_config_params: DomainConfigParams<T::AccountId, BalanceOf<T>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(
@@ -1409,7 +1409,7 @@ mod pallet {
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
+            let domain_id = do_instantiate_domain::<T>(domain_config_params, who, created_at)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
@@ -1817,18 +1817,17 @@ mod pallet {
                     .expect("Genesis runtime registration must always succeed");
 
                     // Instantiate the genesis domain
-                    let domain_config = DomainConfig {
+                    let domain_config_params = DomainConfigParams {
                         domain_name: genesis_domain.domain_name,
                         runtime_id,
-                        max_bundle_size: genesis_domain.max_bundle_size,
-                        max_bundle_weight: genesis_domain.max_bundle_weight,
+                        maybe_bundle_limit: None,
                         bundle_slot_probability: genesis_domain.bundle_slot_probability,
                         operator_allow_list: genesis_domain.operator_allow_list,
                         initial_balances: genesis_domain.initial_balances,
                     };
                     let domain_owner = genesis_domain.owner_account_id;
                     let domain_id = do_instantiate_domain::<T>(
-                        domain_config,
+                        domain_config_params,
                         domain_owner.clone(),
                         Zero::zero(),
                     )

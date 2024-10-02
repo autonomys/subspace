@@ -9,14 +9,10 @@ use evm_domain_test_runtime::{
 use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension};
 use sp_core::{ecdsa, Pair, Public};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{
-    calculate_max_bundle_weight_and_size, DomainBundleLimit, DomainId, GenesisDomain,
-    OperatorAllowList, OperatorPublicKey, RuntimeType,
-};
+use sp_domains::{DomainId, GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
-use subspace_runtime_primitives::{AccountId, Balance, SLOT_PROBABILITY, SSC};
-use subspace_test_runtime::{MaxDomainBlockSize, MaxDomainBlockWeight};
+use subspace_runtime_primitives::{AccountId, Balance, SSC};
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -116,19 +112,6 @@ pub fn get_genesis_domain(
         raw_genesis.encode()
     };
 
-    let bundle_slot_probability = (1, 1);
-
-    let DomainBundleLimit {
-        max_bundle_size,
-        max_bundle_weight,
-    } = calculate_max_bundle_weight_and_size(
-        MaxDomainBlockSize::get(),
-        MaxDomainBlockWeight::get(),
-        SLOT_PROBABILITY,
-        bundle_slot_probability,
-    )
-    .expect("No arithmetic error");
-
     Ok(GenesisDomain {
         runtime_name: "evm".to_owned(),
         runtime_type: RuntimeType::Evm,
@@ -138,9 +121,7 @@ pub fn get_genesis_domain(
         // Domain config, mainly for placeholder the concrete value TBD
         owner_account_id: sudo_account,
         domain_name: "evm-domain".to_owned(),
-        max_bundle_size,
-        max_bundle_weight,
-        bundle_slot_probability,
+        bundle_slot_probability: (1, 1),
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Alice"),

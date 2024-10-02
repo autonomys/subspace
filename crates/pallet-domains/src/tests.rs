@@ -1,5 +1,5 @@
 use crate::block_tree::{verify_execution_receipt, BlockTreeNode};
-use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
@@ -461,11 +461,10 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     );
     crate::Pallet::<Test>::instantiate_domain(
         RawOrigin::Signed(creator).into(),
-        DomainConfig {
+        DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
-            max_bundle_size: 1u32,
-            max_bundle_weight: Weight::from_parts(1, 0),
+            maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
