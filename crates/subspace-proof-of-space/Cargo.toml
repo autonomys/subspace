@@ -32,7 +32,6 @@ bitvec = "1.0.1"
 criterion = "0.5.1"
 rand = "0.8.5"
 rayon = "1.10.0"
-subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "3b1ab3ca24764d25da30e0c8243e0bf304b776a5" }
 
 [[bench]]
 name = "pos"

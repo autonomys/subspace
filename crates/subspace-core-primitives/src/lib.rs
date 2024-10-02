@@ -857,9 +857,7 @@ impl U256 {
 
     /// Convert to big endian bytes
     pub fn to_be_bytes(self) -> [u8; 32] {
-        let mut arr = [0u8; 32];
-        self.0.to_big_endian(&mut arr);
-        arr
+        self.0.to_big_endian()
     }
 
     /// Create from little endian bytes
@@ -869,9 +867,7 @@ impl U256 {
 
     /// Convert to little endian bytes
     pub fn to_le_bytes(self) -> [u8; 32] {
-        let mut arr = [0u8; 32];
-        self.0.to_little_endian(&mut arr);
-        arr
+        self.0.to_little_endian()
     }
 
     /// Adds two numbers, checking for overflow. If overflow happens, `None` is returned.

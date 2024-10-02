@@ -19,17 +19,17 @@ include = [
 async-mutex = "1.4.0"
 async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
-bytes = "1.7.1"
-clap = { version = "4.5.15", features = ["color", "derive"] }
+bytes = "1.7.2"
+clap = { version = "4.5.18", features = ["color", "derive"] }
 derive_more = { version = "1.0.0", features = ["full"] }
 either = "1.13.0"
 event-listener-primitives = "2.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
-futures = "0.3.29"
+futures = "0.3.30"
 futures-timer = "3.0.3"
 hex = "0.4.3"
-memmap2 = "0.9.4"
+memmap2 = "0.9.5"
 nohash-hasher = "0.2.0"
 parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
@@ -41,8 +41,8 @@ serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
-thiserror = "1.0.63"
-tokio = { version = "1.39.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }

@@ -26,7 +26,7 @@ subspace-farmer-components = { version = "0.1.0", path = "../../crates/subspace-
 subspace-proof-of-space = { version = "0.1.0", path = "../../crates/subspace-proof-of-space" }
 
 [build-dependencies]
-cc = "1.1.15"
+cc = "1.1.23"
 
 [features]
 # Only Volta+ architectures are supported (GeForce RTX 20xx consumer GPUs and newer)

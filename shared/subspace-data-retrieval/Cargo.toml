@@ -12,15 +12,15 @@ include = [
 ]
 
 [dependencies]
-async-lock = "3.3.0"
+async-lock = "3.4.0"
 async-trait = "0.1.83"
-futures = "0.3.29"
+futures = "0.3.30"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 subspace-archiving = { version = "0.1.0", path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
-thiserror = "1.0.63"
-tokio = { version = "1.39.2", features = ["sync"] }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["sync"] }
 tracing = "0.1.40"
 
 [dev-dependencies]

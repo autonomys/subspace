@@ -16,15 +16,15 @@ include = [
 bench = false
 
 [dependencies]
-async-lock = "3.3.0"
+async-lock = "3.4.0"
 async-trait = "0.1.83"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
-futures = "0.3.29"
+futures = "0.3.30"
 hex = "0.4.3"
-libc = "0.2.154"
+libc = "0.2.159"
 parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
 rand = "0.8.5"
@@ -37,8 +37,8 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.63"
-tokio = { version = "1.39.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
 tracing = "0.1.40"
 
 [target.'cfg(windows)'.dependencies]
@@ -46,7 +46,7 @@ winapi = "0.3.9"
 
 [dev-dependencies]
 criterion = "0.5.1"
-futures = "0.3.29"
+futures = "0.3.30"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 

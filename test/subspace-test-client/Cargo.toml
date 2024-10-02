@@ -20,7 +20,7 @@ codec = { package = "parity-scale-codec", version = "3.6.12", features = ["deriv
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
-futures = "0.3.29"
+futures = "0.3.30"
 schnorrkel = "0.11.4"
 sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
