@@ -2,8 +2,6 @@
 
 #[cfg(feature = "serde")]
 mod serde;
-#[cfg(test)]
-mod tests;
 
 extern crate alloc;
 
@@ -25,7 +23,6 @@ use bytes::{Bytes, BytesMut};
 use core::array::TryFromSliceError;
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
-use core::num::TryFromIntError;
 use core::{mem, slice};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
@@ -36,96 +33,6 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen, Outpu
 use rayon::prelude::*;
 use scale_info::build::Fields;
 use scale_info::{Path, Type, TypeInfo};
-
-/// S-bucket used in consensus
-#[derive(
-    Debug,
-    Display,
-    Default,
-    Copy,
-    Clone,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Encode,
-    Decode,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(transparent)]
-pub struct SBucket(u16);
-
-impl Step for SBucket {
-    #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        u16::steps_between(&start.0, &end.0)
-    }
-
-    #[inline]
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        u16::forward_checked(start.0, count).map(Self)
-    }
-
-    #[inline]
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        u16::backward_checked(start.0, count).map(Self)
-    }
-}
-
-impl TryFrom<usize> for SBucket {
-    type Error = TryFromIntError;
-
-    #[inline]
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Ok(Self(u16::try_from(value)?))
-    }
-}
-
-impl From<u16> for SBucket {
-    #[inline]
-    fn from(original: u16) -> Self {
-        Self(original)
-    }
-}
-
-impl From<SBucket> for u16 {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        original.0
-    }
-}
-
-impl From<SBucket> for u32 {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        u32::from(original.0)
-    }
-}
-
-impl From<SBucket> for usize {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        usize::from(original.0)
-    }
-}
-
-impl SBucket {
-    /// S-bucket 0.
-    pub const ZERO: SBucket = SBucket(0);
-    /// Max s-bucket index
-    pub const MAX: SBucket = SBucket((Record::NUM_S_BUCKETS - 1) as u16);
-}
 
 /// Piece index in consensus
 #[derive(

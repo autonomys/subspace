@@ -59,12 +59,12 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::sectors::{SectorId, SectorIndex};
 use subspace_core_primitives::segments::{
     ArchivedHistorySegment, HistorySize, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::{
-    BlockHash, PublicKey, RewardSignature, SectorId, SectorIndex, SlotNumber, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
+    BlockHash, PublicKey, RewardSignature, SlotNumber, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
@@ -114,10 +114,10 @@ pub mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::pieces::PieceOffset;
+    use subspace_core_primitives::sectors::SectorIndex;
     use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
     use subspace_core_primitives::{
-        Blake3Hash, PotCheckpoints, PublicKey, Randomness, RewardSignature, SectorIndex,
-        SolutionRange,
+        Blake3Hash, PotCheckpoints, PublicKey, Randomness, RewardSignature, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {

@@ -9,7 +9,7 @@ use prometheus_client::registry::{Registry, Unit};
 use std::fmt;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::time::Duration;
-use subspace_core_primitives::SectorIndex;
+use subspace_core_primitives::sectors::SectorIndex;
 
 #[derive(Debug, Copy, Clone)]
 pub(super) enum SectorState {

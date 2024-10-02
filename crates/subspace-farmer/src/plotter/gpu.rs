@@ -25,7 +25,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, SectorIndex};
+use subspace_core_primitives::sectors::SectorIndex;
+use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{
     download_sector, encode_sector, write_sector, DownloadSectorOptions, EncodeSectorOptions,
