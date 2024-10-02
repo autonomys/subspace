@@ -1,13 +1,13 @@
 //! Segments-related data structures.
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use crate::crypto::blake3_hash;
-use crate::crypto::kzg::Commitment;
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use crate::{Blake3Hash, BlockNumber};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::iter::Step;
 use core::num::NonZeroU64;
@@ -184,31 +184,6 @@ impl AsMut<[u8]> for SegmentCommitment {
 impl SegmentCommitment {
     /// Size of segment commitment in bytes.
     pub const SIZE: usize = 48;
-}
-
-impl From<Commitment> for SegmentCommitment {
-    #[inline]
-    fn from(commitment: Commitment) -> Self {
-        Self(commitment.to_bytes())
-    }
-}
-
-impl TryFrom<&SegmentCommitment> for Commitment {
-    type Error = String;
-
-    #[inline]
-    fn try_from(commitment: &SegmentCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(&commitment.0)
-    }
-}
-
-impl TryFrom<SegmentCommitment> for Commitment {
-    type Error = String;
-
-    #[inline]
-    fn try_from(commitment: SegmentCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(commitment.0)
-    }
 }
 
 /// Size of blockchain history in segments.

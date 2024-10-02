@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Scalar};
+use subspace_core_primitives::crypto::kzg::{Kzg, Scalar};
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::ScalarBytes;
 
@@ -8,7 +8,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         .map(|_| Scalar::from(rand::random::<[u8; ScalarBytes::SAFE_BYTES]>()))
         .collect::<Vec<_>>();
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
 
     c.bench_function("create-polynomial", |b| {
         b.iter(|| {

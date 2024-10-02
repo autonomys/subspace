@@ -30,11 +30,11 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar, Witness};
+use subspace_core_primitives::crypto::kzg::{Kzg, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::pieces::{PieceArray, RawRecord, RecordWitness};
+use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
@@ -839,91 +839,4 @@ impl Archiver {
             object_mapping,
         }
     }
-}
-
-/// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(
-    kzg: &Kzg,
-    piece: &PieceArray,
-    segment_commitment: &SegmentCommitment,
-    position: u32,
-) -> bool {
-    let (record, commitment, witness) = piece.split();
-    let witness = match Witness::try_from_bytes(witness) {
-        Ok(witness) => witness,
-        _ => {
-            return false;
-        }
-    };
-
-    let mut scalars = Vec::with_capacity(record.len().next_power_of_two());
-
-    for record_chunk in record.iter() {
-        match Scalar::try_from(record_chunk) {
-            Ok(scalar) => {
-                scalars.push(scalar);
-            }
-            _ => {
-                return false;
-            }
-        }
-    }
-
-    // Number of scalars for KZG must be a power of two elements
-    scalars.resize(scalars.capacity(), Scalar::default());
-
-    let polynomial = match kzg.poly(&scalars) {
-        Ok(polynomial) => polynomial,
-        _ => {
-            return false;
-        }
-    };
-
-    if kzg
-        .commit(&polynomial)
-        .map(|commitment| commitment.to_bytes())
-        .as_ref()
-        != Ok(commitment)
-    {
-        return false;
-    }
-
-    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
-        return false;
-    };
-
-    let commitment_hash = Scalar::try_from(blake3_254_hash_to_scalar(commitment.as_ref()))
-        .expect("Create correctly by dedicated hash function; qed");
-
-    kzg.verify(
-        &segment_commitment,
-        ArchivedHistorySegment::NUM_PIECES,
-        position,
-        &commitment_hash,
-        &witness,
-    )
-}
-
-/// Validate witness for record commitment hash produced by archiver
-pub fn is_record_commitment_hash_valid(
-    kzg: &Kzg,
-    record_commitment_hash: &Scalar,
-    commitment: &SegmentCommitment,
-    witness: &RecordWitness,
-    position: u32,
-) -> bool {
-    let Ok(commitment) = Commitment::try_from(commitment) else {
-        return false;
-    };
-    let Ok(witness) = Witness::try_from(witness) else {
-        return false;
-    };
-
-    kzg.verify(
-        &commitment,
-        ArchivedHistorySegment::NUM_PIECES,
-        position,
-        record_commitment_hash,
-        &witness,
-    )
 }

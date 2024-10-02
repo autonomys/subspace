@@ -51,7 +51,6 @@ serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
 static_assertions = "1.1.0"
 ss58-registry = "1.50.0"
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
@@ -60,6 +59,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-proof-of-space-gpu = { version = "0.1.0", path = "../../shared/subspace-proof-of-space-gpu", optional = true }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 substrate-bip39 = "0.6.0"
 supports-color = { version = "3.0.1", optional = true }
 tempfile = "3.13.0"

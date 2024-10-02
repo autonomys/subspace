@@ -27,22 +27,31 @@ extern crate alloc;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
+#[cfg(feature = "kzg")]
 use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
-use subspace_archiving::archiver;
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
+#[cfg(feature = "kzg")]
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar, Witness};
-use subspace_core_primitives::crypto::{
-    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key,
-};
-use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::crypto::{blake3_hash_list, blake3_hash_with_key};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
 use subspace_core_primitives::pot::PotOutput;
-use subspace_core_primitives::sectors::{SectorId, SectorSlotChallenge};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::sectors::SectorId;
+use subspace_core_primitives::sectors::SectorSlotChallenge;
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::Solution;
 use subspace_core_primitives::{
     Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
-    Solution, SolutionRange,
+    SolutionRange,
 };
+#[cfg(feature = "kzg")]
 use subspace_proof_of_space::Table;
 
 /// Errors encountered by the Subspace consensus primitives.
@@ -189,6 +198,7 @@ pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
 /// success.
+#[cfg(feature = "kzg")]
 pub fn verify_solution<'a, PosTable, RewardAddress>(
     solution: &'a Solution<RewardAddress>,
     slot: SlotNumber,
@@ -295,7 +305,7 @@ where
             .position();
 
         // Check that piece is part of the blockchain history
-        if !archiver::is_record_commitment_hash_valid(
+        if !is_record_commitment_hash_valid(
             kzg,
             &Scalar::try_from(blake3_254_hash_to_scalar(
                 solution.record_commitment.as_ref(),
@@ -310,6 +320,95 @@ where
     }
 
     Ok(solution_distance)
+}
+
+/// Validate witness embedded within a piece produced by archiver
+#[cfg(feature = "kzg")]
+pub fn is_piece_valid(
+    kzg: &Kzg,
+    piece: &PieceArray,
+    segment_commitment: &SegmentCommitment,
+    position: u32,
+) -> bool {
+    let (record, commitment, witness) = piece.split();
+    let witness = match Witness::try_from_bytes(witness) {
+        Ok(witness) => witness,
+        _ => {
+            return false;
+        }
+    };
+
+    let mut scalars = Vec::with_capacity(record.len().next_power_of_two());
+
+    for record_chunk in record.iter() {
+        match Scalar::try_from(record_chunk) {
+            Ok(scalar) => {
+                scalars.push(scalar);
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+    // Number of scalars for KZG must be a power of two elements
+    scalars.resize(scalars.capacity(), Scalar::default());
+
+    let polynomial = match kzg.poly(&scalars) {
+        Ok(polynomial) => polynomial,
+        _ => {
+            return false;
+        }
+    };
+
+    if kzg
+        .commit(&polynomial)
+        .map(|commitment| commitment.to_bytes())
+        .as_ref()
+        != Ok(commitment)
+    {
+        return false;
+    }
+
+    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
+        return false;
+    };
+
+    let commitment_hash = Scalar::try_from(blake3_254_hash_to_scalar(commitment.as_ref()))
+        .expect("Create correctly by dedicated hash function; qed");
+
+    kzg.verify(
+        &segment_commitment,
+        ArchivedHistorySegment::NUM_PIECES,
+        position,
+        &commitment_hash,
+        &witness,
+    )
+}
+
+/// Validate witness for record commitment hash produced by archiver
+#[cfg(feature = "kzg")]
+pub fn is_record_commitment_hash_valid(
+    kzg: &Kzg,
+    record_commitment_hash: &Scalar,
+    commitment: &SegmentCommitment,
+    witness: &RecordWitness,
+    position: u32,
+) -> bool {
+    let Ok(commitment) = Commitment::try_from(commitment) else {
+        return false;
+    };
+    let Ok(witness) = Witness::try_from(witness) else {
+        return false;
+    };
+
+    kzg.verify(
+        &commitment,
+        ArchivedHistorySegment::NUM_PIECES,
+        position,
+        record_commitment_hash,
+        &witness,
+    )
 }
 
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.

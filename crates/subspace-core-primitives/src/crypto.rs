@@ -15,6 +15,7 @@
 
 //! Various cryptographic utilities used across Subspace Network.
 
+#[cfg(feature = "embedded-kzg-settings")]
 pub mod kzg;
 
 use crate::{Blake3Hash, ScalarBytes};

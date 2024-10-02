@@ -8,7 +8,7 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterPieceGetter;
@@ -137,7 +137,7 @@ where
         additional_components: _,
     } = plotter_args;
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

@@ -35,7 +35,7 @@ use std::simd::Simd;
 use std::sync::{Once, OnceLock};
 use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::pot::PotOutput;
@@ -67,7 +67,7 @@ const MAX_PIECES_IN_SECTOR: u16 = 1;
 fn kzg_instance() -> &'static Kzg {
     static KZG: OnceLock<Kzg> = OnceLock::new();
 
-    KZG.get_or_init(|| Kzg::new(embedded_kzg_settings()))
+    KZG.get_or_init(Kzg::new)
 }
 
 fn erasure_coding_instance() -> &'static ErasureCoding {

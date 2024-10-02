@@ -1,4 +1,4 @@
-use crate::crypto::kzg::{embedded_kzg_settings, Kzg, Scalar};
+use crate::crypto::kzg::{Kzg, Scalar};
 use crate::ScalarBytes;
 use rand::thread_rng;
 use rand_core::RngCore;
@@ -9,7 +9,7 @@ fn basic() {
         .map(|_| Scalar::from(rand::random::<[u8; ScalarBytes::SAFE_BYTES]>()))
         .collect::<Vec<_>>();
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let polynomial = kzg.poly(&values).unwrap();
     let commitment = kzg.commit(&polynomial).unwrap();
 

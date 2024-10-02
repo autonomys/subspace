@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
 use subspace_core_primitives::segments::{ArchivedHistorySegment, RecordedHistorySegment};
@@ -23,7 +23,7 @@ fn get_random_block() -> Vec<u8> {
 
 #[test]
 fn segment_reconstruction_works() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -69,7 +69,7 @@ fn segment_reconstruction_works() {
 
 #[test]
 fn piece_reconstruction_works() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -119,7 +119,7 @@ fn piece_reconstruction_works() {
 
 #[test]
 fn segment_reconstruction_fails() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -160,7 +160,7 @@ fn segment_reconstruction_fails() {
 
 #[test]
 fn piece_reconstruction_fails() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

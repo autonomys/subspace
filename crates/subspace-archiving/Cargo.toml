@@ -28,6 +28,7 @@ thiserror = { version = "1.0.64", optional = true }
 criterion = "0.5.1"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 
 [features]
 default = ["std"]

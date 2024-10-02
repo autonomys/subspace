@@ -39,17 +39,11 @@ pub mod segments;
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-use crate::crypto::kzg::Witness;
 use crate::crypto::{blake3_hash, blake3_hash_list};
 use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
 use crate::pos::PosProof;
 use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -422,31 +416,6 @@ impl AsMut<[u8]> for ChunkWitness {
 impl ChunkWitness {
     /// Size of chunk witness in bytes.
     pub const SIZE: usize = 48;
-}
-
-impl From<Witness> for ChunkWitness {
-    #[inline]
-    fn from(witness: Witness) -> Self {
-        Self(witness.to_bytes())
-    }
-}
-
-impl TryFrom<&ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
-    }
-}
-
-impl TryFrom<ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
-    }
 }
 
 /// Farmer solution for slot challenge.

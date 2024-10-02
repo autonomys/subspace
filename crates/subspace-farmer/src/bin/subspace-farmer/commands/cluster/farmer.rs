@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
@@ -182,7 +182,7 @@ where
         .await
         .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

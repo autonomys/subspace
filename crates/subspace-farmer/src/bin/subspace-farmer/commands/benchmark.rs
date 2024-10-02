@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::{Blake3Hash, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
@@ -153,7 +153,7 @@ where
     } = audit_options;
 
     let sector_size = sector_size(single_disk_farm_info.pieces_in_sector());
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -333,7 +333,7 @@ where
         limit_sector_count,
     } = prove_options;
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

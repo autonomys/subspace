@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_farmer::cluster::controller::controller_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
@@ -164,7 +164,7 @@ pub(super) async fn controller(
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
         node_client.clone(),

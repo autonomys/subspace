@@ -73,7 +73,7 @@
 // use std::time::Duration;
 // use subspace_archiving::archiver::Archiver;
 // use subspace_core_primitives::crypto::kzg;
-// use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+// use subspace_core_primitives::crypto::kzg::{Kzg};
 // use subspace_core_primitives::objects::BlockObjectMapping;
 // use subspace_core_primitives::{
 //     ArchivedHistorySegment, FlatPieces, HistorySize, Piece, PieceIndex, PieceOffset, Solution,

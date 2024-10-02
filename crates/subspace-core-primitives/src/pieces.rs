@@ -5,7 +5,6 @@ mod serde;
 
 extern crate alloc;
 
-use crate::crypto::kzg::{Commitment, Witness};
 use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 use crate::ScalarBytes;
 #[cfg(feature = "serde")]
@@ -15,8 +14,6 @@ use alloc::boxed::Box;
 use alloc::fmt;
 #[cfg(not(feature = "std"))]
 use alloc::format;
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use bytes::{Bytes, BytesMut};
@@ -687,31 +684,6 @@ impl RecordCommitment {
     pub const SIZE: usize = 48;
 }
 
-impl From<Commitment> for RecordCommitment {
-    #[inline]
-    fn from(commitment: Commitment) -> Self {
-        Self(commitment.to_bytes())
-    }
-}
-
-impl TryFrom<&RecordCommitment> for Commitment {
-    type Error = String;
-
-    #[inline]
-    fn try_from(commitment: &RecordCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(&commitment.0)
-    }
-}
-
-impl TryFrom<RecordCommitment> for Commitment {
-    type Error = String;
-
-    #[inline]
-    fn try_from(commitment: RecordCommitment) -> Result<Self, Self::Error> {
-        Commitment::try_from(commitment.0)
-    }
-}
-
 /// Record witness contained within a piece.
 #[derive(
     Debug,
@@ -804,31 +776,6 @@ impl From<&mut [u8; RecordWitness::SIZE]> for &mut RecordWitness {
 impl RecordWitness {
     /// Size of record witness in bytes.
     pub const SIZE: usize = 48;
-}
-
-impl From<Witness> for RecordWitness {
-    #[inline]
-    fn from(witness: Witness) -> Self {
-        Self(witness.to_bytes())
-    }
-}
-
-impl TryFrom<&RecordWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: &RecordWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
-    }
-}
-
-impl TryFrom<RecordWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: RecordWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
-    }
 }
 
 #[derive(Debug)]

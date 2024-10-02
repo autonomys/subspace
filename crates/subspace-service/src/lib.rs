@@ -125,7 +125,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pot::PotSeed;
 use subspace_core_primitives::{BlockNumber, PublicKey, REWARD_SIGNING_CONTEXT};
@@ -535,16 +535,13 @@ where
 
     // TODO: Make these explicit arguments we no longer use Substate's `Configuration`
     let (kzg, maybe_erasure_coding) = tokio::task::block_in_place(|| {
-        rayon::join(
-            || Kzg::new(embedded_kzg_settings()),
-            || {
-                ErasureCoding::new(
-                    NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
-                        .expect("Not zero; qed"),
-                )
-                .map_err(|error| format!("Failed to instantiate erasure coding: {error}"))
-            },
-        )
+        rayon::join(Kzg::new, || {
+            ErasureCoding::new(
+                NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+                    .expect("Not zero; qed"),
+            )
+            .map_err(|error| format!("Failed to instantiate erasure coding: {error}"))
+        })
     });
     let erasure_coding = maybe_erasure_coding?;
 

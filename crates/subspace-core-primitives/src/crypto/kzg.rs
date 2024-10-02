@@ -5,7 +5,9 @@ mod tests;
 
 extern crate alloc;
 
-use crate::ScalarBytes;
+use crate::pieces::{RecordCommitment, RecordWitness};
+use crate::segments::SegmentCommitment;
+use crate::{ChunkWitness, ScalarBytes};
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
@@ -34,7 +36,6 @@ use tracing::debug;
 /// ```bash
 /// curl -s https://seq.ceremony.ethereum.org/info/current_state | jq '.transcripts[3].powersOfTau' | jq -r '.G1Powers + .G2Powers | map(.[2:]) | join("")' | xxd -r -p - eth-public-parameters.bin
 /// ```
-#[cfg(feature = "embedded-kzg-settings")]
 pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("kzg/eth-public-parameters.bin");
 /// Number of G1 powers stored in [`EMBEDDED_KZG_SETTINGS_BYTES`]
 pub const NUM_G1_POWERS: usize = 32_768;
@@ -44,7 +45,7 @@ pub const NUM_G2_POWERS: usize = 65;
 // Symmetric function is present in tests
 /// Function turns bytes into `FsKZGSettings`, it is up to the user to ensure that bytes make sense,
 /// otherwise result can be very wrong (but will not panic).
-pub fn bytes_to_kzg_settings(
+fn bytes_to_kzg_settings(
     bytes: &[u8],
     num_g1_powers: usize,
     num_g2_powers: usize,
@@ -81,13 +82,6 @@ pub fn bytes_to_kzg_settings(
         secret_g2,
         precomputation: None,
     })
-}
-
-/// Embedded KZG settings
-#[cfg(feature = "embedded-kzg-settings")]
-pub fn embedded_kzg_settings() -> FsKZGSettings {
-    bytes_to_kzg_settings(EMBEDDED_KZG_SETTINGS_BYTES, NUM_G1_POWERS, NUM_G2_POWERS)
-        .expect("Static bytes are correct, there is a test for this; qed")
 }
 
 /// Commitment to polynomial
@@ -491,6 +485,56 @@ impl Commitment {
     }
 }
 
+impl From<Commitment> for RecordCommitment {
+    #[inline]
+    fn from(commitment: Commitment) -> Self {
+        RecordCommitment::from(commitment.to_bytes())
+    }
+}
+
+impl TryFrom<&RecordCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: &RecordCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(*commitment)
+    }
+}
+
+impl TryFrom<RecordCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: RecordCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(&commitment)
+    }
+}
+
+impl From<Commitment> for SegmentCommitment {
+    #[inline]
+    fn from(commitment: Commitment) -> Self {
+        SegmentCommitment::from(commitment.to_bytes())
+    }
+}
+
+impl TryFrom<&SegmentCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: &SegmentCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(*commitment)
+    }
+}
+
+impl TryFrom<SegmentCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: SegmentCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(&commitment)
+    }
+}
+
 impl From<Commitment> for [u8; Commitment::SIZE] {
     #[inline]
     fn from(commitment: Commitment) -> Self {
@@ -543,6 +587,56 @@ impl Witness {
     }
 }
 
+impl From<Witness> for RecordWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        RecordWitness::from(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&RecordWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &RecordWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(*witness)
+    }
+}
+
+impl TryFrom<RecordWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: RecordWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness)
+    }
+}
+
+impl From<Witness> for ChunkWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        ChunkWitness::from(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness.0)
+    }
+}
+
+impl TryFrom<ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(witness.0)
+    }
+}
+
 impl From<Witness> for [u8; Witness::SIZE] {
     #[inline]
     fn from(witness: Witness) -> Self {
@@ -588,11 +682,18 @@ pub struct Kzg {
 }
 
 impl Kzg {
-    /// Create new instance with given KZG settings.
+    /// Create new instance with embedded KZG settings.
     ///
-    /// Canonical KZG settings can be obtained using `embedded_kzg_settings()` function that becomes
-    /// available with `embedded-kzg-settings` feature (enabled by default).
-    pub fn new(kzg_settings: FsKZGSettings) -> Self {
+    /// NOTE: Prefer cloning to instantiation since cloning is cheap and instantiation is not!
+    #[allow(
+        clippy::new_without_default,
+        reason = "Caller really should read the function description"
+    )]
+    pub fn new() -> Self {
+        let kzg_settings =
+            bytes_to_kzg_settings(EMBEDDED_KZG_SETTINGS_BYTES, NUM_G1_POWERS, NUM_G2_POWERS)
+                .expect("Static bytes are correct, there is a test for this; qed");
+
         let inner = Arc::new(Inner {
             kzg_settings,
             fft_settings_cache: Mutex::default(),

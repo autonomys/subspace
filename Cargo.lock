@@ -12395,6 +12395,7 @@ dependencies = [
  "serde",
  "subspace-core-primitives",
  "subspace-erasure-coding",
+ "subspace-verification",
  "thiserror",
 ]
 
@@ -12520,7 +12521,6 @@ dependencies = [
  "serde_json",
  "ss58-registry",
  "static_assertions",
- "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
@@ -12529,6 +12529,7 @@ dependencies = [
  "subspace-proof-of-space",
  "subspace-proof-of-space-gpu",
  "subspace-rpc-primitives",
+ "subspace-verification",
  "substrate-bip39 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "supports-color",
  "tempfile",
@@ -12969,6 +12970,7 @@ dependencies = [
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
+ "subspace-verification",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -13140,7 +13142,6 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "schnorrkel",
- "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
  "thiserror",
