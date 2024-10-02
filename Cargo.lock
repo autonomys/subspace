@@ -11564,7 +11564,7 @@ dependencies = [
  "sp-std",
  "sp-storage",
  "ss58-registry",
- "substrate-bip39 0.6.0 (git+https://github.com/subspace/polkadot-sdk?rev=5871818e1d736f1843eb9078f886290695165c42)",
+ "substrate-bip39",
  "thiserror",
  "tracing",
  "w3f-bls",
@@ -12529,7 +12529,7 @@ dependencies = [
  "subspace-proof-of-space",
  "subspace-proof-of-space-gpu",
  "subspace-rpc-primitives",
- "substrate-bip39 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "substrate-bip39",
  "supports-color",
  "tempfile",
  "thiserror",
@@ -13151,18 +13151,6 @@ name = "substrate-bip39"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca58ffd742f693dc13d69bdbb2e642ae239e0053f6aab3b104252892f856700a"
-dependencies = [
- "hmac 0.12.1",
- "pbkdf2",
- "schnorrkel",
- "sha2 0.10.8",
- "zeroize",
-]
-
-[[package]]
-name = "substrate-bip39"
-version = "0.6.0"
-source = "git+https://github.com/subspace/polkadot-sdk?rev=5871818e1d736f1843eb9078f886290695165c42#5871818e1d736f1843eb9078f886290695165c42"
 dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
