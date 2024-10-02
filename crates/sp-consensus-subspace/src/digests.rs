@@ -25,8 +25,9 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use sp_std::num::NonZeroU32;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::{SegmentCommitment, SegmentIndex};
-use subspace_core_primitives::{PotOutput, PublicKey, RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{PublicKey, RewardSignature, Solution, SolutionRange};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.

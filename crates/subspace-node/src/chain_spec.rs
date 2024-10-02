@@ -29,7 +29,8 @@ use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use subspace_core_primitives::{PotKey, PublicKey};
+use subspace_core_primitives::pot::PotKey;
+use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardPoint,

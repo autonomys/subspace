@@ -114,10 +114,11 @@ pub mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::pieces::PieceOffset;
+    use subspace_core_primitives::pot::PotCheckpoints;
     use subspace_core_primitives::sectors::SectorIndex;
     use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
     use subspace_core_primitives::{
-        Blake3Hash, PotCheckpoints, PublicKey, Randomness, RewardSignature, SolutionRange,
+        Blake3Hash, PublicKey, Randomness, RewardSignature, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {

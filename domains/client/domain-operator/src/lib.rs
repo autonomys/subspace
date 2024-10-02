@@ -97,7 +97,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 
 pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<

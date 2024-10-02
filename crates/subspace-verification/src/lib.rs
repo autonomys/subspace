@@ -31,11 +31,12 @@ use subspace_core_primitives::crypto::{
     blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
 };
 use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::sectors::{SectorId, SectorSlotChallenge};
 use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, PotOutput, PublicKey, RewardSignature, SlotNumber,
-    Solution, SolutionRange,
+    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_proof_of_space::Table;
 

@@ -1,7 +1,7 @@
 use core::num::NonZeroU32;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
-use subspace_core_primitives::PotSeed;
+use subspace_core_primitives::pot::PotSeed;
 use subspace_proof_of_time::prove;
 
 fn criterion_benchmark(c: &mut Criterion) {

@@ -66,10 +66,10 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use subspace_core_primitives::pot::{PotCheckpoints, PotOutput};
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::{
-    BlockNumber, PotCheckpoints, PotOutput, PublicKey, RewardSignature, Solution, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
+    BlockNumber, PublicKey, RewardSignature, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{

@@ -5,8 +5,9 @@ mod tests;
 
 use crate::crypto::{blake3_hash_list, blake3_hash_with_key};
 use crate::pieces::{PieceIndex, PieceOffset, Record};
+use crate::pos::PosSeed;
 use crate::segments::{HistorySize, SegmentCommitment};
-use crate::{Blake3Hash, PosSeed, U256};
+use crate::{Blake3Hash, U256};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use core::hash::Hash;

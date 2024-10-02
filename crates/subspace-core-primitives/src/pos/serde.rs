@@ -1,4 +1,4 @@
-use crate::PosProof;
+use crate::pos::PosProof;
 use hex::{decode_to_slice, FromHex, FromHexError};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 

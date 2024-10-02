@@ -47,7 +47,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 

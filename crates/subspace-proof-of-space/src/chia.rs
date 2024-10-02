@@ -2,7 +2,7 @@
 use crate::chiapos::{Tables, TablesCache};
 use crate::{PosTableType, Table, TableGenerator};
 use core::mem;
-use subspace_core_primitives::{PosProof, PosSeed};
+use subspace_core_primitives::pos::{PosProof, PosSeed};
 
 const K: u8 = PosProof::K;
 

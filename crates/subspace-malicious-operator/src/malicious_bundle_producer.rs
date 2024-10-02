@@ -30,7 +30,7 @@ use sp_runtime::{generic, RuntimeAppPublic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime::{
     CheckHistorySeeder, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
 };

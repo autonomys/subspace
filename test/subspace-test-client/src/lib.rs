@@ -37,10 +37,9 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
-use subspace_core_primitives::{
-    PosSeed, PublicKey, RewardSignature, Solution, REWARD_SIGNING_CONTEXT,
-};
+use subspace_core_primitives::{PublicKey, RewardSignature, Solution, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{

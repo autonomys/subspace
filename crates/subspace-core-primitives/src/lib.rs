@@ -32,10 +32,10 @@ pub mod checksum;
 pub mod crypto;
 pub mod objects;
 pub mod pieces;
+pub mod pos;
+pub mod pot;
 pub mod sectors;
 pub mod segments;
-#[cfg(feature = "serde")]
-mod serde;
 #[cfg(test)]
 mod tests;
 
@@ -44,14 +44,13 @@ extern crate alloc;
 
 use crate::crypto::{blake3_hash, blake3_hash_list, Scalar};
 use crate::pieces::{ChunkWitness, PieceOffset, Record, RecordCommitment, RecordWitness};
+use crate::pos::PosProof;
 use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use core::array::TryFromSliceError;
 use core::fmt;
-use core::num::NonZeroU8;
-use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
@@ -250,245 +249,6 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-/// Proof of space seed.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosSeed([u8; Self::SIZE]);
-
-impl From<[u8; PosSeed::SIZE]> for PosSeed {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosSeed> for [u8; PosSeed::SIZE] {
-    #[inline]
-    fn from(value: PosSeed) -> Self {
-        value.0
-    }
-}
-
-impl PosSeed {
-    /// Size of proof of space seed in bytes.
-    pub const SIZE: usize = 32;
-}
-
-/// Proof of space proof bytes.
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
-)]
-pub struct PosProof([u8; Self::SIZE]);
-
-impl From<[u8; PosProof::SIZE]> for PosProof {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosProof> for [u8; PosProof::SIZE] {
-    #[inline]
-    fn from(value: PosProof) -> Self {
-        value.0
-    }
-}
-
-impl Default for PosProof {
-    #[inline]
-    fn default() -> Self {
-        Self([0; Self::SIZE])
-    }
-}
-
-impl PosProof {
-    /// Constant K used for proof of space
-    pub const K: u8 = 20;
-    /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = Self::K as usize * 8;
-
-    /// Proof hash.
-    pub fn hash(&self) -> Blake3Hash {
-        blake3_hash(&self.0)
-    }
-}
-
-/// Proof of time key(input to the encryption).
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl FromStr for PotKey {
-    type Err = hex::FromHexError;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut key = Self::default();
-        hex::decode_to_slice(s, key.as_mut())?;
-
-        Ok(key)
-    }
-}
-
-impl PotKey {
-    /// Size of proof of time key in bytes
-    pub const SIZE: usize = 16;
-}
-
-/// Proof of time seed
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotSeed {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl PotSeed {
-    /// Size of proof of time seed in bytes
-    pub const SIZE: usize = 16;
-
-    /// Derive initial PoT seed from genesis block hash
-    #[inline]
-    pub fn from_genesis(genesis_block_hash: &[u8], external_entropy: &[u8]) -> Self {
-        let hash = blake3_hash_list(&[genesis_block_hash, external_entropy]);
-        let mut seed = Self::default();
-        seed.copy_from_slice(&hash[..Self::SIZE]);
-        seed
-    }
-
-    /// Derive key from proof of time seed
-    #[inline]
-    pub fn key(&self) -> PotKey {
-        let mut key = PotKey::default();
-        key.copy_from_slice(&blake3_hash(&self.0)[..Self::SIZE]);
-        key
-    }
-}
-
-/// Proof of time output, can be intermediate checkpoint or final slot output
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotOutput {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl PotOutput {
-    /// Size of proof of time proof in bytes
-    pub const SIZE: usize = 16;
-
-    /// Derives the global randomness from the output
-    #[inline]
-    pub fn derive_global_randomness(&self) -> Randomness {
-        Randomness::from(*blake3_hash(&self.0))
-    }
-
-    /// Derive seed from proof of time in case entropy injection is not needed
-    #[inline]
-    pub fn seed(&self) -> PotSeed {
-        PotSeed(self.0)
-    }
-
-    /// Derive seed from proof of time with entropy injection
-    #[inline]
-    pub fn seed_with_entropy(&self, entropy: &Blake3Hash) -> PotSeed {
-        let hash = blake3_hash_list(&[entropy.as_ref(), &self.0]);
-        let mut seed = PotSeed::default();
-        seed.copy_from_slice(&hash[..Self::SIZE]);
-        seed
-    }
-}
-
-/// Proof of time checkpoints, result of proving
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-pub struct PotCheckpoints([PotOutput; Self::NUM_CHECKPOINTS.get() as usize]);
-
-impl PotCheckpoints {
-    /// Number of PoT checkpoints produced (used to optimize verification)
-    pub const NUM_CHECKPOINTS: NonZeroU8 = NonZeroU8::new(8).expect("Not zero; qed");
-
-    /// Get proof of time output out of checkpoints (last checkpoint)
-    #[inline]
-    pub fn output(&self) -> PotOutput {
-        self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
-    }
-}
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(

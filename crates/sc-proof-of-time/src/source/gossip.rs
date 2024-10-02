@@ -23,7 +23,7 @@ use std::future::poll_fn;
 use std::num::NonZeroU32;
 use std::pin::pin;
 use std::sync::Arc;
-use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotSeed};
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far

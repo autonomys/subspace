@@ -17,7 +17,8 @@ use sp_consensus_subspace::SubspaceApi;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::{PotCheckpoints, PublicKey};
+use subspace_core_primitives::pot::PotCheckpoints;
+use subspace_core_primitives::PublicKey;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, info, trace};
 

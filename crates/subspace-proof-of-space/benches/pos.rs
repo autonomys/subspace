@@ -3,7 +3,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
-use subspace_core_primitives::PosSeed;
+use subspace_core_primitives::pos::PosSeed;
 use subspace_proof_of_space::{Table, TableGenerator};
 
 fn pos_bench<PosTable>(

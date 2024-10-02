@@ -2,7 +2,7 @@ use crate::verifier::PotVerifier;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct InnerState {

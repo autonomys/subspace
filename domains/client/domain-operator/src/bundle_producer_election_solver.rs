@@ -13,7 +13,7 @@ use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 use tracing::log;
 
