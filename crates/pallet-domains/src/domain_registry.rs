@@ -33,7 +33,6 @@ use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use subspace_runtime_primitives::SLOT_PROBABILITY;
 
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -113,7 +112,7 @@ pub fn into_domain_config<T: Config>(
         None => calculate_max_bundle_weight_and_size(
             T::MaxDomainBlockSize::get(),
             T::MaxDomainBlockWeight::get(),
-            SLOT_PROBABILITY,
+            T::ConsensusSlotProbability::get(),
             bundle_slot_probability,
         )
         .ok_or(Error::BundleLimitCalculationOverflow)?,
