@@ -37,8 +37,9 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 sp-io = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
+subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 
 [features]

@@ -1,13 +1,10 @@
-//! Tools for KZG commitment scheme
+//! KZG primitives for Subspace Network
 
 #[cfg(test)]
 mod tests;
 
 extern crate alloc;
 
-use crate::pieces::{RecordCommitment, RecordWitness};
-use crate::segments::SegmentCommitment;
-use crate::{ChunkWitness, ScalarBytes};
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
@@ -29,6 +26,9 @@ use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
 use rust_kzg_blst::types::poly::FsPoly;
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
+use subspace_core_primitives::pieces::{RecordCommitment, RecordWitness};
+use subspace_core_primitives::segments::SegmentCommitment;
+use subspace_core_primitives::{ChunkWitness, ScalarBytes};
 use tracing::debug;
 
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases
@@ -36,7 +36,7 @@ use tracing::debug;
 /// ```bash
 /// curl -s https://seq.ceremony.ethereum.org/info/current_state | jq '.transcripts[3].powersOfTau' | jq -r '.G1Powers + .G2Powers | map(.[2:]) | join("")' | xxd -r -p - eth-public-parameters.bin
 /// ```
-pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("kzg/eth-public-parameters.bin");
+pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("eth-public-parameters.bin");
 /// Number of G1 powers stored in [`EMBEDDED_KZG_SETTINGS_BYTES`]
 pub const NUM_G1_POWERS: usize = 32_768;
 /// Number of G2 powers stored in [`EMBEDDED_KZG_SETTINGS_BYTES`]
@@ -624,7 +624,7 @@ impl TryFrom<&ChunkWitness> for Witness {
 
     #[inline]
     fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
+        Witness::try_from(*witness)
     }
 }
 
@@ -633,7 +633,7 @@ impl TryFrom<ChunkWitness> for Witness {
 
     #[inline]
     fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
+        Witness::try_from(&witness)
     }
 }
 

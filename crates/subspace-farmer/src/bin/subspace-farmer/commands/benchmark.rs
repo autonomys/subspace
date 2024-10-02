@@ -8,7 +8,6 @@ use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::{Blake3Hash, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
@@ -21,6 +20,7 @@ use subspace_farmer::single_disk_farm::{
 use subspace_farmer::utils::{recommended_number_of_farming_threads, tokio_rayon_spawn_handler};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::sector_size;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
 

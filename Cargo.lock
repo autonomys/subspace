@@ -7881,6 +7881,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
  "subspace-verification",
@@ -9993,6 +9994,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
  "thiserror",
@@ -10026,6 +10028,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-kzg",
  "subspace-networking",
  "subspace-rpc-primitives",
  "thiserror",
@@ -11520,6 +11523,7 @@ dependencies = [
  "sp-std",
  "sp-timestamp",
  "subspace-core-primitives",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
  "thiserror",
@@ -12395,6 +12399,7 @@ dependencies = [
  "serde",
  "subspace-core-primitives",
  "subspace-erasure-coding",
+ "subspace-kzg",
  "subspace-verification",
  "thiserror",
 ]
@@ -12405,22 +12410,15 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "bytes",
- "criterion",
  "derive_more 1.0.0",
  "hex",
- "kzg",
  "num-traits",
  "parity-scale-codec",
- "parking_lot 0.12.3",
  "rand",
- "rand_core",
  "rayon",
- "rust-kzg-blst",
  "scale-info",
  "serde",
- "spin 0.9.8",
  "static_assertions",
- "tracing",
  "uint 0.10.0",
 ]
 
@@ -12449,6 +12447,7 @@ dependencies = [
  "rand",
  "rust-kzg-blst",
  "subspace-core-primitives",
+ "subspace-kzg",
 ]
 
 [[package]]
@@ -12524,6 +12523,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-kzg",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -12566,12 +12566,29 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-verification",
  "thiserror",
  "tokio",
  "tracing",
  "winapi",
+]
+
+[[package]]
+name = "subspace-kzg"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "derive_more 1.0.0",
+ "kzg",
+ "parking_lot 0.12.3",
+ "rand",
+ "rand_core",
+ "rust-kzg-blst",
+ "spin 0.9.8",
+ "subspace-core-primitives",
+ "tracing",
 ]
 
 [[package]]
@@ -12788,6 +12805,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-kzg",
  "subspace-proof-of-space",
 ]
 
@@ -12967,6 +12985,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
+ "subspace-kzg",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
@@ -13003,6 +13022,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
  "subspace-service",
@@ -13143,6 +13163,7 @@ dependencies = [
  "parity-scale-codec",
  "schnorrkel",
  "subspace-core-primitives",
+ "subspace-kzg",
  "subspace-proof-of-space",
  "thiserror",
 ]

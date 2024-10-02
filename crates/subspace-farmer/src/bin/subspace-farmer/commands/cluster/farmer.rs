@@ -16,7 +16,6 @@ use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
@@ -35,6 +34,7 @@ use subspace_farmer::utils::{
     recommended_number_of_farming_threads, run_future_in_dedicated_thread, AsyncJoinOnDrop,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};

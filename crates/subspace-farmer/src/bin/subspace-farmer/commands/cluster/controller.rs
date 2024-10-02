@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_farmer::cluster::controller::controller_service;
 use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::farm::plotted_pieces::PlottedPieces;
@@ -30,6 +29,7 @@ use subspace_farmer::node_client::rpc_node_client::RpcNodeClient;
 use subspace_farmer::node_client::NodeClient;
 use subspace_farmer::single_disk_farm::identity::Identity;
 use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
+use subspace_kzg::Kzg;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use tracing::info;
 

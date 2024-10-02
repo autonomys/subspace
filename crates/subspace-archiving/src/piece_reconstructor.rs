@@ -8,10 +8,10 @@ use alloc::vec::Vec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial, Scalar};
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::{Commitment, Kzg, Polynomial, Scalar};
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]

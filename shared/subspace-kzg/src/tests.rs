@@ -1,7 +1,7 @@
-use crate::crypto::kzg::{Kzg, Scalar};
-use crate::ScalarBytes;
+use crate::{Kzg, Scalar};
 use rand::thread_rng;
 use rand_core::RngCore;
+use subspace_core_primitives::ScalarBytes;
 
 #[test]
 fn basic() {

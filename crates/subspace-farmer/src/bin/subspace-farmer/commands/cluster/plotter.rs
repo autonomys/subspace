@@ -8,7 +8,6 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterPieceGetter;
@@ -25,6 +24,7 @@ use subspace_farmer::utils::{
     create_plotting_thread_pool_manager, parse_cpu_cores_sets, thread_pool_core_indices,
 };
 use subspace_farmer_components::PieceGetter;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use tokio::sync::Semaphore;
 use tracing::info;

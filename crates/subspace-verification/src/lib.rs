@@ -33,8 +33,6 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-#[cfg(feature = "kzg")]
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar, Witness};
 use subspace_core_primitives::crypto::{blake3_hash_list, blake3_hash_with_key};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
@@ -51,6 +49,8 @@ use subspace_core_primitives::{
     Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
     SolutionRange,
 };
+#[cfg(feature = "kzg")]
+use subspace_kzg::{Commitment, Kzg, Scalar, Witness};
 #[cfg(feature = "kzg")]
 use subspace_proof_of_space::Table;
 

@@ -4,7 +4,6 @@ use rand::prelude::*;
 use std::env;
 use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::Archiver;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::segments::{HistorySize, RecordedHistorySegment};
 use subspace_core_primitives::PublicKey;
@@ -12,6 +11,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
 use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 

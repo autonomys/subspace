@@ -3,8 +3,8 @@ use kzg::G1;
 use rust_kzg_blst::types::g1::FsG1;
 use std::iter;
 use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::{Commitment, Scalar};
 use subspace_core_primitives::ScalarBytes;
+use subspace_kzg::{Commitment, Scalar};
 
 // TODO: This could have been done in-place, once implemented can be exposed as a utility
 fn concatenated_to_interleaved<T>(input: Vec<T>) -> Vec<T>

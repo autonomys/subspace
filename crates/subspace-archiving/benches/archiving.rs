@@ -2,9 +2,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::Record;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 
 const AMOUNT_OF_DATA: usize = 5 * 1024 * 1024;
 const SMALL_BLOCK_SIZE: usize = 500;

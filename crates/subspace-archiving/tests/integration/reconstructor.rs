@@ -4,7 +4,6 @@ use std::iter;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
 use subspace_core_primitives::segments::{
@@ -12,6 +11,7 @@ use subspace_core_primitives::segments::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.pieces().map(Some).collect()

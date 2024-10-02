@@ -30,7 +30,6 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-use subspace_core_primitives::crypto::kzg::{Kzg, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
@@ -41,6 +40,7 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::{Blake3Hash, BlockNumber, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::{Kzg, Scalar};
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,

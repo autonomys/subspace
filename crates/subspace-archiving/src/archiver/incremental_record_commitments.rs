@@ -8,9 +8,9 @@ use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Encode, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Scalar};
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::ScalarBytes;
+use subspace_kzg::{Commitment, Kzg, Scalar};
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic

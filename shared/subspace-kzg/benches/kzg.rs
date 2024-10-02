@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use subspace_core_primitives::crypto::kzg::{Kzg, Scalar};
 use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::ScalarBytes;
+use subspace_kzg::{Kzg, Scalar};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let values = (0..RawRecord::NUM_CHUNKS)

@@ -14,12 +14,12 @@ use crate::{ReadAt, ReadAtSync};
 use futures::FutureExt;
 use std::collections::VecDeque;
 use std::io;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId};
 use subspace_core_primitives::{ChunkWitness, PublicKey, ScalarBytes, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 

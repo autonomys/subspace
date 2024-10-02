@@ -34,7 +34,6 @@ use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::slice;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pos::PosSeed;
@@ -47,6 +46,7 @@ use subspace_farmer_components::plotting::{
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};

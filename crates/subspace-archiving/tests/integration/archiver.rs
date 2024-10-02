@@ -7,7 +7,6 @@ use std::io::Write;
 use std::iter;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::pieces::{Piece, Record};
 use subspace_core_primitives::segments::{
@@ -16,6 +15,7 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::Blake3Hash;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 use subspace_verification::is_piece_valid;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {

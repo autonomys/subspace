@@ -8,7 +8,6 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
-use subspace_core_primitives::crypto::kzg::Scalar;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
@@ -16,6 +15,7 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Scalar;
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]

@@ -19,15 +19,17 @@ include = [
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false }
 schnorrkel = { version = "0.11.4", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", default-features = false, optional = true }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", default-features = false }
 thiserror = { version = "1.0.64", optional = true }
 
 [features]
 default = ["std", "kzg"]
-kzg = ["subspace-core-primitives/embedded-kzg-settings"]
+kzg = ["subspace-kzg"]
 std = [
     "codec/std",
     "schnorrkel/std",
     "subspace-core-primitives/std",
+    "subspace-kzg?/std",
     "thiserror"
 ]
