@@ -26,6 +26,7 @@ use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
 use rust_kzg_blst::types::poly::FsPoly;
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
+use static_assertions::const_assert_eq;
 use subspace_core_primitives::pieces::{RecordCommitment, RecordWitness};
 use subspace_core_primitives::segments::SegmentCommitment;
 use subspace_core_primitives::{ChunkWitness, ScalarBytes};
@@ -108,6 +109,15 @@ impl Polynomial {
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Scalar(FsFr);
+
+const_assert_eq!(
+    mem::size_of::<Option<Scalar>>(),
+    mem::size_of::<Option<FsFr>>()
+);
+const_assert_eq!(
+    mem::align_of::<Option<Scalar>>(),
+    mem::align_of::<Option<FsFr>>()
+);
 
 impl From<&[u8; ScalarBytes::SAFE_BYTES]> for Scalar {
     #[inline]
@@ -224,15 +234,21 @@ impl Scalar {
 
     /// Convenient conversion from slice of optional scalar to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_option_to_repr(value: &[Option<Self>]) -> &[Option<FsFr>] {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
     /// Convenient conversion from slice of optional underlying representation to scalar for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_option_from_repr(value: &[Option<FsFr>]) -> &[Option<Self>] {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
@@ -254,20 +270,27 @@ impl Scalar {
 
     /// Convenient conversion from optional mutable slice of scalar to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_option_mut_to_repr(value: &mut [Option<Self>]) -> &mut [Option<FsFr>] {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
     /// Convenient conversion from optional mutable slice of underlying representation to scalar for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_option_mut_from_repr(value: &mut [Option<FsFr>]) -> &mut [Option<Self>] {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
     /// Convenient conversion from vector of scalar to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn vec_to_repr(value: Vec<Self>) -> Vec<FsFr> {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -283,6 +306,7 @@ impl Scalar {
 
     /// Convenient conversion from vector of underlying representation to scalar for efficiency
     /// purposes.
+    #[inline]
     pub fn vec_from_repr(value: Vec<FsFr>) -> Vec<Self> {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -298,9 +322,11 @@ impl Scalar {
 
     /// Convenient conversion from vector of optional scalar to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn vec_option_to_repr(value: Vec<Option<Self>>) -> Vec<Option<FsFr>> {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory
-        //  layout, original vector is not dropped
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers, original vector is not dropped
         unsafe {
             let mut value = mem::ManuallyDrop::new(value);
             Vec::from_raw_parts(
@@ -313,9 +339,11 @@ impl Scalar {
 
     /// Convenient conversion from vector of optional underlying representation to scalar for
     /// efficiency purposes.
+    #[inline]
     pub fn vec_option_from_repr(value: Vec<Option<FsFr>>) -> Vec<Option<Self>> {
-        // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory
-        //  layout, original vector is not dropped
+        // SAFETY: `Scalar` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers, original vector is not dropped
         unsafe {
             let mut value = mem::ManuallyDrop::new(value);
             Vec::from_raw_parts(
@@ -331,6 +359,15 @@ impl Scalar {
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Commitment(FsG1);
+
+const_assert_eq!(
+    mem::size_of::<Option<Commitment>>(),
+    mem::size_of::<Option<FsG1>>()
+);
+const_assert_eq!(
+    mem::align_of::<Option<Commitment>>(),
+    mem::align_of::<Option<FsG1>>()
+);
 
 impl Commitment {
     /// Commitment size in bytes.
@@ -370,8 +407,9 @@ impl Commitment {
     /// efficiency purposes.
     #[inline]
     pub fn slice_option_to_repr(value: &[Option<Self>]) -> &[Option<FsG1>] {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        // layout
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
@@ -379,8 +417,9 @@ impl Commitment {
     /// efficiency purposes.
     #[inline]
     pub fn slice_option_from_repr(value: &[Option<FsG1>]) -> &[Option<Self>] {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        // layout
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
@@ -406,8 +445,9 @@ impl Commitment {
     /// for efficiency purposes.
     #[inline]
     pub fn slice_option_mut_to_repr(value: &mut [Option<Self>]) -> &mut [Option<FsG1>] {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        // layout
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
@@ -415,8 +455,9 @@ impl Commitment {
     /// for efficiency purposes.
     #[inline]
     pub fn slice_option_mut_from_repr(value: &mut [Option<FsG1>]) -> &mut [Option<Self>] {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        // layout
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers
         unsafe { mem::transmute(value) }
     }
 
@@ -456,8 +497,9 @@ impl Commitment {
     /// efficiency purposes.
     #[inline]
     pub fn vec_option_to_repr(value: Vec<Option<Self>>) -> Vec<Option<FsG1>> {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        //  layout, original vector is not dropped
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers, original vector is not dropped
         unsafe {
             let mut value = mem::ManuallyDrop::new(value);
             Vec::from_raw_parts(
@@ -472,8 +514,9 @@ impl Commitment {
     /// efficiency purposes.
     #[inline]
     pub fn vec_option_from_repr(value: Vec<Option<FsG1>>) -> Vec<Option<Self>> {
-        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
-        //  layout, original vector is not dropped
+        // SAFETY: `Commitment` is `#[repr(transparent)]` containing `#[repr(C)]` and we assume the
+        // compiler lays out optional `repr(C)` plain old data arrays the same as their optional
+        // transparent wrappers, original vector is not dropped
         unsafe {
             let mut value = mem::ManuallyDrop::new(value);
             Vec::from_raw_parts(
@@ -685,9 +728,9 @@ impl Kzg {
     /// Create new instance with embedded KZG settings.
     ///
     /// NOTE: Prefer cloning to instantiation since cloning is cheap and instantiation is not!
-    #[allow(
+    #[expect(
         clippy::new_without_default,
-        reason = "Caller really should read the function description"
+        reason = "Default must not be implemented, because Kzg should be cloned instead. Cloning is cheap and instantiation is not."
     )]
     pub fn new() -> Self {
         let kzg_settings =

@@ -12587,6 +12587,7 @@ dependencies = [
  "rand_core",
  "rust-kzg-blst",
  "spin 0.9.8",
+ "static_assertions",
  "subspace-core-primitives",
  "tracing",
 ]
