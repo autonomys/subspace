@@ -106,13 +106,14 @@ fn derive_pot_external_entropy(
         .properties()
         .get("potExternalEntropy")
         .map(|d| match d.clone() {
-            Value::String(s) => Ok(s),
-            Value::Null => Ok(String::new()),
+            Value::String(s) => Ok(Some(s)),
+            Value::Null => Ok(None),
             _ => Err(sc_service::Error::Other(
                 "Failed to decode PoT initial key".to_string(),
             )),
         })
-        .transpose()?;
+        .transpose()?
+        .flatten();
     if maybe_chain_spec_pot_external_entropy.is_some()
         && maybe_pot_external_entropy.is_some()
         && maybe_chain_spec_pot_external_entropy != maybe_pot_external_entropy
