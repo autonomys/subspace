@@ -3,6 +3,7 @@
 #[cfg(feature = "serde")]
 mod serde;
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
@@ -11,7 +12,6 @@ use crate::ScalarBytes;
 use ::serde::{Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-use alloc::fmt;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 #[cfg(not(feature = "std"))]
@@ -20,7 +20,7 @@ use bytes::{Bytes, BytesMut};
 use core::array::TryFromSliceError;
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
-use core::{mem, slice};
+use core::{fmt, mem, slice};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
