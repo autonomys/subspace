@@ -214,17 +214,6 @@ where
         .snap_sync_orchestrator
         .unblock_consensus_snap_sync(consensus_block_number);
 
-    sync_params
-        .consensus_chain_sync_params
-        .snap_sync_orchestrator
-        .unblock_other_consensus_chain_sync_strategies();
-
-    sync_params
-        .consensus_chain_sync_params
-        .snap_sync_orchestrator
-        .domain_snap_sync_unblocked()
-        .await;
-
     wait_for_block_import(
         sync_params.consensus_client.as_ref(),
         consensus_block_number.into(),

@@ -2,6 +2,7 @@ use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
+use async_trait::async_trait;
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
@@ -31,6 +32,23 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
+
+/// Provides target block number for snap-sync (blocking operation).
+#[async_trait]
+pub trait SnapSyncTargetBlockProvider: Send + Sync {
+    // TODO: remove after adding the rest of domain snap sync code
+    #[allow(dead_code)]
+    async fn target_block(&self) -> Option<BlockNumber>;
+}
+
+pub(crate) struct DefaultTargetBlockProvider;
+
+#[async_trait]
+impl SnapSyncTargetBlockProvider for DefaultTargetBlockProvider {
+    async fn target_block(&self) -> Option<BlockNumber> {
+        None
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn snap_sync<Block, AS, Client, PG>(
