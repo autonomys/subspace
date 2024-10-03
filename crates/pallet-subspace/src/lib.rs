@@ -62,9 +62,9 @@ use subspace_core_primitives::sectors::{SectorId, SectorIndex};
 use subspace_core_primitives::segments::{
     ArchivedHistorySegment, HistorySize, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
 use subspace_core_primitives::{
-    BlockHash, PublicKey, RewardSignature, ScalarBytes, SlotNumber, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
+    BlockHash, PublicKey, ScalarBytes, SlotNumber, REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
@@ -117,9 +117,8 @@ pub mod pallet {
     use subspace_core_primitives::pot::PotCheckpoints;
     use subspace_core_primitives::sectors::SectorIndex;
     use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
-    use subspace_core_primitives::{
-        PublicKey, Randomness, RewardSignature, ScalarBytes, SolutionRange,
-    };
+    use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
+    use subspace_core_primitives::{PublicKey, Randomness, ScalarBytes};
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,

@@ -44,7 +44,8 @@ use std::sync::{Arc, Mutex};
 use subspace_core_primitives::pieces::PieceOffset;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::SegmentIndex;
-use subspace_core_primitives::{PublicKey, RewardSignature, ScalarBytes, SolutionRange};
+use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
+use subspace_core_primitives::{PublicKey, ScalarBytes};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]

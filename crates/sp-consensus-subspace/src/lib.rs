@@ -45,9 +45,8 @@ use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    BlockHash, BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
-};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
 #[cfg(feature = "std")]
 use subspace_kzg::Kzg;
 #[cfg(feature = "std")]

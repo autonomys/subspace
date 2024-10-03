@@ -95,7 +95,8 @@ use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, SolutionRange, U256};
+use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
     Signature, MIN_REPLICATION_FACTOR,

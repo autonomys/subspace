@@ -26,7 +26,8 @@ mod benchmarks {
     use subspace_core_primitives::segments::{
         ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
     };
-    use subspace_core_primitives::{PublicKey, RewardSignature, Solution, SolutionRange};
+    use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+    use subspace_core_primitives::PublicKey;
 
     const SEED: u32 = 0;
 

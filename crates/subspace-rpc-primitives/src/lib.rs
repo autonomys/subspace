@@ -19,7 +19,8 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input, Output};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use subspace_core_primitives::hashes::Blake3Hash;
-use subspace_core_primitives::{PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{PublicKey, SlotNumber};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 

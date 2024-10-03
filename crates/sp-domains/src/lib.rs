@@ -69,7 +69,8 @@ use sp_weights::Weight;
 use std::collections::BTreeSet;
 use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::pot::PotOutput;
-use subspace_core_primitives::{bidirectional_distance, Randomness, U256};
+use subspace_core_primitives::solutions::bidirectional_distance;
+use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.

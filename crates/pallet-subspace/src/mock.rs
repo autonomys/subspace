@@ -44,10 +44,8 @@ use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, HistorySize, LastArchivedBlock,
     RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
-};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{BlockNumber, PublicKey, SlotNumber, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
