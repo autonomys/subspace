@@ -29,16 +29,17 @@ use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::slice;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pos::PosSeed;
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{PublicKey, RewardSignature, Solution, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
@@ -94,16 +95,12 @@ where
             }) = reward_signing_notification_stream.next().await
             {
                 let header_hash: [u8; 32] = header_hash.into();
-                let signature: subspace_core_primitives::RewardSignature = signing_pair
-                    .sign(substrate_ctx.bytes(&header_hash))
-                    .to_bytes()
-                    .into();
-                signature_sender
-                    .unbounded_send(
-                        FarmerSignature::decode(&mut signature.encode().as_ref())
-                            .expect("Failed to decode schnorrkel block signature"),
-                    )
-                    .unwrap();
+                let signature = RewardSignature::from(
+                    signing_pair
+                        .sign(substrate_ctx.bytes(&header_hash))
+                        .to_bytes(),
+                );
+                signature_sender.unbounded_send(signature).unwrap();
             }
         });
 }
@@ -120,7 +117,7 @@ async fn start_farming<PosTable, Client>(
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
 {
     let (plotting_result_sender, plotting_result_receiver) = futures::channel::oneshot::channel();
 
@@ -191,10 +188,7 @@ async fn start_farming<PosTable, Client>(
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address
-            let solution = Solution::<FarmerPublicKey, FarmerPublicKey>::decode(
-                &mut solution.encode().as_slice(),
-            )
-            .unwrap();
+            let solution = Solution::decode(&mut solution.encode().as_slice()).unwrap();
             let _ = solution_sender.try_send(solution);
         }
     }

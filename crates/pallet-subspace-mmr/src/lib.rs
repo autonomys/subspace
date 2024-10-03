@@ -22,9 +22,8 @@ pub use pallet::*;
 use sp_core::Get;
 use sp_mmr_primitives::{LeafDataProvider, OnNewRoot};
 use sp_runtime::traits::{CheckedSub, One};
-use sp_runtime::DigestItem;
 use sp_subspace_mmr::subspace_mmr_runtime_interface::get_mmr_leaf_data;
-use sp_subspace_mmr::{LeafDataV0, MmrDigest, MmrLeaf};
+use sp_subspace_mmr::{LeafDataV0, MmrLeaf};
 
 #[frame_support::pallet]
 mod pallet {
@@ -56,11 +55,6 @@ mod pallet {
 
 impl<T: Config> OnNewRoot<T::MmrRootHash> for Pallet<T> {
     fn on_new_root(root: &T::MmrRootHash) {
-        // TODO: this digest is not used remove it before next network reset but keep it
-        // as is for now to keep compatible with gemini-3h.
-        let digest = DigestItem::new_mmr_root(*root);
-        <frame_system::Pallet<T>>::deposit_log(digest);
-
         let block_number = frame_system::Pallet::<T>::block_number();
         <MmrRootHashes<T>>::insert(block_number, *root);
         if let Some(to_prune) = block_number.checked_sub(&T::MmrRootHashCount::get().into()) {

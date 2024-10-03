@@ -10,28 +10,30 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
-use sc_network::{NetworkBlock, NetworkRequest, PeerId};
+use sc_network::{NetworkBlock, PeerId};
+use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
-use sc_service::{ClientExt, Error};
+use sc_service::Error;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{BlockNumber, SegmentIndex};
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
+pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
     fork_id: Option<String>,
@@ -39,15 +41,13 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     pause_sync: Arc<AtomicBool>,
     piece_getter: PG,
-    network_request: NR,
     sync_service: Arc<SyncingService<Block>>,
+    network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
 ) where
-    Backend: sc_client_api::Backend<Block>,
     Block: BlockT,
     AS: AuxStore,
     Client: HeaderBackend<Block>
-        + ClientExt<Block, Backend>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
@@ -55,11 +55,8 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
         + Send
         + Sync
         + 'static,
-    // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
-    for<'a> &'a Client: BlockImport<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     PG: DsnSyncPieceGetter,
-    NR: NetworkRequest,
 {
     let info = client.info();
     // Only attempt snap sync with genesis state
@@ -75,8 +72,8 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
             fork_id.as_deref(),
             &client,
             import_queue_service.as_mut(),
-            &network_request,
             &sync_service,
+            &network_service_handle,
             None,
             &erasure_coding,
         );
@@ -169,12 +166,12 @@ where
         }
     };
 
-    // Skip the snap sync if there is just one segment header built on top of genesis, it is
-    // more efficient to sync it regularly
+    // We don't have the genesis state when we choose to snap sync.
     if target_segment_index <= SegmentIndex::ONE {
-        debug!("Snap sync was skipped due to too early chain history");
-
-        return Ok(None);
+        panic!(
+            "Snap sync is impossible - not enough archived history: \
+            wipe the DB folder and rerun with --sync=full"
+        );
     }
 
     // Identify all segment headers that would need to be reconstructed in order to get first
@@ -231,11 +228,11 @@ where
     // Reconstruct blocks of the last segment
     let mut blocks = VecDeque::new();
     {
-        let mut reconstructor = Reconstructor::new(erasure_coding.clone());
+        let reconstructor = Arc::new(Mutex::new(Reconstructor::new(erasure_coding.clone())));
 
         for segment_index in segments_to_reconstruct {
             let blocks_fut =
-                download_and_reconstruct_blocks(segment_index, piece_getter, &mut reconstructor);
+                download_and_reconstruct_blocks(segment_index, piece_getter, &reconstructor);
 
             blocks = VecDeque::from(blocks_fut.await?);
         }
@@ -247,25 +244,23 @@ where
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
 /// segment) or to the last archived block.
-async fn sync<PG, AS, Block, Client, IQS, B, NR>(
+async fn sync<PG, AS, Block, Client, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     piece_getter: &PG,
     fork_id: Option<&str>,
     client: &Arc<Client>,
     import_queue_service: &mut IQS,
-    network_request: &NR,
     sync_service: &SyncingService<Block>,
+    network_service_handle: &NetworkServiceHandle,
     target_block: Option<BlockNumber>,
     erasure_coding: &ErasureCoding,
 ) -> Result<(), Error>
 where
-    B: sc_client_api::Backend<Block>,
     PG: DsnSyncPieceGetter,
     AS: AuxStore,
     Block: BlockT,
     Client: HeaderBackend<Block>
-        + ClientExt<Block, B>
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
@@ -273,11 +268,8 @@ where
         + Send
         + Sync
         + 'static,
-    // TODO: Remove when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
-    for<'a> &'a Client: BlockImport<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized,
-    NR: NetworkRequest,
 {
     debug!("Starting snap sync...");
 
@@ -328,11 +320,17 @@ where
         let (header, extrinsics) = signed_block.block.deconstruct();
 
         // Download state for the first block, so it can be imported even without doing execution
-        let state = download_state(&header, client, fork_id, network_request, sync_service)
-            .await
-            .map_err(|error| {
-                format!("Failed to download state for the first block of target segment: {error}")
-            })?;
+        let state = download_state(
+            &header,
+            client,
+            fork_id,
+            sync_service,
+            network_service_handle,
+        )
+        .await
+        .map_err(|error| {
+            format!("Failed to download state for the first block of target segment: {error}")
+        })?;
 
         debug!("Downloaded state of the first block of the target segment");
 
@@ -342,9 +340,9 @@ where
         block.justifications = signed_block.justifications;
         block.state_action = StateAction::ApplyChanges(StorageChanges::Import(state));
         block.finalized = true;
+        block.create_gap = false;
         block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
-        // TODO: Simplify when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
-        (&mut client.as_ref())
+        client
             .import_block(block)
             .await
             .map_err(|error| format!("Failed to import first block of target segment: {error}"))?;
@@ -383,11 +381,6 @@ where
     wait_for_block_import(client.as_ref(), last_block_number.into())
         .instrument(info_span!("consensus chain snap sync"))
         .await;
-
-    // Clear the block gap that arises from first block import with a much higher number than
-    // previously (resulting in a gap)
-    // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
-    client.clear_block_gap()?;
 
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
@@ -452,17 +445,16 @@ where
 }
 
 /// Download and return state for specified block
-async fn download_state<Block, Client, NR>(
+async fn download_state<Block, Client>(
     header: &Block::Header,
     client: &Arc<Client>,
     fork_id: Option<&str>,
-    network_request: &NR,
     sync_service: &SyncingService<Block>,
+    network_service_handle: &NetworkServiceHandle,
 ) -> Result<ImportedState<Block>, Error>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
-    NR: NetworkRequest,
 {
     let block_number = *header.number();
 
@@ -500,13 +492,13 @@ where
 
         tried_peers.insert(current_peer_id);
 
-        let sync_engine = SnapSyncingEngine::<Block, NR>::new(
+        let sync_engine = SnapSyncingEngine::<Block>::new(
             client.clone(),
             fork_id,
             header.clone(),
             false,
             (current_peer_id, block_number),
-            network_request,
+            network_service_handle,
         )
         .map_err(Error::Client)?;
 

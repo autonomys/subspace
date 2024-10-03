@@ -64,7 +64,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification};
+use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
@@ -78,7 +78,8 @@ use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, info, trace, warn};
 
@@ -352,7 +353,7 @@ fn find_last_archived_block<Block, Client, AS>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore,
 {
     let Some(max_segment_index) = segment_headers_store.max_segment_index() else {
@@ -389,14 +390,10 @@ where
 
         let block_object_mappings = client
             .runtime_api()
-            .validated_object_call_hashes(last_archived_block_hash)
-            .and_then(|calls| {
-                client.runtime_api().extract_block_object_mapping(
-                    *last_archived_block.block.header().parent_hash(),
-                    last_archived_block.block.clone(),
-                    calls,
-                )
-            })
+            .extract_block_object_mapping(
+                *last_archived_block.block.header().parent_hash(),
+                last_archived_block.block.clone(),
+            )
             .unwrap_or_default();
 
         return Ok(Some((
@@ -427,14 +424,10 @@ where
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(genesis_hash)
-        .and_then(|calls| {
-            client.runtime_api().extract_block_object_mapping(
-                *signed_block.block.header().parent_hash(),
-                signed_block.block.clone(),
-                calls,
-            )
-        })
+        .extract_block_object_mapping(
+            *signed_block.block.header().parent_hash(),
+            signed_block.block.clone(),
+        )
         .unwrap_or_default();
 
     let encoded_block = encode_block(signed_block);
@@ -534,7 +527,7 @@ fn initialize_archiver<Block, Client, AS>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore,
 {
     let client_info = client.info();
@@ -648,14 +641,10 @@ where
                                 .expect("All blocks since last archived must be present; qed");
 
                             let block_object_mappings = runtime_api
-                                .validated_object_call_hashes(block_hash)
-                                .and_then(|calls| {
-                                    client.runtime_api().extract_block_object_mapping(
-                                        *block.block.header().parent_hash(),
-                                        block.block.clone(),
-                                        calls,
-                                    )
-                                })
+                                .extract_block_object_mapping(
+                                    *block.block.header().parent_hash(),
+                                    block.block.clone(),
+                                )
                                 .unwrap_or_default();
 
                             Ok((block, block_object_mappings))
@@ -746,8 +735,10 @@ fn finalize_block<Block, Backend, Client>(
     });
 }
 
-/// Create an archiver task that will listen for importing blocks and archive blocks at `K` depth,
-/// producing pieces and segment headers (segment headers are then added back to the blockchain as
+/// Create an archiver task.
+///
+/// Archiver task will listen for importing blocks and archive blocks at `K` depth, producing pieces
+/// and segment headers (segment headers are then added back to the blockchain as
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.
@@ -788,7 +779,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
@@ -946,7 +937,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
@@ -979,14 +970,7 @@ where
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(block_hash_to_archive)
-        .and_then(|calls| {
-            client.runtime_api().extract_block_object_mapping(
-                parent_block_hash,
-                block.block.clone(),
-                calls,
-            )
-        })
+        .extract_block_object_mapping(parent_block_hash, block.block.clone())
         .map_err(|error| {
             sp_blockchain::Error::Application(
                 format!("Failed to retrieve block object mappings: {error}").into(),

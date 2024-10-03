@@ -14,11 +14,10 @@ use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::service::traits::NetworkService;
 use sc_network::NetworkBlock;
-use sc_service::ClientExt;
 pub use snap_sync::wait_for_block_import;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::error::Error;
 use std::fmt;
@@ -26,7 +25,9 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
@@ -88,7 +89,7 @@ enum NotificationReason {
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn create_observer_and_worker<Block, Backend, AS, NB, Client, PG>(
+pub(super) fn create_observer_and_worker<Block, AS, NB, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<dyn NetworkService>,
     node: Node,
@@ -105,18 +106,16 @@ pub(super) fn create_observer_and_worker<Block, Backend, AS, NB, Client, PG>(
 )
 where
     Block: BlockT,
-    Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
     NB: NetworkBlock<Block::Hash, NumberFor<Block>> + Send + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
         + ProvideRuntimeApi<Block>
-        + ClientExt<Block, Backend>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     PG: DsnSyncPieceGetter + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(0);
@@ -257,7 +256,7 @@ async fn create_substrate_network_observer(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create_worker<Block, Backend, AS, IQS, NB, Client, PG>(
+async fn create_worker<Block, AS, IQS, NB, Client, PG>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
@@ -271,18 +270,16 @@ async fn create_worker<Block, Backend, AS, IQS, NB, Client, PG>(
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
-    Backend: sc_client_api::Backend<Block>,
     AS: AuxStore + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
     NB: NetworkBlock<Block::Hash, NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
-        + ClientExt<Block, Backend>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     PG: DsnSyncPieceGetter,
 {
     let info = client.info();
@@ -344,11 +341,6 @@ where
                 // Almost synced, DSN sync can't possibly help here
             }
         }
-
-        // Clear the block gap that arises from first block import with a much higher number than
-        // previously (resulting in a gap)
-        // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
-        client.clear_block_gap()?;
 
         debug!("Finished DSN sync");
 

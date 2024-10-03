@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use clap::Parser;
@@ -13,7 +19,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, PieceValidator};
 use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;
@@ -82,7 +88,7 @@ where
 #[derive(Debug, Parser)]
 struct Args {
     /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long, alias = "bootstrap-node", required = true)]
+    #[arg(long = "bootstrap-node", required = true)]
     bootstrap_nodes: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]

@@ -22,7 +22,7 @@ use blake2::digest::typenum::U64;
 use blake2::digest::FixedOutput;
 use blake2::{Blake2b, Digest};
 use ss58_registry::Ss58AddressFormat;
-use subspace_core_primitives::{PublicKey, PUBLIC_KEY_LENGTH};
+use subspace_core_primitives::PublicKey;
 use thiserror::Error;
 
 const PREFIX: &[u8] = b"SS58PRE";
@@ -68,7 +68,7 @@ pub fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58ParsingError>
         }
         _ => return Err(Ss58ParsingError::InvalidPrefix),
     };
-    if data.len() != prefix_len + PUBLIC_KEY_LENGTH + CHECKSUM_LEN {
+    if data.len() != prefix_len + PublicKey::SIZE + CHECKSUM_LEN {
         return Err(Ss58ParsingError::BadLength);
     }
     let format: Ss58AddressFormat = ident.into();
@@ -76,16 +76,15 @@ pub fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58ParsingError>
         return Err(Ss58ParsingError::FormatNotAllowed);
     }
 
-    let hash = ss58hash(&data[0..PUBLIC_KEY_LENGTH + prefix_len]);
+    let hash = ss58hash(&data[0..PublicKey::SIZE + prefix_len]);
     let checksum = &hash[0..CHECKSUM_LEN];
-    if data[PUBLIC_KEY_LENGTH + prefix_len..PUBLIC_KEY_LENGTH + prefix_len + CHECKSUM_LEN]
-        != *checksum
+    if data[PublicKey::SIZE + prefix_len..PublicKey::SIZE + prefix_len + CHECKSUM_LEN] != *checksum
     {
         // Invalid checksum.
         return Err(Ss58ParsingError::InvalidChecksum);
     }
 
-    let bytes: [u8; PUBLIC_KEY_LENGTH] = data[prefix_len..][..PUBLIC_KEY_LENGTH]
+    let bytes: [u8; PublicKey::SIZE] = data[prefix_len..][..PublicKey::SIZE]
         .try_into()
         .map_err(|_| Ss58ParsingError::BadLength)?;
 

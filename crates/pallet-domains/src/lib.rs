@@ -64,9 +64,9 @@ use sp_consensus_subspace::WrappedPotOutput;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainBlockLimit, DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt,
-    OpaqueBundle, OperatorId, OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId,
-    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -84,7 +84,8 @@ use sp_runtime::transaction_validity::TransactionPriority;
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
-use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
+use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::{BlockHash, SlotNumber, U256};
 
 /// Maximum number of nominators to slash within a give operator at a time.
 pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;
@@ -97,9 +98,9 @@ pub(crate) type FungibleHoldId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
-    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
-    fn storage_fund_withdrawal(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_staked() -> FungibleHoldId<T>;
+    fn domain_instantiation_id() -> FungibleHoldId<T>;
+    fn storage_fund_withdrawal() -> FungibleHoldId<T>;
 }
 
 pub trait BlockSlot<T: frame_system::Config> {
@@ -171,8 +172,6 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 
 #[frame_support::pallet]
 mod pallet {
-    #![allow(clippy::large_enum_variant)]
-
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::block_tree::AcceptedReceiptType;
     use crate::block_tree::{
@@ -431,6 +430,12 @@ mod pallet {
 
         /// Hook to handle chain rewards.
         type OnChainRewards: OnChainRewards<BalanceOf<Self>>;
+
+        /// The max number of withdrawals per nominator that may exist at any time,
+        /// once this limit is reached, the nominator need to unlock the withdrawal
+        /// before requesting new withdrawal.
+        #[pallet::constant]
+        type WithdrawalLimit: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -545,6 +550,11 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// The amount of balance the nominator hold for a given operator
+    #[pallet::storage]
+    pub(super) type DepositOnHold<T: Config> =
+        StorageMap<_, Identity, (OperatorId, NominatorId<T>), BalanceOf<T>, ValueQuery>;
+
     /// Tracks the nominator count under given operator.
     /// This storage is necessary since CountedStorageNMap does not support prefix key count, so
     /// cannot use that storage type for `Nominators` storage.
@@ -613,13 +623,11 @@ mod pallet {
     pub(super) type NewAddedHeadReceipt<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainHash, OptionQuery>;
 
-    /// The consensus block hash used to verify ER,
-    /// only store the consensus block hash for a domain
+    /// Map of consensus block hashes.
+    ///
+    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
     /// that point to the consensus block is pruned.
-    ///
-    /// TODO: this storage is unbounded in some cases, see https://github.com/autonomys/subspace/issues/1673
-    /// for more details, this will be fixed once https://github.com/autonomys/subspace/issues/1731 is implemented.
     #[pallet::storage]
     #[pallet::getter(fn consensus_block_info)]
     pub type ConsensusBlockHash<T: Config> =
@@ -713,6 +721,7 @@ mod pallet {
     pub type DomainRuntimeUpgrades<T> = StorageValue<_, Vec<RuntimeId>, ValueQuery>;
 
     /// Temporary storage to hold the sudo calls meant for the Domains.
+    ///
     /// Storage is cleared when there are any successful bundles in the next block.
     /// Only one sudo call is allowed per domain per consensus block.
     #[pallet::storage]
@@ -720,6 +729,7 @@ mod pallet {
         StorageMap<_, Identity, DomainId, DomainSudoCall, ValueQuery>;
 
     /// Storage that hold a list of all frozen domains.
+    ///
     /// A frozen domain does not accept the bundles but does accept a fraud proof.
     #[pallet::storage]
     pub type FrozenDomains<T> = StorageValue<_, BTreeSet<DomainId>, ValueQuery>;
@@ -2229,7 +2239,7 @@ impl<T: Config> Pallet<T> {
     fn validate_eligibility(
         to_sign: &[u8],
         signature: &OperatorSignature,
-        proof_of_election: &ProofOfElection<T::Hash>,
+        proof_of_election: &ProofOfElection,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
         pre_dispatch: bool,
     ) -> Result<(), BundleError> {
@@ -2676,14 +2686,6 @@ impl<T: Config> Pallet<T> {
     ) -> Option<(DomainBlockNumberFor<T>, T::DomainHash)> {
         LatestConfirmedDomainExecutionReceipt::<T>::get(domain_id)
             .map(|er| (er.domain_block_number, er.domain_block_hash))
-    }
-
-    /// Returns the domain block limit of the given domain.
-    pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
-        DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
-            max_block_size: domain_obj.domain_config.max_block_size,
-            max_block_weight: domain_obj.domain_config.max_block_weight,
-        })
     }
 
     /// Returns the domain bundle limit of the given domain

@@ -9,10 +9,12 @@ use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, BlockNumber, LastArchivedBlock, Piece,
-    RawRecord, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+use subspace_core_primitives::pieces::{Piece, RawRecord};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error
@@ -72,15 +74,13 @@ impl Reconstructor {
 
     /// Given a set of pieces of a segment of the archived history (any half of all pieces are
     /// required to be present, the rest will be recovered automatically due to use of erasure
-    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
-    /// corresponding block numbers.
+    /// coding if needed), reconstructs and returns the segment itself.
     ///
-    /// It is possible to start with any segment, but when next segment is pushed, it needs to
-    /// follow the previous one or else error will be returned.
-    pub fn add_segment(
-        &mut self,
+    /// Does not modify the internal state of the reconstructor.
+    pub fn reconstruct_segment(
+        &self,
         segment_pieces: &[Option<Piece>],
-    ) -> Result<ReconstructedContents, ReconstructorError> {
+    ) -> Result<Segment, ReconstructorError> {
         let mut segment_data = RecordedHistorySegment::new_boxed();
 
         if !segment_pieces
@@ -90,11 +90,13 @@ impl Reconstructor {
             .zip(segment_data.iter_mut())
             .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
-                    piece.record().iter().zip(raw_record.iter_mut()).for_each(
-                        |(source, target)| {
-                            target.copy_from_slice(&source[..Scalar::SAFE_BYTES]);
-                        },
-                    );
+                    piece
+                        .record()
+                        .to_raw_record_chunks()
+                        .zip(raw_record.iter_mut())
+                        .for_each(|(source, target)| {
+                            target.copy_from_slice(source);
+                        });
                     true
                 } else {
                     false
@@ -108,7 +110,7 @@ impl Reconstructor {
             let mut tmp_shards_scalars =
                 Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
-            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+            for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 for maybe_piece in segment_pieces.iter() {
                     let maybe_scalar = maybe_piece
@@ -138,19 +140,35 @@ impl Reconstructor {
                             .expect("Statically guaranteed to exist in a piece; qed")
                     }))
                     .for_each(|(source_scalar, segment_data)| {
-                        // Source scalar only contains payload data within first
-                        // [`Scalar::SAFE_BYTES`]
-                        segment_data
-                            .copy_from_slice(&source_scalar.to_bytes()[..Scalar::SAFE_BYTES]);
+                        segment_data.copy_from_slice(
+                            &source_scalar
+                                .try_to_safe_bytes()
+                                .expect("Source scalar has only safe bytes; qed"),
+                        );
                     });
 
                 tmp_shards_scalars.clear();
             }
         }
 
-        let Segment::V0 { items } =
-            Segment::decode(&mut AsRef::<[u8]>::as_ref(segment_data.as_ref()))
-                .map_err(ReconstructorError::SegmentDecoding)?;
+        let segment = Segment::decode(&mut AsRef::<[u8]>::as_ref(segment_data.as_ref()))
+            .map_err(ReconstructorError::SegmentDecoding)?;
+
+        Ok(segment)
+    }
+
+    /// Given a set of pieces of a segment of the archived history (any half of all pieces are
+    /// required to be present, the rest will be recovered automatically due to use of erasure
+    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
+    /// corresponding block numbers.
+    ///
+    /// It is possible to start with any segment, but when next segment is pushed, it needs to
+    /// follow the previous one or else error will be returned.
+    pub fn add_segment(
+        &mut self,
+        segment_pieces: &[Option<Piece>],
+    ) -> Result<ReconstructedContents, ReconstructorError> {
+        let Segment::V0 { items } = self.reconstruct_segment(segment_pieces)?;
 
         let mut reconstructed_contents = ReconstructedContents::default();
         let mut next_block_number = 0;

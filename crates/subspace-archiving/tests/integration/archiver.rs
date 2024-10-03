@@ -10,10 +10,12 @@ use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
-use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, Piece, Record,
-    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+use subspace_core_primitives::pieces::{Piece, Record};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::Blake3Hash;
 use subspace_erasure_coding::ErasureCoding;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
@@ -26,7 +28,9 @@ fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> 
     let offset: u64 = offset.into();
     let Compact(size) = Compact::<u64>::decode(
         &mut record
-            .to_raw_record_bytes()
+            .to_raw_record_chunks()
+            .flatten()
+            .copied()
             .skip(offset as usize)
             .take(8)
             .collect::<Vec<_>>()
@@ -34,7 +38,9 @@ fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> 
     )
     .unwrap();
     record
-        .to_raw_record_bytes()
+        .to_raw_record_chunks()
+        .flatten()
+        .copied()
         .skip(offset as usize + Compact::compact_len(&size))
         .take(size as usize)
         .collect()
@@ -48,8 +54,8 @@ fn compare_block_objects_to_piece_objects<'a>(
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
             assert_eq!(
-                extract_data_from_source_record(piece.record(), piece_object_mapping.offset()),
-                extract_data(block, block_object_mapping.offset())
+                extract_data_from_source_record(piece.record(), piece_object_mapping.offset),
+                extract_data(block, block_object_mapping.offset)
             );
         },
     );
@@ -77,13 +83,13 @@ fn archiver() {
             .as_mut()
             .write_all(&Compact(128_u64).encode())
             .unwrap();
-        let object_mapping = BlockObjectMapping {
+        let object_mapping = BlockObjectMapping::V0 {
             objects: vec![
-                BlockObject::V0 {
+                BlockObject {
                     hash: Blake3Hash::default(),
                     offset: 0u32,
                 },
-                BlockObject::V0 {
+                BlockObject {
                     hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 3,
                 },
@@ -113,17 +119,17 @@ fn archiver() {
             .as_mut()
             .write_all(&Compact(100_u64).encode())
             .unwrap();
-        let object_mapping = BlockObjectMapping {
+        let object_mapping = BlockObjectMapping::V0 {
             objects: vec![
-                BlockObject::V0 {
+                BlockObject {
                     hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 6,
                 },
-                BlockObject::V0 {
+                BlockObject {
                     hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 5,
                 },
-                BlockObject::V0 {
+                BlockObject {
                     hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 3 * 2 - 200,
                 },
@@ -166,19 +172,19 @@ fn archiver() {
         first_archived_segment
             .object_mapping
             .iter()
-            .filter(|object_mapping| !object_mapping.objects.is_empty())
+            .filter(|object_mapping| !object_mapping.objects().is_empty())
             .count(),
         4
     );
     {
         let block_objects = iter::repeat(block_0.as_ref())
-            .zip(&block_0_object_mapping.objects)
-            .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter()));
+            .zip(block_0_object_mapping.objects())
+            .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects()));
         let piece_objects = first_archived_segment
             .pieces
             .source_pieces()
             .zip(&first_archived_segment.object_mapping)
-            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
+            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(object_mapping.objects()));
 
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
@@ -245,7 +251,7 @@ fn archiver() {
         archived_segments[0]
             .object_mapping
             .iter()
-            .filter(|object_mapping| !object_mapping.objects.is_empty())
+            .filter(|object_mapping| !object_mapping.objects().is_empty())
             .count(),
         1
     );
@@ -258,18 +264,18 @@ fn archiver() {
         archived_segments[1]
             .object_mapping
             .iter()
-            .filter(|object_mapping| !object_mapping.objects.is_empty())
+            .filter(|object_mapping| !object_mapping.objects().is_empty())
             .count(),
         0
     );
     {
         let block_objects =
-            iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter().skip(2));
+            iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects().iter().skip(2));
         let piece_objects = archived_segments[0]
             .pieces
             .source_pieces()
             .zip(&archived_segments[0].object_mapping)
-            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
+            .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(object_mapping.objects()));
 
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
@@ -534,8 +540,8 @@ fn spill_over_edge_case() {
     // subtracting with overflow when trying to slice internal bytes of the segment item
     let archived_segments = archiver.add_block(
         vec![0u8; RecordedHistorySegment::SIZE],
-        BlockObjectMapping {
-            objects: vec![BlockObject::V0 {
+        BlockObjectMapping::V0 {
+            objects: vec![BlockObject {
                 hash: Blake3Hash::default(),
                 offset: 0,
             }],
@@ -548,7 +554,7 @@ fn spill_over_edge_case() {
         archived_segments[0]
             .object_mapping
             .iter()
-            .filter(|o| !o.objects.is_empty())
+            .filter(|o| !o.objects().is_empty())
             .count(),
         0
     );
@@ -556,7 +562,7 @@ fn spill_over_edge_case() {
         archived_segments[1]
             .object_mapping
             .iter()
-            .filter(|o| !o.objects.is_empty())
+            .filter(|o| !o.objects().is_empty())
             .count(),
         1
     );
@@ -585,7 +591,7 @@ fn object_on_the_edge_of_segment() {
             .unwrap();
 
     let mut second_block = vec![0u8; RecordedHistorySegment::SIZE * 2];
-    let object_mapping = BlockObject::V0 {
+    let object_mapping = BlockObject {
         hash: Blake3Hash::default(),
         // Offset is designed to fall exactly on the edge of the segment
         offset: RecordedHistorySegment::SIZE as u32
@@ -620,7 +626,7 @@ fn object_on_the_edge_of_segment() {
     };
     let mapped_bytes = rand::random::<[u8; 32]>().to_vec().encode();
     // Write mapped bytes at expected offset in source data
-    second_block[object_mapping.offset() as usize..][..mapped_bytes.len()]
+    second_block[object_mapping.offset as usize..][..mapped_bytes.len()]
         .copy_from_slice(&mapped_bytes);
 
     // First ensure that any smaller offset will get translated into the first archived segment,
@@ -628,10 +634,10 @@ fn object_on_the_edge_of_segment() {
     {
         let archived_segments = archiver.clone().add_block(
             second_block.clone(),
-            BlockObjectMapping {
-                objects: vec![BlockObject::V0 {
-                    hash: object_mapping.hash(),
-                    offset: object_mapping.offset() - 1,
+            BlockObjectMapping::V0 {
+                objects: vec![BlockObject {
+                    hash: object_mapping.hash,
+                    offset: object_mapping.offset - 1,
                 }],
             },
             true,
@@ -642,7 +648,7 @@ fn object_on_the_edge_of_segment() {
             archived_segments[0]
                 .object_mapping
                 .iter()
-                .filter(|o| !o.objects.is_empty())
+                .filter(|o| !o.objects().is_empty())
                 .count(),
             1
         );
@@ -650,7 +656,7 @@ fn object_on_the_edge_of_segment() {
 
     let archived_segments = archiver.add_block(
         second_block,
-        BlockObjectMapping {
+        BlockObjectMapping::V0 {
             objects: vec![object_mapping],
         },
         true,
@@ -661,7 +667,7 @@ fn object_on_the_edge_of_segment() {
         archived_segments[0]
             .object_mapping
             .iter()
-            .filter(|o| !o.objects.is_empty())
+            .filter(|o| !o.objects().is_empty())
             .count(),
         0
     );
@@ -670,18 +676,20 @@ fn object_on_the_edge_of_segment() {
         archived_segments[1]
             .object_mapping
             .iter()
-            .filter(|o| !o.objects.is_empty())
+            .filter(|o| !o.objects().is_empty())
             .count(),
         1
     );
-    assert_eq!(archived_segments[1].object_mapping[0].objects.len(), 1);
+    assert_eq!(archived_segments[1].object_mapping[0].objects().len(), 1);
 
     // Ensure bytes are mapped correctly
     assert_eq!(
         archived_segments[1].pieces[0]
             .record()
-            .to_raw_record_bytes()
-            .skip(archived_segments[1].object_mapping[0].objects[0].offset() as usize)
+            .to_raw_record_chunks()
+            .flatten()
+            .copied()
+            .skip(archived_segments[1].object_mapping[0].objects()[0].offset as usize)
             .take(mapped_bytes.len())
             .collect::<Vec<_>>(),
         mapped_bytes

@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use crate::utils::{
     parse_cpu_cores_sets, run_future_in_dedicated_thread, thread_pool_core_indices_internal,
     CpuCoreSet,

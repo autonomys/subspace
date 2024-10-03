@@ -49,13 +49,6 @@ mod pallet {
     #[pallet::getter(fn enable_balance_transfers)]
     pub type EnableBalanceTransfers<T> = StorageValue<_, bool, ValueQuery>;
 
-    /// Whether to enable calls from non-root account.
-    // TODO: Find a way to work around `Sudo::key()`
-    //  (https://github.com/paritytech/polkadot-sdk/pull/3370) or remove this feature
-    #[pallet::storage]
-    #[pallet::getter(fn enable_non_root_calls)]
-    pub type EnableNonRootCalls<T> = StorageValue<_, bool, ValueQuery>;
-
     #[pallet::storage]
     pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
@@ -77,8 +70,6 @@ mod pallet {
         pub enable_dynamic_cost_of_storage: bool,
         /// Whether to enable balance transfers
         pub enable_balance_transfers: bool,
-        /// Whether to enable calls from non-root account
-        pub enable_non_root_calls: bool,
         /// Confirmation depth k to use in the archiving process
         pub confirmation_depth_k: BlockNumberFor<T>,
         /// Council and democracy config params.
@@ -92,7 +83,6 @@ mod pallet {
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
-                enable_non_root_calls: false,
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
                 council_democracy_config_params:
                     CouncilDemocracyConfigParams::<BlockNumberFor<T>>::default(),
@@ -107,7 +97,6 @@ mod pallet {
                 enable_domains,
                 enable_dynamic_cost_of_storage,
                 enable_balance_transfers,
-                enable_non_root_calls,
                 confirmation_depth_k,
                 council_democracy_config_params,
             } = self;
@@ -120,7 +109,6 @@ mod pallet {
             <EnableDomains<T>>::put(enable_domains);
             <EnableDynamicCostOfStorage<T>>::put(enable_dynamic_cost_of_storage);
             <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
-            <EnableNonRootCalls<T>>::put(enable_non_root_calls);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
             CouncilDemocracyConfig::<T>::put(council_democracy_config_params);
         }
@@ -163,20 +151,6 @@ mod pallet {
             ensure_root(origin)?;
 
             EnableBalanceTransfers::<T>::put(enable_balance_transfers);
-
-            Ok(())
-        }
-
-        /// Enable or disable calls from non-root users.
-        #[pallet::call_index(3)]
-        #[pallet::weight(< T as Config >::WeightInfo::set_enable_non_root_calls())]
-        pub fn set_enable_non_root_calls(
-            origin: OriginFor<T>,
-            enable_non_root_calls: bool,
-        ) -> DispatchResult {
-            ensure_root(origin)?;
-
-            EnableNonRootCalls::<T>::put(enable_non_root_calls);
 
             Ok(())
         }

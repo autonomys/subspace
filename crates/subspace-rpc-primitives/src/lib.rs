@@ -130,7 +130,7 @@ pub struct SolutionResponse {
     /// Solution farmer has for the challenge.
     ///
     /// Corresponds to `slot_number` above.
-    pub solution: Solution<PublicKey, PublicKey>,
+    pub solution: Solution<PublicKey>,
 }
 
 /// Reward info that needs to be signed.
@@ -141,8 +141,7 @@ pub struct RewardSigningInfo {
     #[serde(with = "hex")]
     pub hash: [u8; 32],
     /// Public key of the plot identity that should create signature.
-    #[serde(with = "hex")]
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
 }
 
 /// Signature in response to reward hash signing request.

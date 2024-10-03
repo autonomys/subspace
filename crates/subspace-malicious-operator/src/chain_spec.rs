@@ -15,7 +15,7 @@ use std::num::NonZeroU32;
 use subspace_runtime::{
     AllowAuthoringBy, CouncilConfig, DemocracyConfig, DomainsConfig, EnableRewardsAt,
     HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
-    RuntimeConfigsConfig, SubspaceConfig, VestingConfig,
+    RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
@@ -130,7 +130,6 @@ struct GenesisParams {
     enable_domains: bool,
     enable_dynamic_cost_of_storage: bool,
     enable_balance_transfers: bool,
-    enable_non_root_calls: bool,
     confirmation_depth_k: u32,
     rewards_config: RewardsConfig,
 }
@@ -161,7 +160,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
         .with_name("Subspace development")
         .with_id("subspace_dev")
         .with_chain_type(ChainType::Development)
-        .with_genesis_config(patch_domain_runtime_version(
+        .with_genesis_config(
             serde_json::to_value(subspace_genesis_config(
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -172,7 +171,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
                 ],
-                vec![],
                 GenesisParams {
                     enable_rewards_at: EnableRewardsAt::Manually,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
@@ -180,7 +178,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     enable_domains: true,
                     enable_dynamic_cost_of_storage: false,
                     enable_balance_transfers: true,
-                    enable_non_root_calls: true,
                     confirmation_depth_k: 5,
                     rewards_config: RewardsConfig {
                         remaining_issuance: 1_000_000 * SSC,
@@ -198,7 +195,7 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                 },
             ))
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
-        ))
+        )
         .build())
 }
 
@@ -206,8 +203,6 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
 fn subspace_genesis_config(
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
-    // who, start, period, period_count, per_period
-    vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
 ) -> subspace_runtime::RuntimeGenesisConfig {
@@ -218,7 +213,6 @@ fn subspace_genesis_config(
         enable_domains,
         enable_dynamic_cost_of_storage,
         enable_balance_transfers,
-        enable_non_root_calls,
         confirmation_depth_k,
         rewards_config,
     } = genesis_params;
@@ -238,14 +232,12 @@ fn subspace_genesis_config(
             phantom: PhantomData,
         },
         rewards: rewards_config,
-        vesting: VestingConfig { vesting },
         council: CouncilConfig::default(),
         democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
             enable_dynamic_cost_of_storage,
             enable_balance_transfers,
-            enable_non_root_calls,
             confirmation_depth_k,
             council_democracy_config_params:
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
@@ -278,43 +270,4 @@ fn subspace_genesis_config(
             history_seeder: Some(sudo_account),
         },
     }
-}
-
-// TODO: Workaround for https://github.com/paritytech/polkadot-sdk/issues/4001
-fn patch_domain_runtime_version(mut genesis_config: serde_json::Value) -> serde_json::Value {
-    let Some(genesis_domains) = genesis_config
-        .get_mut("domains")
-        .and_then(|domains| domains.get_mut("genesisDomains"))
-        .and_then(|genesis_domains| genesis_domains.as_array_mut())
-    else {
-        return genesis_config;
-    };
-
-    for genesis_domain in genesis_domains {
-        let Some(runtime_version) = genesis_domain.get_mut("runtime_version") else {
-            continue;
-        };
-
-        if let Some(spec_name) = runtime_version.get_mut("specName") {
-            if let Some(spec_name_bytes) = spec_name
-                .as_str()
-                .map(|spec_name| spec_name.as_bytes().to_vec())
-            {
-                *spec_name = serde_json::to_value(spec_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-
-        if let Some(impl_name) = runtime_version.get_mut("implName") {
-            if let Some(impl_name_bytes) = impl_name
-                .as_str()
-                .map(|impl_name| impl_name.as_bytes().to_vec())
-            {
-                *impl_name = serde_json::to_value(impl_name_bytes)
-                    .expect("Bytes serialization doesn't fail; qed");
-            }
-        }
-    }
-
-    genesis_config
 }

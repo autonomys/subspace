@@ -9,7 +9,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct CacheKey {

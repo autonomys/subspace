@@ -10,7 +10,7 @@ use parity_scale_codec::{Encode, Output};
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::RawRecord;
+use subspace_core_primitives::pieces::RawRecord;
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic

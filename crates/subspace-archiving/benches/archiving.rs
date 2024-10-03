@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::Record;
+use subspace_core_primitives::pieces::Record;
 use subspace_erasure_coding::ErasureCoding;
 
 const AMOUNT_OF_DATA: usize = 5 * 1024 * 1024;

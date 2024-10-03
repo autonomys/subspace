@@ -15,10 +15,10 @@ use substrate_prometheus_endpoint::{
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
 
-/// Wrapper to work around the circular dependency in substrate:
-/// `build_network()` requires the block relay to be passed in,
-/// which internally needs the network handle. `set()` is
-/// used to fill in the network after the network is created.
+/// Wrapper to work around the circular dependency in substrate.
+///
+/// `build_network()` requires the block relay to be passed in, which internally needs the network
+/// handle. `set()` is used to fill in the network after the network is created.
 pub struct NetworkWrapper {
     network: Mutex<Option<NetworkRequestService>>,
 }

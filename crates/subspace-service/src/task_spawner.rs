@@ -49,7 +49,7 @@ where
         + CallApiAt<TBl>
         + Send
         + 'static,
-    <TCl as ProvideRuntimeApi<TBl>>::Api: sp_api::Metadata<TBl>
+    TCl::Api: sp_api::Metadata<TBl>
         + sp_transaction_pool::runtime_api::TaggedTransactionQueue<TBl>
         + sp_session::SessionKeys<TBl>
         + sp_api::ApiExt<TBl>,
@@ -57,7 +57,7 @@ where
     TBl::Hash: Unpin,
     TBl::Header: Unpin,
     TBackend: 'static + sc_client_api::backend::Backend<TBl> + Send,
-    TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
+    TExPool: MaintainedTransactionPool<Block = TBl, Hash = TBl::Hash> + 'static,
 {
     let SpawnTasksParams {
         // TODO: Stop using `Configuration` once
@@ -84,7 +84,11 @@ where
     let telemetry = telemetry
         .map(|telemetry| {
             init_telemetry(
-                &mut config,
+                config.network.node_name.clone(),
+                config.impl_name.clone(),
+                config.impl_version.clone(),
+                config.chain_spec.name().to_string(),
+                config.role.is_authority(),
                 network.clone(),
                 client.clone(),
                 telemetry,
@@ -126,39 +130,52 @@ where
         ),
     );
 
-    let rpc_id_provider = config.rpc_id_provider.take();
+    let rpc_id_provider = config.rpc.id_provider.take();
 
     // jsonrpsee RPC
-    let gen_rpc_module = |deny_unsafe: DenyUnsafe| {
+    let gen_rpc_module = || {
         gen_rpc_module(
-            deny_unsafe,
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
             keystore.clone(),
             system_rpc_tx.clone(),
-            &config,
+            config.impl_name.clone(),
+            config.impl_version.clone(),
+            config.chain_spec.as_ref(),
+            &config.state_pruning,
+            config.blocks_pruning,
             backend.clone(),
             &*rpc_builder,
         )
     };
+    let in_memory_rpc = {
+        let mut module = gen_rpc_module()?;
+        module.extensions_mut().insert(DenyUnsafe::No);
+        module
+    };
 
     let rpc = config
-        .rpc_addr
-        .map(|_| start_rpc_servers(&config, gen_rpc_module, rpc_id_provider))
+        .rpc
+        .addr
+        .is_some()
+        .then(|| {
+            start_rpc_servers(
+                &config.rpc,
+                config.prometheus_registry(),
+                &config.tokio_handle,
+                gen_rpc_module,
+                rpc_id_provider,
+            )
+        })
         .transpose()?;
-    let rpc_handlers = RpcHandlers::new(Arc::new(gen_rpc_module(DenyUnsafe::No)?));
+    let rpc_handlers = RpcHandlers::new(Arc::new(in_memory_rpc));
 
     // Spawn informant task
     spawn_handle.spawn(
         "informant",
         None,
-        sc_informant::build(
-            client.clone(),
-            network,
-            sync_service.clone(),
-            config.informant_output_format,
-        ),
+        sc_informant::build(client.clone(), network, sync_service.clone()),
     );
 
     task_manager.keep_alive((config.base_path, rpc));

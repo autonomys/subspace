@@ -18,14 +18,18 @@
 #![feature(const_option, const_trait_impl, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
-// Silence a rust-analyzer warning in `construct_runtime!`. This warning isn't present in rustc output.
-// TODO: remove when upstream issue is fixed: <https://github.com/rust-lang/rust-analyzer/issues/16514>
-#![allow(non_camel_case_types)]
+// TODO: remove when upstream issue is fixed
+#![allow(
+    non_camel_case_types,
+    reason = "https://github.com/rust-lang/rust-analyzer/issues/16514"
+)]
 
 mod domains;
 mod fees;
 mod object_mapping;
 mod signed_extensions;
+
+extern crate alloc;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -33,8 +37,10 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-pub use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+pub use crate::signed_extensions::{CheckHistorySeeder, DisablePallets};
+use alloc::borrow::Cow;
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -52,7 +58,7 @@ use frame_support::weights::constants::ParityDbWeight;
 use frame_support::weights::{ConstantMultiplier, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
-use frame_system::{EnsureNever, EnsureRoot};
+use frame_system::EnsureRoot;
 use pallet_collective::{EnsureMember, EnsureProportionAtLeast};
 pub use pallet_rewards::RewardPoint;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
@@ -60,17 +66,13 @@ use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
-use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
-    Vote,
-};
-use sp_core::crypto::{ByteArray, KeyTypeId};
+use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges, Vote};
+use sp_core::crypto::KeyTypeId;
 use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, DomainsHoldIdentifier,
-    ExecutionReceiptFor, MessengerHoldIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
+    OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -87,9 +89,7 @@ use sp_runtime::traits::{
     NumberFor,
 };
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill,
-};
+use sp_runtime::{generic, AccountId32, ApplyExtrinsicResult, ExtrinsicInclusionMode, Perbill};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::marker::PhantomData;
@@ -99,14 +99,19 @@ use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
+};
 use subspace_core_primitives::{
-    sectors_to_solution_range, solution_range_to_sectors, HistorySize, Piece, Randomness,
-    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, U256,
+    pieces_to_solution_range, solution_range_to_pieces, PublicKey, Randomness, SlotNumber,
+    SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
-    Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC, MAX_BLOCK_LENGTH,
-    MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY, SSC,
+    HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,
+    MAX_BLOCK_LENGTH, MIN_REPLICATION_FACTOR, NORMAL_DISPATCH_RATIO, SHANNON, SLOT_PROBABILITY,
+    SSC,
 };
 
 sp_runtime::impl_opaque_keys! {
@@ -121,15 +126,14 @@ const MAX_PIECES_IN_SECTOR: u16 = 1000;
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace"),
-    impl_name: create_runtime_str!("subspace"),
+    spec_name: Cow::Borrowed("subspace"),
+    impl_name: Cow::Borrowed("subspace"),
     authoring_version: 0,
     spec_version: 7,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
-    state_version: 0,
-    extrinsic_state_version: 0,
+    system_version: 2,
 };
 
 // TODO: Many of below constants should probably be updatable but currently they are not
@@ -161,14 +165,12 @@ const_assert!(POT_ENTROPY_INJECTION_DELAY > BLOCK_AUTHORING_DELAY + 1);
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
-const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
-
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
-// We assume initial plot size starts with the a single sector.
+// We assume initial plot size starts with a single sector.
 const INITIAL_SOLUTION_RANGE: SolutionRange =
-    sectors_to_solution_range(1, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
+    pieces_to_solution_range(MAX_PIECES_IN_SECTOR as u64, SLOT_PROBABILITY);
 
 /// Number of votes expected per block.
 ///
@@ -302,12 +304,6 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
     type BlockSlotCount = BlockSlotCount;
-
-    type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
-        OffencesSubspace,
-        ConstU64<{ EQUIVOCATION_REPORT_LONGEVITY as u64 }>,
-    >;
-
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
 }
 
@@ -327,44 +323,30 @@ parameter_types! {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Domains(DomainsHoldIdentifier),
-    Messenger(MessengerHoldIdentifier),
-    Preimage,
-}
+pub struct HoldIdentifierWrapper(HoldIdentifier);
 
-impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn staking_staked(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::Staked(operator_id),
-        ))
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn staking_staked() -> Self {
+        Self(HoldIdentifier::DomainStaking)
     }
 
-    fn domain_instantiation_id(domain_id: DomainId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
+    fn domain_instantiation_id() -> Self {
+        Self(HoldIdentifier::DomainInstantiation)
     }
 
-    fn storage_fund_withdrawal(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsHoldIdentifier::StorageFund(operator_id))
+    fn storage_fund_withdrawal() -> Self {
+        Self(HoldIdentifier::DomainStorageFund)
     }
 }
 
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn messenger_channel() -> Self {
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
-impl VariantCount for HoldIdentifier {
-    // TODO: revist this value, it is used as the max number of hold an account can
-    // create. Currently, nomination an operator will create 2 holds and opening an
-    // XDM channel will create 1 hold, so this value also used as the limit of how
-    // many operator/channel an account can nominate/open.
-    //
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 100;
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -382,14 +364,14 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 parameter_types! {
     pub CreditSupply: Balance = Balances::total_issuance();
     pub TotalSpacePledged: u128 = {
-        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current, SLOT_PROBABILITY, MAX_PIECES_IN_SECTOR);
-        sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
+        let pieces = solution_range_to_pieces(Subspace::solution_ranges().current, SLOT_PROBABILITY);
+        pieces as u128 * Piece::SIZE as u128
     };
     pub BlockchainHistorySize: u128 = u128::from(Subspace::archived_history_size());
     pub DynamicCostOfStorage: bool = RuntimeConfigs::enable_dynamic_cost_of_storage();
@@ -405,7 +387,7 @@ impl pallet_transaction_fees::Config for Runtime {
     type Currency = Balances;
     type FindBlockRewardAddress = Subspace;
     type DynamicCostOfStorage = DynamicCostOfStorage;
-    type WeightInfo = ();
+    type WeightInfo = pallet_transaction_fees::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -453,6 +435,11 @@ parameter_types! {
     pub MaxProposalWeight: Weight = Perbill::from_percent(50) * SubspaceBlockWeights::get().max_block;
 }
 
+pub type EnsureRootOr<O> = EitherOfDiverse<EnsureRoot<AccountId>, O>;
+pub type AllCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
+pub type TwoThirdsCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
+pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
+
 // TODO: update params for mainnnet
 impl pallet_collective::Config<CouncilCollective> for Runtime {
     type DefaultVote = pallet_collective::PrimeDefaultVote;
@@ -464,7 +451,7 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
     type Proposal = RuntimeCall;
     type RuntimeEvent = RuntimeEvent;
     type RuntimeOrigin = RuntimeOrigin;
-    type SetMembersOrigin = EnsureRoot<AccountId>;
+    type SetMembersOrigin = EnsureRootOr<AllCouncil>;
     type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
 }
 
@@ -472,7 +459,7 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 parameter_types! {
     pub PreimageBaseDeposit: Balance = 100 * SSC;
     pub PreimageByteDeposit: Balance = SSC;
-    pub const PreImageHoldReason: HoldIdentifier = HoldIdentifier::Preimage;
+    pub const PreImageHoldReason: HoldIdentifierWrapper = HoldIdentifierWrapper(HoldIdentifier::Preimage);
 }
 
 impl pallet_preimage::Config for Runtime {
@@ -506,12 +493,6 @@ impl pallet_scheduler::Config for Runtime {
     type ScheduleOrigin = EnsureRoot<AccountId>;
     type WeightInfo = pallet_scheduler::weights::SubstrateWeight<Runtime>;
 }
-
-// TODO: update params for mainnnet
-pub type EnsureRootOr<O> = EitherOfDiverse<EnsureRoot<AccountId>, O>;
-pub type AllCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
-pub type TwoThirdsCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
-pub type HalfCouncil = EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
@@ -706,7 +687,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = Domains;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = DomainRegistration;
@@ -733,11 +714,6 @@ impl pallet_transporter::Config for Runtime {
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
     type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
-}
-
-impl pallet_offences_subspace::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type OnOffenceHandler = Subspace;
 }
 
 parameter_types! {
@@ -770,6 +746,7 @@ parameter_types! {
     pub const MaxInitialDomainAccounts: u32 = 10;
     pub const MinInitialDomainAccountBalance: Balance = SSC;
     pub const BundleLongevity: u32 = 5;
+    pub const WithdrawalLimit: u32 = 32;
 }
 
 // `BlockSlotCount` must at least keep the slot for the current and the parent block, it also need to
@@ -829,7 +806,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
@@ -862,6 +839,7 @@ impl pallet_domains::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type FraudProofStorageKeyProvider = StorageKeyProvider;
     type OnChainRewards = OnChainRewards;
+    type WithdrawalLimit = WithdrawalLimit;
 }
 
 parameter_types! {
@@ -885,21 +863,6 @@ impl pallet_rewards::Config for Runtime {
 
 impl pallet_runtime_configs::Config for Runtime {
     type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
-}
-
-parameter_types! {
-    // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
-    pub const MinVestedTransfer: Balance = 0;
-}
-
-impl orml_vesting::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type MinVestedTransfer = MinVestedTransfer;
-    type VestedTransferOrigin = EnsureNever<AccountId>;
-    type WeightInfo = ();
-    type MaxVestingSchedules = ConstU32<2>;
-    type BlockNumberProvider = System;
 }
 
 mod mmr {
@@ -926,6 +889,8 @@ impl pallet_mmr::Config for Runtime {
     type OnNewRoot = SubspaceMmr;
     type BlockHashProvider = BlockHashProvider;
     type WeightInfo = ();
+    #[cfg(feature = "runtime-benchmarks")]
+    type BenchmarkHelper = ();
 }
 
 parameter_types! {
@@ -943,7 +908,6 @@ construct_runtime!(
         Timestamp: pallet_timestamp = 1,
 
         Subspace: pallet_subspace = 2,
-        OffencesSubspace: pallet_offences_subspace = 3,
         Rewards: pallet_rewards = 4,
 
         Balances: pallet_balances = 5,
@@ -953,8 +917,6 @@ construct_runtime!(
 
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
-
-        Vesting: orml_vesting = 13,
 
         Mmr: pallet_mmr = 30,
         SubspaceMmr: pallet_subspace_mmr = 31,
@@ -994,8 +956,8 @@ pub type SignedExtra = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
-    CheckStorageAccess,
     DisablePallets,
+    CheckHistorySeeder<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
@@ -1049,15 +1011,10 @@ fn is_xdm_mmr_proof_valid(ext: &<Block as BlockT>::Extrinsic) -> Option<bool> {
 
 struct RewardAddress([u8; 32]);
 
-impl From<FarmerPublicKey> for RewardAddress {
+impl From<PublicKey> for RewardAddress {
     #[inline]
-    fn from(farmer_public_key: FarmerPublicKey) -> Self {
-        Self(
-            farmer_public_key
-                .as_slice()
-                .try_into()
-                .expect("Public key is always of correct size; qed"),
-        )
+    fn from(public_key: PublicKey) -> Self {
+        Self(*public_key)
     }
 }
 
@@ -1195,17 +1152,12 @@ impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, successful_calls)
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
-            // No pallets produce objects right now
-            Vec::new()
+        fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
+            extract_block_object_mapping(block)
         }
     }
 
-    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block, PublicKey> for Runtime {
         fn pot_parameters() -> PotParameters {
             Subspace::pot_parameters()
         }
@@ -1214,14 +1166,8 @@ impl_runtime_apis! {
             Subspace::solution_ranges()
         }
 
-        fn submit_report_equivocation_extrinsic(
-            equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
-        ) -> Option<()> {
-            Subspace::submit_equivocation_report(equivocation_proof)
-        }
-
         fn submit_vote_extrinsic(
-            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
+            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
             let SignedVote { vote, signature } = signed_vote;
             let Vote::V0 {
@@ -1244,12 +1190,6 @@ impl_runtime_apis! {
                 },
                 signature,
             })
-        }
-
-        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
-            // TODO: Either check tx pool too for pending equivocations or replace equivocation
-            //  mechanism with an alternative one, so that blocking happens faster
-            Subspace::is_in_block_list(farmer_public_key)
         }
 
         fn history_size() -> HistorySize {
@@ -1276,7 +1216,7 @@ impl_runtime_apis! {
             }
         }
 
-        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+        fn root_plot_public_key() -> Option<PublicKey> {
             Subspace::root_plot_public_key()
         }
 
@@ -1318,22 +1258,6 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extract_bundle(
-            extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            crate::domains::extract_bundle(extrinsic)
-        }
-
-        fn extract_receipts(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
-            crate::domains::extract_successful_bundles(domain_id, extrinsics)
-                .into_iter()
-                .map(|bundle| bundle.into_receipt())
-                .collect()
-        }
-
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1368,10 +1292,6 @@ impl_runtime_apis! {
 
         fn oldest_unconfirmed_receipt_number(domain_id: DomainId) -> Option<DomainNumber> {
             Domains::oldest_unconfirmed_receipt_number(domain_id)
-        }
-
-        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
-            Domains::domain_block_limit(domain_id)
         }
 
         fn domain_bundle_limit(domain_id: DomainId) -> Option<sp_domains::DomainBundleLimit> {
@@ -1424,7 +1344,7 @@ impl_runtime_apis! {
             Domains::storage_fund_account_balance(operator_id)
         }
 
-        fn is_domain_runtime_updraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
+        fn is_domain_runtime_upgraded_since(domain_id: DomainId, at: NumberFor<Block>) -> Option<bool> {
             Domains::is_domain_runtime_upgraded_since(domain_id, at)
         }
 
@@ -1641,7 +1561,7 @@ impl_runtime_apis! {
 
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
-        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
             use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
             use sp_core::storage::TrackedStorageKey;
 

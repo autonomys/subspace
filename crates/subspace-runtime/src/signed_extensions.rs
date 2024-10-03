@@ -1,52 +1,12 @@
 use crate::{Runtime, RuntimeCall, RuntimeConfigs};
 use codec::{Decode, Encode};
+use core::marker::PhantomData;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionValidity, TransactionValidityError, ValidTransaction,
 };
 use sp_std::prelude::*;
-/// Controls non-root access to feeds and object store
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
-pub struct CheckStorageAccess;
-
-impl SignedExtension for CheckStorageAccess {
-    const IDENTIFIER: &'static str = "CheckStorageAccess";
-    type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::RuntimeCall;
-    type AdditionalSigned = ();
-    type Pre = ();
-
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
-        Ok(())
-    }
-
-    fn validate(
-        &self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> TransactionValidity {
-        // TODO: Find a way to work around `Sudo::key()`
-        //  (https://github.com/paritytech/polkadot-sdk/pull/3370) or remove this feature
-        // if RuntimeConfigs::enable_non_root_calls() || Some(who) == Sudo::key().as_ref() {
-        Ok(ValidTransaction::default())
-        // } else {
-        //     InvalidTransaction::BadSigner.into()
-        // }
-    }
-
-    fn pre_dispatch(
-        self,
-        _who: &Self::AccountId,
-        _call: &Self::Call,
-        _info: &DispatchInfoOf<Self::Call>,
-        _len: usize,
-    ) -> Result<Self::Pre, TransactionValidityError> {
-        Ok(())
-    }
-}
 
 /// Disable specific pallets.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Default, TypeInfo)]
@@ -107,5 +67,129 @@ impl SignedExtension for DisablePallets {
         } else {
             Ok(ValidTransaction::default())
         }
+    }
+}
+
+/// A custom signed extension to check if the caller is an authorized history seeder for
+/// the `history_seeding` pallet.
+#[derive(Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct CheckHistorySeeder<T: pallet_history_seeding::Config>(PhantomData<T>);
+
+impl<T: pallet_history_seeding::Config> core::fmt::Debug for CheckHistorySeeder<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("CheckHistorySeeder").finish()
+    }
+}
+
+impl<T: pallet_history_seeding::Config + Send + Sync> CheckHistorySeeder<T> {
+    pub fn new() -> Self {
+        Self(core::marker::PhantomData)
+    }
+}
+
+impl<T: pallet_history_seeding::Config + Send + Sync> Default for CheckHistorySeeder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: pallet_history_seeding::Config + Send + Sync> SignedExtension for CheckHistorySeeder<T> {
+    const IDENTIFIER: &'static str = "CheckHistorySeeder";
+
+    type AccountId = T::AccountId;
+    type Call = <Runtime as frame_system::Config>::RuntimeCall;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, TransactionValidityError> {
+        Ok(())
+    }
+
+    fn validate(
+        &self,
+        who: &Self::AccountId,
+        call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> TransactionValidity {
+        match call {
+            crate::RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history {
+                ..
+            }) => {
+                if Some(who.clone()) != pallet_history_seeding::Pallet::<T>::history_seeder() {
+                    return Err(TransactionValidityError::Invalid(
+                        InvalidTransaction::BadSigner,
+                    ));
+                }
+
+                Ok(ValidTransaction::default())
+            }
+            _ => Ok(ValidTransaction::default()),
+        }
+    }
+
+    fn pre_dispatch(
+        self,
+        who: &Self::AccountId,
+        _call: &Self::Call,
+        _info: &DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<Self::Pre, TransactionValidityError> {
+        self.validate(who, _call, _info, _len)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CheckHistorySeeder, Runtime, RuntimeCall, RuntimeOrigin};
+    use codec::Encode;
+    use frame_support::dispatch::DispatchInfo;
+    use frame_support::pallet_prelude::{InvalidTransaction, TransactionValidityError};
+    use frame_support::{assert_err, assert_ok};
+    use sp_runtime::traits::SignedExtension;
+    use sp_runtime::{AccountId32, BuildStorage};
+
+    pub fn new_test_ext() -> sp_io::TestExternalities {
+        let t = frame_system::GenesisConfig::<Runtime>::default()
+            .build_storage()
+            .unwrap();
+        t.into()
+    }
+
+    #[test]
+    fn test_check_history_seeder_works() {
+        new_test_ext().execute_with(|| {
+            let call = RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history {
+                remark: vec![0u8; 256],
+            });
+
+            let who = AccountId32::new([0u8; 32]);
+
+            assert_err!(
+                CheckHistorySeeder::<Runtime>::new().pre_dispatch(
+                    &who,
+                    &call,
+                    &DispatchInfo::default(),
+                    call.encoded_size()
+                ),
+                TransactionValidityError::Invalid(InvalidTransaction::BadSigner),
+            );
+
+            // set seeder
+            pallet_history_seeding::Pallet::<Runtime>::set_history_seeder(
+                RuntimeOrigin::root(),
+                who.clone(),
+            )
+            .unwrap();
+
+            assert_ok!(CheckHistorySeeder::<Runtime>::new().pre_dispatch(
+                &who,
+                &call,
+                &DispatchInfo::default(),
+                call.encoded_size()
+            ));
+        });
     }
 }

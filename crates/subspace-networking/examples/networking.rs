@@ -1,3 +1,8 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
 #![feature(type_changing_struct_update)]
 
 use futures::channel::oneshot;

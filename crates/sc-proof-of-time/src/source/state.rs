@@ -1,9 +1,8 @@
 use crate::verifier::PotVerifier;
-use atomic::Atomic;
+use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
-use std::sync::atomic::Ordering;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct InnerState {
@@ -62,7 +61,7 @@ pub(super) enum PotStateUpdateOutcome {
 
 #[derive(Debug)]
 pub(super) struct PotState {
-    inner_state: Atomic<InnerState>,
+    inner_state: Mutex<InnerState>,
     verifier: PotVerifier,
 }
 
@@ -78,13 +77,13 @@ impl PotState {
         };
 
         Self {
-            inner_state: Atomic::new(inner),
+            inner_state: Mutex::new(inner),
             verifier,
         }
     }
 
-    pub(super) fn next_slot_input(&self, ordering: Ordering) -> PotNextSlotInput {
-        self.inner_state.load(ordering).next_slot_input
+    pub(super) fn next_slot_input(&self) -> PotNextSlotInput {
+        self.inner_state.lock().next_slot_input
     }
 
     /// Extend state if it matches provided expected next slot input.
@@ -93,35 +92,24 @@ impl PotState {
     /// `Err(existing_next_slot_input)` in case state was changed in the meantime.
     pub(super) fn try_extend(
         &self,
-        expected_previous_next_slot_input: PotNextSlotInput,
+        expected_existing_next_slot_input: PotNextSlotInput,
         best_slot: Slot,
         best_output: PotOutput,
         maybe_updated_parameters_change: Option<Option<PotParametersChange>>,
     ) -> Result<PotNextSlotInput, PotNextSlotInput> {
-        let old_inner_state = self.inner_state.load(Ordering::Acquire);
-        if expected_previous_next_slot_input != old_inner_state.next_slot_input {
-            return Err(old_inner_state.next_slot_input);
+        let mut existing_inner_state = self.inner_state.lock();
+        if expected_existing_next_slot_input != existing_inner_state.next_slot_input {
+            return Err(existing_inner_state.next_slot_input);
         }
 
-        let new_inner_state = old_inner_state.update(
+        *existing_inner_state = existing_inner_state.update(
             best_slot,
             best_output,
             maybe_updated_parameters_change,
             &self.verifier,
         );
 
-        // Use `compare_exchange` to ensure we only update previously known value and not
-        // accidentally override something that doesn't match expectations anymore
-        self.inner_state
-            .compare_exchange(
-                old_inner_state,
-                new_inner_state,
-                Ordering::AcqRel,
-                // We don't care about the value read in case of failure
-                Ordering::Acquire,
-            )
-            .map(|_old_inner_state| new_inner_state.next_slot_input)
-            .map_err(|existing_inner_state| existing_inner_state.next_slot_input)
+        Ok(existing_inner_state.next_slot_input)
     }
 
     /// Update state, overriding PoT chain if it doesn't match provided values.
@@ -133,33 +121,30 @@ impl PotState {
         best_output: PotOutput,
         maybe_updated_parameters_change: Option<Option<PotParametersChange>>,
     ) -> PotStateUpdateOutcome {
-        let mut best_state = None;
-        // Use `fetch_update` such that we don't accidentally downgrade best slot to smaller value
-        let previous_best_state = self
-            .inner_state
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |inner_state| {
-                best_state = Some(inner_state.update(
-                    best_slot,
-                    best_output,
-                    maybe_updated_parameters_change,
-                    &self.verifier,
-                ));
+        let previous_best_state;
+        let new_best_state;
+        {
+            let mut inner_state = self.inner_state.lock();
+            previous_best_state = *inner_state;
+            new_best_state = previous_best_state.update(
+                best_slot,
+                best_output,
+                maybe_updated_parameters_change,
+                &self.verifier,
+            );
+            *inner_state = new_best_state;
+        }
 
-                best_state
-            })
-            .expect("Callback always returns `Some`; qed");
-        let best_state = best_state.expect("Replaced with `Some` above; qed");
-
-        if previous_best_state.next_slot_input == best_state.next_slot_input {
+        if previous_best_state.next_slot_input == new_best_state.next_slot_input {
             return PotStateUpdateOutcome::NoChange;
         }
 
-        if previous_best_state.next_slot_input.slot < best_state.next_slot_input.slot {
+        if previous_best_state.next_slot_input.slot < new_best_state.next_slot_input.slot {
             let mut slot_iterations = previous_best_state.next_slot_input.slot_iterations;
             let mut seed = previous_best_state.next_slot_input.seed;
 
             for slot in u64::from(previous_best_state.next_slot_input.slot)
-                ..u64::from(best_state.next_slot_input.slot)
+                ..u64::from(new_best_state.next_slot_input.slot)
             {
                 let slot = Slot::from(slot);
 
@@ -181,13 +166,13 @@ impl PotState {
                 slot_iterations = pot_input.slot_iterations;
                 seed = pot_input.seed;
 
-                if next_slot == best_state.next_slot_input.slot
-                    && slot_iterations == best_state.next_slot_input.slot_iterations
-                    && seed == best_state.next_slot_input.seed
+                if next_slot == new_best_state.next_slot_input.slot
+                    && slot_iterations == new_best_state.next_slot_input.slot_iterations
+                    && seed == new_best_state.next_slot_input.seed
                 {
                     return PotStateUpdateOutcome::Extension {
                         from: previous_best_state.next_slot_input,
-                        to: best_state.next_slot_input,
+                        to: new_best_state.next_slot_input,
                     };
                 }
             }
@@ -195,7 +180,7 @@ impl PotState {
 
         PotStateUpdateOutcome::Reorg {
             from: previous_best_state.next_slot_input,
-            to: best_state.next_slot_input,
+            to: new_best_state.next_slot_input,
         }
     }
 }

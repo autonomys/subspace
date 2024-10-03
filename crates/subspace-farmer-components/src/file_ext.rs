@@ -9,26 +9,20 @@ pub trait OpenOptionsExt {
     /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_random_access(&mut self) -> &mut Self;
 
-    /// Advise Windows to not use buffering for this file and that file access will be random.
-    ///
-    /// NOTE: There are major alignment requirements described here:
-    /// https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements
-    #[cfg(windows)]
-    fn advise_unbuffered(&mut self) -> &mut Self;
-
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
     /// desirable, only has impact on Windows, for other operating systems see [`FileExt`]
     fn advise_sequential_access(&mut self) -> &mut Self;
+
+    /// Use Direct I/O on Linux and disable buffering on Windows.
+    ///
+    /// NOTE: There are major alignment requirements described here:
+    /// <https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering#alignment-and-file-access-requirements>
+    /// <https://man7.org/linux/man-pages/man2/open.2.html>
+    fn use_direct_io(&mut self) -> &mut Self;
 }
 
 impl OpenOptionsExt for OpenOptions {
-    #[cfg(target_os = "linux")]
-    fn advise_random_access(&mut self) -> &mut Self {
-        // Not supported
-        self
-    }
-
-    #[cfg(target_os = "macos")]
+    #[cfg(not(windows))]
     fn advise_random_access(&mut self) -> &mut Self {
         // Not supported
         self
@@ -47,22 +41,7 @@ impl OpenOptionsExt for OpenOptions {
         )
     }
 
-    #[cfg(windows)]
-    fn advise_unbuffered(&mut self) -> &mut Self {
-        use std::os::windows::fs::OpenOptionsExt;
-        self.custom_flags(
-            winapi::um::winbase::FILE_FLAG_WRITE_THROUGH
-                | winapi::um::winbase::FILE_FLAG_NO_BUFFERING,
-        )
-    }
-
-    #[cfg(target_os = "linux")]
-    fn advise_sequential_access(&mut self) -> &mut Self {
-        // Not supported
-        self
-    }
-
-    #[cfg(target_os = "macos")]
+    #[cfg(not(windows))]
     fn advise_sequential_access(&mut self) -> &mut Self {
         // Not supported
         self
@@ -72,6 +51,27 @@ impl OpenOptionsExt for OpenOptions {
     fn advise_sequential_access(&mut self) -> &mut Self {
         use std::os::windows::fs::OpenOptionsExt;
         self.custom_flags(winapi::um::winbase::FILE_FLAG_SEQUENTIAL_SCAN)
+    }
+
+    #[cfg(windows)]
+    fn use_direct_io(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(
+            winapi::um::winbase::FILE_FLAG_WRITE_THROUGH
+                | winapi::um::winbase::FILE_FLAG_NO_BUFFERING,
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    fn use_direct_io(&mut self) -> &mut Self {
+        use std::os::unix::fs::OpenOptionsExt;
+        self.custom_flags(libc::O_DIRECT)
+    }
+
+    #[cfg(not(any(target_os = "linux", windows)))]
+    fn use_direct_io(&mut self) -> &mut Self {
+        // Not supported
+        self
     }
 }
 
@@ -91,6 +91,9 @@ pub trait FileExt {
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
     /// desirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
     fn advise_sequential_access(&self) -> Result<()>;
+
+    /// Disable cache on macOS
+    fn disable_cache(&self) -> Result<()>;
 
     /// Read exact number of bytes at a specific offset
     fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()>;
@@ -161,6 +164,22 @@ impl FileExt for File {
     fn advise_sequential_access(&self) -> Result<()> {
         // Not supported
         Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn disable_cache(&self) -> Result<()> {
+        // Not supported
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn disable_cache(&self) -> Result<()> {
+        use std::os::unix::io::AsRawFd;
+        if unsafe { libc::fcntl(self.as_raw_fd(), libc::F_NOCACHE, 1) } != 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 
     #[cfg(unix)]

@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! A collection of node-specific RPC methods.
+//!
 //! Substrate provides the `sc-rpc` crate, which defines the core RPC layer
 //! used by Substrate nodes. This file extends those RPC definitions with
 //! capabilities that are specific to this project's runtime configuration.
@@ -32,18 +33,16 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer, SubspaceRpcConfig};
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_rpc_api::DenyUnsafe;
-use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
@@ -59,10 +58,6 @@ where
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
-    /// A copy of the chain spec.
-    pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
-    /// Whether to deny unsafe calls.
-    pub deny_unsafe: DenyUnsafe,
     /// Executor to drive the subscription manager in the Grandpa RPC handler.
     pub subscription_executor: SubscriptionTaskExecutor,
     /// A stream with notifications about new slot arrival with ability to send solution back.
@@ -102,7 +97,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + SubspaceApi<Block, PublicKey>
         + mmr_rpc::MmrRuntimeApi<Block, <Block as sp_runtime::traits::Block>::Hash, BlockNumber>
         + ObjectsApi<Block>,
     P: TransactionPool + 'static,
@@ -115,8 +110,6 @@ where
     let FullDeps {
         client,
         pool,
-        chain_spec,
-        deny_unsafe,
         subscription_executor,
         new_slot_notification_stream,
         reward_signing_notification_stream,
@@ -129,12 +122,7 @@ where
         backend,
     } = deps;
 
-    let chain_name = chain_spec.name().to_string();
-    let genesis_hash = client.info().genesis_hash;
-    let properties = chain_spec.properties();
-    module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
-
-    module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(System::new(client.clone(), pool).into_rpc())?;
     module.merge(TransactionPayment::new(client.clone()).into_rpc())?;
 
     module.merge(
@@ -149,7 +137,6 @@ where
             sync_oracle,
             kzg,
             erasure_coding,
-            deny_unsafe,
         })?
         .into_rpc(),
     )?;

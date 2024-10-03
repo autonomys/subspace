@@ -46,17 +46,15 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
-};
+use sp_consensus_subspace::{PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    BlockNumber, HistorySize, PublicKey, SectorId, SegmentHeader, SegmentIndex, SolutionRange,
-};
+use subspace_core_primitives::sectors::SectorId;
+use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{BlockNumber, PublicKey, SolutionRange};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
 use tracing::warn;
@@ -168,9 +166,6 @@ pub enum Error<Header: HeaderT> {
         below archiving point"
     )]
     DifferentSegmentCommitment(SegmentIndex),
-    /// Farmer in block list
-    #[error("Farmer {0} is in block list")]
-    FarmerInBlockList(FarmerPublicKey),
     /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
@@ -310,10 +305,10 @@ where
     PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<Block::Header as HeaderT>::Number>,
 {
     /// Produce a Subspace block-import object to be used later on in the construction of an import-queue.
     pub fn new(
@@ -340,12 +335,8 @@ where
         block_hash: Block::Hash,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        root_plot_public_key: &Option<FarmerPublicKey>,
-        subspace_digest_items: &SubspaceDigestItems<
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >,
+        root_plot_public_key: &Option<PublicKey>,
+        subspace_digest_items: &SubspaceDigestItems<PublicKey>,
         justifications: &Option<Justifications>,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -357,22 +348,6 @@ where
                 // Only root plot public key is allowed.
                 return Err(Error::OnlyRootPlotPublicKeyAllowed);
             }
-        }
-
-        // Check if farmer's plot is burned.
-        if self
-            .client
-            .runtime_api()
-            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)?
-        {
-            warn!(
-                public_key = %pre_digest.solution().public_key,
-                "Ignoring block with solution provided by farmer in block list",
-            );
-
-            return Err(Error::FarmerInBlockList(
-                pre_digest.solution().public_key.clone(),
-            ));
         }
 
         let parent_header = self
@@ -390,12 +365,9 @@ where
         let parent_subspace_digest_items = if block_number.is_one() {
             None
         } else {
-            Some(extract_subspace_digest_items::<
-                _,
-                FarmerPublicKey,
-                FarmerPublicKey,
-                FarmerSignature,
-            >(&parent_header)?)
+            Some(extract_subspace_digest_items::<_, PublicKey>(
+                &parent_header,
+            )?)
         };
 
         let correct_solution_range = if block_number.is_one() {
@@ -477,7 +449,7 @@ where
         }
 
         let sector_id = SectorId::new(
-            PublicKey::from(&pre_digest.solution().public_key).hash(),
+            pre_digest.solution().public_key.hash(),
             pre_digest.solution().sector_index,
         );
 
@@ -515,7 +487,7 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
-        subspace_verification::verify_solution::<PosTable, _, _>(
+        subspace_verification::verify_solution::<PosTable, _>(
             pre_digest.solution(),
             // Slot was already checked during initial block verification
             pre_digest.slot().into(),
@@ -587,15 +559,15 @@ where
         + AuxStore
         + Send
         + Sync,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<Block::Header as HeaderT>::Number>,
 {
     type Error = Error<Block::Header>;
 
     async fn import_block(
-        &mut self,
+        &self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();

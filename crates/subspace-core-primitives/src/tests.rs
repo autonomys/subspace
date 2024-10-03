@@ -30,7 +30,7 @@ fn bytes_scalars_conversion() {
                 .chunks_exact_mut(Scalar::SAFE_BYTES)
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
-                    bytes.copy_from_slice(&scalar.to_bytes()[..Scalar::SAFE_BYTES]);
+                    bytes.copy_from_slice(&scalar.to_bytes()[1..]);
                 });
 
             assert_eq!(bytes, decoded_bytes);
@@ -42,7 +42,7 @@ fn bytes_scalars_conversion() {
                 .chunks_exact_mut(Scalar::SAFE_BYTES)
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
-                    bytes.copy_from_slice(&scalar.to_bytes()[..Scalar::SAFE_BYTES]);
+                    bytes.copy_from_slice(&scalar.to_bytes()[1..]);
                 });
 
             assert_eq!(bytes, decoded_bytes);
@@ -52,8 +52,7 @@ fn bytes_scalars_conversion() {
     {
         let bytes = {
             let mut bytes = [0u8; Scalar::FULL_BYTES];
-            bytes[..Scalar::SAFE_BYTES]
-                .copy_from_slice(&rand::random::<[u8; Scalar::SAFE_BYTES]>());
+            bytes[1..].copy_from_slice(&rand::random::<[u8; Scalar::SAFE_BYTES]>());
             bytes
         };
 

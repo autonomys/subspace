@@ -1,19 +1,16 @@
 use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
-use sp_std::iter::Peekable;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_runtime_primitives::Hash;
 
 const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
 
-pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
+pub(crate) fn extract_utility_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &pallet_utility::Call<Runtime>,
     mut recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
     if recursion_depth_left == 0 {
         return;
@@ -31,13 +28,7 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
             base_offset += Compact::compact_len(&(calls.len() as u32)) as u32;
 
             for call in calls {
-                extract_call_block_object_mapping(
-                    base_offset,
-                    objects,
-                    call,
-                    recursion_depth_left,
-                    successful_calls,
-                );
+                extract_call_block_object_mapping(base_offset, objects, call, recursion_depth_left);
 
                 base_offset += call.encoded_size() as u32;
             }
@@ -50,7 +41,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::dispatch_as { as_origin, call } => {
@@ -61,7 +51,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::with_weight { call, .. } => {
@@ -70,7 +59,6 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 objects,
                 call.as_ref(),
                 recursion_depth_left,
-                successful_calls,
             );
         }
         pallet_utility::Call::__Ignore(_, _) => {
@@ -79,43 +67,50 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     }
 }
 
-pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
+pub(crate) fn extract_call_block_object_mapping(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
     call: &RuntimeCall,
     recursion_depth_left: u16,
-    successful_calls: &mut Peekable<I>,
 ) {
-    // Add enum variant to the base offset.
+    // Add RuntimeCall enum variant to the base offset.
     base_offset += 1;
 
     match call {
         // Extract the actual object mappings.
         RuntimeCall::System(frame_system::Call::remark { remark }) => {
-            objects.push(BlockObject::V0 {
+            objects.push(BlockObject {
                 hash: crypto::blake3_hash(remark),
-                offset: base_offset,
+                // Add frame_system::Call enum variant to the base offset.
+                offset: base_offset + 1,
             });
         }
+        RuntimeCall::System(frame_system::Call::remark_with_event { remark }) => {
+            objects.push(BlockObject {
+                hash: crypto::blake3_hash(remark),
+                // Add frame_system::Call enum variant to the base offset.
+                offset: base_offset + 1,
+            });
+        }
+        RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
+            objects.push(BlockObject {
+                hash: crypto::blake3_hash(remark),
+                // Add pallet_history_seeding::Call enum variant to the base offset.
+                offset: base_offset + 1,
+            });
+        }
+
         // Recursively extract object mappings for the call.
-        RuntimeCall::Utility(call) => extract_utility_block_object_mapping(
-            base_offset,
-            objects,
-            call,
-            recursion_depth_left,
-            successful_calls,
-        ),
+        RuntimeCall::Utility(call) => {
+            extract_utility_block_object_mapping(base_offset, objects, call, recursion_depth_left)
+        }
         // Other calls don't contain object mappings.
         _ => {}
     }
 }
 
-pub(crate) fn extract_block_object_mapping(
-    block: Block,
-    successful_calls: Vec<Hash>,
-) -> BlockObjectMapping {
+pub(crate) fn extract_block_object_mapping(block: Block) -> BlockObjectMapping {
     let mut block_object_mapping = BlockObjectMapping::default();
-    let mut successful_calls = successful_calls.into_iter().peekable();
     let mut base_offset =
         block.header.encoded_size() + Compact::compact_len(&(block.extrinsics.len() as u32));
     for extrinsic in block.extrinsics {
@@ -135,10 +130,9 @@ pub(crate) fn extract_block_object_mapping(
 
         extract_call_block_object_mapping(
             base_extrinsic_offset as u32,
-            &mut block_object_mapping.objects,
+            block_object_mapping.objects_mut(),
             &extrinsic.function,
             MAX_OBJECT_MAPPING_RECURSION_DEPTH,
-            &mut successful_calls,
         );
 
         base_offset += extrinsic.encoded_size();

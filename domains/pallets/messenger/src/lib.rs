@@ -106,7 +106,7 @@ pub struct InitiateChannelParams {
 
 /// Hold identifier trait for messenger specific balance holds
 pub trait HoldIdentifier<T: Config> {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> FungibleHoldId<T>;
+    fn messenger_channel() -> FungibleHoldId<T>;
 }
 
 #[frame_support::pallet]
@@ -142,6 +142,7 @@ mod pallet {
         DomainRegistration, InherentError, InherentType, OnXDMRewards, StorageKeys,
         INHERENT_IDENTIFIER,
     };
+    use sp_runtime::traits::Zero;
     use sp_runtime::{ArithmeticError, Perbill, Saturating};
     use sp_subspace_mmr::MmrProofVerifier;
     #[cfg(feature = "std")]
@@ -541,6 +542,9 @@ mod pallet {
 
         /// Failed to unlock the balance
         BalanceUnlock,
+
+        /// Invalid channel reserve fee
+        InvalidChannelReserveFee,
     }
 
     #[pallet::call]
@@ -556,21 +560,9 @@ mod pallet {
             params: InitiateChannelParams,
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
-            let channel_open_params = ChannelOpenParams {
-                max_outgoing_messages: params.max_outgoing_messages,
-                fee_model: T::ChannelFeeModel::get(),
-            };
-
-            // initiate the channel config
-            let channel_id = Self::do_init_channel(
-                dst_chain_id,
-                channel_open_params,
-                Some(owner.clone()),
-                true,
-            )?;
 
             // reserve channel open fees
-            let hold_id = T::HoldIdentifier::messenger_channel(dst_chain_id, channel_id);
+            let hold_id = T::HoldIdentifier::messenger_channel();
             let amount = T::ChannelReserveFee::get();
 
             // ensure there is enough free balance to lock
@@ -580,6 +572,19 @@ mod pallet {
                 Error::<T>::InsufficientBalance
             );
             T::Currency::hold(&hold_id, &owner, amount).map_err(|_| Error::<T>::BalanceHold)?;
+
+            // initiate the channel config
+            let channel_open_params = ChannelOpenParams {
+                max_outgoing_messages: params.max_outgoing_messages,
+                fee_model: T::ChannelFeeModel::get(),
+            };
+            let channel_id = Self::do_init_channel(
+                dst_chain_id,
+                channel_open_params,
+                Some(owner.clone()),
+                true,
+                amount,
+            )?;
 
             // send message to dst_chain
             Self::new_outbox_message(
@@ -864,7 +869,8 @@ mod pallet {
                 fee_model,
             };
             ChainAllowlist::<T>::mutate(|list| list.insert(dst_chain_id));
-            let channel_id = Self::do_init_channel(dst_chain_id, init_params, None, true)?;
+            let channel_id =
+                Self::do_init_channel(dst_chain_id, init_params, None, true, Zero::zero())?;
             Self::do_open_channel(dst_chain_id, channel_id)?;
             Ok(())
         }
@@ -953,8 +959,8 @@ mod pallet {
                 }
 
                 if let Some(owner) = &channel.maybe_owner {
-                    let hold_id = T::HoldIdentifier::messenger_channel(chain_id, channel_id);
-                    let locked_amount = T::Currency::balance_on_hold(&hold_id, owner);
+                    let hold_id = T::HoldIdentifier::messenger_channel();
+                    let locked_amount = channel.channel_reserve_fee;
                     let amount_to_release = {
                         if channel.state == ChannelState::Open {
                             locked_amount
@@ -993,10 +999,18 @@ mod pallet {
             init_params: ChannelOpenParams<BalanceOf<T>>,
             maybe_owner: Option<T::AccountId>,
             check_allowlist: bool,
+            channel_reserve_fee: BalanceOf<T>,
         ) -> Result<ChannelId, DispatchError> {
             ensure!(
                 T::SelfChainId::get() != dst_chain_id,
                 Error::<T>::InvalidChain,
+            );
+
+            // If the channel owner is in this chain then the channel reserve fee
+            // must not be empty
+            ensure!(
+                maybe_owner.is_none() || !channel_reserve_fee.is_zero(),
+                Error::<T>::InvalidChannelReserveFee,
             );
 
             if check_allowlist {
@@ -1024,6 +1038,7 @@ mod pallet {
                     max_outgoing_messages: init_params.max_outgoing_messages,
                     fee: init_params.fee_model,
                     maybe_owner,
+                    channel_reserve_fee,
                 },
             );
 
@@ -1144,8 +1159,8 @@ mod pallet {
                     // channel is being opened without an owner since this is a relay message
                     // from other chain
                     // we do not check the allowlist to finish the end to end flow
-                    Self::do_init_channel(msg.src_chain_id, params, None, false).map_err(
-                        |err| {
+                    Self::do_init_channel(msg.src_chain_id, params, None, false, Zero::zero())
+                        .map_err(|err| {
                             log::error!(
                                 "Error initiating channel: {:?} with chain: {:?}: {:?}",
                                 msg.channel_id,
@@ -1153,8 +1168,7 @@ mod pallet {
                                 err
                             );
                             InvalidTransaction::Call
-                        },
-                    )?;
+                        })?;
                 } else {
                     log::error!("Unexpected call instead of channel open request: {:?}", msg,);
                     return Err(InvalidTransaction::Call.into());
@@ -1362,7 +1376,7 @@ mod pallet {
 
                     Ok(())
                 }
-                call => <Self as ValidateUnsigned>::pre_dispatch(call),
+                call => Self::pre_dispatch(call),
             }
         }
     }

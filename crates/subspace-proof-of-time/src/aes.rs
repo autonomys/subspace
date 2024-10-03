@@ -1,7 +1,6 @@
 //! AES related functionality.
 
-// TODO: Similarly optimized version for aarch64
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(feature = "std", target_arch = "x86_64"))]
 mod x86_64;
 
 #[cfg(not(feature = "std"))]
@@ -10,12 +9,14 @@ extern crate alloc;
 use aes::cipher::array::Array;
 use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes128;
-use subspace_core_primitives::{PotCheckpoints, PotKey, PotOutput, PotSeed};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+use subspace_core_primitives::pot::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 
 /// Creates the AES based proof.
 #[inline(always)]
 pub(crate) fn create(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(feature = "std", target_arch = "x86_64"))]
     if std::is_x86_feature_detected!("aes") {
         return unsafe { x86_64::create(seed.as_ref(), key.as_ref(), checkpoint_iterations) };
     }

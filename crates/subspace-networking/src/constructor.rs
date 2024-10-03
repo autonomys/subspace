@@ -38,7 +38,8 @@ use std::iter::Empty;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
-use subspace_core_primitives::{crypto, Piece};
+use subspace_core_primitives::crypto;
+use subspace_core_primitives::pieces::Piece;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -137,8 +138,14 @@ impl<LocalRecordProvider> RecordStore for LocalOnlyRecordStore<LocalRecordProvid
 where
     LocalRecordProvider: self::LocalRecordProvider,
 {
-    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
-    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self: 'a;
+    type RecordsIter<'a>
+        = Empty<Cow<'a, Record>>
+    where
+        Self: 'a;
+    type ProvidedIter<'a>
+        = Empty<Cow<'a, ProviderRecord>>
+    where
+        Self: 'a;
 
     fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
         // Not supported
@@ -309,7 +316,7 @@ where
                 .validation_mode(ValidationMode::None)
                 // To content-address message, we can take the hash of message and use it as an ID.
                 .message_id_fn(|message: &GossipsubMessage| {
-                    MessageId::from(crypto::blake3_hash(&message.data))
+                    MessageId::from(*crypto::blake3_hash(&message.data))
                 })
                 .max_transmit_size(2 * 1024 * 1024) // 2MB
                 .build()

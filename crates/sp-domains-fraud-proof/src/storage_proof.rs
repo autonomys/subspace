@@ -420,7 +420,7 @@ pub struct DomainInherentExtrinsicDataProof {
     pub dynamic_cost_of_storage_proof: DynamicCostOfStorageProof,
     pub consensus_chain_byte_fee_proof: ConsensusTransactionByteFeeProof,
     pub domain_chain_allowlist_proof: DomainChainsAllowlistUpdateStorageProof,
-    pub maybe_domain_sudo_call_proof: Option<DomainSudoCallStorageProof>,
+    pub domain_sudo_call_proof: DomainSudoCallStorageProof,
 }
 
 impl DomainInherentExtrinsicDataProof {
@@ -436,7 +436,6 @@ impl DomainInherentExtrinsicDataProof {
         domain_id: DomainId,
         block_hash: Block::Hash,
         maybe_runtime_id: Option<RuntimeId>,
-        should_include_domain_sudo_call: bool,
     ) -> Result<Self, GenerationError> {
         let timestamp_proof =
             TimestampStorageProof::generate(proof_provider, block_hash, (), storage_key_provider)?;
@@ -465,20 +464,12 @@ impl DomainInherentExtrinsicDataProof {
             storage_key_provider,
         )?;
 
-        // Domain sudo call is optional since both Consensus and domain runtimes needs to have the functionality.
-        // If only consensus runtime is upgraded but not Domain, the storage proof will never contain the data
-        // Since sudo call extrinsic on Consensus will never go through.
-        // but it can still generate empty storage proof in this case
-        let maybe_domain_sudo_call_proof = if should_include_domain_sudo_call {
-            Some(DomainSudoCallStorageProof::generate(
-                proof_provider,
-                block_hash,
-                domain_id,
-                storage_key_provider,
-            )?)
-        } else {
-            None
-        };
+        let domain_sudo_call_proof = DomainSudoCallStorageProof::generate(
+            proof_provider,
+            block_hash,
+            domain_id,
+            storage_key_provider,
+        )?;
 
         Ok(Self {
             timestamp_proof,
@@ -486,7 +477,7 @@ impl DomainInherentExtrinsicDataProof {
             dynamic_cost_of_storage_proof,
             consensus_chain_byte_fee_proof,
             domain_chain_allowlist_proof,
-            maybe_domain_sudo_call_proof,
+            domain_sudo_call_proof,
         })
     }
 
@@ -532,26 +523,18 @@ impl DomainInherentExtrinsicDataProof {
                 state_root,
             )?;
 
-        let domain_sudo_call =
-            if let Some(domain_sudo_call_proof) = &self.maybe_domain_sudo_call_proof {
-                Some(
-                    <DomainSudoCallStorageProof as BasicStorageProof<Block>>::verify::<SKP>(
-                        domain_sudo_call_proof.clone(),
-                        domain_id,
-                        state_root,
-                    )?,
-                )
-            } else {
-                None
-            };
+        let domain_sudo_call = <DomainSudoCallStorageProof as BasicStorageProof<Block>>::verify::<
+            SKP,
+        >(
+            self.domain_sudo_call_proof.clone(), domain_id, state_root
+        )?;
 
         Ok(DomainInherentExtrinsicData {
             timestamp,
             maybe_domain_runtime_upgrade,
             consensus_transaction_byte_fee,
             domain_chain_allowlist,
-            maybe_sudo_runtime_call: domain_sudo_call
-                .and_then(|domain_sudo_call| domain_sudo_call.maybe_call),
+            maybe_sudo_runtime_call: domain_sudo_call.maybe_call,
         })
     }
 }

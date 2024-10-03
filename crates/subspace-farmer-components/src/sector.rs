@@ -14,10 +14,10 @@ use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
 use subspace_core_primitives::checksum::Blake3Checksummed;
 use subspace_core_primitives::crypto::blake3_hash;
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket,
-    SectorIndex, SegmentIndex,
-};
+use subspace_core_primitives::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
+use subspace_core_primitives::sectors::{SBucket, SectorIndex};
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::Blake3Hash;
 use thiserror::Error;
 use tracing::debug;
 
@@ -49,7 +49,7 @@ pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
         + sector_record_metadata_size(pieces_in_sector)
         + SectorContentsMap::encoded_size(pieces_in_sector)
-        + mem::size_of::<Blake3Hash>()
+        + Blake3Hash::SIZE
 }
 
 /// Metadata of the plotted sector
@@ -148,7 +148,7 @@ pub(crate) struct RecordMetadata {
 
 impl RecordMetadata {
     pub(crate) const fn encoded_size() -> usize {
-        RecordWitness::SIZE + RecordCommitment::SIZE + mem::size_of::<Blake3Hash>()
+        RecordWitness::SIZE + RecordCommitment::SIZE + Blake3Hash::SIZE
     }
 }
 
@@ -265,6 +265,8 @@ pub enum SectorContentsMapIterationError {
     },
 }
 
+/// Map of sector contents.
+///
 /// Abstraction on top of bitfields that allow making sense of sector contents that contains both
 /// encoded (meaning erasure coded and encoded with existing PoSpace quality) and unencoded chunks
 /// (just erasure coded) used at the same time both in records (before writing to plot) and
@@ -310,10 +312,10 @@ impl SectorContentsMap {
         }
 
         let (single_records_bit_arrays, expected_checksum) =
-            bytes.split_at(bytes.len() - mem::size_of::<Blake3Hash>());
+            bytes.split_at(bytes.len() - Blake3Hash::SIZE);
         // Verify checksum
         let actual_checksum = blake3_hash(single_records_bit_arrays);
-        if actual_checksum != expected_checksum {
+        if *actual_checksum != *expected_checksum {
             debug!(
                 actual_checksum = %hex::encode(actual_checksum),
                 expected_checksum = %hex::encode(expected_checksum),
@@ -355,7 +357,7 @@ impl SectorContentsMap {
     /// Size of sector contents map when encoded and stored in the plot for specified number of
     /// pieces in sector
     pub const fn encoded_size(pieces_in_sector: u16) -> usize {
-        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize + mem::size_of::<Blake3Hash>()
+        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize + Blake3Hash::SIZE
     }
 
     /// Encode internal contents into `output`
@@ -378,7 +380,7 @@ impl SectorContentsMap {
 
         // Write data and checksum
         output[..slice.len()].copy_from_slice(slice);
-        output[slice.len()..].copy_from_slice(&blake3_hash(slice));
+        output[slice.len()..].copy_from_slice(blake3_hash(slice).as_ref());
 
         Ok(())
     }

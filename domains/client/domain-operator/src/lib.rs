@@ -86,7 +86,7 @@ pub use domain_worker::OpaqueBundleFor;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
-use sc_consensus::SharedBlockImport;
+use sc_consensus::BoxBlockImport;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_blockchain::HeaderBackend;
@@ -99,7 +99,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 
 pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
@@ -177,7 +177,7 @@ pub struct OperatorParams<
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub domain_confirmation_depth: NumberFor<Block>,
-    pub block_import: SharedBlockImport<Block>,
+    pub block_import: Arc<BoxBlockImport<Block>>,
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
 }

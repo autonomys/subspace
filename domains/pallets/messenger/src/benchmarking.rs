@@ -19,6 +19,7 @@ use sp_messenger::messages::{
     RequestResponse, VersionedPayload,
 };
 use sp_mmr_primitives::{EncodableOpaqueLeaf, LeafProof as MmrProof};
+use sp_runtime::traits::Zero;
 use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_trie::StorageProof;
 #[cfg(feature = "std")]
@@ -87,6 +88,7 @@ mod benchmarks {
             dummy_channel_params::<T>(),
             None,
             true,
+            Zero::zero(),
         ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
@@ -255,7 +257,8 @@ mod benchmarks {
             dst_chain_id,
             params,
             None,
-            true
+            true,
+            Zero::zero(),
         ));
         let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);

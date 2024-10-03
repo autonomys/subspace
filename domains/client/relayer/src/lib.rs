@@ -12,7 +12,7 @@ use cross_domain_message_gossip::{
 use parity_scale_codec::{Codec, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::DomainsApi;
 use sp_messenger::messages::{
@@ -403,21 +403,6 @@ where
                 let consensus_chain_api = consensus_chain_client.runtime_api();
 
                 let confirmed_domain_block_hash = {
-                    // TODO: This is used to keep compatible with gemini-3h, remove before next network
-                    let api_version = consensus_chain_api
-                        .api_version::<dyn DomainsApi<CBlock, Block::Header>>(
-                            to_process_consensus_hash,
-                        )
-                        .map_err(sp_blockchain::Error::RuntimeApiError)?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                                format!("DomainsApi not found at: {:?}", to_process_consensus_hash)
-                                    .into(),
-                            ))
-                        })?;
-                    if api_version < 2 {
-                        return Ok(());
-                    }
                     match consensus_chain_api
                         .latest_confirmed_domain_block(to_process_consensus_hash, domain_id)?
                     {

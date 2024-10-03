@@ -5,9 +5,8 @@ use futures::executor::block_on;
 use futures::SinkExt;
 use sp_consensus_slots::Slot;
 use std::num::NonZeroU32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotSeed};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, trace};
 
@@ -29,7 +28,7 @@ pub(super) fn run_timekeeper(
     pot_verifier: PotVerifier,
     mut proofs_sender: mpsc::Sender<TimekeeperProof>,
 ) -> Result<(), PotError> {
-    let mut next_slot_input = state.next_slot_input(Ordering::Acquire);
+    let mut next_slot_input = state.next_slot_input();
 
     loop {
         trace!(

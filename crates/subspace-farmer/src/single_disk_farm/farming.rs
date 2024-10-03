@@ -20,9 +20,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    HistorySize, PosSeed, PublicKey, Record, SectorIndex, SegmentIndex, Solution, SolutionRange,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pos::PosSeed;
+use subspace_core_primitives::sectors::SectorIndex;
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{PublicKey, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::{audit_plot_sync, AuditingError};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
@@ -130,7 +132,7 @@ where
     ) -> Result<
         Vec<(
             SectorIndex,
-            impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, ProvingError>> + 'a,
+            impl ProvableSolutions<Item = Result<Solution<PublicKey>, ProvingError>> + 'a,
         )>,
         AuditingError,
     >

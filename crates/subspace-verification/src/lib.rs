@@ -30,9 +30,12 @@ use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{
     blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
 };
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::sectors::{SectorId, SectorSlotChallenge};
+use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey, Record,
-    RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
+    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, SlotNumber, Solution,
     SolutionRange,
 };
 use subspace_proof_of_space::Table;
@@ -178,15 +181,14 @@ pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
 /// success.
-pub fn verify_solution<'a, PosTable, FarmerPublicKey, RewardAddress>(
-    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
+pub fn verify_solution<'a, PosTable, RewardAddress>(
+    solution: &'a Solution<RewardAddress>,
     slot: SlotNumber,
     params: &'a VerifySolutionParams,
     kzg: &'a Kzg,
 ) -> Result<SolutionRange, Error>
 where
     PosTable: Table,
-    PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
         proof_of_time,
@@ -194,10 +196,7 @@ where
         piece_check_params,
     } = params;
 
-    let sector_id = SectorId::new(
-        PublicKey::from(&solution.public_key).hash(),
-        solution.sector_index,
-    );
+    let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
 
     let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);
@@ -214,7 +213,7 @@ where
     };
 
     let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-        ^ Simd::from(solution.proof_of_space.hash()))
+        ^ Simd::from(*solution.proof_of_space.hash()))
     .to_array();
 
     let solution_distance =

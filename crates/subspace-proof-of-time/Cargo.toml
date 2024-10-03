@@ -15,9 +15,9 @@ include = [
 bench = false
 
 [dependencies]
-aes = "0.9.0-pre.1"
+aes = "0.9.0-pre.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.63", optional = true }
+thiserror = { version = "1.0.64", optional = true }
 
 [dev-dependencies]
 core_affinity = "0.8.1"

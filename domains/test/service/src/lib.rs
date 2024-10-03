@@ -29,9 +29,9 @@ pub use keyring::Keyring as EcdsaKeyring;
 use sc_network::config::{NonReservedPeerMode, TransportConfig};
 use sc_network::multiaddr;
 use sc_service::config::{
-    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
-    OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig, WasmExecutionMethod,
-    WasmtimeInstantiationStrategy,
+    DatabaseSource, ExecutorConfiguration, KeystoreConfig, MultiaddrWithPeerId,
+    NetworkConfiguration, OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig,
+    RpcConfiguration, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, ChainSpec, Configuration as ServiceConfiguration,
@@ -121,26 +121,32 @@ pub fn node_config(
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
         chain_spec,
-        wasm_method: WasmExecutionMethod::Compiled {
-            instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+        executor: ExecutorConfiguration {
+            wasm_method: WasmExecutionMethod::Compiled {
+                instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+            },
+            max_runtime_instances: 8,
+            default_heap_pages: None,
+            runtime_cache_size: 2,
         },
-        rpc_addr: None,
-        rpc_max_request_size: 0,
-        rpc_max_response_size: 0,
-        rpc_id_provider: None,
-        rpc_max_subs_per_conn: 0,
-        rpc_port: 0,
-        rpc_message_buffer_capacity: 0,
-        rpc_batch_config: RpcBatchRequestConfig::Disabled,
-        rpc_max_connections: 0,
-        rpc_cors: None,
-        rpc_methods: Default::default(),
-        rpc_rate_limit: None,
-        rpc_rate_limit_whitelisted_ips: vec![],
-        rpc_rate_limit_trust_proxy_headers: false,
+        rpc: RpcConfiguration {
+            addr: None,
+            max_request_size: 0,
+            max_response_size: 0,
+            id_provider: None,
+            max_subs_per_conn: 0,
+            port: 0,
+            message_buffer_capacity: 0,
+            batch_config: RpcBatchRequestConfig::Disabled,
+            max_connections: 0,
+            cors: None,
+            methods: Default::default(),
+            rate_limit: None,
+            rate_limit_whitelisted_ips: vec![],
+            rate_limit_trust_proxy_headers: false,
+        },
         prometheus_config: None,
         telemetry_endpoints: None,
-        default_heap_pages: None,
         offchain_worker: OffchainWorkerConfig {
             enabled: true,
             indexing_enabled: false,
@@ -150,13 +156,10 @@ pub fn node_config(
         dev_key_seed: Some(key_seed),
         tracing_targets: None,
         tracing_receiver: Default::default(),
-        max_runtime_instances: 8,
         announce_block: true,
         data_path: base_path.path().into(),
         base_path,
-        informant_output_format: Default::default(),
         wasm_runtime_overrides: None,
-        runtime_cache_size: 2,
     })
 }
 
@@ -302,7 +305,7 @@ impl DomainRuntime for auto_id_domain_test_runtime::Runtime {
 pub fn construct_extrinsic_generic<Runtime, Client>(
     client: impl AsRef<Client>,
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
-    caller: <Runtime as DomainRuntime>::Keyring,
+    caller: Runtime::Keyring,
     immortal: bool,
     nonce: u32,
     tip: BalanceOf<Runtime>,
@@ -322,8 +325,8 @@ where
     let function = function.into();
     let (raw_payload, extra) =
         construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
-    let signature = raw_payload.using_encoded(|e| <Runtime as DomainRuntime>::sign(caller, e));
-    let address = <Runtime as DomainRuntime>::address(caller);
+    let signature = raw_payload.using_encoded(|e| Runtime::sign(caller, e));
+    let address = Runtime::address(caller);
     UncheckedExtrinsicFor::<Runtime>::new_signed(function, address, signature, extra)
 }
 

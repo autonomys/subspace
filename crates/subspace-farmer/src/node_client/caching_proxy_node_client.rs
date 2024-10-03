@@ -9,7 +9,8 @@ use futures::{select, FutureExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_HEADERS_PER_REQUEST,
@@ -46,12 +47,13 @@ impl SegmentHeaders {
             .collect::<Vec<_>>()
     }
 
-    fn last_segment_headers(&self, limit: u64) -> Vec<Option<SegmentHeader>> {
+    fn last_segment_headers(&self, limit: u32) -> Vec<Option<SegmentHeader>> {
         self.segment_headers
             .iter()
-            .copied()
             .rev()
             .take(limit as usize)
+            .rev()
+            .copied()
             .map(Some)
             .collect()
     }
@@ -342,7 +344,7 @@ impl<NC> NodeClientExt for CachingProxyNodeClient<NC>
 where
     NC: NodeClientExt,
 {
-    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
+    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error> {
         Ok(self
             .segment_headers
             .read()

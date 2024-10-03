@@ -1,16 +1,15 @@
 use crate as pallet_transporter;
 use crate::{Config, TryConvertBack};
 use codec::{Decode, Encode};
-use domain_runtime_primitives::MultiAccountId;
+use domain_runtime_primitives::{HoldIdentifier, MultiAccountId};
 use frame_support::pallet_prelude::{MaxEncodedLen, TypeInfo};
 use frame_support::traits::VariantCount;
 use frame_support::{derive_impl, parameter_types};
 use pallet_balances::AccountData;
-use pallet_messenger::HoldIdentifier;
 use sp_core::U256;
-use sp_domains::{DomainId, MessengerHoldIdentifier};
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId, EndpointRequest, Sender};
-use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId};
+use sp_messenger::messages::{ChainId, FeeModel, MessageId};
 use sp_runtime::traits::{Convert, IdentityLookup};
 use sp_runtime::{BuildStorage, DispatchError, Perbill};
 
@@ -61,7 +60,7 @@ parameter_types! {
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
 pub enum MockHoldIdentifer {
-    Messenger(MessengerHoldIdentifier),
+    Messenger(HoldIdentifier),
 }
 
 impl VariantCount for MockHoldIdentifer {
@@ -76,9 +75,9 @@ impl sp_messenger::DomainRegistration for DomainRegistration {
     }
 }
 
-impl HoldIdentifier<MockRuntime> for MockHoldIdentifer {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        MockHoldIdentifer::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+impl pallet_messenger::HoldIdentifier<MockRuntime> for MockHoldIdentifer {
+    fn messenger_channel() -> Self {
+        MockHoldIdentifer::Messenger(HoldIdentifier::MessengerChannel)
     }
 }
 

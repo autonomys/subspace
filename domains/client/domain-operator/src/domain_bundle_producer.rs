@@ -4,7 +4,7 @@ use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use sc_client_api::{AuxStore, BlockBackend};
-use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -107,8 +107,7 @@ where
         + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
-    TransactionPool:
-        sc_transaction_pool_api::TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block, Hash = Block::Hash>,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -241,23 +240,9 @@ where
                 .domain_bundle_proposer
                 .load_next_receipt(domain_best_number_onchain, head_receipt_number)?;
 
-            let api_version = self
-                .consensus_client
-                .runtime_api()
-                .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_chain_best_hash)
-                .map_err(sp_blockchain::Error::RuntimeApiError)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::RuntimeApiError(ApiError::Application(
-                        format!("DomainsApi not found at: {:?}", consensus_chain_best_hash).into(),
-                    ))
-                })?;
-
             // When the receipt gap is greater than one the operator need to produce receipt
             // instead of bundle
-            // TODO: remove api runtime version check before next network
-            if api_version >= 5
-                && domain_best_number_onchain.saturating_sub(head_receipt_number) > 1u32.into()
-            {
+            if domain_best_number_onchain.saturating_sub(head_receipt_number) > 1u32.into() {
                 info!(
                     ?domain_best_number_onchain,
                     ?head_receipt_number,

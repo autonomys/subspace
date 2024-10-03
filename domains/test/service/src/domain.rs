@@ -18,7 +18,8 @@ use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
-use sc_network::{NetworkService, NetworkStateInfo};
+use sc_network::service::traits::NetworkService;
+use sc_network::NetworkStateInfo;
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -69,14 +70,14 @@ where
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<CBlock>, <CBlock as BlockT>::Hash>
         + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, <Runtime as DomainRuntime>::AccountId, Nonce>
+        + AccountNonceApi<Block, Runtime::AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, NumberFor<Block>, NumberFor<CBlock>, <CBlock as BlockT>::Hash>,
 {
     /// The domain id
     pub domain_id: DomainId,
     /// The node's account key
-    pub key: <Runtime as DomainRuntime>::Keyring,
+    pub key: Runtime::Keyring,
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -86,7 +87,7 @@ where
     /// Code executor.
     pub code_executor: Arc<RuntimeExecutor>,
     /// Network service.
-    pub network_service: Arc<NetworkService<Block, H256>>,
+    pub network_service: Arc<dyn NetworkService>,
     /// Sync service.
     pub sync_service: Arc<SyncingService<Block>>,
     /// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node"
@@ -129,7 +130,7 @@ where
     async fn build(
         domain_id: DomainId,
         tokio_handle: tokio::runtime::Handle,
-        key: <Runtime as DomainRuntime>::Keyring,
+        key: Runtime::Keyring,
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
@@ -146,14 +147,14 @@ where
             .await
             .expect("Failed to get domain instance data");
         let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
-        let key_seed = <Runtime as DomainRuntime>::to_seed(key);
+        let key_seed = Runtime::to_seed(key);
         let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
             key_seed,
             domain_nodes,
             domain_nodes_exclusive,
-            role.clone(),
+            role,
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
             Box::new(chain_spec) as Box<_>,
         )

@@ -17,7 +17,8 @@ use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PublicKey, Record};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::cluster::controller::ClusterNodeClient;
 use subspace_farmer::cluster::farmer::farmer_service;
@@ -117,13 +118,12 @@ pub(super) struct FarmerArgs {
     pub(super) additional_components: Vec<String>,
 }
 
-pub(super) async fn farmer<PosTableLegacy, PosTable>(
+pub(super) async fn farmer<PosTable>(
     nats_client: NatsClient,
     registry: &mut Registry,
     farmer_args: FarmerArgs,
 ) -> anyhow::Result<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>
 where
-    PosTableLegacy: Table,
     PosTable: Table,
 {
     let FarmerArgs {
@@ -212,15 +212,6 @@ where
         .unwrap_or_else(recommended_number_of_farming_threads);
 
     let global_mutex = Arc::default();
-    let plotter_legacy = Arc::new(ClusterPlotter::new(
-        nats_client.clone(),
-        sector_encoding_concurrency,
-        ExponentialBackoff {
-            max_elapsed_time: None,
-            ..ExponentialBackoff::default()
-        },
-        false,
-    ));
     let plotter = Arc::new(ClusterPlotter::new(
         nats_client.clone(),
         sector_encoding_concurrency,
@@ -228,7 +219,6 @@ where
             max_elapsed_time: None,
             ..ExponentialBackoff::default()
         },
-        true,
     ));
 
     let farms = {
@@ -248,7 +238,6 @@ where
                 let node_client = node_client.clone();
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
-                let plotter_legacy = Arc::clone(&plotter_legacy);
                 let plotter = Arc::clone(&plotter);
                 let global_mutex = Arc::clone(&global_mutex);
                 let faster_read_sector_record_chunks_mode_barrier =
@@ -257,7 +246,7 @@ where
                     Arc::clone(&faster_read_sector_record_chunks_mode_concurrency);
 
                 async move {
-                    let farm_fut = SingleDiskFarm::new::<_, PosTableLegacy, PosTable>(
+                    let farm_fut = SingleDiskFarm::new::<_, PosTable>(
                         SingleDiskFarmOptions {
                             directory: disk_farm.directory.clone(),
                             farmer_app_info,
@@ -265,7 +254,6 @@ where
                             max_pieces_in_sector,
                             node_client,
                             reward_address,
-                            plotter_legacy,
                             plotter,
                             kzg,
                             erasure_coding,

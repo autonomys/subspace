@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use sc_client_api::AuxStore;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{
+use subspace_core_primitives::segments::{
     ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
 };
 

@@ -16,9 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::Info;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::UncheckedFrom;
-use sp_core::Get;
 use sp_domains::core_api::DomainCoreApi;
 use sp_domains::{
     BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
@@ -32,9 +30,9 @@ use sp_runtime::{generic, RuntimeAppPublic};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime::{
-    CheckStorageAccess, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
+    CheckHistorySeeder, DisablePallets, Runtime, RuntimeCall, SignedExtra, UncheckedExtrinsic,
 };
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
@@ -413,12 +411,10 @@ pub fn construct_signed_extrinsic(
     caller: AccountId,
     nonce: Nonce,
 ) -> Result<UncheckedExtrinsic, Box<dyn Error>> {
-    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount as Get<
-        u32,
-    >>::get())
-    .checked_next_power_of_two()
-    .map(|c| c / 2)
-    .unwrap_or(2);
+    let period = u64::from(<<Runtime as frame_system::Config>::BlockHashCount>::get())
+        .checked_next_power_of_two()
+        .map(|c| c / 2)
+        .unwrap_or(2);
     let extra: SignedExtra = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),
@@ -431,8 +427,8 @@ pub fn construct_signed_extrinsic(
         frame_system::CheckNonce::<Runtime>::from(nonce),
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
-        CheckStorageAccess,
         DisablePallets,
+        CheckHistorySeeder::<Runtime>::new(),
     );
     let raw_payload = generic::SignedPayload::<RuntimeCall, SignedExtra>::from_raw(
         call.clone(),
@@ -461,7 +457,7 @@ pub fn construct_signed_extrinsic(
             raw_payload
                 .using_encoded(|e| {
                     consensus_keystore
-                        .sr25519_sign(FarmerPublicKey::ID, &public_key, e)
+                        .sr25519_sign(OperatorPublicKey::ID, &public_key, e)
                 })?
                 .ok_or(format!(
                     "Failed to sign extrinsic, sudo key pair missing from keystore?, public_key {:?}",

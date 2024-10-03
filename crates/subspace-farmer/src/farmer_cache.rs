@@ -25,7 +25,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, mem};
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
@@ -34,7 +35,7 @@ use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::{block_in_place, yield_now};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 const WORKER_CHANNEL_CAPACITY: usize = 100;
 const CONCURRENT_PIECES_TO_DOWNLOAD: usize = 1_000;
@@ -330,7 +331,7 @@ where
                     let mut maybe_contents = match backend.backend.contents().await {
                         Ok(contents) => Some(contents),
                         Err(error) => {
-                            warn!(%cache_index, %error, "Failed to get cache contents");
+                            warn!(%error, "Failed to get cache contents");
 
                             None
                         }
@@ -354,11 +355,7 @@ where
                         let (piece_offset, maybe_piece_index) = match maybe_element_details {
                             Ok(element_details) => element_details,
                             Err(error) => {
-                                warn!(
-                                    %cache_index,
-                                    %error,
-                                    "Failed to get cache contents element details"
-                                );
+                                warn!(%error, "Failed to get cache contents element details");
                                 break;
                             }
                         };
@@ -392,7 +389,7 @@ where
                 };
 
                 Some(run_future_in_dedicated_thread(
-                    move || init_fut,
+                    move || init_fut.instrument(info_span!("", %cache_index)),
                     format!("piece-cache.{cache_index}"),
                 ))
             })

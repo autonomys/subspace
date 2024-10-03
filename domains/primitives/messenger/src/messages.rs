@@ -61,6 +61,8 @@ pub struct Channel<Balance, AccountId> {
     /// Owner of the channel
     /// Owner maybe None if the channel was initiated on the other chain.
     pub maybe_owner: Option<AccountId>,
+    /// The amount of funds put on hold by the owner account for this channel
+    pub channel_reserve_fee: Balance,
 }
 
 /// Channel open parameters

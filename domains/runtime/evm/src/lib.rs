@@ -9,20 +9,21 @@ mod precompiles;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use alloc::borrow::Cow;
 #[cfg(not(feature = "std"))]
 use alloc::format;
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{
     block_weights, maximum_block_length, maximum_domain_block_weight, opaque, Balance, BlockNumber,
     Hash, Nonce, EXISTENTIAL_DEPOSIT,
 };
 use domain_runtime_primitives::{
-    CheckExtrinsicsValidityError, DecodeExtrinsicError, ERR_BALANCE_OVERFLOW, ERR_NONCE_OVERFLOW,
-    SLOT_DURATION,
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, HoldIdentifier, ERR_BALANCE_OVERFLOW,
+    ERR_NONCE_OVERFLOW, SLOT_DURATION,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -52,7 +53,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, MessengerHoldIdentifier, Transfers};
+use sp_domains::{ChannelId, DomainAllowlistUpdates, DomainId, Transfers};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, FeeModel, MessageId, MessageKey,
@@ -69,7 +70,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
+    generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
     ExtrinsicInclusionMode,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -244,15 +245,14 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-evm-domain"),
-    impl_name: create_runtime_str!("subspace-evm-domain"),
+    spec_name: Cow::Borrowed("subspace-evm-domain"),
+    impl_name: Cow::Borrowed("subspace-evm-domain"),
     authoring_version: 0,
     spec_version: 2,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
-    state_version: 0,
-    extrinsic_state_version: 1,
+    system_version: 2,
 };
 
 parameter_types! {
@@ -359,7 +359,7 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = HoldIdentifier;
+    type RuntimeHoldReason = HoldIdentifierWrapper;
 }
 
 parameter_types! {
@@ -503,24 +503,15 @@ impl sp_messenger::StorageKeys for StorageKeys {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum HoldIdentifier {
-    Messenger(MessengerHoldIdentifier),
+pub struct HoldIdentifierWrapper(HoldIdentifier);
+
+impl VariantCount for HoldIdentifierWrapper {
+    const VARIANT_COUNT: u32 = mem::variant_count::<HoldIdentifier>() as u32;
 }
 
-impl VariantCount for HoldIdentifier {
-    // TODO: revist this value, it is used as the max number of hold an account can
-    // create. Currently, opening an XDM channel will create 1 hold, so this value
-    // also used as the limit of how many channel an account can open.
-    //
-    // TODO: HACK this is not the actual variant count but it is required see
-    // https://github.com/autonomys/subspace/issues/2674 for more details. It
-    // will be resolved as https://github.com/paritytech/polkadot-sdk/issues/4033.
-    const VARIANT_COUNT: u32 = 100;
-}
-
-impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifier {
-    fn messenger_channel(dst_chain_id: ChainId, channel_id: ChannelId) -> Self {
-        Self::Messenger(MessengerHoldIdentifier::Channel((dst_chain_id, channel_id)))
+impl pallet_messenger::HoldIdentifier<Runtime> for HoldIdentifierWrapper {
+    fn messenger_channel() -> Self {
+        Self(HoldIdentifier::MessengerChannel)
     }
 }
 
@@ -551,7 +542,7 @@ impl pallet_messenger::Config for Runtime {
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
     type DomainOwner = ();
-    type HoldIdentifier = HoldIdentifier;
+    type HoldIdentifier = HoldIdentifierWrapper;
     type ChannelReserveFee = ChannelReserveFee;
     type ChannelInitReservePortion = ChannelInitReservePortion;
     type DomainRegistration = ();
@@ -941,33 +932,31 @@ fn pre_dispatch_evm_transaction(
             {
                 let _ = transaction_validity?;
 
-                if let Call::transact { transaction } = call {
-                    frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                let Call::transact { transaction } = call;
+                frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
-                    let transaction_data: TransactionData = (&transaction).into();
-                    let transaction_nonce = transaction_data.nonce;
-                    // If the current account nonce is greater than the tracked nonce, then
-                    // pick the highest nonce
-                    let account_nonce = {
-                        let tracked_nonce =
-                            EVMNoncetracker::account_nonce(AccountId::from(account_id))
-                                .unwrap_or(U256::zero());
-                        let account_nonce = EVM::account_basic(&account_id).0.nonce;
-                        max(tracked_nonce, account_nonce)
-                    };
+                let transaction_data: TransactionData = (&transaction).into();
+                let transaction_nonce = transaction_data.nonce;
+                // If the current account nonce is greater than the tracked nonce, then
+                // pick the highest nonce
+                let account_nonce = {
+                    let tracked_nonce = EVMNoncetracker::account_nonce(AccountId::from(account_id))
+                        .unwrap_or(U256::zero());
+                    let account_nonce = EVM::account_basic(&account_id).0.nonce;
+                    max(tracked_nonce, account_nonce)
+                };
 
-                    match transaction_nonce.cmp(&account_nonce) {
-                        Ordering::Less => return Err(InvalidTransaction::Stale.into()),
-                        Ordering::Greater => return Err(InvalidTransaction::Future.into()),
-                        Ordering::Equal => {}
-                    }
-
-                    let next_nonce = account_nonce
-                        .checked_add(U256::one())
-                        .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
-
-                    EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
+                match transaction_nonce.cmp(&account_nonce) {
+                    Ordering::Less => return Err(InvalidTransaction::Stale.into()),
+                    Ordering::Greater => return Err(InvalidTransaction::Future.into()),
+                    Ordering::Equal => {}
                 }
+
+                let next_nonce = account_nonce
+                    .checked_add(U256::one())
+                    .ok_or(InvalidTransaction::Custom(ERR_NONCE_OVERFLOW))?;
+
+                EVMNoncetracker::set_account_nonce(AccountId::from(account_id), next_nonce);
             }
 
             Ok(())
@@ -1158,7 +1147,7 @@ impl_runtime_apis! {
                     account_result.ok().map(|account_id| account_id.encode())
                 }) {
                 // Check if the signer Id hash is within the tx range
-                let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
+                let signer_id_hash = U256::from_be_bytes(*blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
                 // Unsigned transactions are always in the range.
@@ -1588,7 +1577,7 @@ impl_runtime_apis! {
 
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
-        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
             use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
             use sp_storage::TrackedStorageKey;
             use frame_system_benchmarking::Pallet as SystemBench;

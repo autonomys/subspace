@@ -4,6 +4,7 @@
 //! a small piece cache. It fully manages farming and plotting process, including listening to node
 //! notifications, producing solutions and singing rewards.
 
+pub mod direct_io_file;
 pub mod farming;
 pub mod identity;
 mod metrics;
@@ -13,7 +14,6 @@ pub mod plot_cache;
 mod plotted_sectors;
 mod plotting;
 mod reward_signing;
-pub mod unbuffered_io_file_windows;
 
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::farm::{
@@ -22,6 +22,7 @@ use crate::farm::{
 };
 use crate::node_client::NodeClient;
 use crate::plotter::Plotter;
+use crate::single_disk_farm::direct_io_file::{DirectIoFile, DISK_SECTOR_SIZE};
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::{
     farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
@@ -37,9 +38,6 @@ use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions, SectorPlottingOptions,
 };
 use crate::single_disk_farm::reward_signing::reward_signing;
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
-use crate::single_disk_farm::unbuffered_io_file_windows::DISK_SECTOR_SIZE;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::{farm, KNOWN_PEERS_CACHE_SIZE};
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
@@ -70,13 +68,12 @@ use std::time::{Duration, Instant};
 use std::{fmt, fs, io, mem};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, Scalar};
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PublicKey, Record, SectorIndex, SegmentIndex,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::sectors::SectorIndex;
+use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
+use subspace_core_primitives::{Blake3Hash, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
-#[cfg(not(windows))]
-use subspace_farmer_components::file_ext::OpenOptionsExt;
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAtSync};
@@ -114,24 +111,9 @@ pub struct SingleDiskFarmInfoLock {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SingleDiskFarmInfo {
-    /// Legacy V0 of the info
+    /// V0 of the info
     #[serde(rename_all = "camelCase")]
     V0 {
-        /// ID of the farm
-        id: FarmId,
-        /// Genesis hash of the chain used for farm creation
-        #[serde(with = "hex")]
-        genesis_hash: [u8; 32],
-        /// Public key of identity used for farm creation
-        public_key: PublicKey,
-        /// How many pieces does one sector contain.
-        pieces_in_sector: u16,
-        /// How much space in bytes is allocated for this farm
-        allocated_space: u64,
-    },
-    /// V1 of the info
-    #[serde(rename_all = "camelCase")]
-    V1 {
         /// ID of the farm
         id: FarmId,
         /// Genesis hash of the chain used for farm creation
@@ -157,7 +139,7 @@ impl SingleDiskFarmInfo {
         pieces_in_sector: u16,
         allocated_space: u64,
     ) -> Self {
-        Self::V1 {
+        Self::V0 {
             id,
             genesis_hash,
             public_key,
@@ -192,7 +174,7 @@ impl SingleDiskFarmInfo {
             .create(true)
             .truncate(true)
             .open(directory.join(Self::FILE_NAME))?;
-        fs4::FileExt::try_lock_exclusive(&file)?;
+        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
         file.write_all(&serde_json::to_vec(self).expect("Info serialization never fails; qed"))
     }
 
@@ -200,26 +182,26 @@ impl SingleDiskFarmInfo {
     /// processes is done
     pub fn try_lock(directory: &Path) -> io::Result<SingleDiskFarmInfoLock> {
         let file = File::open(directory.join(Self::FILE_NAME))?;
-        fs4::FileExt::try_lock_exclusive(&file)?;
+        fs4::fs_std::FileExt::try_lock_exclusive(&file)?;
 
         Ok(SingleDiskFarmInfoLock { _file: file })
     }
 
     /// ID of the farm
     pub fn id(&self) -> &FarmId {
-        let (Self::V0 { id, .. } | Self::V1 { id, .. }) = self;
+        let Self::V0 { id, .. } = self;
         id
     }
 
     /// Genesis hash of the chain used for farm creation
     pub fn genesis_hash(&self) -> &[u8; 32] {
-        let (Self::V0 { genesis_hash, .. } | Self::V1 { genesis_hash, .. }) = self;
+        let Self::V0 { genesis_hash, .. } = self;
         genesis_hash
     }
 
     /// Public key of identity used for farm creation
     pub fn public_key(&self) -> &PublicKey {
-        let (Self::V0 { public_key, .. } | Self::V1 { public_key, .. }) = self;
+        let Self::V0 { public_key, .. } = self;
         public_key
     }
 
@@ -229,9 +211,6 @@ impl SingleDiskFarmInfo {
             SingleDiskFarmInfo::V0 {
                 pieces_in_sector, ..
             } => *pieces_in_sector,
-            SingleDiskFarmInfo::V1 {
-                pieces_in_sector, ..
-            } => *pieces_in_sector,
         }
     }
 
@@ -239,9 +218,6 @@ impl SingleDiskFarmInfo {
     pub fn allocated_space(&self) -> u64 {
         match self {
             SingleDiskFarmInfo::V0 {
-                allocated_space, ..
-            } => *allocated_space,
-            SingleDiskFarmInfo::V1 {
                 allocated_space, ..
             } => *allocated_space,
         }
@@ -308,8 +284,6 @@ where
     pub node_client: NC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
-    /// Plotter
-    pub plotter_legacy: Arc<dyn Plotter + Send + Sync>,
     /// Plotter
     pub plotter: Arc<dyn Plotter + Send + Sync>,
     /// Kzg instance to use.
@@ -753,14 +727,8 @@ struct SingleDiskFarmInit {
     identity: Identity,
     single_disk_farm_info: SingleDiskFarmInfo,
     single_disk_farm_info_lock: Option<SingleDiskFarmInfoLock>,
-    #[cfg(not(windows))]
-    plot_file: Arc<File>,
-    #[cfg(windows)]
-    plot_file: Arc<UnbufferedIoFileWindows>,
-    #[cfg(not(windows))]
-    metadata_file: File,
-    #[cfg(windows)]
-    metadata_file: UnbufferedIoFileWindows,
+    plot_file: Arc<DirectIoFile>,
+    metadata_file: DirectIoFile,
     metadata_header: PlotMetadataHeader,
     target_sector_count: u16,
     sectors_metadata: Arc<AsyncRwLock<Vec<SectorMetadataChecksummed>>>,
@@ -854,13 +822,12 @@ impl SingleDiskFarm {
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
-    pub async fn new<NC, PosTableLegacy, PosTable>(
+    pub async fn new<NC, PosTable>(
         options: SingleDiskFarmOptions<'_, NC>,
         farm_index: usize,
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient + Clone,
-        PosTableLegacy: Table,
         PosTable: Table,
     {
         let span = Span::current();
@@ -872,7 +839,6 @@ impl SingleDiskFarm {
             max_pieces_in_sector,
             node_client,
             reward_address,
-            plotter_legacy,
             plotter,
             kzg,
             erasure_coding,
@@ -993,17 +959,7 @@ impl SingleDiskFarm {
         let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
-                    #[cfg(windows)]
-                    {
-                        RayonFiles::open_with(
-                            &directory.join(Self::PLOT_FILE),
-                            UnbufferedIoFileWindows::open,
-                        )
-                    }
-                    #[cfg(not(windows))]
-                    {
-                        RayonFiles::open(&directory.join(Self::PLOT_FILE))
-                    }
+                    RayonFiles::open_with(&directory.join(Self::PLOT_FILE), DirectIoFile::open)
                 })
                 .map(|farming_plot| (farming_plot, farming_thread_pool))
         });
@@ -1058,11 +1014,6 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
-
-                let plotter = match single_disk_farm_info {
-                    SingleDiskFarmInfo::V0 { .. } => plotter_legacy,
-                    SingleDiskFarmInfo::V1 { .. } => plotter,
-                };
 
                 let plotting_options = PlottingOptions {
                     metadata_header,
@@ -1196,14 +1147,7 @@ impl SingleDiskFarm {
                         global_mutex,
                         metrics,
                     };
-                    match single_disk_farm_info {
-                        SingleDiskFarmInfo::V0 { .. } => {
-                            farming::<PosTableLegacy, _, _>(farming_options).await
-                        }
-                        SingleDiskFarmInfo::V1 { .. } => {
-                            farming::<PosTable, _, _>(farming_options).await
-                        }
-                    }
+                    farming::<PosTable, _, _>(farming_options).await
                 };
 
                 Handle::current().block_on(async {
@@ -1237,72 +1181,34 @@ impl SingleDiskFarm {
             })
         }));
 
-        let (piece_reader, reading_join_handle) = match single_disk_farm_info {
-            SingleDiskFarmInfo::V0 { .. } => {
-                let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTableLegacy>(
-                    public_key,
-                    pieces_in_sector,
-                    plot_file,
-                    Arc::clone(&sectors_metadata),
-                    erasure_coding,
-                    sectors_being_modified,
-                    read_sector_record_chunks_mode,
-                    global_mutex,
-                );
+        let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            plot_file,
+            Arc::clone(&sectors_metadata),
+            erasure_coding,
+            sectors_being_modified,
+            read_sector_record_chunks_mode,
+            global_mutex,
+        );
 
-                let reading_join_handle = task::spawn_blocking({
-                    let mut stop_receiver = stop_sender.subscribe();
-                    let reading_fut = reading_fut.instrument(span.clone());
+        let reading_join_handle = task::spawn_blocking({
+            let mut stop_receiver = stop_sender.subscribe();
+            let reading_fut = reading_fut.instrument(span.clone());
 
-                    move || {
-                        Handle::current().block_on(async {
-                            select! {
-                                _ = reading_fut.fuse() => {
-                                    // Nothing, just exit
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    // Nothing, just exit
-                                }
-                            }
-                        });
+            move || {
+                Handle::current().block_on(async {
+                    select! {
+                        _ = reading_fut.fuse() => {
+                            // Nothing, just exit
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
                     }
                 });
-
-                (piece_reader, reading_join_handle)
             }
-            SingleDiskFarmInfo::V1 { .. } => {
-                let (piece_reader, reading_fut) = DiskPieceReader::new::<PosTable>(
-                    public_key,
-                    pieces_in_sector,
-                    plot_file,
-                    Arc::clone(&sectors_metadata),
-                    erasure_coding,
-                    sectors_being_modified,
-                    read_sector_record_chunks_mode,
-                    global_mutex,
-                );
-
-                let reading_join_handle = task::spawn_blocking({
-                    let mut stop_receiver = stop_sender.subscribe();
-                    let reading_fut = reading_fut.instrument(span.clone());
-
-                    move || {
-                        Handle::current().block_on(async {
-                            select! {
-                                _ = reading_fut.fuse() => {
-                                    // Nothing, just exit
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    // Nothing, just exit
-                                }
-                            }
-                        });
-                    }
-                });
-
-                (piece_reader, reading_join_handle)
-            }
-        };
+        });
 
         let reading_join_handle = AsyncJoinOnDrop::new(reading_join_handle, false);
 
@@ -1417,19 +1323,12 @@ impl SingleDiskFarm {
                         "Farm size has changed"
                     );
 
-                    {
-                        let new_allocated_space = allocated_space;
-                        match &mut single_disk_farm_info {
-                            SingleDiskFarmInfo::V0 {
-                                allocated_space, ..
-                            } => {
-                                *allocated_space = new_allocated_space;
-                            }
-                            SingleDiskFarmInfo::V1 {
-                                allocated_space, ..
-                            } => {
-                                *allocated_space = new_allocated_space;
-                            }
+                    let new_allocated_space = allocated_space;
+                    match &mut single_disk_farm_info {
+                        SingleDiskFarmInfo::V0 {
+                            allocated_space, ..
+                        } => {
+                            *allocated_space = new_allocated_space;
                         }
                     }
 
@@ -1474,19 +1373,7 @@ impl SingleDiskFarm {
         let target_sector_count = allocated_space_distribution.target_sector_count;
 
         let metadata_file_path = directory.join(Self::METADATA_FILE);
-        #[cfg(not(windows))]
-        let metadata_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(&metadata_file_path)?;
-
-        #[cfg(not(windows))]
-        metadata_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let metadata_file = UnbufferedIoFileWindows::open(&metadata_file_path)?;
+        let metadata_file = DirectIoFile::open(&metadata_file_path)?;
 
         let metadata_size = metadata_file.size()?;
         let expected_metadata_size = allocated_space_distribution.metadata_file_size;
@@ -1576,19 +1463,7 @@ impl SingleDiskFarm {
             Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
-        #[cfg(not(windows))]
-        let plot_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .advise_random_access()
-            .open(directory.join(Self::PLOT_FILE))?;
-
-        #[cfg(not(windows))]
-        plot_file.advise_random_access()?;
-
-        #[cfg(windows)]
-        let plot_file = UnbufferedIoFileWindows::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = DirectIoFile::open(&directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != allocated_space_distribution.plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1731,13 +1606,7 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
-        #[cfg(not(windows))]
-        let metadata_file = OpenOptions::new()
-            .read(true)
-            .open(directory.join(Self::METADATA_FILE))?;
-
-        #[cfg(windows)]
-        let metadata_file = UnbufferedIoFileWindows::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = DirectIoFile::open(&directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -2140,7 +2009,7 @@ impl SingleDiskFarm {
                 plot_file
             };
 
-            let sector_bytes_range = 0..(sector_size as usize - mem::size_of::<Blake3Hash>());
+            let sector_bytes_range = 0..(sector_size as usize - Blake3Hash::SIZE);
 
             info!("Checking sectors and corresponding metadata");
             (0..metadata_header.plotted_sector_count)
@@ -2273,7 +2142,7 @@ impl SingleDiskFarm {
                             }
 
                             let actual_checksum = *hasher.finalize().as_bytes();
-                            let mut expected_checksum = [0; mem::size_of::<Blake3Hash>()];
+                            let mut expected_checksum = [0; Blake3Hash::SIZE];
                             {
                                 let offset = u64::from(sector_index) * sector_size
                                     + sector_bytes_range.end as u64;
@@ -2464,9 +2333,9 @@ impl SingleDiskFarm {
                 }
 
                 let (index_and_piece_bytes, expected_checksum) =
-                    element.split_at(element_size as usize - mem::size_of::<Blake3Hash>());
+                    element.split_at(element_size as usize - Blake3Hash::SIZE);
                 let actual_checksum = blake3_hash(index_and_piece_bytes);
-                if actual_checksum != expected_checksum && element != &dummy_element {
+                if *actual_checksum != *expected_checksum && element != &dummy_element {
                     warn!(
                         %cache_offset,
                         actual_checksum = %hex::encode(actual_checksum),

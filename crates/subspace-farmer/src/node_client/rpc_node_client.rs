@@ -9,7 +9,8 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -176,7 +177,7 @@ impl NodeClient for RpcNodeClient {
 impl NodeClientExt for RpcNodeClient {
     async fn last_segment_headers(
         &self,
-        limit: u64,
+        limit: u32,
     ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
         Ok(self
             .client

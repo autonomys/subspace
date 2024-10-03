@@ -29,6 +29,7 @@ type ArrayNode<T> = [CacheNode<TrieHash<T>>; 16];
 
 /// This is a modified version of trie root that takes trie node values instead of deriving from
 /// the actual data. Taken from `trie-db` as is.
+///
 /// Note: This is an opportunity to push this change upstream but I'm not sure how to present these
 /// changes yet. Need to be discussed further.
 pub fn valued_ordered_trie_root<Layout>(

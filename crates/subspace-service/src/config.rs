@@ -6,7 +6,8 @@ use sc_network::config::{
     SyncMode, TransportConfig, DEFAULT_KADEMLIA_REPLICATION_FACTOR,
 };
 use sc_service::config::{
-    IpNetwork, KeystoreConfig, OffchainWorkerConfig, PrometheusConfig, RpcBatchRequestConfig,
+    ExecutorConfiguration, IpNetwork, KeystoreConfig, OffchainWorkerConfig, PrometheusConfig,
+    RpcBatchRequestConfig, RpcConfiguration, RpcEndpoint,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, DatabaseSource, PruningMode, RpcMethods,
@@ -116,8 +117,6 @@ pub struct SubstrateConfiguration {
     pub force_authoring: bool,
     /// Chain specification
     pub chain_spec: Box<dyn ChainSpec>,
-    /// Configuration of the output format that the informant uses.
-    pub informant_output_format: sc_informant::OutputFormat,
 }
 
 impl From<SubstrateConfiguration> for Configuration {
@@ -126,6 +125,41 @@ impl From<SubstrateConfiguration> for Configuration {
         let default_peers_set_num_full = configuration.network.default_peers_set.in_peers
             + configuration.network.default_peers_set.out_peers;
         let client_version = format!("{}/{}", configuration.impl_name, configuration.impl_version);
+
+        let rpc_batch_config = if configuration.rpc_options.disable_batch_requests {
+            RpcBatchRequestConfig::Disabled
+        } else if let Some(l) = configuration.rpc_options.max_batch_request_len {
+            RpcBatchRequestConfig::Limit(l)
+        } else {
+            RpcBatchRequestConfig::Unlimited
+        };
+        let rpc_addr = configuration.rpc_options.listen_on.map(|listen_addr| {
+            vec![RpcEndpoint {
+                batch_config: rpc_batch_config,
+                max_connections: configuration.rpc_options.max_connections,
+                listen_addr,
+                rpc_methods: configuration.rpc_options.methods,
+                rate_limit: configuration.rpc_options.rate_limit,
+                rate_limit_trust_proxy_headers: configuration
+                    .rpc_options
+                    .rate_limit_trust_proxy_headers,
+                rate_limit_whitelisted_ips: configuration
+                    .rpc_options
+                    .rate_limit_whitelisted_ips
+                    .clone(),
+                max_payload_in_mb: RPC_DEFAULT_MAX_REQUEST_SIZE_MB,
+                max_payload_out_mb: RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
+                max_subscriptions_per_connection: configuration
+                    .rpc_options
+                    .max_subscriptions_per_connection,
+                max_buffer_capacity_per_connection: configuration
+                    .rpc_options
+                    .message_buffer_capacity_per_connection,
+                cors: configuration.rpc_options.cors.clone(),
+                retry_random_port: true,
+                is_optional: false,
+            }]
+        });
 
         Self {
             impl_name: configuration.impl_name,
@@ -179,33 +213,36 @@ impl From<SubstrateConfiguration> for Configuration {
             trie_cache_maximum_size: Some(64 * 1024 * 1024),
             state_pruning: Some(configuration.state_pruning),
             blocks_pruning: configuration.blocks_pruning,
-            wasm_method: Default::default(),
-            wasm_runtime_overrides: None,
-            rpc_addr: configuration.rpc_options.listen_on,
-            rpc_methods: configuration.rpc_options.methods,
-            rpc_max_connections: configuration.rpc_options.max_connections,
-            rpc_cors: configuration.rpc_options.cors,
-            rpc_max_request_size: RPC_DEFAULT_MAX_REQUEST_SIZE_MB,
-            rpc_max_response_size: RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
-            rpc_id_provider: None,
-            rpc_max_subs_per_conn: configuration.rpc_options.max_subscriptions_per_connection,
-            // Doesn't matter since we have specified address above
-            rpc_port: 0,
-            rpc_message_buffer_capacity: configuration
-                .rpc_options
-                .message_buffer_capacity_per_connection,
-            rpc_batch_config: if configuration.rpc_options.disable_batch_requests {
-                RpcBatchRequestConfig::Disabled
-            } else if let Some(l) = configuration.rpc_options.max_batch_request_len {
-                RpcBatchRequestConfig::Limit(l)
-            } else {
-                RpcBatchRequestConfig::Unlimited
+            executor: ExecutorConfiguration {
+                wasm_method: Default::default(),
+                // Substrate's default
+                max_runtime_instances: 8,
+                default_heap_pages: None,
+                // Substrate's default
+                runtime_cache_size: 2,
             },
-            rpc_rate_limit: configuration.rpc_options.rate_limit,
-            rpc_rate_limit_whitelisted_ips: configuration.rpc_options.rate_limit_whitelisted_ips,
-            rpc_rate_limit_trust_proxy_headers: configuration
-                .rpc_options
-                .rate_limit_trust_proxy_headers,
+            wasm_runtime_overrides: None,
+            rpc: RpcConfiguration {
+                addr: rpc_addr,
+                methods: configuration.rpc_options.methods,
+                max_connections: configuration.rpc_options.max_connections,
+                cors: configuration.rpc_options.cors,
+                max_request_size: RPC_DEFAULT_MAX_REQUEST_SIZE_MB,
+                max_response_size: RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
+                id_provider: None,
+                max_subs_per_conn: configuration.rpc_options.max_subscriptions_per_connection,
+                // Doesn't matter since we have specified address above
+                port: 0,
+                message_buffer_capacity: configuration
+                    .rpc_options
+                    .message_buffer_capacity_per_connection,
+                batch_config: rpc_batch_config,
+                rate_limit: configuration.rpc_options.rate_limit,
+                rate_limit_whitelisted_ips: configuration.rpc_options.rate_limit_whitelisted_ips,
+                rate_limit_trust_proxy_headers: configuration
+                    .rpc_options
+                    .rate_limit_trust_proxy_headers,
+            },
             prometheus_config: configuration
                 .prometheus_listen_on
                 .map(|prometheus_listen_on| {
@@ -215,7 +252,6 @@ impl From<SubstrateConfiguration> for Configuration {
                     )
                 }),
             telemetry_endpoints: configuration.telemetry_endpoints,
-            default_heap_pages: None,
             // Offchain worker is not used
             // indexing is used to store the mmr leaves from Runtime
             offchain_worker: OffchainWorkerConfig {
@@ -229,8 +265,6 @@ impl From<SubstrateConfiguration> for Configuration {
             tracing_receiver: Default::default(),
             chain_spec: configuration.chain_spec,
             // Substrate's default
-            max_runtime_instances: 8,
-            // Substrate's default
             announce_block: true,
             role: if configuration.farmer {
                 sc_service::Role::Authority
@@ -238,9 +272,6 @@ impl From<SubstrateConfiguration> for Configuration {
                 sc_service::Role::Full
             },
             base_path: BasePath::new(configuration.base_path),
-            informant_output_format: configuration.informant_output_format,
-            // Substrate's default
-            runtime_cache_size: 2,
         }
     }
 }

@@ -17,7 +17,8 @@ use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{PublicKey, SectorIndex};
+use subspace_core_primitives::sectors::SectorIndex;
+use subspace_core_primitives::PublicKey;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::FarmerProtocolInfo;
 

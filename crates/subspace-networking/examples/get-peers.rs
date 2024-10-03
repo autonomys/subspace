@@ -1,3 +1,9 @@
+// TODO: Remove
+#![allow(
+    clippy::needless_return,
+    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
+)]
+
 use futures::channel::oneshot;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;

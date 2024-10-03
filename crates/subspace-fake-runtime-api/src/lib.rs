@@ -19,15 +19,13 @@
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::weights::Weight;
-use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
-};
+use sp_consensus_subspace::{ChainConstants, PotParameters, SignedVote, SolutionRanges};
 use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
-    OperatorId, OperatorPublicKey,
+    DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OperatorId,
+    OperatorPublicKey,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::FraudProofStorageKeyRequest;
@@ -42,11 +40,12 @@ use sp_version::RuntimeVersion;
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    HistorySize, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::{PublicKey, Randomness, U256};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Hash, Moment, Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Moment, Nonce};
 
 mod mmr {
     pub use pallet_mmr::primitives::*;
@@ -125,16 +124,12 @@ sp_api::impl_runtime_apis! {
     }
 
     impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(_block: Block, _successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            unreachable!()
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
+        fn extract_block_object_mapping(_block: Block) -> BlockObjectMapping {
             unreachable!()
         }
     }
 
-    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
+    impl sp_consensus_subspace::SubspaceApi<Block, PublicKey> for Runtime {
         fn pot_parameters() -> PotParameters {
             unreachable!()
         }
@@ -143,19 +138,9 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn submit_report_equivocation_extrinsic(
-            _equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
-        ) -> Option<()> {
-            unreachable!()
-        }
-
         fn submit_vote_extrinsic(
-            _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
+            _signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, PublicKey>,
         ) {
-            unreachable!()
-        }
-
-        fn is_in_block_list(_farmer_public_key: &FarmerPublicKey) -> bool {
             unreachable!()
         }
 
@@ -179,7 +164,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+        fn root_plot_public_key() -> Option<PublicKey> {
             unreachable!()
         }
 
@@ -209,19 +194,6 @@ sp_api::impl_runtime_apis! {
             _domain_id: DomainId,
             _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
-            unreachable!()
-        }
-
-        fn extract_bundle(
-            _extrinsic: <Block as BlockT>::Extrinsic
-        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
-            unreachable!()
-        }
-
-        fn extract_receipts(
-            _domain_id: DomainId,
-            _extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             unreachable!()
         }
 
@@ -258,10 +230,6 @@ sp_api::impl_runtime_apis! {
         }
 
         fn oldest_unconfirmed_receipt_number(_domain_id: DomainId) -> Option<DomainNumber> {
-            unreachable!()
-        }
-
-        fn domain_block_limit(_domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             unreachable!()
         }
 
@@ -309,7 +277,7 @@ sp_api::impl_runtime_apis! {
             unreachable!()
         }
 
-        fn is_domain_runtime_updraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
+        fn is_domain_runtime_upgraded_since(_domain_id: DomainId, _at: NumberFor<Block>) -> Option<bool> {
             unreachable!()
         }
 

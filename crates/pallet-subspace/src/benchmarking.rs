@@ -8,52 +8,28 @@ use frame_benchmarking::v2::*;
 #[benchmarks]
 mod benchmarks {
     use crate::{
-        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards, EnableRewardsAt,
+        AllowAuthoringByAnyone, Call, Config, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, PotSlotIterations, PotSlotIterationsUpdate,
-        PotSlotIterationsUpdateValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
+        PotSlotIterationsValue, SegmentCommitment, ShouldAdjustSolutionRange, SolutionRanges,
     };
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
     use frame_benchmarking::v2::*;
+    use frame_support::traits::Get;
     use frame_system::pallet_prelude::*;
     use frame_system::{Pallet as System, RawOrigin};
-    use sp_consensus_subspace::{
-        EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
-    };
-    use sp_core::crypto::UncheckedFrom;
-    use sp_core::Get;
-    use sp_runtime::traits::{Block, Header};
+    use sp_consensus_subspace::{SignedVote, Vote};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
+    use subspace_core_primitives::pot::{PotCheckpoints, PotOutput};
+    use subspace_core_primitives::segments::{
+        ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
+    };
     use subspace_core_primitives::{
-        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput,
-        SegmentHeader, SegmentIndex, Solution, SolutionRange,
+        Blake3Hash, PublicKey, RewardSignature, Solution, SolutionRange,
     };
 
     const SEED: u32 = 0;
-
-    #[benchmark]
-    fn report_equivocation() {
-        // Construct a dummy equivocation proof which is invalid but it is okay because the
-        // proof is not validate during the call
-        let offender = FarmerPublicKey::unchecked_from([0u8; 32]);
-        let header = <T::Block as Block>::Header::new(
-            System::<T>::block_number(),
-            Default::default(),
-            Default::default(),
-            System::<T>::parent_hash(),
-            Default::default(),
-        );
-        let proof = EquivocationProof {
-            slot: CurrentSlot::<T>::get(),
-            offender,
-            first_header: header.clone(),
-            second_header: header,
-        };
-
-        #[extrinsic_call]
-        _(RawOrigin::None, Box::new(proof));
-    }
 
     #[benchmark]
     fn store_segment_headers(x: Linear<1, 20>) {
@@ -108,15 +84,15 @@ mod benchmarks {
         let unsigned_vote: Vote<BlockNumberFor<T>, T::Hash, T::AccountId> = Vote::V0 {
             height: System::<T>::block_number(),
             parent_hash: System::<T>::parent_hash(),
-            slot: CurrentSlot::<T>::get(),
+            slot: Pallet::<T>::current_slot(),
             solution: Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from([1u8; 32]),
+                PublicKey::from([1u8; 32]),
                 account("user1", 1, SEED),
             ),
             proof_of_time: PotOutput::default(),
             future_proof_of_time: PotOutput::default(),
         };
-        let signature = FarmerSignature::unchecked_from([2u8; 64]);
+        let signature = RewardSignature::from([2u8; 64]);
         let signed_vote = SignedVote {
             vote: unsigned_vote,
             signature,
@@ -156,16 +132,22 @@ mod benchmarks {
             .checked_mul(NonZeroU32::new(2).expect("2 is non-zero"))
             .expect("Not overflow");
 
-        PotSlotIterations::<T>::set(Some(slot_iterations));
+        PotSlotIterations::<T>::put(PotSlotIterationsValue {
+            slot_iterations,
+            update: None,
+        });
 
         #[extrinsic_call]
         _(RawOrigin::Root, next_slot_iterations);
 
         assert_eq!(
-            PotSlotIterationsUpdate::<T>::get(),
-            Some(PotSlotIterationsUpdateValue {
-                target_slot: None,
-                slot_iterations: next_slot_iterations,
+            PotSlotIterations::<T>::get(),
+            Some(PotSlotIterationsValue {
+                slot_iterations,
+                update: Some(PotSlotIterationsUpdate {
+                    target_slot: None,
+                    slot_iterations: next_slot_iterations,
+                }),
             })
         );
     }
@@ -174,7 +156,7 @@ mod benchmarks {
     fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
         SegmentHeader::V0 {
             segment_index,
-            segment_commitment: subspace_core_primitives::SegmentCommitment::default(),
+            segment_commitment: subspace_core_primitives::segments::SegmentCommitment::default(),
             prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: LastArchivedBlock {
                 number: 0,

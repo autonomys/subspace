@@ -161,30 +161,11 @@ jobs:
 
       - name: AArch64 cross-compile packages
         run: |
-          FLAVOR="$(lsb_release -sc)"
-
-          sudo tee /etc/apt/sources.list.d/arm64.list <<LIST
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} main restricted
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates main restricted
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} universe
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates universe
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} multiverse
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates multiverse
-            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-backports main restricted universe multiverse
-          LIST
-          sudo sed -i 's/deb http/deb [arch=amd64] http/' /etc/apt/sources.list
-          # GitHub runners use mirror file
-          sudo sed -i 's/deb mirror/deb [arch=amd64] mirror/' /etc/apt/sources.list
-
-          sudo dpkg --add-architecture arm64
           sudo apt-get update
-          # zlib1g-dev:arm64 is only necessary because amd64 version is present on the host and cross-compilation of
-          # hwlocality-sys fails otherwise
           sudo apt-get install -y --no-install-recommends \
             g++-aarch64-linux-gnu \
             gcc-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            zlib1g-dev:arm64
+            libc6-dev-arm64-cross
 
           echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
@@ -231,41 +212,30 @@ jobs:
           security unlock-keychain -p "${{ secrets.MACOS_CERTIFICATE_PW }}" build.keychain
           security import certificate.p12 -k build.keychain -P "${{ secrets.MACOS_CERTIFICATE_PW }}" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.MACOS_CERTIFICATE_PW }}" build.keychain
+
           echo "Signing farmer"
           codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp ${{ env.PRODUCTION_TARGET }}/subspace-farmer
+
           echo "Signing node"
           codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp ${{ env.PRODUCTION_TARGET }}/subspace-node
-          echo "Creating an archive"
-          mkdir ${{ env.PRODUCTION_TARGET }}/macos-binaries
+
+          echo "Creating a ZIP archive"
+          mkdir -p ${{ env.PRODUCTION_TARGET }}/macos-binaries
           cp ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-node ${{ env.PRODUCTION_TARGET }}/macos-binaries
           ditto -c -k --rsrc ${{ env.PRODUCTION_TARGET }}/macos-binaries subspace-binaries.zip
-          echo "Notarizing"
-          brew update
-          brew install mitchellh/gon/gon
-          cat << EOF > gon.hcl
-          source = ["subspace-binaries.zip"]
-          bundle_id = "${{ secrets.MACOS_BUNDLE_ID }}"
-          sign {
-            application_identity = "${{ secrets.MACOS_IDENTITY }}"
-          }
-          apple_id {
-              username = "${{ secrets.MACOS_APPLE_ID }}"
-              password = "${{ secrets.MACOS_APP_PW }}"
-          }
-          EOF
-          gon -log-level=info -log-json gon.hcl
 
-          # Notarize the ZIP using notarytool
+          echo "Notarizing ZIP archive file"
           xcrun notarytool submit subspace-binaries.zip --apple-id "${{ secrets.MACOS_APPLE_ID }}" --password "${{ secrets.MACOS_APP_PW }}" --team-id "${{ secrets.MACOS_TEAM_ID }}" --wait
 
-          # // todo stapling for macOS artifacts
-          # Staple the zip package
+          # stapling does not work for .zip archives only .app bundles and .dmg files. Commenting this for now!
+          # echo "Stapling notarization to ZIP file"
           # xcrun stapler staple subspace-binaries.zip
 
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
+
 
       - name: Sign Application (Windows)
         run: |

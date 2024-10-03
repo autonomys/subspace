@@ -28,9 +28,9 @@ pub(super) fn build_transport(
         let tcp_config = GenTcpConfig::default().nodelay(true);
 
         CustomTransportWrapper::new(
-            TokioTcpTransport::new(tcp_config.clone()),
+            TokioTcpTransport::new(tcp_config),
             allow_non_global_addresses_in_dht,
-            temporary_bans.clone(),
+            temporary_bans,
         )
     };
 

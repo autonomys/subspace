@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-ARG RUSTC_VERSION=nightly-2024-08-01
+ARG RUSTC_VERSION=nightly-2024-09-26
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
@@ -33,7 +33,6 @@ COPY rust-toolchain.toml /code/rust-toolchain.toml
 
 COPY crates /code/crates
 COPY domains /code/domains
-COPY orml /code/orml
 COPY shared /code/shared
 COPY test /code/test
 

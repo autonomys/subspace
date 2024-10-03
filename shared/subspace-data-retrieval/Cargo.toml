@@ -1,0 +1,32 @@
+[package]
+name = "subspace-data-retrieval"
+description = "Fetching data from the archived history of the Subspace Distributed Storage Network."
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Teor <teor@riseup.net>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/README.md",
+]
+
+[dependencies]
+async-lock = "3.4.0"
+async-trait = "0.1.83"
+futures = "0.3.30"
+parity-scale-codec = { version = "3.6.12", features = ["derive"] }
+subspace-archiving = { version = "0.1.0", path = "../../crates/subspace-archiving" }
+subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
+subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["sync"] }
+tracing = "0.1.40"
+
+[dev-dependencies]
+
+[features]
+parallel = [
+    "subspace-archiving/parallel",
+    "subspace-core-primitives/parallel",
+]

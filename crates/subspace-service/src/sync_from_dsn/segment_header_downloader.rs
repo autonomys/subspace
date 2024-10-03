@@ -3,7 +3,7 @@ use futures::StreamExt;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::pin::pin;
-use subspace_core_primitives::{SegmentHeader, SegmentIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
 use tracing::{debug, error, trace, warn};
@@ -159,7 +159,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                             SegmentHeaderRequest::LastSegmentHeaders {
                                 // Request 2 top segment headers, accounting for situations when new
                                 // segment header was just produced and not all nodes have it
-                                segment_header_number: 2,
+                                limit: 2,
                             },
                         )
                         .await;
@@ -314,19 +314,20 @@ impl<'a> SegmentHeaderDownloader<'a> {
         peer_id: PeerId,
         segment_headers: &[SegmentHeader],
     ) -> bool {
-        let segment_indexes = match segment_headers.first() {
+        let segment_indexes = match segment_headers.last() {
             None => {
                 // Empty collection is invalid, everyone has at least one segment header
                 return false;
             }
-            Some(first_segment_header) => {
-                // We expect the reverse order
-                let last_segment_index = first_segment_header.segment_index();
+            Some(last_segment_header) => {
+                let last_segment_index = last_segment_header.segment_index();
 
-                (SegmentIndex::ZERO..=last_segment_index)
+                let mut segment_indices = (SegmentIndex::ZERO..=last_segment_index)
                     .rev()
                     .take(segment_headers.len())
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                segment_indices.reverse();
+                segment_indices
             }
         };
 

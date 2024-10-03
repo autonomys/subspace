@@ -8,7 +8,7 @@ use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use std::fmt;
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace, warn};
 
 /// Validates piece against using its commitment.

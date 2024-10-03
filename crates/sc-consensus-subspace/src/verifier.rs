@@ -22,9 +22,8 @@ use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
-use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -32,10 +31,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
-    SubspaceJustification,
-};
+use sp_consensus_subspace::{ChainConstants, PotNextSlotInput, SubspaceApi, SubspaceJustification};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{DigestItem, Justifications};
 use std::iter;
@@ -45,14 +41,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::available_parallelism;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
-use tokio::sync::Semaphore;
+use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
-
-/// This corresponds to default value of `--max-runtime-instances` in Substrate
-const BLOCKS_LIST_CHECK_CONCURRENCY: usize = 8;
 
 /// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -91,7 +84,7 @@ struct CheckedHeader<H> {
     /// Includes the digest item that encoded the seal.
     pre_header: H,
     /// Pre-digest
-    pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    pre_digest: PreDigest<PublicKey>,
     /// Seal (signature)
     seal: DigestItem,
 }
@@ -108,24 +101,15 @@ where
 }
 
 /// Options for Subspace block verifier
-pub struct SubspaceVerifierOptions<Block, Client, SelectChain>
-where
-    Block: BlockT,
-{
+pub struct SubspaceVerifierOptions<Client> {
     /// Substrate client
     pub client: Arc<Client>,
     /// Subspace chain constants
     pub chain_constants: ChainConstants,
     /// Kzg instance
     pub kzg: Kzg,
-    /// Chain selection rule
-    pub select_chain: SelectChain,
     /// Telemetry
     pub telemetry: Option<TelemetryHandle>,
-    /// The offchain transaction pool factory.
-    ///
-    /// Will be used when sending equivocation reports and votes.
-    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     /// Context for reward signing
     pub reward_signing_context: SigningContext,
     /// Approximate target block number for syncing purposes
@@ -137,44 +121,38 @@ where
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain>
+struct Inner<PosTable, Block, Client>
 where
     Block: BlockT,
 {
     client: Arc<Client>,
     kzg: Kzg,
-    select_chain: SelectChain,
     telemetry: Option<TelemetryHandle>,
-    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
     sync_target_block_number: Arc<AtomicU32>,
     is_authoring_blocks: bool,
     pot_verifier: PotVerifier,
     equivocation_mutex: Mutex<()>,
-    block_list_verification_semaphore: Semaphore,
     _pos_table: PhantomData<PosTable>,
     _block: PhantomData<Block>,
 }
 
-impl<PosTable, Block, Client, SelectChain> SubspaceVerifier<PosTable, Block, Client, SelectChain>
+impl<PosTable, Block, Client> Inner<PosTable, Block, Client>
 where
     PosTable: Table,
     Block: BlockT,
     BlockNumber: From<NumberFor<Block>>,
-    Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
 {
     /// Create new instance
-    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
+    fn new(options: SubspaceVerifierOptions<Client>) -> Self {
         let SubspaceVerifierOptions {
             client,
             chain_constants,
             kzg,
-            select_chain,
             telemetry,
-            offchain_tx_pool_factory,
             reward_signing_context,
             sync_target_block_number,
             is_authoring_blocks,
@@ -184,16 +162,13 @@ where
         Self {
             client,
             kzg,
-            select_chain,
             telemetry,
-            offchain_tx_pool_factory,
             chain_constants,
             reward_signing_context,
             sync_target_block_number,
             is_authoring_blocks,
             pot_verifier,
             equivocation_mutex: Mutex::default(),
-            block_list_verification_semaphore: Semaphore::new(BLOCKS_LIST_CHECK_CONCURRENCY),
             _pos_table: Default::default(),
             _block: Default::default(),
         }
@@ -234,14 +209,10 @@ where
     ///
     /// `pre_digest` argument is optional in case it is available to avoid doing the work of
     /// extracting it from the header twice.
-    async fn check_header(
+    fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
-        subspace_digest_items: SubspaceDigestItems<
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >,
+        subspace_digest_items: SubspaceDigestItems<PublicKey>,
         full_pot_verification: bool,
         justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header>, VerificationError<Block::Header>> {
@@ -367,8 +338,8 @@ where
         // Verify that block is signed properly
         if check_reward_signature(
             pre_hash.as_ref(),
-            &RewardSignature::from(&signature),
-            &PublicKey::from(&pre_digest.solution().public_key),
+            &signature,
+            &pre_digest.solution().public_key,
             &self.reward_signing_context,
         )
         .is_err()
@@ -377,7 +348,7 @@ where
         }
 
         // Verify that solution is valid
-        verify_solution::<PosTable, _, _>(
+        verify_solution::<PosTable, _>(
             pre_digest.solution(),
             slot.into(),
             verify_solution_params,
@@ -397,7 +368,7 @@ where
         slot_now: Slot,
         slot: Slot,
         header: &Block::Header,
-        author: &FarmerPublicKey,
+        author: &PublicKey,
         origin: &BlockOrigin,
     ) -> Result<(), String> {
         // don't report any equivocations during initial sync
@@ -428,47 +399,12 @@ where
         );
 
         if self.is_authoring_blocks {
-            // get the best block on which we will build and send the equivocation report.
-            let best_hash = self
-                .select_chain
-                .best_chain()
-                .await
-                .map(|h| h.hash())
-                .map_err(|error| error.to_string())?;
-
-            // submit equivocation report at best block.
-            let mut runtime_api = self.client.runtime_api();
-            // Register the offchain tx pool to be able to use it from the runtime.
-            runtime_api.register_extension(
-                self.offchain_tx_pool_factory
-                    .offchain_transaction_pool(best_hash),
-            );
-            runtime_api
-                .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
-                .map_err(|error| error.to_string())?;
-
-            info!(%author, "Submitted equivocation report for author");
+            // TODO: Handle equivocation
         } else {
             info!("Not submitting equivocation report because node is not authoring blocks");
         }
 
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<PosTable, Block, Client, SelectChain> Verifier<Block>
-    for SubspaceVerifier<PosTable, Block, Client, SelectChain>
-where
-    PosTable: Table,
-    Block: BlockT,
-    BlockNumber: From<NumberFor<Block>>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
-{
-    fn verification_concurrency(&self) -> NonZeroUsize {
-        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
     }
 
     async fn verify(
@@ -507,46 +443,8 @@ where
             block.header.digest().logs().len()
         );
 
-        let subspace_digest_items = extract_subspace_digest_items::<
-            Block::Header,
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >(&block.header)?;
-
-        // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
-        // during block import anyway
-        {
-            // We need to limit number of threads to avoid running out of WASM instances
-            let _permit = self
-                .block_list_verification_semaphore
-                .acquire()
-                .await
-                .expect("Never closed; qed");
-            if self
-                .client
-                .runtime_api()
-                .is_in_block_list(
-                    *block.header.parent_hash(),
-                    &subspace_digest_items.pre_digest.solution().public_key,
-                )
-                .unwrap_or_default()
-            {
-                warn!(
-                    public_key = %subspace_digest_items.pre_digest.solution().public_key,
-                    "Verifying block with solution provided by farmer in block list"
-                );
-
-                return Err(format!(
-                    "Farmer {} is in block list",
-                    subspace_digest_items
-                        .pre_digest
-                        .solution()
-                        .public_key
-                        .clone(),
-                ));
-            }
-        }
+        let subspace_digest_items =
+            extract_subspace_digest_items::<Block::Header, PublicKey>(&block.header)?;
 
         let full_pot_verification = self.full_pot_verification(*block.header.number());
 
@@ -571,7 +469,6 @@ where
                 full_pot_verification,
                 &block.justifications,
             )
-            .await
             .map_err(|error| error.to_string())?;
 
         let CheckedHeader {
@@ -628,5 +525,53 @@ where
         block.post_hash = Some(hash);
 
         Ok(block)
+    }
+}
+
+/// A verifier for Subspace blocks.
+pub struct SubspaceVerifier<PosTable, Block, Client>
+where
+    Block: BlockT,
+{
+    inner: Arc<Inner<PosTable, Block, Client>>,
+}
+
+impl<PosTable, Block, Client> SubspaceVerifier<PosTable, Block, Client>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+{
+    /// Create new instance
+    pub fn new(options: SubspaceVerifierOptions<Client>) -> Self {
+        Self {
+            inner: Arc::new(Inner::new(options)),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<PosTable, Block, Client> Verifier<Block> for SubspaceVerifier<PosTable, Block, Client>
+where
+    PosTable: Table,
+    Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + AuxStore + 'static,
+    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, PublicKey>,
+{
+    fn verification_concurrency(&self) -> NonZeroUsize {
+        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
+    }
+
+    async fn verify(
+        &self,
+        block: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
+        let inner = Arc::clone(&self.inner);
+        tokio::task::spawn_blocking(move || Handle::current().block_on(inner.verify(block)))
+            .await
+            .map_err(|error| format!("Failed to join block verification task: {error}"))?
     }
 }

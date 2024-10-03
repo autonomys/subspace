@@ -28,12 +28,14 @@ use sc_network_sync::block_relay_protocol::{
 };
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_api::ProvideRuntimeApi;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::SubspaceApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
+use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_core_primitives::PublicKey;
 use substrate_prometheus_endpoint::{PrometheusError, Registry};
 use tracing::{debug, info, trace, warn};
 
@@ -64,6 +66,19 @@ where
     backend: Arc<ConsensusClientBackend<Pool>>,
     metrics: ConsensusClientMetrics,
     _phantom_data: std::marker::PhantomData<(Block, Pool)>,
+}
+
+impl<Block, Pool> fmt::Debug for ConsensusRelayClient<Block, Pool>
+where
+    Block: BlockT,
+    Pool: TransactionPool,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConsensusRelayClient")
+            .field("protocol_name", &self.protocol_name)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<Block, Pool> ConsensusRelayClient<Block, Pool>
@@ -222,6 +237,10 @@ where
     Block: BlockT,
     Pool: TransactionPool<Block = Block> + 'static,
 {
+    fn protocol_name(&self) -> &ProtocolName {
+        &self.protocol_name
+    }
+
     async fn download_blocks(
         &self,
         who: PeerId,
@@ -295,7 +314,7 @@ impl<Block, Client, Pool> ConsensusRelayServer<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     /// Creates the consensus relay server.
@@ -553,7 +572,7 @@ impl<Block, Client, Pool> BlockServer<Block> for ConsensusRelayServer<Block, Cli
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     async fn run(&mut self) {
@@ -596,7 +615,7 @@ impl<Block, Client, Pool> ServerBackend<BlockHash<Block>, TxHash<Pool>, Extrinsi
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     fn download_unit_members(
@@ -689,7 +708,7 @@ pub fn build_consensus_relay<Block, Client, Pool>(
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, PublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     let (tx, request_receiver) = async_channel::bounded(NUM_PEER_HINT.get());

@@ -18,26 +18,21 @@
 
 use crate::mock::{
     allow_all_pot_extension, create_archived_segment, create_segment_header, create_signed_vote,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, BlockAuthoringDelay,
-    ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
-    SLOT_PROBABILITY,
+    go_to_block, new_test_ext, progress_to_block, BlockAuthoringDelay, RuntimeEvent, RuntimeOrigin,
+    Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
-    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, EnableRewardsAt,
-    ParentBlockAuthorInfo, ParentBlockVoters, PotSlotIterations, SegmentCommitment,
-    SubspaceEquivocationOffence,
+    pallet, AllowAuthoringByAnyone, Call, CheckVoteError, Config, CurrentBlockAuthorInfo,
+    CurrentBlockVoters, EnableRewardsAt, ParentBlockAuthorInfo, ParentBlockVoters,
+    PotSlotIterations, PotSlotIterationsValue, SegmentCommitment,
 };
-use codec::Encode;
-use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, PotExtension, SolutionRanges};
-use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::{BlockNumberProvider, Header};
+use sp_consensus_subspace::{PotExtension, SolutionRanges};
+use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, ValidTransaction,
 };
@@ -47,19 +42,11 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
+use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::{PublicKey, RewardSignature, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
-
-#[test]
-fn genesis_slot_is_correct() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        // this sets the genesis slot to 6;
-        go_to_block(&keypair, 1, 6, 1);
-        assert_eq!(*Subspace::genesis_slot(), 6);
-    })
-}
 
 #[test]
 fn can_update_solution_range_on_era_change() {
@@ -250,237 +237,6 @@ fn solution_range_should_not_update_when_disabled() {
 }
 
 #[test]
-fn report_equivocation_current_session_works() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        progress_to_block(&keypair, 1, 1);
-
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-
-        // generate an equivocation proof. it creates two headers at the given
-        // slot with different block hashes and signed by the given key
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-
-        assert!(!Subspace::is_in_block_list(&farmer_public_key));
-
-        // report the equivocation
-        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
-
-        progress_to_block(&keypair, 2, 1);
-
-        // check that farmer was added to block list
-        assert!(Subspace::is_in_block_list(&farmer_public_key));
-    });
-}
-
-#[test]
-fn report_equivocation_old_session_works() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        progress_to_block(&keypair, 1, 1);
-
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-
-        // generate an equivocation proof at the current slot
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-
-        // create new block and report the equivocation
-        // from the previous block
-        progress_to_block(&keypair, 2, 1);
-
-        assert!(!Subspace::is_in_block_list(&farmer_public_key));
-
-        // report the equivocation
-        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
-
-        progress_to_block(&keypair, 3, 1);
-
-        // check that farmer was added to block list
-        assert!(Subspace::is_in_block_list(&farmer_public_key));
-    })
-}
-
-#[test]
-fn report_equivocation_invalid_equivocation_proof() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        progress_to_block(&keypair, 1, 1);
-
-        let assert_invalid_equivocation = |equivocation_proof| {
-            assert_err!(
-                <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
-                    TransactionSource::Local,
-                    &Call::report_equivocation {
-                        equivocation_proof: Box::new(equivocation_proof),
-                    },
-                ),
-                InvalidTransaction::BadProof,
-            )
-        };
-
-        // both headers have the same hash, no equivocation.
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-        equivocation_proof.second_header = equivocation_proof.first_header.clone();
-        assert_invalid_equivocation(equivocation_proof);
-
-        // missing preruntime digest from one header
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-        equivocation_proof.first_header.digest_mut().logs.remove(0);
-        assert_invalid_equivocation(equivocation_proof);
-
-        // missing seal from one header
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-        equivocation_proof.first_header.digest_mut().logs.remove(1);
-        assert_invalid_equivocation(equivocation_proof);
-
-        // invalid slot number in proof compared to runtime digest
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-        equivocation_proof.slot = Slot::from(0);
-        assert_invalid_equivocation(equivocation_proof.clone());
-
-        // different slot numbers in headers
-        let h1 = equivocation_proof.first_header;
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get() + 1);
-
-        // use the header from the previous equivocation generated
-        // at the previous slot
-        equivocation_proof.first_header = h1.clone();
-
-        assert_invalid_equivocation(equivocation_proof);
-
-        // invalid seal signature
-        let mut equivocation_proof =
-            generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get() + 1);
-
-        // replace the seal digest with the digest from the
-        // previous header at the previous slot
-        equivocation_proof.first_header.digest_mut().pop();
-        equivocation_proof
-            .first_header
-            .digest_mut()
-            .push(h1.digest().logs().last().unwrap().clone());
-
-        assert_invalid_equivocation(equivocation_proof.clone());
-    })
-}
-
-#[test]
-fn report_equivocation_validate_unsigned_prevents_duplicates() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        progress_to_block(&keypair, 1, 1);
-
-        let farmer_public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-
-        let inner = Call::report_equivocation {
-            equivocation_proof: Box::new(equivocation_proof.clone()),
-        };
-
-        // Only local/in block reports are allowed
-        assert_eq!(
-            <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
-                TransactionSource::External,
-                &inner,
-            ),
-            InvalidTransaction::Call.into(),
-        );
-
-        // The transaction is valid when passed as local
-        let tx_tag = (farmer_public_key, CurrentSlot::<Test>::get());
-        assert_eq!(
-            <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
-                TransactionSource::Local,
-                &inner,
-            ),
-            Ok(ValidTransaction {
-                priority: TransactionPriority::MAX,
-                requires: vec![],
-                provides: vec![("SubspaceEquivocation", tx_tag).encode()],
-                longevity: ReportLongevity::get(),
-                propagate: false,
-            })
-        );
-
-        // The pre dispatch checks should also pass
-        assert_ok!(<Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
-
-        // Submit the report
-        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
-
-        // The report should now be considered stale and the transaction is invalid.
-        // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
-        assert_err!(
-            <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
-                TransactionSource::Local,
-                &inner,
-            ),
-            InvalidTransaction::Stale,
-        );
-
-        assert_err!(
-            <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner),
-            InvalidTransaction::Stale,
-        );
-    });
-}
-
-#[test]
-fn valid_equivocation_reports_dont_pay_fees() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-
-        progress_to_block(&keypair, 1, 1);
-
-        // generate an equivocation proof.
-        let equivocation_proof = generate_equivocation_proof(&keypair, CurrentSlot::<Test>::get());
-
-        // check the dispatch info for the call.
-        let info = Call::<Test>::report_equivocation {
-            equivocation_proof: Box::new(equivocation_proof.clone()),
-        }
-        .get_dispatch_info();
-
-        // it should have non-zero weight and the fee has to be paid.
-        assert!(info.weight.ref_time() > 0);
-        assert_eq!(info.pays_fee, Pays::Yes);
-
-        // report the equivocation.
-        let post_info = Subspace::report_equivocation(
-            RuntimeOrigin::none(),
-            Box::new(equivocation_proof.clone()),
-        )
-        .unwrap();
-
-        // the original weight should be kept, but given that the report
-        // is valid the fee is waived.
-        assert!(post_info.actual_weight.is_none());
-        assert_eq!(post_info.pays_fee, Pays::No);
-
-        // report the equivocation again which is invalid now since it is
-        // duplicate.
-        assert_err!(
-            <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(
-                &Call::report_equivocation {
-                    equivocation_proof: Box::new(equivocation_proof),
-                }
-            ),
-            InvalidTransaction::Stale,
-        );
-    })
-}
-
-#[test]
 fn store_segment_header_works() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
@@ -576,38 +332,6 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
         assert_err!(
             <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner2),
             InvalidTransaction::BadMandatory,
-        );
-    });
-}
-
-#[test]
-fn vote_block_listed() {
-    new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-
-        BlockList::<Test>::insert(
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            (),
-        );
-
-        // Vote author is in block list
-        let signed_vote = create_signed_vote(
-            &keypair,
-            0,
-            <Test as frame_system::Config>::Hash::default(),
-            Subspace::current_slot() + 1,
-            Default::default(),
-            Default::default(),
-            &archived_segment.pieces,
-            1,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
-        );
-
-        assert_err!(
-            super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::BlockListed
         );
     });
 }
@@ -927,7 +651,7 @@ fn vote_bad_reward_signature() {
             SolutionRange::MAX,
         );
 
-        signed_vote.signature = FarmerSignature::unchecked_from(rand::random::<[u8; 64]>());
+        signed_vote.signature = RewardSignature::from(rand::random::<[u8; 64]>());
 
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
@@ -1298,21 +1022,24 @@ fn vote_equivocation_current_block_plus_vote() {
 
         // Parent block author + sector index + chunk + slot matches that of the vote
         CurrentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            PublicKey::from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
             slot,
-            reward_address,
+            Some(reward_address),
         ));
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+            CheckVoteError::Equivocated {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
-            })
+                offender: PublicKey::from(keypair.public.to_bytes())
+            }
         );
+
+        // Block author doesn't get reward after equivocation
+        assert_matches!(Subspace::find_block_reward_address(), None);
     });
 }
 
@@ -1353,7 +1080,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         // Parent block author + sector index + chunk + slot matches that of the vote
         ParentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            PublicKey::from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
@@ -1362,18 +1089,13 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, true),
-            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+            CheckVoteError::Equivocated {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
-            })
+                offender: PublicKey::from(keypair.public.to_bytes())
+            }
         );
 
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
-
-        assert_err!(
-            Subspace::vote(RuntimeOrigin::none(), Box::new(signed_vote)),
-            DispatchError::Other("Equivocated"),
-        );
 
         // Block author doesn't get reward after equivocation
         assert_matches!(Subspace::find_block_reward_address(), None);
@@ -1420,13 +1142,13 @@ fn vote_equivocation_current_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    PublicKey::from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (Some(reward_address), signed_vote.signature),
             );
             map
         });
@@ -1441,23 +1163,19 @@ fn vote_equivocation_current_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    PublicKey::from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (Some(reward_address), RewardSignature::from([0; 64])),
             );
             map
         });
 
         // Different vote for the same sector index and time slot leads to equivocation
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
-        assert_err!(
-            Subspace::vote(RuntimeOrigin::none(), Box::new(signed_vote)),
-            DispatchError::Other("Equivocated"),
-        );
 
         // Voter doesn't get reward after equivocation
         assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
@@ -1504,13 +1222,13 @@ fn vote_equivocation_parent_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    PublicKey::from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, signed_vote.signature.clone()),
+                (Some(reward_address), signed_vote.signature),
             );
             map
         });
@@ -1525,13 +1243,13 @@ fn vote_equivocation_parent_voters_duplicate() {
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    PublicKey::from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     slot,
                 ),
-                (reward_address, FarmerSignature::unchecked_from([0; 64])),
+                (Some(reward_address), RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1539,10 +1257,10 @@ fn vote_equivocation_parent_voters_duplicate() {
         // Different vote for the same time slot leads to equivocation
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+            CheckVoteError::Equivocated {
                 slot,
-                offender: FarmerPublicKey::unchecked_from(keypair.public.to_bytes())
-            })
+                offender: PublicKey::from(keypair.public.to_bytes())
+            }
         );
 
         // Voter doesn't get reward after equivocation
@@ -1556,24 +1274,24 @@ fn vote_equivocation_parent_voters_duplicate() {
 fn enabling_block_rewards_works() {
     fn set_block_rewards() {
         CurrentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            PublicKey::from(Keypair::generate().public.to_bytes()),
             0,
             PieceOffset::ZERO,
             Scalar::default(),
             Subspace::current_slot(),
-            1,
+            Some(1),
         ));
         CurrentBlockVoters::<Test>::put({
             let mut map = BTreeMap::new();
             map.insert(
                 (
-                    FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    PublicKey::from(Keypair::generate().public.to_bytes()),
                     0,
                     PieceOffset::ZERO,
                     Scalar::default(),
                     Subspace::current_slot(),
                 ),
-                (2, FarmerSignature::unchecked_from([0; 64])),
+                (Some(2), RewardSignature::from([0; 64])),
             );
             map
         });
@@ -1738,7 +1456,10 @@ fn allow_authoring_by_anyone_works() {
 #[test]
 fn set_pot_slot_iterations_works() {
     new_test_ext(allow_all_pot_extension()).execute_with(|| {
-        PotSlotIterations::<Test>::put(NonZeroU32::new(100_000_000).unwrap());
+        PotSlotIterations::<Test>::put(PotSlotIterationsValue {
+            slot_iterations: NonZeroU32::new(100_000_000).unwrap(),
+            update: None,
+        });
 
         // Only root can do this
         assert_err!(
@@ -1782,8 +1503,15 @@ fn set_pot_slot_iterations_works() {
         .unwrap();
 
         // Unless update is already scheduled to be applied
-        pallet::PotSlotIterationsUpdate::<Test>::mutate(|update| {
-            update.as_mut().unwrap().target_slot.replace(Slot::from(1));
+        pallet::PotSlotIterations::<Test>::mutate(|pot_slot_iterations| {
+            pot_slot_iterations
+                .as_mut()
+                .unwrap()
+                .update
+                .as_mut()
+                .unwrap()
+                .target_slot
+                .replace(Slot::from(1));
         });
         assert_matches!(
             Subspace::set_pot_slot_iterations(

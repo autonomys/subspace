@@ -15,7 +15,8 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::fmt;
 use std::pin::Pin;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -76,5 +77,5 @@ pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
 #[async_trait]
 pub trait NodeClientExt: NodeClient {
     /// Get the last segment headers.
-    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
+    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

@@ -13,10 +13,11 @@ use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PosSeed, PublicKey, Record, RecordedHistorySegment, SectorId,
-    SolutionRange,
-};
+use subspace_core_primitives::pieces::Record;
+use subspace_core_primitives::pos::PosSeed;
+use subspace_core_primitives::sectors::SectorId;
+use subspace_core_primitives::segments::{HistorySize, RecordedHistorySegment};
+use subspace_core_primitives::{Blake3Hash, PublicKey, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
@@ -161,7 +162,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Searching for solutions");
     let (global_challenge, solution_candidates) = &loop {
         let mut global_challenge = Blake3Hash::default();
-        rng.fill_bytes(&mut global_challenge);
+        rng.fill_bytes(global_challenge.as_mut());
 
         let audit_results = audit_plot_sync(
             public_key,

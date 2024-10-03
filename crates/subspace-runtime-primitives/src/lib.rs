@@ -39,7 +39,7 @@ pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
-pub const MIN_REPLICATION_FACTOR: u16 = 50;
+pub const MIN_REPLICATION_FACTOR: u16 = 25;
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;
@@ -83,10 +83,12 @@ pub type Hash = sp_core::H256;
 /// Type used for expressing timestamp.
 pub type Moment = u64;
 
-/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
-/// the specifics of the runtime. They can then be made to be agnostic over specific formats
-/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
-/// to even the core data structures.
+/// Opaque types.
+///
+/// These are used by the CLI to instantiate machinery that don't need to know the specifics of the
+/// runtime. They can then be made to be agnostic over specific formats of data like extrinsics,
+/// allowing for them to continue syncing the network through upgrades to even the core data
+/// structures.
 pub mod opaque {
     use super::BlockNumber;
     use sp_runtime::generic;
@@ -100,6 +102,8 @@ pub mod opaque {
 }
 
 pub mod time {
+    /// Expected block time in milliseconds.
+    ///
     /// Since Subspace is probabilistic this is the average expected block time that
     /// we are targeting. Blocks will be produced at a minimum duration defined
     /// by `SLOT_DURATION`, but some slots will not be allocated to any
@@ -243,6 +247,17 @@ impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balan
     }
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum HoldIdentifier {
+    DomainStaking,
+    DomainInstantiation,
+    DomainStorageFund,
+    MessengerChannel,
+    Preimage,
+}
+
 #[cfg(feature = "testing")]
 pub mod tests_utils {
     use frame_support::dispatch::DispatchClass;
@@ -271,19 +286,17 @@ pub mod tests_utils {
         }
 
         fn min_multiplier() -> Multiplier {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::min()
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::min()
         }
 
         fn target() -> Weight {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::target() * Self::max_normal()
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::target()
+                * Self::max_normal()
         }
 
         // update based on runtime impl.
         fn runtime_multiplier_update(fm: Multiplier) -> Multiplier {
-            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as Convert<
-                Multiplier,
-                Multiplier,
-            >>::convert(fm)
+            <Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate::convert(fm)
         }
 
         fn run_with_system_weight<F>(w: Weight, assertions: F)

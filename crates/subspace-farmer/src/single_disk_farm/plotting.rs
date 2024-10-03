@@ -1,9 +1,8 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
 use crate::node_client::{Error as NodeClientError, NodeClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
+use crate::single_disk_farm::direct_io_file::DirectIoFile;
 use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
-#[cfg(windows)]
-use crate::single_disk_farm::unbuffered_io_file_windows::UnbufferedIoFileWindows;
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
@@ -13,18 +12,16 @@ use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
 use std::collections::HashSet;
-#[cfg(not(windows))]
-use std::fs::File;
 use std::future::{pending, Future};
 use std::io;
 use std::ops::Range;
 use std::pin::pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
-    SegmentIndex,
-};
+use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::sectors::{SectorId, SectorIndex};
+use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Blake3Hash, PublicKey};
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
@@ -34,8 +31,6 @@ use tokio::task;
 use tracing::{debug, info, info_span, trace, warn, Instrument};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
-/// Size of the cache of archived segments for the purposes of faster sector expiration checks.
-
 const PLOTTING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 pub(super) struct SectorToPlot {
@@ -90,14 +85,8 @@ pub(super) struct SectorPlottingOptions<'a, NC> {
     pub(super) node_client: &'a NC,
     pub(super) pieces_in_sector: u16,
     pub(super) sector_size: usize,
-    #[cfg(not(windows))]
-    pub(super) plot_file: Arc<File>,
-    #[cfg(windows)]
-    pub(super) plot_file: Arc<UnbufferedIoFileWindows>,
-    #[cfg(not(windows))]
-    pub(super) metadata_file: Arc<File>,
-    #[cfg(windows)]
-    pub(super) metadata_file: Arc<UnbufferedIoFileWindows>,
+    pub(super) plot_file: Arc<DirectIoFile>,
+    pub(super) metadata_file: Arc<DirectIoFile>,
     pub(super) handlers: &'a Handlers,
     pub(super) global_mutex: &'a AsyncMutex<()>,
     pub(super) plotter: Arc<dyn Plotter>,
@@ -176,8 +165,6 @@ where
                             process_plotting_result(
                                 maybe_sector_plotting_result?,
                                 &mut metadata_header,
-                                sectors_metadata,
-                                sectors_being_modified,
                                 Arc::clone(&sector_plotting_options.metadata_file)
                             ).await?;
                         }
@@ -188,8 +175,6 @@ where
                 process_plotting_result(
                     maybe_sector_plotting_result?,
                     &mut metadata_header,
-                    sectors_metadata,
-                    sectors_being_modified,
                     Arc::clone(&sector_plotting_options.metadata_file)
                 ).await?;
             }
@@ -202,30 +187,13 @@ where
 async fn process_plotting_result(
     sector_plotting_result: SectorPlottingResult,
     metadata_header: &mut PlotMetadataHeader,
-    sectors_metadata: &AsyncRwLock<Vec<SectorMetadataChecksummed>>,
-    sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
-    #[cfg(not(windows))] metadata_file: Arc<File>,
-    #[cfg(windows)] metadata_file: Arc<UnbufferedIoFileWindows>,
+    metadata_file: Arc<DirectIoFile>,
 ) -> Result<(), PlottingError> {
     let SectorPlottingResult {
         sector_index,
-        sector_metadata,
         replotting,
         last_queued,
     } = sector_plotting_result;
-
-    {
-        let mut sectors_metadata = sectors_metadata.write().await;
-        // If exists then we're replotting, otherwise we create sector for the first time
-        if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize) {
-            *existing_sector_metadata = sector_metadata;
-        } else {
-            sectors_metadata.push(sector_metadata);
-        }
-    }
-
-    // Inform others that this sector is no longer being modified
-    sectors_being_modified.write().await.remove(&sector_index);
 
     if sector_index + 1 > metadata_header.plotted_sector_count {
         metadata_header.plotted_sector_count = sector_index + 1;
@@ -270,7 +238,6 @@ enum PlotSingleSectorResult<F> {
 
 struct SectorPlottingResult {
     sector_index: SectorIndex,
-    sector_metadata: SectorMetadataChecksummed,
     replotting: bool,
     last_queued: bool,
 }
@@ -486,9 +453,22 @@ where
             .sector_update
             .call_simple(&(sector_index, sector_state));
 
+        {
+            let mut sectors_metadata = sectors_metadata.write().await;
+            // If exists then we're replotting, otherwise we create sector for the first time
+            if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize)
+            {
+                *existing_sector_metadata = sector_metadata;
+            } else {
+                sectors_metadata.push(sector_metadata);
+            }
+        }
+
+        // Inform others that this sector is no longer being modified
+        sectors_being_modified.write().await.remove(&sector_index);
+
         Ok(SectorPlottingResult {
             sector_index,
-            sector_metadata,
             replotting,
             last_queued,
         })
@@ -501,10 +481,8 @@ where
 async fn plot_single_sector_internal(
     sector_index: SectorIndex,
     sector_size: usize,
-    #[cfg(not(windows))] plot_file: &Arc<File>,
-    #[cfg(windows)] plot_file: &Arc<UnbufferedIoFileWindows>,
-    #[cfg(not(windows))] metadata_file: &Arc<File>,
-    #[cfg(windows)] metadata_file: &Arc<UnbufferedIoFileWindows>,
+    plot_file: &Arc<DirectIoFile>,
+    metadata_file: &Arc<DirectIoFile>,
     handlers: &Handlers,
     sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     global_mutex: &AsyncMutex<()>,
