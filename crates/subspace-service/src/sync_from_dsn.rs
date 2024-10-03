@@ -15,7 +15,7 @@ use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::service::traits::NetworkService;
 use sc_network::NetworkBlock;
 use sc_service::ClientExt;
-pub use snap_sync::{wait_for_block_import, wait_for_block_import_ext};
+pub use snap_sync::wait_for_block_import;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};

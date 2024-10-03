@@ -1,7 +1,7 @@
 #![allow(dead_code)] // TODO: enable after the domain-sync implementation
 
 use domain_runtime_primitives::BlockNumber;
-use sc_client_api::{AuxStore, Backend, ProofProvider};
+use sc_client_api::{AuxStore, Backend, BlockchainEvents, ProofProvider};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction, StorageChanges,
 };
@@ -13,8 +13,11 @@ use sc_network_common::sync::message::{
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::SyncingService;
 use sc_service::ClientExt;
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
+use sp_core::H256;
+use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,9 +25,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_service::mmr_sync;
 use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
-use subspace_service::sync_from_dsn::{wait_for_block_import, wait_for_block_import_ext};
+use subspace_service::sync_from_dsn::wait_for_block_import;
 use tokio::time::sleep;
-use tracing::{debug, error, trace, Instrument};
+use tracing::{debug, error, info_span, trace, Instrument};
 
 pub struct SyncParams<DomainClient, CClient, NR, Block, CBlock, CNR, AS>
 where
@@ -168,6 +171,7 @@ where
         + AuxStore
         + ProofProvider<Block>
         + ClientExt<Block, Backend>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -175,7 +179,14 @@ where
     NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync,
     CBlock: BlockT,
-    CClient: HeaderBackend<CBlock> + ProofProvider<CBlock> + Send + Sync + 'static,
+    CClient: ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>
+        + HeaderBackend<CBlock>
+        + ProofProvider<CBlock>
+        + Send
+        + Sync
+        + 'static,
+    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
     AS: AuxStore,
 {
     let execution_receipt_result = sync_params
@@ -218,16 +229,13 @@ where
         .domain_snap_sync_unblocked()
         .await;
 
-    const CONSENSUS_CHAIN_SNAP_SYNC_WAITING_DURATION: Duration = Duration::from_secs(30);
-    const CONSENSUS_CHAIN_SNAP_SYNC_IDLE_ITERATIONS: u32 = 100;
-
-    wait_for_block_import_ext(
+    wait_for_block_import(
         sync_params.consensus_client.as_ref(),
         consensus_block_number.into(),
-        CONSENSUS_CHAIN_SNAP_SYNC_WAITING_DURATION,
-        CONSENSUS_CHAIN_SNAP_SYNC_IDLE_ITERATIONS,
-        "consensus chain block import from domain chain snap sync".to_string(),
     )
+    .instrument(info_span!(
+        "consensus chain block import from domain chain snap sync"
+    ))
     .await;
 
     let domain_block_number =
@@ -276,6 +284,45 @@ where
             })?;
     }
 
+    wait_for_block_import(
+        sync_params.domain_client.as_ref(),
+        domain_block_number.into(),
+    )
+    .instrument(info_span!("domain chain snap sync"))
+    .await;
+
+    trace!(
+        "Domain client info after waiting: {:?}",
+        sync_params.domain_client.info()
+    );
+
+    // Verify domain state block creation.
+    if let Ok(Some(created_domain_block_hash)) =
+        sync_params.domain_client.hash(domain_block_number.into())
+    {
+        if created_domain_block_hash == domain_block_hash {
+            trace!(
+                ?created_domain_block_hash,
+                ?domain_block_hash,
+                "Created hash matches after the domain block import with state",
+            );
+        } else {
+            debug!(
+                ?created_domain_block_hash,
+                ?domain_block_hash,
+                "Created hash doesn't match after the domain block import with state",
+            );
+
+            return Err(sp_blockchain::Error::Backend(
+                "Created hash doesn't match after the domain block import with state".to_string(),
+            ));
+        }
+    } else {
+        return Err(sp_blockchain::Error::Backend(
+            "Can't obtain domain block hash after state importing for snap sync".to_string(),
+        ));
+    }
+
     crate::aux_schema::track_domain_hash_and_consensus_hash(
         sync_params.domain_client.as_ref(),
         domain_block_hash,
@@ -287,18 +334,6 @@ where
         None,
         &last_confirmed_block_receipt,
     )?;
-
-    wait_for_block_import(
-        sync_params.domain_client.as_ref(),
-        domain_block_number.into(),
-        "domain chain snap sync".to_string(),
-    )
-    .await;
-
-    trace!(
-        "Domain client info after waiting: {:?}",
-        sync_params.domain_client.info()
-    );
 
     // Clear the block gap that arises from first block import with a much higher number than
     // previously (resulting in a gap)

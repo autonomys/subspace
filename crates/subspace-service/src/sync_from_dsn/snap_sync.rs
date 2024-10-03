@@ -2,7 +2,8 @@ use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use sc_client_api::{AuxStore, ProofProvider};
+use futures::StreamExt;
+use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
@@ -27,7 +28,7 @@ use subspace_core_primitives::{BlockNumber, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
-use tracing::{debug, error};
+use tracing::{debug, error, info_span, trace, Instrument};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
@@ -50,6 +51,7 @@ pub(crate) async fn snap_sync<Backend, Block, AS, Client, PG, NR>(
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -267,6 +269,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -377,12 +380,9 @@ where
 
     // Wait for blocks to be imported
     // TODO: Replace this hack with actual watching of block import
-    wait_for_block_import(
-        client.as_ref(),
-        last_block_number.into(),
-        "consensus chain snap sync".to_string(),
-    )
-    .await;
+    wait_for_block_import(client.as_ref(), last_block_number.into())
+        .instrument(info_span!("consensus chain snap sync"))
+        .await;
 
     // Clear the block gap that arises from first block import with a much higher number than
     // previously (resulting in a gap)
@@ -394,73 +394,33 @@ where
     Ok(())
 }
 
-pub async fn wait_for_block_import_ext<Block, Client>(
-    client: &Client,
-    waiting_block_number: NumberFor<Block>,
-    wait_duration: Duration,
-    max_idle_iterations: u32,
-    logging_tag: String,
-) where
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-{
-    let mut current_iteration = 0;
-    let mut last_best_block_number = client.info().best_number;
-    loop {
-        let info = client.info();
-        debug!(
-            tag = %logging_tag,
-            %current_iteration,
-            %waiting_block_number,
-            "Waiting client info: {:?}", info
-        );
-
-        tokio::time::sleep(wait_duration).await;
-
-        if info.best_number >= waiting_block_number {
-            break;
-        }
-
-        if last_best_block_number == info.best_number {
-            current_iteration += 1;
-        } else {
-            current_iteration = 0;
-        }
-
-        if current_iteration >= max_idle_iterations {
-            debug!(
-                tag = %logging_tag,
-                %current_iteration,
-                %waiting_block_number,
-                "Max idle period reached. {:?}",
-                info
-            );
-            break;
-        }
-
-        last_best_block_number = info.best_number;
-    }
-}
-
 pub async fn wait_for_block_import<Block, Client>(
     client: &Client,
     waiting_block_number: NumberFor<Block>,
-    logging_tag: String,
 ) where
     Block: BlockT,
-    Client: HeaderBackend<Block>,
+    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
-    const WAIT_DURATION: Duration = Duration::from_secs(50);
-    const MAX_NO_NEW_IMPORT_ITERATIONS: u32 = 10;
+    let mut blocks_stream = client.every_import_notification_stream();
 
-    wait_for_block_import_ext(
-        client,
-        waiting_block_number,
-        WAIT_DURATION,
-        MAX_NO_NEW_IMPORT_ITERATIONS,
-        logging_tag,
-    )
-    .await
+    let info = client.info();
+    debug!(
+        %waiting_block_number,
+        "Waiting client info: {:?}", info
+    );
+
+    if info.best_number >= waiting_block_number {
+        return;
+    }
+
+    while let Some(block) = blocks_stream.next().await {
+        let current_block_number = *block.header.number();
+        trace!(%current_block_number, %waiting_block_number, "Waiting for the target block");
+
+        if current_block_number >= waiting_block_number {
+            return;
+        }
+    }
 }
 
 async fn sync_segment_headers<AS>(
