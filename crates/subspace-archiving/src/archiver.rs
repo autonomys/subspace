@@ -29,7 +29,7 @@ use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
+use subspace_core_primitives::hashes::{blake3_254_hash_to_scalar, Blake3Hash};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
@@ -38,7 +38,7 @@ use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{Blake3Hash, BlockNumber, ScalarBytes};
+use subspace_core_primitives::{BlockNumber, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::{Kzg, Scalar};
 

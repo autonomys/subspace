@@ -3,11 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::crypto::{blake3_hash_list, blake3_hash_with_key};
+use crate::hashes::{blake3_hash_list, blake3_hash_with_key, Blake3Hash};
 use crate::pieces::{PieceIndex, PieceOffset, Record};
 use crate::pos::PosSeed;
 use crate::segments::{HistorySize, SegmentCommitment};
-use crate::{Blake3Hash, U256};
+use crate::U256;
 use core::hash::Hash;
 use core::iter::Step;
 use core::num::{NonZeroU64, TryFromIntError};

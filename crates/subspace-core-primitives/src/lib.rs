@@ -29,7 +29,7 @@
 )]
 
 pub mod checksum;
-pub mod crypto;
+pub mod hashes;
 pub mod objects;
 pub mod pieces;
 pub mod pos;
@@ -39,7 +39,7 @@ pub mod segments;
 #[cfg(test)]
 mod tests;
 
-use crate::crypto::{blake3_hash, blake3_hash_list};
+use crate::hashes::{blake3_hash, blake3_hash_list, Blake3Hash};
 use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
 use crate::pos::PosProof;
 use crate::sectors::SectorIndex;
@@ -47,7 +47,6 @@ use crate::segments::{HistorySize, SegmentIndex};
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
-use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -63,90 +62,6 @@ pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
-
-/// BLAKE3 hash output transparent wrapper
-#[derive(
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Debug for Blake3Hash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl AsRef<[u8]> for Blake3Hash {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Blake3Hash {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl FromHex for Blake3Hash {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        let data = hex::decode(hex)?
-            .try_into()
-            .map_err(|_| hex::FromHexError::InvalidStringLength)?;
-
-        Ok(Self(data))
-    }
-}
-
-impl From<&[u8; Self::SIZE]> for Blake3Hash {
-    #[inline]
-    fn from(value: &[u8; Self::SIZE]) -> Self {
-        Self(*value)
-    }
-}
-
-impl TryFrom<&[u8]> for Blake3Hash {
-    type Error = TryFromSliceError;
-
-    #[inline]
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(value.try_into()?))
-    }
-}
-
-impl From<Blake3Hash> for [u8; Blake3Hash::SIZE] {
-    #[inline]
-    fn from(value: Blake3Hash) -> Self {
-        value.0
-    }
-}
-
-impl Blake3Hash {
-    /// Size of BLAKE3 hash output (in bytes).
-    pub const SIZE: usize = 32;
-}
 
 /// Type of randomness.
 #[derive(

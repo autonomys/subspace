@@ -1,7 +1,7 @@
 use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
 use sp_std::prelude::*;
-use subspace_core_primitives::crypto;
+use subspace_core_primitives::hashes;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 
 const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
@@ -80,21 +80,21 @@ pub(crate) fn extract_call_block_object_mapping(
         // Extract the actual object mappings.
         RuntimeCall::System(frame_system::Call::remark { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add frame_system::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });
         }
         RuntimeCall::System(frame_system::Call::remark_with_event { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add frame_system::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });
         }
         RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add pallet_history_seeding::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });

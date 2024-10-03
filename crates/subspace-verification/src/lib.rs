@@ -32,8 +32,8 @@ use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 #[cfg(feature = "kzg")]
-use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-use subspace_core_primitives::crypto::{blake3_hash_list, blake3_hash_with_key};
+use subspace_core_primitives::hashes::blake3_254_hash_to_scalar;
+use subspace_core_primitives::hashes::{blake3_hash_list, blake3_hash_with_key, Blake3Hash};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
 use subspace_core_primitives::pot::PotOutput;
@@ -46,8 +46,7 @@ use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::Solution;
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
-    SolutionRange,
+    BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber, SolutionRange,
 };
 #[cfg(feature = "kzg")]
 use subspace_kzg::{Commitment, Kzg, Scalar, Witness};

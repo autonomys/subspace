@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
+use subspace_core_primitives::hashes::blake3_254_hash_to_scalar;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;

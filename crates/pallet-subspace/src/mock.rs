@@ -35,6 +35,7 @@ use std::simd::Simd;
 use std::sync::{Once, OnceLock};
 use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::pot::PotOutput;
@@ -44,7 +45,7 @@ use subspace_core_primitives::segments::{
     RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
+    BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
     REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;

@@ -21,13 +21,12 @@ mod benchmarks {
     use sp_consensus_subspace::{SignedVote, Vote};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
+    use subspace_core_primitives::hashes::Blake3Hash;
     use subspace_core_primitives::pot::{PotCheckpoints, PotOutput};
     use subspace_core_primitives::segments::{
         ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
     };
-    use subspace_core_primitives::{
-        Blake3Hash, PublicKey, RewardSignature, Solution, SolutionRange,
-    };
+    use subspace_core_primitives::{PublicKey, RewardSignature, Solution, SolutionRange};
 
     const SEED: u32 = 0;
 

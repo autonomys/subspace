@@ -3,7 +3,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
 use sp_core::sr25519::vrf::{VrfPreOutput, VrfSignature, VrfTranscript};
-use subspace_core_primitives::Blake3Hash;
+use subspace_core_primitives::hashes::Blake3Hash;
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
 
