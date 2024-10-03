@@ -20,7 +20,7 @@ pub type SolutionRange = u64;
 
 /// Computes the following:
 /// ```text
-/// MAX * slot_probability / chunks * s_buckets / sectors
+/// MAX * slot_probability / chunks * s_buckets / pieces
 /// ```
 pub const fn pieces_to_solution_range(pieces: u64, slot_probability: (u64, u64)) -> SolutionRange {
     let solution_range = SolutionRange::MAX
