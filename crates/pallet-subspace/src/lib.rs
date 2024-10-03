@@ -1495,7 +1495,11 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
+    let sector_id = SectorId::new(
+        solution.public_key.hash(),
+        solution.sector_index,
+        solution.history_size,
+    );
 
     let recent_segments = T::RecentSegments::get();
     let recent_history_fraction = (

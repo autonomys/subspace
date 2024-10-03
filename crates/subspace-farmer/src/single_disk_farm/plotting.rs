@@ -896,7 +896,7 @@ where
                 if let Some(sector_expiration_check_segment_commitment) =
                     maybe_sector_expiration_check_segment_commitment
                 {
-                    let sector_id = SectorId::new(public_key_hash, sector_index);
+                    let sector_id = SectorId::new(public_key_hash, sector_index, history_size);
                     let expiration_history_size = sector_id
                         .derive_expiration_history_size(
                             history_size,

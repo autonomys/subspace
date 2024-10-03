@@ -200,7 +200,11 @@ fn collect_sector_auditing_details(
     global_challenge: &Blake3Hash,
     sector_metadata: &SectorMetadataChecksummed,
 ) -> SectorAuditingDetails {
-    let sector_id = SectorId::new(public_key_hash, sector_metadata.sector_index);
+    let sector_id = SectorId::new(
+        public_key_hash,
+        sector_metadata.sector_index,
+        sector_metadata.history_size,
+    );
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
