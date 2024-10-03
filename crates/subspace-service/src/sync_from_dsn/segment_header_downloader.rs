@@ -314,13 +314,13 @@ impl<'a> SegmentHeaderDownloader<'a> {
         peer_id: PeerId,
         segment_headers: &[SegmentHeader],
     ) -> bool {
-        let segment_indexes = match segment_headers.first() {
+        let segment_indexes = match segment_headers.last() {
             None => {
                 // Empty collection is invalid, everyone has at least one segment header
                 return false;
             }
-            Some(first_segment_header) => {
-                let last_segment_index = first_segment_header.segment_index();
+            Some(last_segment_header) => {
+                let last_segment_index = last_segment_header.segment_index();
 
                 let mut segment_indices = (SegmentIndex::ZERO..=last_segment_index)
                     .rev()
