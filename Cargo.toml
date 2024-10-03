@@ -136,3 +136,7 @@ sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e
 staging-xcm = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 xcm-procedural = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
+
+# De-duplicate extra copy that comes from Substrate repo
+[patch."https://github.com/subspace/polkadot-sdk.git"]
+substrate-bip39 = "0.6.0"
