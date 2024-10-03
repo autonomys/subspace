@@ -3,7 +3,7 @@ use futures::StreamExt;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::pin::pin;
-use subspace_core_primitives::{SegmentHeader, SegmentIndex};
+use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
 use tracing::{debug, error, trace, warn};

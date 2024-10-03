@@ -91,10 +91,11 @@ use sp_subspace_mmr::ConsensusChainMmrLeafProof;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{
-    crypto, HistorySize, Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader,
-    SegmentIndex, SlotNumber, SolutionRange, U256,
+use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::{crypto, PublicKey, Randomness, SlotNumber, SolutionRange, U256};
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
     Signature, MIN_REPLICATION_FACTOR,

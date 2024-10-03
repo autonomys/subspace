@@ -1,4 +1,4 @@
-use crate::pieces::SBucket;
+use crate::sectors::SBucket;
 use crate::Record;
 
 // Statically validate that we can store all possible s-buckets in SBucket data structure

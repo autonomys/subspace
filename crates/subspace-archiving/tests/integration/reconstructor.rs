@@ -6,9 +6,10 @@ use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, FlatPieces, LastArchivedBlock, Piece, Record,
-    RecordedHistorySegment, SegmentIndex,
+use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 

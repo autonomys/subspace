@@ -9,10 +9,12 @@ use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, BlockNumber, LastArchivedBlock, Piece,
-    RawRecord, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+use subspace_core_primitives::pieces::{Piece, RawRecord};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error

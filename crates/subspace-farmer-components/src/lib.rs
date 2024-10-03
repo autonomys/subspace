@@ -33,7 +33,8 @@ use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::sync::Arc;
-use subspace_core_primitives::{ArchivedHistorySegment, HistorySize, Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{ArchivedHistorySegment, HistorySize};
 
 /// Trait representing a way to get pieces
 #[async_trait]

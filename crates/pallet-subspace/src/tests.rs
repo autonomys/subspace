@@ -42,9 +42,10 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{
-    PieceOffset, PotOutput, PublicKey, RewardSignature, SegmentIndex, SolutionRange,
-};
+use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::segments::SegmentIndex;
+use subspace_core_primitives::{PublicKey, RewardSignature, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]

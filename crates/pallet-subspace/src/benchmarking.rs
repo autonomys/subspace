@@ -21,9 +21,12 @@ mod benchmarks {
     use sp_consensus_subspace::{SignedVote, Vote};
     use sp_std::boxed::Box;
     use sp_std::num::NonZeroU32;
+    use subspace_core_primitives::pot::{PotCheckpoints, PotOutput};
+    use subspace_core_primitives::segments::{
+        ArchivedBlockProgress, LastArchivedBlock, SegmentHeader, SegmentIndex,
+    };
     use subspace_core_primitives::{
-        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotCheckpoints, PotOutput, PublicKey,
-        RewardSignature, SegmentHeader, SegmentIndex, Solution, SolutionRange,
+        Blake3Hash, PublicKey, RewardSignature, Solution, SolutionRange,
     };
 
     const SEED: u32 = 0;
@@ -153,7 +156,7 @@ mod benchmarks {
     fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
         SegmentHeader::V0 {
             segment_index,
-            segment_commitment: subspace_core_primitives::SegmentCommitment::default(),
+            segment_commitment: subspace_core_primitives::segments::SegmentCommitment::default(),
             prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: LastArchivedBlock {
                 number: 0,

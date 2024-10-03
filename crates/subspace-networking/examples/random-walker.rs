@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::PieceIndex;
+use subspace_core_primitives::pieces::PieceIndex;
 use subspace_networking::{
     Config, Multihash, Node, PeerDiscovered, PieceByIndexRequest, PieceByIndexRequestHandler,
     PieceByIndexResponse, SendRequestError,

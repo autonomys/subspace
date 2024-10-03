@@ -18,7 +18,7 @@ pub mod chiapos;
 pub mod shim;
 
 use core::fmt;
-use subspace_core_primitives::{PosProof, PosSeed};
+use subspace_core_primitives::pos::{PosProof, PosSeed};
 
 /// Proof of space table type
 #[derive(Debug, Clone, Copy)]

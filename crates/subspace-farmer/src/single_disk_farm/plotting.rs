@@ -18,10 +18,10 @@ use std::ops::Range;
 use std::pin::pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
-    SegmentIndex,
-};
+use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::sectors::{SectorId, SectorIndex};
+use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Blake3Hash, PublicKey};
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;

@@ -84,7 +84,8 @@ use sp_runtime::transaction_validity::TransactionPriority;
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_subspace_mmr::{ConsensusChainMmrLeafProof, MmrProofVerifier};
 pub use staking::OperatorConfig;
-use subspace_core_primitives::{BlockHash, PotOutput, SlotNumber, U256};
+use subspace_core_primitives::pot::PotOutput;
+use subspace_core_primitives::{BlockHash, SlotNumber, U256};
 
 /// Maximum number of nominators to slash within a give operator at a time.
 pub const MAX_NOMINATORS_TO_SLASH: u32 = 10;

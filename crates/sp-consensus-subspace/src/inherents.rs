@@ -23,7 +23,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
-use subspace_core_primitives::SegmentHeader;
+use subspace_core_primitives::segments::SegmentHeader;
 
 /// The Subspace inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";

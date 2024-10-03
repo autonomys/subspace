@@ -26,10 +26,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
-use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PieceIndex, PieceOffset, PosSeed, PublicKey, Record, SBucket,
-    SectorId, SectorIndex,
-};
+use subspace_core_primitives::pieces::{PieceIndex, PieceOffset, Record};
+use subspace_core_primitives::pos::PosSeed;
+use subspace_core_primitives::sectors::{SBucket, SectorId, SectorIndex};
+use subspace_core_primitives::segments::HistorySize;
+use subspace_core_primitives::{Blake3Hash, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;

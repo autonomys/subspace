@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
 /// A type-erased error
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;

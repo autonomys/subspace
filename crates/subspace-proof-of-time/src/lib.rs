@@ -4,7 +4,7 @@
 mod aes;
 
 use core::num::NonZeroU32;
-use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 
 /// Proof of time error
 #[derive(Debug)]

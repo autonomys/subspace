@@ -5,7 +5,7 @@
 
 use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
 /// Piece-by-hash protocol request.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]

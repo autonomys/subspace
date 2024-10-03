@@ -3,7 +3,7 @@ use kzg::G1;
 use rust_kzg_blst::types::g1::FsG1;
 use std::num::NonZeroUsize;
 use subspace_core_primitives::crypto::kzg::Commitment;
-use subspace_core_primitives::ArchivedHistorySegment;
+use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;
 
 fn criterion_benchmark(c: &mut Criterion) {

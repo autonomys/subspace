@@ -58,10 +58,13 @@ use sp_runtime::transaction_validity::{
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::pieces::PieceOffset;
+use subspace_core_primitives::sectors::{SectorId, SectorIndex};
+use subspace_core_primitives::segments::{
+    ArchivedHistorySegment, HistorySize, SegmentHeader, SegmentIndex,
+};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockHash, HistorySize, PieceOffset, PublicKey, RewardSignature,
-    SectorId, SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
+    BlockHash, PublicKey, RewardSignature, SlotNumber, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
@@ -110,9 +113,12 @@ pub mod pallet {
     use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
+    use subspace_core_primitives::pieces::PieceOffset;
+    use subspace_core_primitives::pot::PotCheckpoints;
+    use subspace_core_primitives::sectors::SectorIndex;
+    use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
     use subspace_core_primitives::{
-        Blake3Hash, HistorySize, PieceOffset, PotCheckpoints, PublicKey, Randomness,
-        RewardSignature, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        Blake3Hash, PublicKey, Randomness, RewardSignature, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -414,7 +420,7 @@ pub mod pallet {
         _,
         Twox64Concat,
         SegmentIndex,
-        subspace_core_primitives::SegmentCommitment,
+        subspace_core_primitives::segments::SegmentCommitment,
     >;
 
     /// Whether the segment headers inherent has been processed in this block (temporary value).

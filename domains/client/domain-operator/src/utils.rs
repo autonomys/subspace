@@ -3,7 +3,7 @@ use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
-use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::pot::PotOutput;
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]

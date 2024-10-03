@@ -40,9 +40,10 @@ use sp_version::RuntimeVersion;
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    HistorySize, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, U256,
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::{PublicKey, Randomness, U256};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Moment, Nonce};
 

@@ -31,37 +31,35 @@
 pub mod checksum;
 pub mod crypto;
 pub mod objects;
-mod pieces;
-mod segments;
-#[cfg(feature = "serde")]
-mod serde;
+pub mod pieces;
+pub mod pos;
+pub mod pot;
+pub mod sectors;
+pub mod segments;
 #[cfg(test)]
 mod tests;
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use crate::crypto::{blake3_hash, blake3_hash_list, blake3_hash_with_key, Scalar};
+use crate::crypto::kzg::Witness;
+use crate::crypto::{blake3_hash, blake3_hash_list, Scalar};
+use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
+use crate::pos::PosProof;
+use crate::sectors::SectorIndex;
+use crate::segments::{HistorySize, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::fmt;
-use core::num::{NonZeroU64, NonZeroU8};
-use core::simd::Simd;
-use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
-pub use pieces::{
-    ChunkWitness, FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record,
-    RecordCommitment, RecordWitness, SBucket,
-};
 use scale_info::TypeInfo;
-pub use segments::{
-    ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
-};
-use static_assertions::{const_assert, const_assert_eq};
+use static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
 const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
@@ -255,245 +253,6 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
 
-/// Proof of space seed.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosSeed([u8; Self::SIZE]);
-
-impl From<[u8; PosSeed::SIZE]> for PosSeed {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosSeed> for [u8; PosSeed::SIZE] {
-    #[inline]
-    fn from(value: PosSeed) -> Self {
-        value.0
-    }
-}
-
-impl PosSeed {
-    /// Size of proof of space seed in bytes.
-    pub const SIZE: usize = 32;
-}
-
-/// Proof of space proof bytes.
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
-)]
-pub struct PosProof([u8; Self::SIZE]);
-
-impl From<[u8; PosProof::SIZE]> for PosProof {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosProof> for [u8; PosProof::SIZE] {
-    #[inline]
-    fn from(value: PosProof) -> Self {
-        value.0
-    }
-}
-
-impl Default for PosProof {
-    #[inline]
-    fn default() -> Self {
-        Self([0; Self::SIZE])
-    }
-}
-
-impl PosProof {
-    /// Constant K used for proof of space
-    pub const K: u8 = 20;
-    /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = Self::K as usize * 8;
-
-    /// Proof hash.
-    pub fn hash(&self) -> Blake3Hash {
-        blake3_hash(&self.0)
-    }
-}
-
-/// Proof of time key(input to the encryption).
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl FromStr for PotKey {
-    type Err = hex::FromHexError;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut key = Self::default();
-        hex::decode_to_slice(s, key.as_mut())?;
-
-        Ok(key)
-    }
-}
-
-impl PotKey {
-    /// Size of proof of time key in bytes
-    pub const SIZE: usize = 16;
-}
-
-/// Proof of time seed
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotSeed {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl PotSeed {
-    /// Size of proof of time seed in bytes
-    pub const SIZE: usize = 16;
-
-    /// Derive initial PoT seed from genesis block hash
-    #[inline]
-    pub fn from_genesis(genesis_block_hash: &[u8], external_entropy: &[u8]) -> Self {
-        let hash = blake3_hash_list(&[genesis_block_hash, external_entropy]);
-        let mut seed = Self::default();
-        seed.copy_from_slice(&hash[..Self::SIZE]);
-        seed
-    }
-
-    /// Derive key from proof of time seed
-    #[inline]
-    pub fn key(&self) -> PotKey {
-        let mut key = PotKey::default();
-        key.copy_from_slice(&blake3_hash(&self.0)[..Self::SIZE]);
-        key
-    }
-}
-
-/// Proof of time output, can be intermediate checkpoint or final slot output
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Display for PotOutput {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl PotOutput {
-    /// Size of proof of time proof in bytes
-    pub const SIZE: usize = 16;
-
-    /// Derives the global randomness from the output
-    #[inline]
-    pub fn derive_global_randomness(&self) -> Randomness {
-        Randomness::from(*blake3_hash(&self.0))
-    }
-
-    /// Derive seed from proof of time in case entropy injection is not needed
-    #[inline]
-    pub fn seed(&self) -> PotSeed {
-        PotSeed(self.0)
-    }
-
-    /// Derive seed from proof of time with entropy injection
-    #[inline]
-    pub fn seed_with_entropy(&self, entropy: &Blake3Hash) -> PotSeed {
-        let hash = blake3_hash_list(&[entropy.as_ref(), &self.0]);
-        let mut seed = PotSeed::default();
-        seed.copy_from_slice(&hash[..Self::SIZE]);
-        seed
-    }
-}
-
-/// Proof of time checkpoints, result of proving
-#[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-pub struct PotCheckpoints([PotOutput; Self::NUM_CHECKPOINTS.get() as usize]);
-
-impl PotCheckpoints {
-    /// Number of PoT checkpoints produced (used to optimize verification)
-    pub const NUM_CHECKPOINTS: NonZeroU8 = NonZeroU8::new(8).expect("Not zero; qed");
-
-    /// Get proof of time output out of checkpoints (last checkpoint)
-    #[inline]
-    pub fn output(&self) -> PotOutput {
-        self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
-    }
-}
-
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
     Debug,
@@ -570,140 +329,88 @@ impl RewardSignature {
     pub const SIZE: usize = 64;
 }
 
-/// Progress of an archived block.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+/// Witness for chunk contained within a record.
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum ArchivedBlockProgress {
-    /// The block has been fully archived.
-    Complete,
+pub struct ChunkWitness(
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
+);
 
-    /// Number of partially archived bytes of a block.
-    Partial(u32),
-}
-
-impl Default for ArchivedBlockProgress {
-    /// We assume a block can always fit into the segment initially, but it can definitely possible
-    /// to be transitioned into the partial state after some overflow checkings.
+impl Default for ChunkWitness {
     #[inline]
     fn default() -> Self {
-        Self::Complete
+        Self([0; Self::SIZE])
     }
 }
 
-impl ArchivedBlockProgress {
-    /// Return the number of partially archived bytes if the progress is not complete.
-    pub fn partial(&self) -> Option<u32> {
-        match self {
-            Self::Complete => None,
-            Self::Partial(number) => Some(*number),
-        }
-    }
+impl TryFrom<&[u8]> for ChunkWitness {
+    type Error = TryFromSliceError;
 
-    /// Sets new number of partially archived bytes.
-    pub fn set_partial(&mut self, new_partial: u32) {
-        *self = Self::Partial(new_partial);
+    #[inline]
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
     }
 }
 
-/// Last archived block
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct LastArchivedBlock {
-    /// Block number
-    pub number: BlockNumber,
-    /// Progress of an archived block.
-    pub archived_progress: ArchivedBlockProgress,
-}
-
-impl LastArchivedBlock {
-    /// Returns the number of partially archived bytes for a block.
-    pub fn partial_archived(&self) -> Option<u32> {
-        self.archived_progress.partial()
-    }
-
-    /// Sets new number of partially archived bytes.
-    pub fn set_partial_archived(&mut self, new_partial: BlockNumber) {
-        self.archived_progress.set_partial(new_partial);
-    }
-
-    /// Sets the archived state of this block to [`ArchivedBlockProgress::Complete`].
-    pub fn set_complete(&mut self) {
-        self.archived_progress = ArchivedBlockProgress::Complete;
+impl AsRef<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
 }
 
-/// Segment header for a specific segment.
-///
-/// Each segment will have corresponding [`SegmentHeader`] included as the first item in the next
-/// segment. Each `SegmentHeader` includes hash of the previous one and all together form a chain of
-/// segment headers that is used for quick and efficient verification that some [`Piece`]
-/// corresponds to the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum SegmentHeader {
-    /// V0 of the segment header data structure
-    #[codec(index = 0)]
-    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-    V0 {
-        /// Segment index
-        segment_index: SegmentIndex,
-        /// Root of commitments of all records in a segment.
-        segment_commitment: SegmentCommitment,
-        /// Hash of the segment header of the previous segment
-        prev_segment_header_hash: Blake3Hash,
-        /// Last archived block
-        last_archived_block: LastArchivedBlock,
-    },
-}
-
-impl SegmentHeader {
-    /// Hash of the whole segment header
-    pub fn hash(&self) -> Blake3Hash {
-        blake3_hash(&self.encode())
-    }
-
-    /// Segment index
-    pub fn segment_index(&self) -> SegmentIndex {
-        match self {
-            Self::V0 { segment_index, .. } => *segment_index,
-        }
-    }
-
-    /// Segment commitment of the records in a segment.
-    pub fn segment_commitment(&self) -> SegmentCommitment {
-        match self {
-            Self::V0 {
-                segment_commitment, ..
-            } => *segment_commitment,
-        }
-    }
-
-    /// Hash of the segment header of the previous segment
-    pub fn prev_segment_header_hash(&self) -> Blake3Hash {
-        match self {
-            Self::V0 {
-                prev_segment_header_hash,
-                ..
-            } => *prev_segment_header_hash,
-        }
-    }
-
-    /// Last archived block
-    pub fn last_archived_block(&self) -> LastArchivedBlock {
-        match self {
-            Self::V0 {
-                last_archived_block,
-                ..
-            } => *last_archived_block,
-        }
+impl AsMut<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
     }
 }
 
-/// Sector index in consensus
-pub type SectorIndex = u16;
+impl ChunkWitness {
+    /// Size of chunk witness in bytes.
+    pub const SIZE: usize = 48;
+}
+
+impl From<Witness> for ChunkWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        Self(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness.0)
+    }
+}
+
+impl TryFrom<ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(witness.0)
+    }
+}
 
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
@@ -1014,146 +721,5 @@ impl TryFrom<U256> for u64 {
 impl Default for U256 {
     fn default() -> Self {
         Self::zero()
-    }
-}
-
-/// Challenge used for a particular sector for particular slot
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
-pub struct SectorSlotChallenge(Blake3Hash);
-
-impl SectorSlotChallenge {
-    /// Index of s-bucket within sector to be audited
-    #[inline]
-    pub fn s_bucket_audit_index(&self) -> SBucket {
-        // As long as number of s-buckets is 2^16, we can pick first two bytes instead of actually
-        // calculating `U256::from_le_bytes(self.0) % Record::NUM_S_BUCKETS)`
-        const_assert_eq!(Record::NUM_S_BUCKETS, 1 << u16::BITS as usize);
-        SBucket::from(u16::from_le_bytes([self.0[0], self.0[1]]))
-    }
-}
-
-/// Data structure representing sector ID in farmer's plot
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
-
-impl AsRef<[u8]> for SectorId {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl SectorId {
-    /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key_hash: Blake3Hash, sector_index: SectorIndex) -> Self {
-        Self(blake3_hash_with_key(
-            &public_key_hash,
-            &sector_index.to_le_bytes(),
-        ))
-    }
-
-    /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
-    /// blockchain history
-    pub fn derive_piece_index(
-        &self,
-        piece_offset: PieceOffset,
-        history_size: HistorySize,
-        max_pieces_in_sector: u16,
-        recent_segments: HistorySize,
-        recent_history_fraction: (HistorySize, HistorySize),
-    ) -> PieceIndex {
-        let recent_segments_in_pieces = recent_segments.in_pieces().get();
-        // Recent history must be at most `recent_history_fraction` of all history to use separate
-        // policy for recent pieces
-        let min_history_size_in_pieces = recent_segments_in_pieces
-            * recent_history_fraction.1.in_pieces().get()
-            / recent_history_fraction.0.in_pieces().get();
-        let input_hash = {
-            let piece_offset_bytes = piece_offset.to_bytes();
-            let mut key = [0; 32];
-            key[..piece_offset_bytes.len()].copy_from_slice(&piece_offset_bytes);
-            U256::from_le_bytes(*blake3_hash_with_key(&key, self.as_ref()))
-        };
-        let history_size_in_pieces = history_size.in_pieces().get();
-        let num_interleaved_pieces = 1.max(
-            u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
-                / recent_history_fraction.1.in_pieces().get()
-                * 2,
-        );
-
-        let piece_index = if history_size_in_pieces > min_history_size_in_pieces
-            && u64::from(piece_offset) < num_interleaved_pieces
-            && u16::from(piece_offset) % 2 == 1
-        {
-            // For odd piece offsets at the beginning of the sector pick pieces at random from
-            // recent history only
-            input_hash % U256::from(recent_segments_in_pieces)
-                + U256::from(history_size_in_pieces - recent_segments_in_pieces)
-        } else {
-            input_hash % U256::from(history_size_in_pieces)
-        };
-
-        PieceIndex::from(u64::try_from(piece_index).expect(
-            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
-        ))
-    }
-
-    /// Derive sector slot challenge for this sector from provided global challenge
-    pub fn derive_sector_slot_challenge(
-        &self,
-        global_challenge: &Blake3Hash,
-    ) -> SectorSlotChallenge {
-        let sector_slot_challenge = Simd::from(*self.0) ^ Simd::from(**global_challenge);
-        SectorSlotChallenge(sector_slot_challenge.to_array().into())
-    }
-
-    /// Derive evaluation seed
-    pub fn derive_evaluation_seed(
-        &self,
-        piece_offset: PieceOffset,
-        history_size: HistorySize,
-    ) -> PosSeed {
-        let evaluation_seed = blake3_hash_list(&[
-            self.as_ref(),
-            &piece_offset.to_bytes(),
-            &history_size.get().to_le_bytes(),
-        ]);
-
-        PosSeed::from(*evaluation_seed)
-    }
-
-    /// Derive history size when sector created at `history_size` expires.
-    ///
-    /// Returns `None` on overflow.
-    pub fn derive_expiration_history_size(
-        &self,
-        history_size: HistorySize,
-        sector_expiration_check_segment_commitment: &SegmentCommitment,
-        min_sector_lifetime: HistorySize,
-    ) -> Option<HistorySize> {
-        let sector_expiration_check_history_size =
-            history_size.sector_expiration_check(min_sector_lifetime)?;
-
-        let input_hash = U256::from_le_bytes(*blake3_hash_list(&[
-            self.as_ref(),
-            sector_expiration_check_segment_commitment.as_ref(),
-        ]));
-
-        let last_possible_expiration =
-            min_sector_lifetime.checked_add(history_size.get().checked_mul(4u64)?)?;
-        let expires_in = input_hash
-            % U256::from(
-                last_possible_expiration
-                    .get()
-                    .checked_sub(sector_expiration_check_history_size.get())?,
-            );
-        let expires_in = u64::try_from(expires_in).expect("Number modulo u64 fits into u64; qed");
-
-        let expiration_history_size = sector_expiration_check_history_size.get() + expires_in;
-        let expiration_history_size = NonZeroU64::try_from(expiration_history_size).expect(
-            "History size is not zero, so result is not zero even if expires immediately; qed",
-        );
-        Some(HistorySize::from(expiration_history_size))
     }
 }

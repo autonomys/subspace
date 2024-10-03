@@ -55,10 +55,9 @@ use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::GlobalObjectMapping;
-use subspace_core_primitives::{
-    Blake3Hash, BlockHash, HistorySize, Piece, PieceIndex, PublicKey, SegmentHeader, SegmentIndex,
-    SlotNumber, Solution,
-};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Blake3Hash, BlockHash, PublicKey, SlotNumber, Solution};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;

@@ -42,9 +42,12 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::num::NonZeroU32;
 #[cfg(feature = "std")]
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
+use subspace_core_primitives::segments::{
+    HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
+};
 use subspace_core_primitives::{
-    Blake3Hash, BlockHash, BlockNumber, HistorySize, PotCheckpoints, PotOutput, PotSeed, PublicKey,
-    RewardSignature, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
+    Blake3Hash, BlockHash, BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution,
     SolutionRange,
 };
 #[cfg(feature = "std")]

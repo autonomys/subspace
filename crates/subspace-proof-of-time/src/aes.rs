@@ -11,7 +11,7 @@ use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes128;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use subspace_core_primitives::{PotCheckpoints, PotKey, PotOutput, PotSeed};
+use subspace_core_primitives::pot::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 
 /// Creates the AES based proof.
 #[inline(always)]

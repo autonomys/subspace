@@ -5,7 +5,7 @@ use crate::farm;
 use crate::farm::{FarmError, PieceCacheId, PieceCacheOffset};
 use async_trait::async_trait;
 use futures::{stream, Stream};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
 /// Dedicated piece cache stored on one disk, is used both to accelerate DSN queries and to plot
 /// faster

@@ -78,9 +78,8 @@ use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, RecordedHistorySegment, SegmentHeader, SegmentIndex,
-};
+use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use tracing::{debug, info, trace, warn};
 

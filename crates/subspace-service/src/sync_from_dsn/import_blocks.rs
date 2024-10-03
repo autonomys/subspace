@@ -31,9 +31,11 @@ use sp_runtime::Saturating;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
+use subspace_core_primitives::pieces::Piece;
+use subspace_core_primitives::segments::{
+    ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex,
 };
+use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::utils::multihash::ToMultihash;
 use tokio::sync::Semaphore;

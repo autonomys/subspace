@@ -34,11 +34,12 @@ use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, LastArchivedBlock,
-    PieceArray, RawRecord, RecordWitness, RecordedHistorySegment, SegmentCommitment, SegmentHeader,
-    SegmentIndex,
+use subspace_core_primitives::pieces::{PieceArray, RawRecord, RecordWitness};
+use subspace_core_primitives::segments::{
+    ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex,
 };
+use subspace_core_primitives::{Blake3Hash, BlockNumber};
 use subspace_erasure_coding::ErasureCoding;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {

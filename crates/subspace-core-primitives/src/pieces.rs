@@ -1,14 +1,13 @@
+//! Pieces-related data structures.
+
 #[cfg(feature = "serde")]
 mod serde;
-#[cfg(test)]
-mod tests;
 
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::Scalar;
-use crate::segments::{ArchivedHistorySegment, SegmentIndex};
-use crate::RecordedHistorySegment;
+use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
@@ -24,7 +23,6 @@ use bytes::{Bytes, BytesMut};
 use core::array::TryFromSliceError;
 use core::hash::{Hash, Hasher};
 use core::iter::Step;
-use core::num::TryFromIntError;
 use core::{mem, slice};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
@@ -35,96 +33,6 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen, Outpu
 use rayon::prelude::*;
 use scale_info::build::Fields;
 use scale_info::{Path, Type, TypeInfo};
-
-/// S-bucket used in consensus
-#[derive(
-    Debug,
-    Display,
-    Default,
-    Copy,
-    Clone,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Encode,
-    Decode,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(transparent)]
-pub struct SBucket(u16);
-
-impl Step for SBucket {
-    #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        u16::steps_between(&start.0, &end.0)
-    }
-
-    #[inline]
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        u16::forward_checked(start.0, count).map(Self)
-    }
-
-    #[inline]
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        u16::backward_checked(start.0, count).map(Self)
-    }
-}
-
-impl TryFrom<usize> for SBucket {
-    type Error = TryFromIntError;
-
-    #[inline]
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Ok(Self(u16::try_from(value)?))
-    }
-}
-
-impl From<u16> for SBucket {
-    #[inline]
-    fn from(original: u16) -> Self {
-        Self(original)
-    }
-}
-
-impl From<SBucket> for u16 {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        original.0
-    }
-}
-
-impl From<SBucket> for u32 {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        u32::from(original.0)
-    }
-}
-
-impl From<SBucket> for usize {
-    #[inline]
-    fn from(original: SBucket) -> Self {
-        usize::from(original.0)
-    }
-}
-
-impl SBucket {
-    /// S-bucket 0.
-    pub const ZERO: SBucket = SBucket(0);
-    /// Max s-bucket index
-    pub const MAX: SBucket = SBucket((Record::NUM_S_BUCKETS - 1) as u16);
-}
 
 /// Piece index in consensus
 #[derive(
@@ -917,89 +825,6 @@ impl TryFrom<RecordWitness> for Witness {
 
     #[inline]
     fn try_from(witness: RecordWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
-    }
-}
-
-/// Witness for chunk contained within a record.
-#[derive(
-    Debug,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    Deref,
-    DerefMut,
-    From,
-    Into,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ChunkWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
-);
-
-impl Default for ChunkWitness {
-    #[inline]
-    fn default() -> Self {
-        Self([0; Self::SIZE])
-    }
-}
-
-impl TryFrom<&[u8]> for ChunkWitness {
-    type Error = TryFromSliceError;
-
-    #[inline]
-    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        <[u8; Self::SIZE]>::try_from(slice).map(Self)
-    }
-}
-
-impl AsRef<[u8]> for ChunkWitness {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for ChunkWitness {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl ChunkWitness {
-    /// Size of chunk witness in bytes.
-    pub const SIZE: usize = 48;
-}
-
-impl From<Witness> for ChunkWitness {
-    #[inline]
-    fn from(witness: Witness) -> Self {
-        Self(witness.to_bytes())
-    }
-}
-
-impl TryFrom<&ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
-    }
-}
-
-impl TryFrom<ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
         Witness::try_from(witness.0)
     }
 }
