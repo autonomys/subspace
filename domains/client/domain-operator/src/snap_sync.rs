@@ -11,8 +11,8 @@ use sc_network_common::sync::message::{
     BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
 use sc_network_sync::block_relay_protocol::BlockDownloader;
+use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
-use sc_service::ClientExt;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -29,9 +29,8 @@ use subspace_service::sync_from_dsn::wait_for_block_import;
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
 
-pub struct SyncParams<DomainClient, CClient, NR, Block, CBlock, CNR, AS>
+pub struct SyncParams<DomainClient, CClient, Block, CBlock, CNR, AS>
 where
-    NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync + 'static,
     Block: BlockT,
     CBlock: BlockT,
@@ -40,7 +39,7 @@ where
     pub domain_client: Arc<DomainClient>,
     pub sync_service: Arc<SyncingService<Block>>,
     pub domain_fork_id: Option<String>,
-    pub domain_network_request: NR,
+    pub domain_network_request: NetworkServiceHandle,
     pub consensus_client: Arc<CClient>,
     pub domain_block_downloader: Arc<dyn BlockDownloader<Block>>,
     pub consensus_chain_sync_params: ConsensusChainSyncParams<Block, CBlock, CNR, AS>,
@@ -160,23 +159,20 @@ fn convert_block_number<Block: BlockT>(block_number: NumberFor<Block>) -> u32 {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn snap_sync<Block, Client, NR, CBlock, CClient, Backend, CNR, AS>(
-    sync_params: SyncParams<Client, CClient, NR, Block, CBlock, CNR, AS>,
+pub(crate) async fn snap_sync<Block, Client, CBlock, CClient, CNR, AS>(
+    sync_params: SyncParams<Client, CClient, Block, CBlock, CNR, AS>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Block: BlockT,
-    Backend: sc_client_api::Backend<Block>,
     Client: HeaderBackend<Block>
         + BlockImport<Block>
         + AuxStore
         + ProofProvider<Block>
-        + ClientExt<Block, Backend>
         + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
     for<'a> &'a Client: BlockImport<Block>,
-    NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync,
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock>
@@ -275,13 +271,9 @@ where
         block.state_action = StateAction::ApplyChanges(StorageChanges::Import(state_result?));
         block.finalized = true;
         block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
-        // TODO: Simplify when https://github.com/paritytech/polkadot-sdk/pull/5339 is in our fork
-        (&mut client.as_ref())
-            .import_block(block)
-            .await
-            .map_err(|error| {
-                sp_blockchain::Error::Backend(format!("Failed to import state block: {error}"))
-            })?;
+        client.as_ref().import_block(block).await.map_err(|error| {
+            sp_blockchain::Error::Backend(format!("Failed to import state block: {error}"))
+        })?;
     }
 
     wait_for_block_import(
@@ -335,22 +327,11 @@ where
         &last_confirmed_block_receipt,
     )?;
 
-    // Clear the block gap that arises from first block import with a much higher number than
-    // previously (resulting in a gap)
-    // TODO: This is a hack and better solution is needed: https://github.com/paritytech/polkadot-sdk/issues/4407
-    sync_params.domain_client.clear_block_gap()?;
-
     if let Some(offchain_storage) = sync_params
         .consensus_chain_sync_params
         .backend
         .offchain_storage()
     {
-        // let target_block = sync_params
-        //     .consensus_chain_sync_params
-        //     .segment_headers_store
-        //     .last_segment_header()
-        //     .map(|header| header.last_archived_block().number);
-
         let target_block = sync_params
             .consensus_chain_sync_params
             .segment_headers_store
@@ -389,17 +370,16 @@ where
 }
 
 /// Download and return state for specified block
-async fn download_state<Block, Client, NR>(
+async fn download_state<Block, Client>(
     header: &Block::Header,
     client: &Arc<Client>,
     fork_id: Option<String>,
-    network_request: &NR,
+    network_request: &sc_network_sync::service::network::NetworkServiceHandle,
     sync_service: &SyncingService<Block>,
 ) -> Result<ImportedState<Block>, sp_blockchain::Error>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
-    NR: NetworkRequest,
 {
     let block_number = *header.number();
 
@@ -430,7 +410,7 @@ where
         };
         tried_peers.insert(current_peer_id);
 
-        let sync_engine = SnapSyncingEngine::<Block, NR>::new(
+        let sync_engine = SnapSyncingEngine::<Block>::new(
             client.clone(),
             fork_id.as_deref(),
             header.clone(),
