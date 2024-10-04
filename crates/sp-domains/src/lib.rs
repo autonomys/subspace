@@ -67,9 +67,10 @@ use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
-use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::pot::PotOutput;
-use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
+use subspace_core_primitives::solutions::bidirectional_distance;
+use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.

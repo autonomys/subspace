@@ -16,7 +16,6 @@ use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
@@ -35,6 +34,7 @@ use subspace_farmer::utils::{
     recommended_number_of_farming_threads, run_future_in_dedicated_thread, AsyncJoinOnDrop,
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};
@@ -182,7 +182,7 @@ where
         .await
         .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

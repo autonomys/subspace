@@ -2,12 +2,12 @@
 
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
-use subspace_archiving::archiver::is_piece_valid;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
+use subspace_kzg::Kzg;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
+use subspace_verification::is_piece_valid;
 use tracing::{error, warn};
 
 /// Farmer-specific validator for pieces retrieved from the network.

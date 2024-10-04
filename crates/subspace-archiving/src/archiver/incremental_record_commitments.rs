@@ -8,9 +8,9 @@ use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Encode, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::RawRecord;
+use subspace_core_primitives::ScalarBytes;
+use subspace_kzg::{Commitment, Kzg, Scalar};
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic
@@ -88,7 +88,7 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
         let iter = raw_records_bytes
             .map(|raw_record_bytes| {
                 raw_record_bytes
-                    .array_chunks::<{ Scalar::SAFE_BYTES }>()
+                    .array_chunks::<{ ScalarBytes::SAFE_BYTES }>()
                     .map(Scalar::from)
             })
             .map(|record_chunks| {

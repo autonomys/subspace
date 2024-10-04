@@ -51,7 +51,8 @@ jobs:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
-        uses: JamesIves/github-pages-deploy-action@65b5dfd4f5bcd3a7403bbc2959c144256167464e # v4.5.0
+        uses: JamesIves/github-pages-deploy-action@881db5376404c5c8d621010bcbec0310b58d5e29 # v4.6.8
         with:
           branch: gh-pages
+          single-commit: true
           folder: target/doc

@@ -1,10 +1,9 @@
 use crate::Config;
 #[cfg(not(feature = "std"))]
-use alloc::fmt;
-#[cfg(not(feature = "std"))]
 use alloc::vec;
 use codec::{Decode, Encode};
 use core::cmp::max;
+use core::fmt;
 use core::result::Result;
 use frame_support::dispatch::DispatchInfo;
 use frame_support::pallet_prelude::{
@@ -13,8 +12,6 @@ use frame_support::pallet_prelude::{
 };
 use frame_support::sp_runtime::traits::{DispatchInfoOf, One, SignedExtension};
 use sp_runtime::traits::{Dispatchable, Zero};
-#[cfg(feature = "std")]
-use std::fmt;
 #[cfg(feature = "std")]
 use std::vec;
 

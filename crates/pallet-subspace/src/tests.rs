@@ -41,11 +41,11 @@ use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::PieceOffset;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::SegmentIndex;
-use subspace_core_primitives::{PublicKey, RewardSignature, SolutionRange};
+use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
+use subspace_core_primitives::{PublicKey, ScalarBytes};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
@@ -1277,7 +1277,7 @@ fn enabling_block_rewards_works() {
             PublicKey::from(Keypair::generate().public.to_bytes()),
             0,
             PieceOffset::ZERO,
-            Scalar::default(),
+            ScalarBytes::default(),
             Subspace::current_slot(),
             Some(1),
         ));
@@ -1288,7 +1288,7 @@ fn enabling_block_rewards_works() {
                     PublicKey::from(Keypair::generate().public.to_bytes()),
                     0,
                     PieceOffset::ZERO,
-                    Scalar::default(),
+                    ScalarBytes::default(),
                     Subspace::current_slot(),
                 ),
                 (Some(2), RewardSignature::from([0; 64])),

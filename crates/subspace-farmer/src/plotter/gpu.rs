@@ -24,7 +24,6 @@ use std::pin::pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
@@ -33,6 +32,7 @@ use subspace_farmer_components::plotting::{
     PlottingError, RecordsEncoder,
 };
 use subspace_farmer_components::{FarmerProtocolInfo, PieceGetter};
+use subspace_kzg::Kzg;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{warn, Instrument};

@@ -2,9 +2,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use kzg::G1;
 use rust_kzg_blst::types::g1::FsG1;
 use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::Commitment;
 use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Commitment;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let num_shards = ArchivedHistorySegment::NUM_PIECES;

@@ -1,7 +1,7 @@
 use crate::cuda::cuda_devices;
 use std::num::NonZeroUsize;
 use std::slice;
-use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, blake3_hash};
+use subspace_core_primitives::hashes::{blake3_254_hash_to_scalar, blake3_hash};
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::HistorySize;
@@ -36,9 +36,10 @@ fn basic() {
     let sector_id = SectorId::new(blake3_hash(b"hello"), 500);
     let history_size = HistorySize::ONE;
     let mut record = Record::new_boxed();
-    record.iter_mut().enumerate().for_each(|(index, chunk)| {
-        *chunk = blake3_254_hash_to_scalar(&index.to_le_bytes()).to_bytes()
-    });
+    record
+        .iter_mut()
+        .enumerate()
+        .for_each(|(index, chunk)| *chunk = *blake3_254_hash_to_scalar(&index.to_le_bytes()));
 
     let mut cpu_encoded_records = Record::new_zero_vec(2);
     for cpu_encoded_record in &mut cpu_encoded_records {

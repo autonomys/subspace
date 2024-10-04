@@ -29,36 +29,25 @@
 )]
 
 pub mod checksum;
-pub mod crypto;
+pub mod hashes;
 pub mod objects;
 pub mod pieces;
 pub mod pos;
 pub mod pot;
 pub mod sectors;
 pub mod segments;
+pub mod solutions;
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-use crate::crypto::kzg::Witness;
-use crate::crypto::{blake3_hash, blake3_hash_list, Scalar};
-use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
-use crate::pos::PosProof;
-use crate::sectors::SectorIndex;
-use crate::segments::{HistorySize, SegmentIndex};
-#[cfg(feature = "serde")]
-use ::serde::{Deserialize, Serialize};
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
-use core::array::TryFromSliceError;
+use crate::hashes::{blake3_hash, blake3_hash_list, Blake3Hash};
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
-use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
@@ -69,90 +58,6 @@ pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
-
-/// BLAKE3 hash output transparent wrapper
-#[derive(
-    Default,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    From,
-    AsRef,
-    AsMut,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl fmt::Debug for Blake3Hash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl AsRef<[u8]> for Blake3Hash {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Blake3Hash {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl FromHex for Blake3Hash {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        let data = hex::decode(hex)?
-            .try_into()
-            .map_err(|_| hex::FromHexError::InvalidStringLength)?;
-
-        Ok(Self(data))
-    }
-}
-
-impl From<&[u8; Self::SIZE]> for Blake3Hash {
-    #[inline]
-    fn from(value: &[u8; Self::SIZE]) -> Self {
-        Self(*value)
-    }
-}
-
-impl TryFrom<&[u8]> for Blake3Hash {
-    type Error = TryFromSliceError;
-
-    #[inline]
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(value.try_into()?))
-    }
-}
-
-impl From<Blake3Hash> for [u8; Blake3Hash::SIZE] {
-    #[inline]
-    fn from(value: Blake3Hash) -> Self {
-        value.0
-    }
-}
-
-impl Blake3Hash {
-    /// Size of BLAKE3 hash output (in bytes).
-    pub const SIZE: usize = 32;
-}
 
 /// Type of randomness.
 #[derive(
@@ -203,50 +108,6 @@ pub type BlockHash = [u8; 32];
 
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
-
-// TODO: Add related methods to `SolutionRange`.
-/// Type of solution range.
-pub type SolutionRange = u64;
-
-/// Computes the following:
-/// ```text
-/// MAX * slot_probability / chunks * s_buckets / sectors
-/// ```
-pub const fn pieces_to_solution_range(pieces: u64, slot_probability: (u64, u64)) -> SolutionRange {
-    let solution_range = SolutionRange::MAX
-        // Account for slot probability
-        / slot_probability.1 * slot_probability.0
-        // Now take probability of hitting occupied s-bucket in a piece into account
-        / Record::NUM_CHUNKS as u64
-        * Record::NUM_S_BUCKETS as u64;
-
-    // Take number of pieces into account
-    solution_range / pieces
-}
-
-/// Computes the following:
-/// ```text
-/// MAX * slot_probability / chunks * s_buckets / solution_range
-/// ```
-pub const fn solution_range_to_pieces(
-    solution_range: SolutionRange,
-    slot_probability: (u64, u64),
-) -> u64 {
-    let pieces = SolutionRange::MAX
-        // Account for slot probability
-        / slot_probability.1 * slot_probability.0
-        // Now take probability of hitting occupied s-bucket in sector into account
-        / Record::NUM_CHUNKS as u64
-        * Record::NUM_S_BUCKETS as u64;
-
-    // Take solution range into account
-    pieces / solution_range
-}
-
-// Quick test to ensure functions above are the inverse of each other
-const_assert!(solution_range_to_pieces(pieces_to_solution_range(1, (1, 6)), (1, 6)) == 1);
-const_assert!(solution_range_to_pieces(pieces_to_solution_range(3, (1, 6)), (1, 6)) == 3);
-const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 6)) == 5);
 
 /// BlockWeight type for fork choice rules.
 ///
@@ -303,202 +164,41 @@ impl PublicKey {
     }
 }
 
-/// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RewardSignature(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl From<RewardSignature> for [u8; RewardSignature::SIZE] {
-    #[inline]
-    fn from(value: RewardSignature) -> Self {
-        value.0
-    }
-}
-
-impl AsRef<[u8]> for RewardSignature {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl RewardSignature {
-    /// Reward signature size in bytes
-    pub const SIZE: usize = 64;
-}
-
-/// Witness for chunk contained within a record.
+/// Single BLS12-381 scalar with big-endian representation, not guaranteed to be valid
 #[derive(
     Debug,
+    Default,
     Copy,
     Clone,
     Eq,
     PartialEq,
+    Ord,
+    PartialOrd,
     Hash,
-    Deref,
-    DerefMut,
     From,
     Into,
+    AsRef,
+    AsMut,
+    Deref,
+    DerefMut,
     Encode,
     Decode,
     TypeInfo,
-    MaxEncodedLen,
 )]
-#[repr(transparent)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ChunkWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
-);
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct ScalarBytes([u8; ScalarBytes::FULL_BYTES]);
 
-impl Default for ChunkWitness {
-    #[inline]
-    fn default() -> Self {
-        Self([0; Self::SIZE])
-    }
-}
-
-impl TryFrom<&[u8]> for ChunkWitness {
-    type Error = TryFromSliceError;
-
-    #[inline]
-    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        <[u8; Self::SIZE]>::try_from(slice).map(Self)
-    }
-}
-
-impl AsRef<[u8]> for ChunkWitness {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for ChunkWitness {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl ChunkWitness {
-    /// Size of chunk witness in bytes.
-    pub const SIZE: usize = 48;
-}
-
-impl From<Witness> for ChunkWitness {
-    #[inline]
-    fn from(witness: Witness) -> Self {
-        Self(witness.to_bytes())
-    }
-}
-
-impl TryFrom<&ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
-    }
-}
-
-impl TryFrom<ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
-    }
-}
-
-/// Farmer solution for slot challenge.
-#[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct Solution<RewardAddress> {
-    /// Public key of the farmer that created the solution
-    pub public_key: PublicKey,
-    /// Address for receiving block reward
-    pub reward_address: RewardAddress,
-    /// Index of the sector where solution was found
-    pub sector_index: SectorIndex,
-    /// Size of the blockchain history at time of sector creation
-    pub history_size: HistorySize,
-    /// Pieces offset within sector
-    pub piece_offset: PieceOffset,
-    /// Record commitment that can use used to verify that piece was included in blockchain history
-    pub record_commitment: RecordCommitment,
-    /// Witness for above record commitment
-    pub record_witness: RecordWitness,
-    /// Chunk at above offset
-    pub chunk: Scalar,
-    /// Witness for above chunk
-    pub chunk_witness: ChunkWitness,
-    /// Proof of space for piece offset
-    pub proof_of_space: PosProof,
-}
-
-impl<RewardAddressA> Solution<RewardAddressA> {
-    /// Transform solution with one reward address type into solution with another compatible
-    /// reward address type.
-    pub fn into_reward_address_format<T, RewardAddressB>(self) -> Solution<RewardAddressB>
-    where
-        RewardAddressA: Into<T>,
-        T: Into<RewardAddressB>,
-    {
-        let Solution {
-            public_key,
-            reward_address,
-            sector_index,
-            history_size,
-            piece_offset,
-            record_commitment,
-            record_witness,
-            chunk,
-            chunk_witness,
-            proof_of_space,
-        } = self;
-        Solution {
-            public_key,
-            reward_address: Into::<T>::into(reward_address).into(),
-            sector_index,
-            history_size,
-            piece_offset,
-            record_commitment,
-            record_witness,
-            chunk,
-            chunk_witness,
-            proof_of_space,
-        }
-    }
-}
-
-impl<RewardAddress> Solution<RewardAddress> {
-    /// Dummy solution for the genesis block
-    pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
-        Self {
-            public_key,
-            reward_address,
-            sector_index: 0,
-            history_size: HistorySize::from(SegmentIndex::ZERO),
-            piece_offset: PieceOffset::default(),
-            record_commitment: RecordCommitment::default(),
-            record_witness: RecordWitness::default(),
-            chunk: Scalar::default(),
-            chunk_witness: ChunkWitness::default(),
-            proof_of_space: PosProof::default(),
-        }
-    }
-}
-
-/// Bidirectional distance metric implemented on top of subtraction
-#[inline(always)]
-pub fn bidirectional_distance<T: WrappingSub + Ord>(a: &T, b: &T) -> T {
-    let diff = a.wrapping_sub(b);
-    let diff2 = b.wrapping_sub(a);
-    // Find smaller diff between 2 directions.
-    diff.min(diff2)
+impl ScalarBytes {
+    /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
+    /// actually 254 bits, but bits are mut harder to work with and likely not worth it.
+    ///
+    /// NOTE: After encoding more bytes can be used, so don't rely on this as the max number of
+    /// bytes stored within at all times!
+    pub const SAFE_BYTES: usize = 31;
+    /// How many bytes Scalar contains physically, use [`Self::SAFE_BYTES`] for the amount of data
+    /// that you can put into it safely (for instance before encoding).
+    pub const FULL_BYTES: usize = 32;
 }
 
 #[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]

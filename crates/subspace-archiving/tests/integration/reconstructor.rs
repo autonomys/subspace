@@ -4,7 +4,6 @@ use std::iter;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::{FlatPieces, Piece, Record};
 use subspace_core_primitives::segments::{
@@ -12,6 +11,7 @@ use subspace_core_primitives::segments::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.pieces().map(Some).collect()
@@ -19,7 +19,7 @@ fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
 
 #[test]
 fn basic() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -250,7 +250,7 @@ fn basic() {
 
 #[test]
 fn partial_data() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -333,7 +333,7 @@ fn partial_data() {
 
 #[test]
 fn invalid_usage() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

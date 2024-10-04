@@ -34,12 +34,12 @@ use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::slice;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
-use subspace_core_primitives::{PublicKey, RewardSignature, Solution, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::solutions::{RewardSignature, Solution};
+use subspace_core_primitives::{PublicKey, REWARD_SIGNING_CONTEXT};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
@@ -47,6 +47,7 @@ use subspace_farmer_components::plotting::{
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
@@ -121,7 +122,7 @@ async fn start_farming<PosTable, Client>(
 {
     let (plotting_result_sender, plotting_result_receiver) = futures::channel::oneshot::channel();
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -205,7 +206,7 @@ where
     PosTable: Table,
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let mut archiver =
         subspace_archiving::archiver::Archiver::new(kzg.clone(), erasure_coding.clone());
 

@@ -8,7 +8,6 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
 use parity_scale_codec::Decode;
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
@@ -16,6 +15,7 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::BlockNumber;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Scalar;
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]
@@ -109,7 +109,7 @@ impl Reconstructor {
             // Scratch buffer to avoid re-allocation
             let mut tmp_shards_scalars =
                 Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
-            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            // Iterate over the chunks of `ScalarBytes::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 for maybe_piece in segment_pieces.iter() {

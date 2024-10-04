@@ -18,6 +18,7 @@ bench = false
 kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", default-features = false }
 
 [dev-dependencies]
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4" }
@@ -30,6 +31,7 @@ std = [
     "kzg/std",
     "rust-kzg-blst/std",
     "subspace-core-primitives/std",
+    "subspace-kzg/std",
 ]
 parallel = ["rust-kzg-blst/parallel"]
 

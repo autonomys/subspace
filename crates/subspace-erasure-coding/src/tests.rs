@@ -3,8 +3,8 @@ use kzg::G1;
 use rust_kzg_blst::types::g1::FsG1;
 use std::iter;
 use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::Commitment;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::ScalarBytes;
+use subspace_kzg::{Commitment, Scalar};
 
 // TODO: This could have been done in-place, once implemented can be exposed as a utility
 fn concatenated_to_interleaved<T>(input: Vec<T>) -> Vec<T>
@@ -43,7 +43,7 @@ fn basic_data() {
     let ec = ErasureCoding::new(scale).unwrap();
 
     let source_shards = (0..num_shards / 2)
-        .map(|_| rand::random::<[u8; Scalar::SAFE_BYTES]>())
+        .map(|_| rand::random::<[u8; ScalarBytes::SAFE_BYTES]>())
         .map(Scalar::from)
         .collect::<Vec<_>>();
 

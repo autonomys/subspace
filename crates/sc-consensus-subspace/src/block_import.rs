@@ -54,7 +54,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
-use subspace_core_primitives::{BlockNumber, PublicKey, SolutionRange};
+use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
 use tracing::warn;
@@ -132,6 +133,9 @@ pub enum Error<Header: HeaderT> {
     /// Invalid audit chunk offset
     #[error("Invalid audit chunk offset")]
     InvalidAuditChunkOffset,
+    /// Invalid chunk
+    #[error("Invalid chunk: {0}")]
+    InvalidChunk(String),
     /// Invalid chunk witness
     #[error("Invalid chunk witness")]
     InvalidChunkWitness,
@@ -242,6 +246,7 @@ where
                 VerificationPrimitiveError::InvalidAuditChunkOffset => {
                     Error::InvalidAuditChunkOffset
                 }
+                VerificationPrimitiveError::InvalidChunk(error) => Error::InvalidChunk(error),
                 VerificationPrimitiveError::InvalidChunkWitness => Error::InvalidChunkWitness,
                 VerificationPrimitiveError::SectorExpired {
                     expiration_history_size,

@@ -23,8 +23,8 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+use crate::hashes::Blake3Hash;
 use crate::pieces::PieceIndex;
-use crate::Blake3Hash;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::default::Default;

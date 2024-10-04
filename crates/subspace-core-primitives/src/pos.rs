@@ -3,8 +3,7 @@
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::crypto::blake3_hash;
-use crate::Blake3Hash;
+use crate::hashes::{blake3_hash, Blake3Hash};
 use derive_more::{Deref, DerefMut, From};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;

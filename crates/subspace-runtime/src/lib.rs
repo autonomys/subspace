@@ -103,10 +103,10 @@ use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    pieces_to_solution_range, solution_range_to_pieces, PublicKey, Randomness, SlotNumber,
-    SolutionRange, U256,
+use subspace_core_primitives::solutions::{
+    pieces_to_solution_range, solution_range_to_pieces, SolutionRange,
 };
+use subspace_core_primitives::{PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::{
     maximum_normal_block_length, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash,
     HoldIdentifier, Moment, Nonce, Signature, SlowAdjustingFeeUpdate, BLOCK_WEIGHT_FOR_2_SEC,

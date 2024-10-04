@@ -36,6 +36,7 @@ subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-erasure-coding = { path = "../../crates/subspace-erasure-coding" }
 subspace-farmer-components = { path = "../../crates/subspace-farmer-components" }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-proof-of-space = { path = "../../crates/subspace-proof-of-space" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }

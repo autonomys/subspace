@@ -11,13 +11,13 @@ use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::{HistorySize, RecordedHistorySegment};
-use subspace_core_primitives::{Blake3Hash, PublicKey, SolutionRange};
+use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
@@ -29,6 +29,7 @@ use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 
@@ -57,7 +58,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut input = RecordedHistorySegment::new_boxed();
     let mut rng = StdRng::seed_from_u64(42);
     rng.fill(AsMut::<[u8]>::as_mut(input.as_mut()));
-    let kzg = &Kzg::new(kzg::embedded_kzg_settings());
+    let kzg = &Kzg::new();
     let erasure_coding = &ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

@@ -42,8 +42,8 @@ use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use sp_consensus_subspace::ChainConstants;
 use sp_runtime::traits::Block as BlockT;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 
 /// State that must be shared between various consensus components.
 #[derive(Clone)]

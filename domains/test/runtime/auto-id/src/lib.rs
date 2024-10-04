@@ -733,7 +733,7 @@ impl_runtime_apis! {
             tx_range: &subspace_core_primitives::U256
         ) -> bool {
             use subspace_core_primitives::U256;
-            use subspace_core_primitives::crypto::blake3_hash;
+            use subspace_core_primitives::hashes::blake3_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
             if let Some(signer) = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {

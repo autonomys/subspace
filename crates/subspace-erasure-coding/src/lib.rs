@@ -15,8 +15,7 @@ use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};
 use rust_kzg_blst::types::fft_settings::FsFFTSettings;
 use rust_kzg_blst::types::g1::FsG1;
 use rust_kzg_blst::types::poly::FsPoly;
-use subspace_core_primitives::crypto::kzg::{Commitment, Polynomial};
-use subspace_core_primitives::crypto::Scalar;
+use subspace_kzg::{Commitment, Polynomial, Scalar};
 
 /// Erasure coding abstraction.
 ///

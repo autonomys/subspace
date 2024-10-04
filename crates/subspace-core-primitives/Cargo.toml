@@ -8,49 +8,33 @@ edition = "2021"
 include = [
     "/src",
     "/Cargo.toml",
-    "/README.md",
 ]
-
-[lib]
-# Necessary for CLI options to work on benches
-bench = false
 
 [dependencies]
 blake3 = { version = "1.5.4", default-features = false }
 bytes = { version = "1.7.1", default-features = false }
 derive_more = { version = "1.0.0", default-features = false, features = ["full"] }
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
-kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 num-traits = { version = "0.2.18", default-features = false }
 parity-scale-codec = { version = "3.6.12", default-features = false, features = ["bytes", "derive", "max-encoded-len"] }
-parking_lot = { version = "0.12.2", optional = true }
 rayon = { version = "1.10.0", optional = true }
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 serde = { version = "1.0.110", optional = true, default-features = false, features = ["alloc", "derive"] }
-# Replacement for `parking_lot` in `no_std` environment
-spin = "0.9.7"
 static_assertions = "1.1.0"
-tracing = { version = "0.1.40", default-features = false }
 uint = { version = "0.10.0", default-features = false }
 
 [dev-dependencies]
-criterion = "0.5.1"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
-rand_core = "0.6.4"
 
 [features]
 default = [
-    "embedded-kzg-settings",
     "serde",
     "std",
     "parallel",
 ]
-embedded-kzg-settings = []
-# Enables some APIs and internal parallelism for KZG
+# Enables some APIs
 parallel = [
     "blake3/rayon",
-    "rust-kzg-blst/parallel",
     "dep:rayon",
 ]
 serde = [
@@ -61,20 +45,10 @@ std = [
     "blake3/std",
     "bytes/std",
     "derive_more/std",
-    "rust-kzg-blst/std",
     "hex/std",
-    "kzg/std",
     "num-traits/std",
     "parity-scale-codec/std",
-    # In no-std environment we use `spin`
-    "parking_lot",
     "scale-info/std",
     "serde?/std",
-    "tracing/std",
     "uint/std",
 ]
-
-[[bench]]
-name = "kzg"
-harness = false
-

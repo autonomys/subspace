@@ -13,11 +13,10 @@ use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
 use subspace_core_primitives::checksum::Blake3Checksummed;
-use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::hashes::{blake3_hash, Blake3Hash};
 use subspace_core_primitives::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
 use subspace_core_primitives::sectors::{SBucket, SectorIndex};
 use subspace_core_primitives::segments::{HistorySize, SegmentIndex};
-use subspace_core_primitives::Blake3Hash;
 use thiserror::Error;
 use tracing::debug;
 
