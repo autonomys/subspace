@@ -7,11 +7,11 @@ use alloc::string::String;
 use alloc::vec::Vec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
-use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
 use subspace_core_primitives::pieces::{Piece, RawRecord};
 use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::{Commitment, Kzg, Polynomial, Scalar};
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +62,7 @@ impl PiecesReconstructor {
         // Scratch buffer to avoid re-allocation
         let mut tmp_shards_scalars =
             Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
-        // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+        // Iterate over the chunks of `ScalarBytes::SAFE_BYTES` bytes of all records
         for record_offset in 0..RawRecord::NUM_CHUNKS {
             // Collect chunks of each record at the same offset
             for maybe_piece in input_pieces.iter() {
@@ -157,7 +157,8 @@ impl PiecesReconstructor {
                 reconstructed_piece
                     .commitment_mut()
                     .copy_from_slice(&commitment_bytes);
-                blake3_254_hash_to_scalar(&commitment_bytes)
+                Scalar::try_from(blake3_254_hash_to_scalar(&commitment_bytes))
+                    .expect("Create correctly by dedicated hash function; qed")
             })
             .collect::<Vec<_>>();
 

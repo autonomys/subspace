@@ -20,24 +20,38 @@
 #![feature(array_chunks, portable_simd)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
+#[cfg(feature = "kzg")]
 use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
-use subspace_archiving::archiver;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
-use subspace_core_primitives::crypto::{
-    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
-};
-use subspace_core_primitives::pieces::Record;
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
+use subspace_core_primitives::crypto::{blake3_hash_list, blake3_hash_with_key};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
 use subspace_core_primitives::pot::PotOutput;
-use subspace_core_primitives::sectors::{SectorId, SectorSlotChallenge};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::sectors::SectorId;
+use subspace_core_primitives::sectors::SectorSlotChallenge;
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
+#[cfg(feature = "kzg")]
+use subspace_core_primitives::Solution;
 use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, SlotNumber, Solution,
+    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
     SolutionRange,
 };
+#[cfg(feature = "kzg")]
+use subspace_kzg::{Commitment, Kzg, Scalar, Witness};
+#[cfg(feature = "kzg")]
 use subspace_proof_of_space::Table;
 
 /// Errors encountered by the Subspace consensus primitives.
@@ -83,6 +97,9 @@ pub enum Error {
     /// Invalid audit chunk offset
     #[cfg_attr(feature = "thiserror", error("Invalid audit chunk offset"))]
     InvalidAuditChunkOffset,
+    /// Invalid chunk
+    #[cfg_attr(feature = "thiserror", error("Invalid chunk: {0}"))]
+    InvalidChunk(String),
     /// Invalid chunk witness
     #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
     InvalidChunkWitness,
@@ -181,6 +198,7 @@ pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
 /// success.
+#[cfg(feature = "kzg")]
 pub fn verify_solution<'a, PosTable, RewardAddress>(
     solution: &'a Solution<RewardAddress>,
     slot: SlotNumber,
@@ -212,9 +230,8 @@ where
         return Err(Error::InvalidProofOfSpace);
     };
 
-    let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-        ^ Simd::from(*solution.proof_of_space.hash()))
-    .to_array();
+    let masked_chunk =
+        (Simd::from(*solution.chunk) ^ Simd::from(*solution.proof_of_space.hash())).to_array();
 
     let solution_distance =
         calculate_solution_distance(&global_challenge, &masked_chunk, &sector_slot_challenge);
@@ -233,7 +250,7 @@ where
             .map_err(|_error| Error::InvalidChunkWitness)?,
         Record::NUM_S_BUCKETS,
         s_bucket_audit_index.into(),
-        &solution.chunk,
+        &Scalar::try_from(solution.chunk).map_err(Error::InvalidChunk)?,
         &Witness::try_from(solution.chunk_witness).map_err(|_error| Error::InvalidChunkWitness)?,
     ) {
         return Err(Error::InvalidChunkWitness);
@@ -288,9 +305,12 @@ where
             .position();
 
         // Check that piece is part of the blockchain history
-        if !archiver::is_record_commitment_hash_valid(
+        if !is_record_commitment_hash_valid(
             kzg,
-            &blake3_254_hash_to_scalar(solution.record_commitment.as_ref()),
+            &Scalar::try_from(blake3_254_hash_to_scalar(
+                solution.record_commitment.as_ref(),
+            ))
+            .expect("Create correctly by dedicated hash function; qed"),
             segment_commitment,
             &solution.record_witness,
             position,
@@ -302,9 +322,99 @@ where
     Ok(solution_distance)
 }
 
+/// Validate witness embedded within a piece produced by archiver
+#[cfg(feature = "kzg")]
+pub fn is_piece_valid(
+    kzg: &Kzg,
+    piece: &PieceArray,
+    segment_commitment: &SegmentCommitment,
+    position: u32,
+) -> bool {
+    let (record, commitment, witness) = piece.split();
+    let witness = match Witness::try_from_bytes(witness) {
+        Ok(witness) => witness,
+        _ => {
+            return false;
+        }
+    };
+
+    let mut scalars = Vec::with_capacity(record.len().next_power_of_two());
+
+    for record_chunk in record.iter() {
+        match Scalar::try_from(record_chunk) {
+            Ok(scalar) => {
+                scalars.push(scalar);
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+    // Number of scalars for KZG must be a power of two elements
+    scalars.resize(scalars.capacity(), Scalar::default());
+
+    let polynomial = match kzg.poly(&scalars) {
+        Ok(polynomial) => polynomial,
+        _ => {
+            return false;
+        }
+    };
+
+    if kzg
+        .commit(&polynomial)
+        .map(|commitment| commitment.to_bytes())
+        .as_ref()
+        != Ok(commitment)
+    {
+        return false;
+    }
+
+    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
+        return false;
+    };
+
+    let commitment_hash = Scalar::try_from(blake3_254_hash_to_scalar(commitment.as_ref()))
+        .expect("Create correctly by dedicated hash function; qed");
+
+    kzg.verify(
+        &segment_commitment,
+        ArchivedHistorySegment::NUM_PIECES,
+        position,
+        &commitment_hash,
+        &witness,
+    )
+}
+
+/// Validate witness for record commitment hash produced by archiver
+#[cfg(feature = "kzg")]
+pub fn is_record_commitment_hash_valid(
+    kzg: &Kzg,
+    record_commitment_hash: &Scalar,
+    commitment: &SegmentCommitment,
+    witness: &RecordWitness,
+    position: u32,
+) -> bool {
+    let Ok(commitment) = Commitment::try_from(commitment) else {
+        return false;
+    };
+    let Ok(witness) = Witness::try_from(witness) else {
+        return false;
+    };
+
+    kzg.verify(
+        &commitment,
+        ArchivedHistorySegment::NUM_PIECES,
+        position,
+        record_commitment_hash,
+        &witness,
+    )
+}
+
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.
-pub fn derive_pot_entropy(chunk: Scalar, proof_of_time: PotOutput) -> Blake3Hash {
-    blake3_hash_list(&[&chunk.to_bytes(), proof_of_time.as_ref()])
+#[inline]
+pub fn derive_pot_entropy(chunk: &ScalarBytes, proof_of_time: PotOutput) -> Blake3Hash {
+    blake3_hash_list(&[chunk.as_ref(), proof_of_time.as_ref()])
 }
 
 /// Derives next solution range based on the total era slots and slot probability

@@ -18,7 +18,6 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::pieces::Record;
 use subspace_core_primitives::PublicKey;
 use subspace_erasure_coding::ErasureCoding;
@@ -49,6 +48,7 @@ use subspace_farmer::utils::{
 };
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::PieceGetter;
+use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -404,7 +404,7 @@ where
         .map_err(|error| anyhow!("Failed to configure networking: {error}"))?
     };
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

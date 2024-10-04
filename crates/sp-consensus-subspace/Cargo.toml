@@ -30,6 +30,7 @@ sp-runtime-interface = { default-features = false, git = "https://github.com/sub
 sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sp-timestamp = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", optional = true }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", default-features = false }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 thiserror = { version = "1.0.64", optional = true }
@@ -54,7 +55,9 @@ std = [
     "sp-std/std",
     "sp-timestamp/std",
     "subspace-core-primitives/std",
+    "subspace-kzg/std",
     "subspace-proof-of-space/std",
+    "subspace-verification/kzg",
     "subspace-verification/std",
     "thiserror",
 ]

@@ -24,14 +24,14 @@ use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
+use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel};
 use subspace_core_primitives::pieces::{PieceIndex, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId, SectorIndex};
 use subspace_core_primitives::segments::HistorySize;
-use subspace_core_primitives::{Blake3Hash, PublicKey};
+use subspace_core_primitives::{Blake3Hash, PublicKey, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::{Kzg, Scalar};
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::{AcquireError, Semaphore};
@@ -584,7 +584,7 @@ pub fn write_sector(
                     .iter_s_bucket_records(s_bucket)
                     .expect("S-bucket guaranteed to be in range; qed")
             })
-            .zip(s_buckets_region.array_chunks_mut::<{ Scalar::FULL_BYTES }>())
+            .zip(s_buckets_region.array_chunks_mut::<{ ScalarBytes::FULL_BYTES }>())
         {
             let num_encoded_record_chunks =
                 usize::from(num_encoded_record_chunks[usize::from(piece_offset)]);
@@ -629,7 +629,7 @@ fn record_encoding<PosTable>(
     mut encoded_chunks_used: EncodedChunksUsed<'_>,
     table_generator: &mut PosTable::Generator,
     erasure_coding: &ErasureCoding,
-    chunks_scratch: &mut Vec<[u8; Scalar::FULL_BYTES]>,
+    chunks_scratch: &mut Vec<[u8; ScalarBytes::FULL_BYTES]>,
 ) where
     PosTable: Table,
 {
@@ -651,7 +651,7 @@ fn record_encoding<PosTable>(
         )
         .expect("Instance was verified to be able to work with this many values earlier; qed")
         .into_iter()
-        .map(<[u8; Scalar::FULL_BYTES]>::from)
+        .map(<[u8; ScalarBytes::FULL_BYTES]>::from)
         .collect::<Vec<_>>();
     let source_record_chunks = record.to_vec();
 
@@ -671,7 +671,7 @@ fn record_encoding<PosTable>(
                 (Simd::from(*record_chunk) ^ Simd::from(*proof.hash())).to_array()
             } else {
                 // Dummy value indicating no proof
-                [0; Scalar::FULL_BYTES]
+                [0; ScalarBytes::FULL_BYTES]
             }
         })
         .collect_into_vec(chunks_scratch);
@@ -680,7 +680,7 @@ fn record_encoding<PosTable>(
         .zip(encoded_chunks_used.iter_mut())
         .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
             // No proof, see above
-            if maybe_encoded_chunk == [0; Scalar::FULL_BYTES] {
+            if maybe_encoded_chunk == [0; ScalarBytes::FULL_BYTES] {
                 None
             } else {
                 *encoded_chunk_used = true;

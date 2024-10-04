@@ -6,9 +6,7 @@ use std::assert_matches::assert_matches;
 use std::io::Write;
 use std::iter;
 use std::num::NonZeroUsize;
-use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::pieces::{Piece, Record};
 use subspace_core_primitives::segments::{
@@ -17,6 +15,8 @@ use subspace_core_primitives::segments::{
 };
 use subspace_core_primitives::Blake3Hash;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
+use subspace_verification::is_piece_valid;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
@@ -63,7 +63,7 @@ fn compare_block_objects_to_piece_objects<'a>(
 
 #[test]
 fn archiver() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -197,7 +197,7 @@ fn archiver() {
         .map(|(position, piece)| {
             (
                 position,
-                archiver::is_piece_valid(
+                is_piece_valid(
                     &kzg,
                     piece,
                     &first_archived_segment.segment_header.segment_commitment(),
@@ -320,7 +320,7 @@ fn archiver() {
             .map(|(position, piece)| {
                 (
                     position,
-                    archiver::is_piece_valid(
+                    is_piece_valid(
                         &kzg,
                         piece,
                         &archived_segment.segment_header.segment_commitment(),
@@ -380,7 +380,7 @@ fn archiver() {
             .map(|(position, piece)| {
                 (
                     position,
-                    archiver::is_piece_valid(
+                    is_piece_valid(
                         &kzg,
                         piece,
                         &archived_segment.segment_header.segment_commitment(),
@@ -397,7 +397,7 @@ fn archiver() {
 
 #[test]
 fn invalid_usage() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -469,7 +469,7 @@ fn invalid_usage() {
 
 #[test]
 fn one_byte_smaller_segment() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -508,7 +508,7 @@ fn one_byte_smaller_segment() {
 
 #[test]
 fn spill_over_edge_case() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -570,7 +570,7 @@ fn spill_over_edge_case() {
 
 #[test]
 fn object_on_the_edge_of_segment() {
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),

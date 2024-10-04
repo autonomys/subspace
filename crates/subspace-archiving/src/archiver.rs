@@ -29,18 +29,18 @@ use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, GlobalObject, PieceObject, PieceObjectMapping,
 };
-use subspace_core_primitives::pieces::{PieceArray, RawRecord, RecordWitness};
+use subspace_core_primitives::pieces::RawRecord;
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{Blake3Hash, BlockNumber};
+use subspace_core_primitives::{Blake3Hash, BlockNumber, ScalarBytes};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::{Kzg, Scalar};
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
@@ -683,14 +683,14 @@ impl Archiver {
             // Scratch buffer to avoid re-allocation
             let mut tmp_source_shards_scalars =
                 Vec::<Scalar>::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
-            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            // Iterate over the chunks of `ScalarBytes::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::NUM_CHUNKS {
                 // Collect chunks of each record at the same offset
                 raw_record_shards
                     .array_chunks::<{ RawRecord::SIZE }>()
                     .map(|record_bytes| {
                         record_bytes
-                            .array_chunks::<{ Scalar::SAFE_BYTES }>()
+                            .array_chunks::<{ ScalarBytes::SAFE_BYTES }>()
                             .nth(record_offset)
                             .expect("Statically known to exist in a record; qed")
                     })
@@ -779,7 +779,10 @@ impl Archiver {
             .poly(
                 &record_commitments
                     .iter()
-                    .map(|commitment| blake3_254_hash_to_scalar(&commitment.to_bytes()))
+                    .map(|commitment| {
+                        Scalar::try_from(blake3_254_hash_to_scalar(&commitment.to_bytes()))
+                            .expect("Create correctly by dedicated hash function; qed")
+                    })
                     .collect::<Vec<_>>(),
             )
             .expect("Internally produced values must never fail; qed");
@@ -836,90 +839,4 @@ impl Archiver {
             object_mapping,
         }
     }
-}
-
-/// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(
-    kzg: &Kzg,
-    piece: &PieceArray,
-    segment_commitment: &SegmentCommitment,
-    position: u32,
-) -> bool {
-    let (record, commitment, witness) = piece.split();
-    let witness = match Witness::try_from_bytes(witness) {
-        Ok(witness) => witness,
-        _ => {
-            return false;
-        }
-    };
-
-    let mut scalars = Vec::with_capacity(record.len().next_power_of_two());
-
-    for record_chunk in record.iter() {
-        match Scalar::try_from(record_chunk) {
-            Ok(scalar) => {
-                scalars.push(scalar);
-            }
-            _ => {
-                return false;
-            }
-        }
-    }
-
-    // Number of scalars for KZG must be a power of two elements
-    scalars.resize(scalars.capacity(), Scalar::default());
-
-    let polynomial = match kzg.poly(&scalars) {
-        Ok(polynomial) => polynomial,
-        _ => {
-            return false;
-        }
-    };
-
-    if kzg
-        .commit(&polynomial)
-        .map(|commitment| commitment.to_bytes())
-        .as_ref()
-        != Ok(commitment)
-    {
-        return false;
-    }
-
-    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
-        return false;
-    };
-
-    let commitment_hash = blake3_254_hash_to_scalar(commitment.as_ref());
-
-    kzg.verify(
-        &segment_commitment,
-        ArchivedHistorySegment::NUM_PIECES,
-        position,
-        &commitment_hash,
-        &witness,
-    )
-}
-
-/// Validate witness for record commitment hash produced by archiver
-pub fn is_record_commitment_hash_valid(
-    kzg: &Kzg,
-    record_commitment_hash: &Scalar,
-    commitment: &SegmentCommitment,
-    witness: &RecordWitness,
-    position: u32,
-) -> bool {
-    let Ok(commitment) = Commitment::try_from(commitment) else {
-        return false;
-    };
-    let Ok(witness) = Witness::try_from(witness) else {
-        return false;
-    };
-
-    kzg.verify(
-        &commitment,
-        ArchivedHistorySegment::NUM_PIECES,
-        position,
-        record_commitment_hash,
-        &witness,
-    )
 }

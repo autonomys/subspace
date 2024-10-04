@@ -19,6 +19,7 @@ rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fc
 #sppark = { git = "https://github.com/dot-asm/sppark", rev = "8eeafe0f6cc0ca8211b1be93922df1b5a118bbd2", optional = true }
 sppark = { version = "0.1.8", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives", default-features = false, optional = true }
+subspace-kzg = { version = "0.1.0", path = "../subspace-kzg", optional = true }
 
 [dev-dependencies]
 subspace-erasure-coding = { version = "0.1.0", path = "../../crates/subspace-erasure-coding" }
@@ -39,4 +40,5 @@ _gpu = [
     "dep:rust-kzg-blst",
     "dep:sppark",
     "dep:subspace-core-primitives",
+    "dep:subspace-kzg",
 ]

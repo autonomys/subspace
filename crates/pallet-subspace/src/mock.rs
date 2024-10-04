@@ -35,7 +35,6 @@ use std::simd::Simd;
 use std::sync::{Once, OnceLock};
 use std::{iter, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::pot::PotOutput;
@@ -53,6 +52,7 @@ use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{plot_sector, CpuRecordsEncoder, PlotSectorOptions};
 use subspace_farmer_components::reading::ReadSectorRecordChunksMode;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_verification::is_within_solution_range;
@@ -67,7 +67,7 @@ const MAX_PIECES_IN_SECTOR: u16 = 1;
 fn kzg_instance() -> &'static Kzg {
     static KZG: OnceLock<Kzg> = OnceLock::new();
 
-    KZG.get_or_init(|| Kzg::new(embedded_kzg_settings()))
+    KZG.get_or_init(Kzg::new)
 }
 
 fn erasure_coding_instance() -> &'static ErasureCoding {
@@ -388,9 +388,8 @@ pub fn create_signed_vote(
             solution.sector_index,
         );
         let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
-        let masked_chunk = (Simd::from(solution.chunk.to_bytes())
-            ^ Simd::from(*solution.proof_of_space.hash()))
-        .to_array();
+        let masked_chunk =
+            (Simd::from(*solution.chunk) ^ Simd::from(*solution.proof_of_space.hash())).to_array();
 
         // Check that solution quality is not too high
         if is_within_solution_range(

@@ -22,12 +22,14 @@ rayon = { version = "1.10.0", optional = true }
 serde = { version = "1.0.110", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding", default-features = false }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", default-features = false }
 thiserror = { version = "1.0.64", optional = true }
 
 [dev-dependencies]
 criterion = "0.5.1"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 
 [features]
 default = ["std"]
@@ -45,6 +47,7 @@ std = [
     "serde",
     "subspace-core-primitives/std",
     "subspace-erasure-coding/std",
+    "subspace-kzg/std",
     "thiserror",
 ]
 

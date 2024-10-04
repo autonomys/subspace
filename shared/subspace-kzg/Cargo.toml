@@ -1,0 +1,55 @@
+[package]
+name = "subspace-kzg"
+description = "KZG primitives for Subspace Network"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[lib]
+# Necessary for CLI options to work on benches
+bench = false
+
+[[bench]]
+name = "kzg"
+harness = false
+
+[dependencies]
+derive_more = { version = "1.0.0", default-features = false, features = ["full"] }
+kzg = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
+parking_lot = { version = "0.12.2", optional = true }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false }
+# Replacement for `parking_lot` in `no_std` environment
+spin = "0.9.7"
+static_assertions = "1.1.0"
+subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives", default-features = false }
+tracing = { version = "0.1.40", default-features = false }
+
+[dev-dependencies]
+criterion = "0.5.1"
+rand = { version = "0.8.5", features = ["min_const_gen"] }
+rand_core = "0.6.4"
+
+[features]
+default = [
+    "std",
+    "parallel",
+]
+# Enables internal parallelism for KZG
+parallel = [
+    "rust-kzg-blst/parallel",
+]
+std = [
+    "derive_more/std",
+    "kzg/std",
+    # In no-std environment we use `spin`
+    "parking_lot",
+    "rust-kzg-blst/std",
+    "subspace-core-primitives/std",
+    "tracing/std",
+]
+

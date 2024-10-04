@@ -17,10 +17,12 @@ use std::mem::ManuallyDrop;
 use std::simd::Simd;
 use std::str::FromStr;
 use std::{fmt, io};
-use subspace_core_primitives::crypto::{blake3_hash, Scalar};
+use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
 use subspace_core_primitives::sectors::{SBucket, SectorId};
+use subspace_core_primitives::ScalarBytes;
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Scalar;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tracing::debug;
@@ -112,7 +114,7 @@ impl ReadingError {
 /// unfortunately.
 #[derive(Debug, Copy, Clone)]
 pub enum ReadSectorRecordChunksMode {
-    /// Read individual chunks ([`Scalar::FULL_BYTES`] in size) concurrently, which results in lower
+    /// Read individual chunks ([`ScalarBytes::FULL_BYTES`] in size) concurrently, which results in lower
     /// total data transfer, but requires for SSD to support high concurrency and low latency
     ConcurrentChunks,
     /// Read the whole sector at once and extract chunks from in-memory buffer, which uses more
@@ -212,19 +214,19 @@ where
             };
             read_chunks_inputs.into_par_iter().flatten().try_for_each(
                 |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| {
-                    let mut record_chunk = [0; Scalar::FULL_BYTES];
+                    let mut record_chunk = [0; ScalarBytes::FULL_BYTES];
                     if let Some(sector_bytes) = &sector_bytes {
                         record_chunk.copy_from_slice(
                             &sector_bytes[sector_contents_map_size as usize
-                                + chunk_location as usize * Scalar::FULL_BYTES..]
-                                [..Scalar::FULL_BYTES],
+                                + chunk_location as usize * ScalarBytes::FULL_BYTES..]
+                                [..ScalarBytes::FULL_BYTES],
                         );
                     } else {
                         sector
                             .read_at(
                                 &mut record_chunk,
                                 sector_contents_map_size
-                                    + chunk_location * Scalar::FULL_BYTES as u64,
+                                    + chunk_location * ScalarBytes::FULL_BYTES as u64,
                             )
                             .map_err(|error| ReadingError::FailedToReadChunk {
                                 chunk_location,
@@ -268,19 +270,19 @@ where
                 .flatten()
                 .map(
                     |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| async move {
-                        let mut record_chunk = [0; Scalar::FULL_BYTES];
+                        let mut record_chunk = [0; ScalarBytes::FULL_BYTES];
                         if let Some(sector_bytes) = &sector_bytes {
                             record_chunk.copy_from_slice(
                                 &sector_bytes[sector_contents_map_size as usize
-                                    + chunk_location as usize * Scalar::FULL_BYTES..]
-                                    [..Scalar::FULL_BYTES],
+                                    + chunk_location as usize * ScalarBytes::FULL_BYTES..]
+                                    [..ScalarBytes::FULL_BYTES],
                             );
                         } else {
                             record_chunk.copy_from_slice(
                                 &sector
                                     .read_at(
-                                        vec![0; Scalar::FULL_BYTES],
-                                        sector_contents_map_size + chunk_location * Scalar::FULL_BYTES as u64,
+                                        vec![0; ScalarBytes::FULL_BYTES],
+                                        sector_contents_map_size + chunk_location * ScalarBytes::FULL_BYTES as u64,
                                     )
                                     .await
                                     .map_err(|error| ReadingError::FailedToReadChunk {

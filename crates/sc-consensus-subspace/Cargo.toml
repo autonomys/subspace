@@ -42,6 +42,7 @@ sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.64"

@@ -39,19 +39,11 @@ pub mod segments;
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-use crate::crypto::kzg::Witness;
-use crate::crypto::{blake3_hash, blake3_hash_list, Scalar};
+use crate::crypto::{blake3_hash, blake3_hash_list};
 use crate::pieces::{PieceOffset, Record, RecordCommitment, RecordWitness};
 use crate::pos::PosProof;
 use crate::sectors::SectorIndex;
 use crate::segments::{HistorySize, SegmentIndex};
-#[cfg(feature = "serde")]
-use ::serde::{Deserialize, Serialize};
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -59,6 +51,8 @@ use hex::FromHex;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
@@ -329,6 +323,43 @@ impl RewardSignature {
     pub const SIZE: usize = 64;
 }
 
+/// Single BLS12-381 scalar with big-endian representation, not guaranteed to be valid
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct ScalarBytes([u8; ScalarBytes::FULL_BYTES]);
+
+impl ScalarBytes {
+    /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
+    /// actually 254 bits, but bits are mut harder to work with and likely not worth it.
+    ///
+    /// NOTE: After encoding more bytes can be used, so don't rely on this as the max number of
+    /// bytes stored within at all times!
+    pub const SAFE_BYTES: usize = 31;
+    /// How many bytes Scalar contains physically, use [`Self::SAFE_BYTES`] for the amount of data
+    /// that you can put into it safely (for instance before encoding).
+    pub const FULL_BYTES: usize = 32;
+}
+
 /// Witness for chunk contained within a record.
 #[derive(
     Debug,
@@ -387,31 +418,6 @@ impl ChunkWitness {
     pub const SIZE: usize = 48;
 }
 
-impl From<Witness> for ChunkWitness {
-    #[inline]
-    fn from(witness: Witness) -> Self {
-        Self(witness.to_bytes())
-    }
-}
-
-impl TryFrom<&ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(&witness.0)
-    }
-}
-
-impl TryFrom<ChunkWitness> for Witness {
-    type Error = String;
-
-    #[inline]
-    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
-        Witness::try_from(witness.0)
-    }
-}
-
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -432,7 +438,7 @@ pub struct Solution<RewardAddress> {
     /// Witness for above record commitment
     pub record_witness: RecordWitness,
     /// Chunk at above offset
-    pub chunk: Scalar,
+    pub chunk: ScalarBytes,
     /// Witness for above chunk
     pub chunk_witness: ChunkWitness,
     /// Proof of space for piece offset
@@ -485,7 +491,7 @@ impl<RewardAddress> Solution<RewardAddress> {
             piece_offset: PieceOffset::default(),
             record_commitment: RecordCommitment::default(),
             record_witness: RecordWitness::default(),
-            chunk: Scalar::default(),
+            chunk: ScalarBytes::default(),
             chunk_witness: ChunkWitness::default(),
             proof_of_space: PosProof::default(),
         }

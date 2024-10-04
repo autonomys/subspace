@@ -14,12 +14,12 @@ use crate::{ReadAt, ReadAtSync};
 use futures::FutureExt;
 use std::collections::VecDeque;
 use std::io;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId};
-use subspace_core_primitives::{ChunkWitness, PublicKey, Solution, SolutionRange};
+use subspace_core_primitives::{ChunkWitness, PublicKey, ScalarBytes, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_kzg::Kzg;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 
@@ -263,10 +263,12 @@ where
                 .now_or_never()
                 .expect("Sync reader; qed")?;
 
-            let chunk = sector_record_chunks
-                .get(usize::from(self.s_bucket))
-                .expect("Within s-bucket range; qed")
-                .expect("Winning chunk was plotted; qed");
+            let chunk = ScalarBytes::from(
+                sector_record_chunks
+                    .get(usize::from(self.s_bucket))
+                    .expect("Within s-bucket range; qed")
+                    .expect("Winning chunk was plotted; qed"),
+            );
 
             let source_chunks_polynomial = self
                 .erasure_coding

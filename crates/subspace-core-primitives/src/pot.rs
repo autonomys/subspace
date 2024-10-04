@@ -2,14 +2,14 @@
 
 use crate::crypto::{blake3_hash, blake3_hash_list};
 use crate::{Blake3Hash, Randomness};
-#[cfg(feature = "serde")]
-use ::serde::{Deserialize, Serialize};
 use core::fmt;
 use core::num::NonZeroU8;
 use core::str::FromStr;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// Proof of time key(input to the encryption).
 #[derive(

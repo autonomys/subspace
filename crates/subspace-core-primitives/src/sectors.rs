@@ -8,8 +8,6 @@ use crate::pieces::{PieceIndex, PieceOffset, Record};
 use crate::pos::PosSeed;
 use crate::segments::{HistorySize, SegmentCommitment};
 use crate::{Blake3Hash, U256};
-#[cfg(feature = "serde")]
-use ::serde::{Deserialize, Serialize};
 use core::hash::Hash;
 use core::iter::Step;
 use core::num::{NonZeroU64, TryFromIntError};
@@ -20,6 +18,8 @@ use derive_more::{
 };
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use static_assertions::const_assert_eq;
 
 /// Sector index in consensus
