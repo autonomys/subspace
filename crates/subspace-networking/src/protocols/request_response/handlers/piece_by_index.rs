@@ -1,13 +1,12 @@
-//! Helper for incoming pieces requests.
+//! Helper for incoming piece requests.
 //!
-//! Handle (i.e. answer) incoming pieces requests from a remote peer received via
-//! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
+//! Request handler can be created with [`PieceByIndexRequestHandler`].
 
 use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
-/// Piece-by-hash protocol request.
+/// Piece-by-index request
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]
 pub struct PieceByIndexRequest {
     /// Request key - piece index
@@ -20,12 +19,12 @@ impl GenericRequest for PieceByIndexRequest {
     type Response = PieceByIndexResponse;
 }
 
-/// Piece-by-hash protocol response.
+/// Piece-by-index response, may be cached piece or stored in one of the farms
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
 pub struct PieceByIndexResponse {
-    /// Returned data.
+    /// Piece, if found
     pub piece: Option<Piece>,
 }
 
-/// Create a new piece-by-hash request handler.
+/// Piece-by-index request handler
 pub type PieceByIndexRequestHandler = GenericRequestHandler<PieceByIndexRequest>;
