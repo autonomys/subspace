@@ -14,8 +14,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime::{
     AllowAuthoringBy, CouncilConfig, DemocracyConfig, DomainsConfig, EnableRewardsAt,
-    HistorySeedingConfig, MaxDomainBlockSize, MaxDomainBlockWeight, RewardsConfig,
-    RuntimeConfigsConfig, SubspaceConfig,
+    HistorySeedingConfig, RewardsConfig, RuntimeConfigsConfig, SubspaceConfig,
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
@@ -255,10 +254,7 @@ fn subspace_genesis_config(
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account.clone(),
                 domain_name: genesis_domain_params.domain_name,
-                max_block_size: MaxDomainBlockSize::get(),
-                max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
-                target_bundles_per_block: 10,
                 operator_allow_list: genesis_domain_params.operator_allow_list,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),

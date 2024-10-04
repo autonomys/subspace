@@ -182,7 +182,7 @@ mod pallet {
     use crate::bundle_storage_fund::refund_storage_fee;
     use crate::bundle_storage_fund::Error as BundleStorageFundError;
     use crate::domain_registry::{
-        do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
+        do_instantiate_domain, do_update_domain_allow_list, DomainConfigParams, DomainObject,
         Error as DomainRegistryError,
     };
     use crate::runtime_registry::{
@@ -335,10 +335,6 @@ mod pallet {
         /// The maximum block weight limit for all domain.
         #[pallet::constant]
         type MaxDomainBlockWeight: Get<Weight>;
-
-        /// The maximum bundle per block limit for all domain.
-        #[pallet::constant]
-        type MaxBundlesPerBlock: Get<u32>;
 
         /// The maximum domain name length limit for all domain.
         #[pallet::constant]
@@ -760,8 +756,6 @@ mod pallet {
         SlotInTheFuture,
         /// The bundle is built on a slot in the past
         SlotInThePast,
-        /// Unable to calculate bundle limit
-        UnableToCalculateBundleLimit,
         /// Bundle weight exceeds the max bundle weight limit
         BundleTooHeavy,
         /// The bundle slot is smaller then the highest slot from previous slot
@@ -1404,7 +1398,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
-            domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
+            domain_config_params: DomainConfigParams<T::AccountId, BalanceOf<T>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(
@@ -1416,7 +1410,7 @@ mod pallet {
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
+            let domain_id = do_instantiate_domain::<T>(domain_config_params, who, created_at)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
@@ -1824,19 +1818,17 @@ mod pallet {
                     .expect("Genesis runtime registration must always succeed");
 
                     // Instantiate the genesis domain
-                    let domain_config = DomainConfig {
+                    let domain_config_params = DomainConfigParams {
                         domain_name: genesis_domain.domain_name,
                         runtime_id,
-                        max_block_size: genesis_domain.max_block_size,
-                        max_block_weight: genesis_domain.max_block_weight,
+                        maybe_bundle_limit: None,
                         bundle_slot_probability: genesis_domain.bundle_slot_probability,
-                        target_bundles_per_block: genesis_domain.target_bundles_per_block,
                         operator_allow_list: genesis_domain.operator_allow_list,
                         initial_balances: genesis_domain.initial_balances,
                     };
                     let domain_owner = genesis_domain.owner_account_id;
                     let domain_id = do_instantiate_domain::<T>(
-                        domain_config,
+                        domain_config_params,
                         domain_owner.clone(),
                         Zero::zero(),
                     )
@@ -2215,19 +2207,15 @@ impl<T: Config> Pallet<T> {
         opaque_bundle: &OpaqueBundleOf<T>,
         domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
     ) -> Result<(), BundleError> {
-        let domain_bundle_limit = domain_config
-            .calculate_bundle_limit::<T>()
-            .map_err(|_| BundleError::UnableToCalculateBundleLimit)?;
-
         ensure!(
-            opaque_bundle.body_size() <= domain_bundle_limit.max_bundle_size,
+            opaque_bundle.body_size() <= domain_config.max_bundle_size,
             BundleError::BundleTooLarge
         );
 
         ensure!(
             opaque_bundle
                 .estimated_weight()
-                .all_lte(domain_bundle_limit.max_bundle_weight),
+                .all_lte(domain_config.max_bundle_weight),
             BundleError::BundleTooHeavy
         );
 
@@ -2697,9 +2685,10 @@ impl<T: Config> Pallet<T> {
             Some(domain_obj) => domain_obj.domain_config,
         };
 
-        let bundle_limit = domain_config.calculate_bundle_limit::<T>()?;
-
-        Ok(Some(bundle_limit))
+        Ok(Some(DomainBundleLimit {
+            max_bundle_size: domain_config.max_bundle_size,
+            max_bundle_weight: domain_config.max_bundle_weight,
+        }))
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
