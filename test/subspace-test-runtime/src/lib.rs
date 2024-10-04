@@ -95,7 +95,8 @@ use subspace_core_primitives::pieces::Piece;
 use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{crypto, PublicKey, Randomness, SlotNumber, SolutionRange, U256};
+use subspace_core_primitives::solutions::SolutionRange;
+use subspace_core_primitives::{hashes, PublicKey, Randomness, SlotNumber, U256};
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, HoldIdentifier, Moment, Nonce,
     Signature, MIN_REPLICATION_FACTOR,
@@ -1001,21 +1002,21 @@ fn extract_call_block_object_mapping(
         // Extract the actual object mappings.
         RuntimeCall::System(frame_system::Call::remark { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add frame_system::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });
         }
         RuntimeCall::System(frame_system::Call::remark_with_event { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add frame_system::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });
         }
         RuntimeCall::HistorySeeding(pallet_history_seeding::Call::seed_history { remark }) => {
             objects.push(BlockObject {
-                hash: crypto::blake3_hash(remark),
+                hash: hashes::blake3_hash(remark),
                 // Add pallet_history_seeding::Call enum variant to the base offset.
                 offset: base_offset + 1,
             });

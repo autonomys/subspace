@@ -2,8 +2,8 @@ use crate::verifier::PotVerifier;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::NonZeroU32;
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::pot::PotSeed;
-use subspace_core_primitives::Blake3Hash;
 
 const SEED: [u8; 16] = [
     0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1, 0x3a,

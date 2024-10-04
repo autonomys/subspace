@@ -17,7 +17,7 @@ use std::mem::ManuallyDrop;
 use std::simd::Simd;
 use std::str::FromStr;
 use std::{fmt, io};
-use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::hashes::blake3_hash;
 use subspace_core_primitives::pieces::{Piece, PieceOffset, Record};
 use subspace_core_primitives::sectors::{SBucket, SectorId};
 use subspace_core_primitives::ScalarBytes;

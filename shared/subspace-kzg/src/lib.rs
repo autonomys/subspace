@@ -29,7 +29,8 @@ use spin::Mutex;
 use static_assertions::const_assert_eq;
 use subspace_core_primitives::pieces::{RecordCommitment, RecordWitness};
 use subspace_core_primitives::segments::SegmentCommitment;
-use subspace_core_primitives::{ChunkWitness, ScalarBytes};
+use subspace_core_primitives::solutions::ChunkWitness;
+use subspace_core_primitives::ScalarBytes;
 use tracing::debug;
 
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases

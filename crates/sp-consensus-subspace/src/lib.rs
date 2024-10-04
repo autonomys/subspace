@@ -40,14 +40,13 @@ use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::num::NonZeroU32;
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::pot::{PotCheckpoints, PotOutput, PotSeed};
 use subspace_core_primitives::segments::{
     HistorySize, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::{
-    Blake3Hash, BlockHash, BlockNumber, PublicKey, RewardSignature, SlotNumber, Solution,
-    SolutionRange,
-};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
 #[cfg(feature = "std")]
 use subspace_kzg::Kzg;
 #[cfg(feature = "std")]

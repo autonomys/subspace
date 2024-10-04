@@ -7,13 +7,13 @@ use std::io::Write;
 use std::iter;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
+use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::pieces::{Piece, Record};
 use subspace_core_primitives::segments::{
     ArchivedBlockProgress, ArchivedHistorySegment, LastArchivedBlock, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex,
 };
-use subspace_core_primitives::Blake3Hash;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::Kzg;
 use subspace_verification::is_piece_valid;

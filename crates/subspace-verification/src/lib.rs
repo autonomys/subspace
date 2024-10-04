@@ -32,8 +32,8 @@ use core::simd::Simd;
 use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 #[cfg(feature = "kzg")]
-use subspace_core_primitives::crypto::blake3_254_hash_to_scalar;
-use subspace_core_primitives::crypto::{blake3_hash_list, blake3_hash_with_key};
+use subspace_core_primitives::hashes::blake3_254_hash_to_scalar;
+use subspace_core_primitives::hashes::{blake3_hash_list, blake3_hash_with_key, Blake3Hash};
 #[cfg(feature = "kzg")]
 use subspace_core_primitives::pieces::{PieceArray, Record, RecordWitness};
 use subspace_core_primitives::pot::PotOutput;
@@ -44,11 +44,9 @@ use subspace_core_primitives::sectors::SectorSlotChallenge;
 use subspace_core_primitives::segments::ArchivedHistorySegment;
 use subspace_core_primitives::segments::{HistorySize, SegmentCommitment};
 #[cfg(feature = "kzg")]
-use subspace_core_primitives::Solution;
-use subspace_core_primitives::{
-    Blake3Hash, BlockNumber, BlockWeight, PublicKey, RewardSignature, ScalarBytes, SlotNumber,
-    SolutionRange,
-};
+use subspace_core_primitives::solutions::Solution;
+use subspace_core_primitives::solutions::{RewardSignature, SolutionRange};
+use subspace_core_primitives::{BlockNumber, BlockWeight, PublicKey, ScalarBytes, SlotNumber};
 #[cfg(feature = "kzg")]
 use subspace_kzg::{Commitment, Kzg, Scalar, Witness};
 #[cfg(feature = "kzg")]
@@ -140,7 +138,7 @@ fn calculate_solution_distance(
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
-    subspace_core_primitives::bidirectional_distance(
+    subspace_core_primitives::solutions::bidirectional_distance(
         &global_challenge_as_solution_range,
         &audit_chunk_as_solution_range,
     )

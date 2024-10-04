@@ -4,9 +4,8 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet;
 #[cfg(not(feature = "std"))]
-use alloc::fmt;
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::fmt;
 use frame_support::PalletError;
 use hash_db::Hasher;
 #[cfg(feature = "std")]
@@ -23,8 +22,6 @@ use sp_std::marker::PhantomData;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 #[cfg(feature = "std")]
 use std::collections::BTreeSet;
-#[cfg(feature = "std")]
-use std::fmt;
 #[cfg(feature = "std")]
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 

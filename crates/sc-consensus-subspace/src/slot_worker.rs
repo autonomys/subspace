@@ -68,9 +68,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pot::{PotCheckpoints, PotOutput};
 use subspace_core_primitives::sectors::SectorId;
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, RewardSignature, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
-};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::{BlockNumber, PublicKey, REWARD_SIGNING_CONTEXT};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,

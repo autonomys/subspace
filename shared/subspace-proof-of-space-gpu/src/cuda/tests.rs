@@ -1,7 +1,7 @@
 use crate::cuda::cuda_devices;
 use std::num::NonZeroUsize;
 use std::slice;
-use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, blake3_hash};
+use subspace_core_primitives::hashes::{blake3_254_hash_to_scalar, blake3_hash};
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::sectors::SectorId;
 use subspace_core_primitives::segments::HistorySize;

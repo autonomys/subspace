@@ -27,7 +27,8 @@ use sp_std::fmt;
 use sp_std::num::NonZeroU32;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_core_primitives::segments::{SegmentCommitment, SegmentIndex};
-use subspace_core_primitives::{PublicKey, RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::solutions::{RewardSignature, Solution, SolutionRange};
+use subspace_core_primitives::PublicKey;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
