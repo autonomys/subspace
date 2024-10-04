@@ -33,8 +33,8 @@ fn basic() {
         &global_mutex,
     );
 
-    let sector_id = SectorId::new(blake3_hash(b"hello"), 500);
     let history_size = HistorySize::ONE;
+    let sector_id = SectorId::new(blake3_hash(b"hello"), 500, history_size);
     let mut record = Record::new_boxed();
     record
         .iter_mut()
@@ -46,12 +46,7 @@ fn basic() {
         cpu_encoded_record.clone_from(&record);
     }
     let cpu_sector_contents_map = cpu_records_encoder
-        .encode_records(
-            &sector_id,
-            &mut cpu_encoded_records,
-            history_size,
-            &Default::default(),
-        )
+        .encode_records(&sector_id, &mut cpu_encoded_records, &Default::default())
         .unwrap();
 
     let mut gpu_encoded_records = Record::new_zero_vec(2);
@@ -61,7 +56,7 @@ fn basic() {
     let mut gpu_sector_contents_map = SectorContentsMap::new(2);
     cuda_device
         .generate_and_encode_pospace(
-            &sector_id.derive_evaluation_seed(PieceOffset::ZERO, history_size),
+            &sector_id.derive_evaluation_seed(PieceOffset::ZERO),
             &mut gpu_encoded_records[0],
             gpu_sector_contents_map
                 .iter_record_bitfields_mut()
@@ -72,7 +67,7 @@ fn basic() {
         .unwrap();
     cuda_device
         .generate_and_encode_pospace(
-            &sector_id.derive_evaluation_seed(PieceOffset::ONE, history_size),
+            &sector_id.derive_evaluation_seed(PieceOffset::ONE),
             &mut gpu_encoded_records[1],
             gpu_sector_contents_map
                 .iter_record_bitfields_mut()

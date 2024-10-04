@@ -115,7 +115,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         (
             PlottedSector {
-                sector_id: SectorId::new(public_key.hash(), sector_index),
+                sector_id: SectorId::new(
+                    public_key.hash(),
+                    sector_index,
+                    farmer_protocol_info.history_size,
+                ),
                 sector_index,
                 sector_metadata,
                 piece_indexes: vec![],

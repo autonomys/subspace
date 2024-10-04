@@ -31,7 +31,8 @@ impl PlottedSectors for SingleDiskPlottedSectors {
         let sectors_metadata = self.sectors_metadata.read().await.clone();
         Ok(Box::new(stream::iter((0..).zip(sectors_metadata).map(
             move |(sector_index, sector_metadata)| {
-                let sector_id = SectorId::new(public_key_hash, sector_index);
+                let sector_id =
+                    SectorId::new(public_key_hash, sector_index, sector_metadata.history_size);
 
                 let mut piece_indexes = Vec::with_capacity(usize::from(self.pieces_in_sector));
                 (PieceOffset::ZERO..)
