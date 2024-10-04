@@ -266,9 +266,9 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 enable_rewards_at: EnableRewardsAt::Manually,
                 allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                 pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
-                enable_domains: true,
+                enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
-                enable_balance_transfers: true,
+                enable_balance_transfers: false,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 // TODO: Proper value here
