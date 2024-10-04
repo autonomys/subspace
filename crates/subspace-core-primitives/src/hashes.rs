@@ -129,7 +129,7 @@ pub fn blake3_hash_with_key(key: &[u8; 32], data: &[u8]) -> Blake3Hash {
     blake3::keyed_hash(key, data).as_bytes().into()
 }
 
-/// BLAKE3 keyed hashing of a single value.
+/// BLAKE3 keyed hashing of a list of values.
 #[inline]
 pub fn blake3_hash_list_with_key(key: &[u8; 32], data: &[&[u8]]) -> Blake3Hash {
     let mut state = blake3::Hasher::new_keyed(key);
