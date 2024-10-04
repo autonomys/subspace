@@ -42,7 +42,7 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
 pub type RequestHandlerFn<Request> = Arc<
     dyn (Fn(
             PeerId,
-            &Request,
+            Request,
         )
             -> Pin<Box<dyn Future<Output = Option<<Request as GenericRequest>::Response>> + Send>>)
         + Send
@@ -61,7 +61,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
     /// Creates new [`GenericRequestHandler`] by given handler.
     pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
     where
-        RH: (Fn(PeerId, &Request) -> Fut) + Send + Sync + 'static,
+        RH: (Fn(PeerId, Request) -> Fut) + Send + Sync + 'static,
         Fut: Future<Output = Option<Request::Response>> + Send + 'static,
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
@@ -87,7 +87,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         trace!(%peer, protocol=Request::LOG_TARGET, "Handling request...");
         let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
-        let response = (self.request_handler)(peer, &request).await;
+        let response = (self.request_handler)(peer, request).await;
 
         Ok(response.ok_or(RequestHandlerError::NoResponse)?.encode())
     }

@@ -120,7 +120,7 @@ where
         allow_non_global_addresses_in_dht: allow_private_ips,
         known_peers_registry,
         request_response_protocols: vec![
-            PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
+            PieceByIndexRequestHandler::create(move |_, PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
                 let weak_plotted_pieces = weak_plotted_pieces.clone();
@@ -159,7 +159,6 @@ where
                 debug!(?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();
-                let req = req.clone();
 
                 async move {
                     let internal_result = match req {
