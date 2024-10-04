@@ -28,6 +28,8 @@ use tracing::{debug, error, info, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADERS_LIMIT: u32 = MAX_SEGMENT_HEADERS_PER_REQUEST as u32;
+/// Max number of cached pieces to accept per request
+const MAX_CACHED_PIECES: usize = 128;
 
 /// Configuration for network stack
 #[derive(Debug, Parser)]
@@ -120,7 +122,11 @@ where
         allow_non_global_addresses_in_dht: allow_private_ips,
         known_peers_registry,
         request_response_protocols: vec![
-            PieceByIndexRequestHandler::create(move |_, PieceByIndexRequest { piece_index }| {
+            PieceByIndexRequestHandler::create(move |_, request| {
+                let PieceByIndexRequest {
+                    piece_index,
+                    mut cached_pieces,
+                } = request;
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
                 let weak_plotted_pieces = weak_plotted_pieces.clone();
@@ -128,9 +134,14 @@ where
 
                 async move {
                     let piece_from_cache = farmer_cache.get_piece(piece_index.to_multihash()).await;
+                    cached_pieces.truncate(MAX_CACHED_PIECES);
+                    let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
                     if let Some(piece) = piece_from_cache {
-                        Some(PieceByIndexResponse { piece: Some(piece) })
+                        Some(PieceByIndexResponse {
+                            piece: Some(piece),
+                            cached_pieces,
+                        })
                     } else {
                         debug!(
                             ?piece_index,
@@ -150,7 +161,10 @@ where
 
                         let piece = read_piece_fut.await;
 
-                        Some(PieceByIndexResponse { piece })
+                        Some(PieceByIndexResponse {
+                            piece,
+                            cached_pieces,
+                        })
                     }
                 }
                 .in_current_span()

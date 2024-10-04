@@ -2,15 +2,19 @@
 //!
 //! Request handler can be created with [`PieceByIndexRequestHandler`].
 
-use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
+use crate::protocols::request_response::handlers::generic_request_handler::{
+    GenericRequest, GenericRequestHandler,
+};
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
 /// Piece-by-index request
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PieceByIndexRequest {
     /// Request key - piece index
     pub piece_index: PieceIndex,
+    /// Additional pieces that requester is interested in if they are cached locally
+    pub cached_pieces: Vec<PieceIndex>,
 }
 
 impl GenericRequest for PieceByIndexRequest {
@@ -24,6 +28,9 @@ impl GenericRequest for PieceByIndexRequest {
 pub struct PieceByIndexResponse {
     /// Piece, if found
     pub piece: Option<Piece>,
+    /// Additional pieces that requester is interested in and are cached locally, order from request
+    /// is not preserved
+    pub cached_pieces: Vec<PieceIndex>,
 }
 
 /// Piece-by-index request handler

@@ -331,18 +331,25 @@ async fn request_sample_piece(
             peer_id,
             PieceByIndexRequest {
                 piece_index: sample_piece_index,
+                cached_pieces: Vec::new(),
             },
         )
         .await;
 
     match request_result {
-        Ok(PieceByIndexResponse { piece: Some(..) }) => {
+        Ok(PieceByIndexResponse {
+            piece: Some(..),
+            cached_pieces: _,
+        }) => {
             debug!(%peer_id, ?short_key, "Piece request succeeded.");
             stats.report_successful_request(peer_id, retry);
 
             (true, None)
         }
-        Ok(PieceByIndexResponse { piece: None }) => {
+        Ok(PieceByIndexResponse {
+            piece: None,
+            cached_pieces: _,
+        }) => {
             debug!(%peer_id, ?short_key, "Piece request returned empty piece.");
             stats.report_successful_request(peer_id, retry); // we just need to connect to the peer
 

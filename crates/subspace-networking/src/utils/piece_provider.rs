@@ -76,11 +76,20 @@ where
                     );
 
                     let request_result = request_batch
-                        .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
+                        .send_generic_request(
+                            provider_id,
+                            PieceByIndexRequest {
+                                piece_index,
+                                cached_pieces: Vec::new(),
+                            },
+                        )
                         .await;
 
                     match request_result {
-                        Ok(PieceByIndexResponse { piece: Some(piece) }) => {
+                        Ok(PieceByIndexResponse {
+                            piece: Some(piece),
+                            cached_pieces: _,
+                        }) => {
                             trace!(
                                 %piece_index,
                                 key = hex::encode(&key),
@@ -96,7 +105,10 @@ where
                                 return Some(piece);
                             }
                         }
-                        Ok(PieceByIndexResponse { piece: None }) => {
+                        Ok(PieceByIndexResponse {
+                            piece: None,
+                            cached_pieces: _,
+                        }) => {
                             debug!(
                                 %piece_index,
                                 key = hex::encode(&key),
@@ -130,13 +142,23 @@ where
         peer_id: PeerId,
         piece_index: PieceIndex,
     ) -> Option<Piece> {
+        // TODO: Take advantage of `cached_pieces`
         let request_result = self
             .node
-            .send_generic_request(peer_id, PieceByIndexRequest { piece_index })
+            .send_generic_request(
+                peer_id,
+                PieceByIndexRequest {
+                    piece_index,
+                    cached_pieces: Vec::new(),
+                },
+            )
             .await;
 
         match request_result {
-            Ok(PieceByIndexResponse { piece: Some(piece) }) => {
+            Ok(PieceByIndexResponse {
+                piece: Some(piece),
+                cached_pieces: _,
+            }) => {
                 trace!(%peer_id, %piece_index, "Piece request succeeded");
 
                 if let Some(validator) = &self.piece_validator {
@@ -145,7 +167,10 @@ where
                     return Some(piece);
                 }
             }
-            Ok(PieceByIndexResponse { piece: None }) => {
+            Ok(PieceByIndexResponse {
+                piece: None,
+                cached_pieces: _,
+            }) => {
                 debug!(%peer_id, %piece_index, "Piece request returned empty piece");
             }
             Err(error) => {
@@ -242,6 +267,7 @@ where
         piece_index: PieceIndex,
         round: usize,
     ) -> Option<Piece> {
+        // TODO: Take advantage of `cached_pieces`
         trace!(%piece_index, "get_piece_by_random_walking round");
 
         // Random walk key
@@ -256,11 +282,20 @@ where
                     trace!(%piece_index, %peer_id, %round, "get_closest_peers returned an item");
 
                     let request_result = request_batch
-                        .send_generic_request(peer_id, PieceByIndexRequest { piece_index })
+                        .send_generic_request(
+                            peer_id,
+                            PieceByIndexRequest {
+                                piece_index,
+                                cached_pieces: Vec::new(),
+                            },
+                        )
                         .await;
 
                     match request_result {
-                        Ok(PieceByIndexResponse { piece: Some(piece) }) => {
+                        Ok(PieceByIndexResponse {
+                            piece: Some(piece),
+                            cached_pieces: _,
+                        }) => {
                             trace!(%peer_id, %piece_index, ?key, %round,  "Piece request succeeded.");
 
                             if let Some(validator) = &self.piece_validator {
@@ -269,7 +304,10 @@ where
                                 return Some(piece);
                             }
                         }
-                        Ok(PieceByIndexResponse { piece: None }) => {
+                        Ok(PieceByIndexResponse {
+                            piece: None,
+                            cached_pieces: _,
+                        }) => {
                             debug!(%peer_id, %piece_index, ?key, %round, "Piece request returned empty piece.");
                         }
                         Err(error) => {

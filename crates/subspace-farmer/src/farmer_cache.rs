@@ -19,7 +19,7 @@ use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, FutureExt, StreamExt};
 use prometheus_client::registry::Registry;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -1125,6 +1125,62 @@ where
             metrics.cache_get_miss.inc();
         }
         None
+    }
+
+    /// Returns a filtered list of pieces that were found in farmer cache, order is not guaranteed
+    pub async fn has_pieces(&self, mut piece_indices: Vec<PieceIndex>) -> Vec<PieceIndex> {
+        let mut pieces_to_find = HashMap::<PieceIndex, RecordKey>::from_iter(
+            piece_indices
+                .iter()
+                .map(|piece_index| (*piece_index, RecordKey::from(piece_index.to_multihash()))),
+        );
+
+        // Quick check in piece caches
+        if let Some(piece_caches) = self.piece_caches.try_read() {
+            pieces_to_find.retain(|_piece_index, key| {
+                let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
+                !piece_caches.contains_stored_piece(&distance_key)
+            });
+        }
+
+        // Early exit if everything is cached
+        if pieces_to_find.is_empty() {
+            return piece_indices;
+        }
+
+        // Check plot caches concurrently
+        if let Some(plot_caches) = self.plot_caches.caches.try_read() {
+            let plot_caches = &plot_caches;
+            let not_found = pieces_to_find
+                .into_iter()
+                .map(|(piece_index, key)| async move {
+                    let key = &key;
+
+                    let found = plot_caches
+                        .iter()
+                        .map(|plot_cache| async {
+                            matches!(
+                                plot_cache.is_piece_maybe_stored(key).await,
+                                Ok(MaybePieceStoredResult::Yes)
+                            )
+                        })
+                        .collect::<FuturesUnordered<_>>()
+                        .any(|found| async move { found })
+                        .await;
+
+                    if found {
+                        None
+                    } else {
+                        Some(piece_index)
+                    }
+                })
+                .collect::<FuturesUnordered<_>>()
+                .filter_map(|maybe_piece_index| async move { maybe_piece_index })
+                .collect::<HashSet<_>>()
+                .await;
+            piece_indices.retain(|piece_index| !not_found.contains(piece_index));
+        }
+        piece_indices
     }
 
     /// Find piece in cache and return its retrieval details
