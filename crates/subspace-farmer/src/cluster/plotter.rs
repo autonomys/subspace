@@ -15,6 +15,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
+use bytes::Bytes;
 use derive_more::Display;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
@@ -93,7 +94,7 @@ enum ClusterSectorPlottingProgress {
         time: Duration,
     },
     /// Sector chunk after finished plotting
-    SectorChunk(Result<Vec<u8>, String>),
+    SectorChunk(Result<Bytes, String>),
     /// Plotting failed
     Error {
         /// Error message
@@ -518,8 +519,8 @@ async fn process_response_notification<PS>(
     progress_sender: &mut PS,
     retry_backoff_policy: &mut ExponentialBackoff,
     response: ClusterSectorPlottingProgress,
-    sector_sender: &mut mpsc::Sender<Result<Vec<u8>, String>>,
-    maybe_sector_receiver: &mut Option<mpsc::Receiver<Result<Vec<u8>, String>>>,
+    sector_sender: &mut mpsc::Sender<Result<Bytes, String>>,
+    maybe_sector_receiver: &mut Option<mpsc::Receiver<Result<Bytes, String>>>,
 ) -> ResponseProcessingResult
 where
     PS: Sink<SectorPlottingProgress> + Unpin + Send + 'static,
@@ -931,10 +932,11 @@ async fn send_publish_progress(
                 match maybe_sector_chunk {
                     Ok(sector_chunk) => {
                         // Slice large chunks into smaller ones before publishing
-                        for sector_chunk in sector_chunk.chunks(approximate_max_message_size) {
+                        for small_sector_chunk in sector_chunk.chunks(approximate_max_message_size)
+                        {
                             if let Err(error) = response_sender
                                 .send(ClusterSectorPlottingProgress::SectorChunk(Ok(
-                                    sector_chunk.to_vec()
+                                    sector_chunk.slice_ref(small_sector_chunk)
                                 )))
                                 .await
                             {

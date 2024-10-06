@@ -8,6 +8,7 @@ use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::Mutex as AsyncMutex;
 use async_trait::async_trait;
+use bytes::Bytes;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
@@ -455,7 +456,7 @@ where
                         SectorPlottingProgress::Finished {
                             plotted_sector,
                             time: start.elapsed(),
-                            sector: Box::pin(stream::once(async move { Ok(sector) })),
+                            sector: Box::pin(stream::once(async move { Ok(Bytes::from(sector)) })),
                         },
                     )
                     .await;
