@@ -101,12 +101,13 @@ void chacha_mix(chacha_state& state, size_t counter)
 
 template<int ROUNDS>
 __global__ __launch_bounds__(1024)
-void generate_chacha_keystream(chacha_state* output, chacha_state state,
+void generate_chacha_keystream(chacha_state* output, chacha_state _state,
                                size_t output_block_count)
 {
     size_t tid = blockIdx.x * (size_t)blockDim.x + threadIdx.x;
 
     for (size_t i = tid; i < output_block_count; i += (size_t)gridDim.x * blockDim.x) {
+        chacha_state state = _state;
         chacha_mix<ROUNDS>(state, i);
 
         output[i] = state;
