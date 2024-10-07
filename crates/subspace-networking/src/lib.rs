@@ -22,7 +22,7 @@ mod behavior;
 mod constructor;
 mod node;
 mod node_runner;
-mod protocols;
+pub mod protocols;
 
 mod shared;
 pub mod utils;
@@ -39,15 +39,6 @@ pub use constructor::{
     construct, peer_id, Config, CreationError, KademliaMode, LocalRecordProvider,
 };
 pub use libp2p;
-pub use protocols::request_response::handlers::generic_request_handler::{
-    GenericRequest, GenericRequestHandler,
-};
-pub use protocols::request_response::handlers::piece_by_index::{
-    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
-};
-pub use protocols::request_response::handlers::segment_header::{
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-};
 pub use shared::PeerDiscovered;
 pub use utils::key_with_distance::KeyWithDistance;
 pub use utils::multihash::Multihash;

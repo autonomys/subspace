@@ -4,11 +4,12 @@ use std::fs;
 use std::path::PathBuf;
 use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
+use subspace_networking::protocols::request_response::handlers::segment_header::SegmentHeaderBySegmentIndexesRequestHandler;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
-    KnownPeersManagerPersistenceError, Node, NodeRunner, PieceByIndexRequestHandler,
-    SegmentHeaderBySegmentIndexesRequestHandler,
+    KnownPeersManagerPersistenceError, Node, NodeRunner,
 };
 use thiserror::Error;
 use tracing::{error, trace};

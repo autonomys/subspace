@@ -486,7 +486,7 @@ impl NetworkBehaviour for RequestResponseFactoryBehaviour {
         Ok(handler)
     }
 
-    /// Informs the behaviour about an event from the [`Swarm`](crate::Swarm).
+    /// Informs the behaviour about an event from the [`Swarm`](libp2p::Swarm).
     fn on_swarm_event(&mut self, event: FromSwarm) {
         match event {
             FromSwarm::ConnectionEstablished(inner) => {

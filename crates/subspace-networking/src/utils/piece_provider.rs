@@ -1,7 +1,10 @@
 //! Provides methods to retrieve pieces from DSN.
 
+use crate::protocols::request_response::handlers::piece_by_index::{
+    PieceByIndexRequest, PieceByIndexResponse,
+};
 use crate::utils::multihash::ToMultihash;
-use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
+use crate::Node;
 use async_trait::async_trait;
 use futures::StreamExt;
 use libp2p::kad::RecordKey;

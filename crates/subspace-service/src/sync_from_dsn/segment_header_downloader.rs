@@ -5,7 +5,10 @@ use std::error::Error;
 use std::pin::pin;
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
+use subspace_networking::protocols::request_response::handlers::segment_header::{
+    SegmentHeaderRequest, SegmentHeaderResponse,
+};
+use subspace_networking::Node;
 use tracing::{debug, error, trace, warn};
 
 const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;

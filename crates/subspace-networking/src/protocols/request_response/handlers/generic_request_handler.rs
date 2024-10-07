@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Generic request-response handler, typically is used with a type implementing [`GenericRequest`]
+//! to significantly reduce boilerplate when implementing [`RequestHandler`].
+
 use crate::protocols::request_response::request_response_factory::{
     IncomingRequest, OutgoingResponse, ProtocolConfig, RequestHandler,
 };
@@ -39,7 +42,7 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
     type Response: Encode + Decode + Send + Sync + 'static;
 }
 
-pub type RequestHandlerFn<Request> = Arc<
+type RequestHandlerFn<Request> = Arc<
     dyn (Fn(
             PeerId,
             Request,

@@ -6,10 +6,10 @@
 
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
-use crate::{
-    Config, GenericRequest, GenericRequestHandler, KnownPeersManager, KnownPeersManagerConfig,
-    KnownPeersRegistry,
+use crate::protocols::request_response::handlers::generic_request_handler::{
+    GenericRequest, GenericRequestHandler,
 };
+use crate::{Config, KnownPeersManager, KnownPeersManagerConfig, KnownPeersRegistry};
 use futures::channel::oneshot;
 use futures::future::pending;
 use libp2p::multiaddr::Protocol;

@@ -16,10 +16,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::PieceIndex;
-use subspace_networking::{
-    Config, Multihash, Node, PeerDiscovered, PieceByIndexRequest, PieceByIndexRequestHandler,
-    PieceByIndexResponse, SendRequestError,
+use subspace_networking::protocols::request_response::handlers::piece_by_index::{
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
+use subspace_networking::{Config, Multihash, Node, PeerDiscovered, SendRequestError};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
