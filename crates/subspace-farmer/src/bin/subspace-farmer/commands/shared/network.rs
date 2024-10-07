@@ -14,6 +14,9 @@ use subspace_farmer::KNOWN_PEERS_CACHE_SIZE;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::{
+    CachedPieceByIndexRequest, CachedPieceByIndexRequestHandler, CachedPieceByIndexResponse,
+};
 use subspace_networking::protocols::request_response::handlers::piece_by_index::{
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
@@ -126,6 +129,32 @@ where
         allow_non_global_addresses_in_dht: allow_private_ips,
         known_peers_registry,
         request_response_protocols: vec![
+            {
+                let farmer_cache = farmer_cache.clone();
+
+                CachedPieceByIndexRequestHandler::create(move |_, request| {
+                    let CachedPieceByIndexRequest {
+                        piece_index,
+                        mut cached_pieces,
+                    } = request;
+                    debug!(?piece_index, "Cached piece request received");
+
+                    let farmer_cache = farmer_cache.clone();
+
+                    async move {
+                        let piece_from_cache =
+                            farmer_cache.get_piece(piece_index.to_multihash()).await;
+                        cached_pieces.truncate(MAX_CACHED_PIECES);
+                        let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
+
+                        piece_from_cache.map(|piece| CachedPieceByIndexResponse {
+                            piece: Some(piece),
+                            cached_pieces,
+                        })
+                    }
+                    .in_current_span()
+                })
+            },
             PieceByIndexRequestHandler::create(move |_, request| {
                 let PieceByIndexRequest {
                     piece_index,
