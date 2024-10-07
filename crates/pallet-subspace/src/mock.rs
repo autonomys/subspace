@@ -385,6 +385,7 @@ pub fn create_signed_vote(
         let sector_id = SectorId::new(
             PublicKey::from(keypair.public.to_bytes()).hash(),
             solution.sector_index,
+            solution.history_size,
         );
         let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
         let masked_chunk =

@@ -227,7 +227,11 @@ where
 {
     let sector_index = sector_metadata.sector_index;
 
-    let sector_id = SectorId::new(public_key.hash(), sector_index);
+    let sector_id = SectorId::new(
+        public_key.hash(),
+        sector_index,
+        sector_metadata.history_size,
+    );
 
     let piece = match reading::read_piece::<PosTable, _, _>(
         piece_offset,

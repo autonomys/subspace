@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
 use subspace_core_primitives::sectors::SectorId;
-use subspace_core_primitives::segments::HistorySize;
 use subspace_farmer_components::plotting::RecordsEncoder;
 use subspace_farmer_components::sector::SectorContentsMap;
 use subspace_proof_of_space_gpu::cuda::CudaDevice;
@@ -30,7 +29,6 @@ impl RecordsEncoder for CudaRecordsEncoder {
         &mut self,
         sector_id: &SectorId,
         records: &mut [Record],
-        history_size: HistorySize,
         abort_early: &AtomicBool,
     ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let pieces_in_sector = records
@@ -59,7 +57,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
                     else {
                         return;
                     };
-                    let pos_seed = sector_id.derive_evaluation_seed(piece_offset, history_size);
+                    let pos_seed = sector_id.derive_evaluation_seed(piece_offset);
 
                     if let Err(error) = self.cuda_device.generate_and_encode_pospace(
                         &pos_seed,

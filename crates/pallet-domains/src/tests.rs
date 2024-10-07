@@ -1,5 +1,5 @@
 use crate::block_tree::{verify_execution_receipt, BlockTreeNode};
-use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::domain_registry::{DomainConfig, DomainConfigParams, DomainObject};
 use crate::pallet::OperatorIdOwner;
 use crate::runtime_registry::ScheduledRuntimeUpgrade;
 use crate::staking::Operator;
@@ -81,7 +81,6 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
-    pub const MaxBundlesPerBlock: u32 = 10;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
@@ -253,7 +252,6 @@ impl pallet_domains::Config for Test {
     type MinNominatorStake = MinNominatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
-    type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
@@ -462,13 +460,11 @@ pub(crate) fn register_genesis_domain(creator: u128, operator_ids: Vec<OperatorI
     );
     crate::Pallet::<Test>::instantiate_domain(
         RawOrigin::Signed(creator).into(),
-        DomainConfig {
+        DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
-            max_block_size: 1u32,
-            max_block_weight: Weight::from_parts(1, 0),
+            maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         },
@@ -607,7 +603,7 @@ fn test_calculate_tx_range() {
 }
 
 #[test]
-fn test_bundle_fromat_verification() {
+fn test_bundle_format_verification() {
     let opaque_extrinsic = |dest: u128, value: u128| -> OpaqueExtrinsic {
         UncheckedExtrinsic {
             signature: None,
@@ -620,15 +616,14 @@ fn test_bundle_fromat_verification() {
     };
     new_test_ext().execute_with(|| {
         let domain_id = DomainId::new(0);
-        let max_extrincis_count = 10;
-        let max_block_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
+        let max_extrinsics_count = 10;
+        let max_bundle_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrinsics_count;
         let domain_config = DomainConfig {
             domain_name: "test-domain".to_owned(),
             runtime_id: 0u32,
-            max_block_size,
-            max_block_weight: Weight::MAX,
+            max_bundle_size,
+            max_bundle_weight: Weight::MAX,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };
@@ -659,12 +654,12 @@ fn test_bundle_fromat_verification() {
 
         // Bundle exceed max size
         let mut too_large_bundle = valid_bundle.clone();
-        for i in 0..max_extrincis_count {
+        for i in 0..max_extrinsics_count {
             too_large_bundle
                 .extrinsics
                 .push(opaque_extrinsic(i as u128, i as u128));
         }
-        assert!(too_large_bundle.size() > max_block_size);
+        assert!(too_large_bundle.size() > max_bundle_size);
 
         // Bundle with wrong value of `bundle_extrinsics_root`
         let mut invalid_extrinsic_root_bundle = valid_bundle.clone();

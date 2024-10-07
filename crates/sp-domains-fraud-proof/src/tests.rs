@@ -93,7 +93,7 @@ fn generate_eip2930_tx(
         <TestRuntime as frame_system::Config>::BlockWeights::get();
     // `limits.get(DispatchClass::Normal).max_extrinsic` is too large to use as `gas_limit`
     // thus use `base_extrinsic`
-    let max_extrinsic = limits.get(DispatchClass::Normal).base_extrinsic * 1000;
+    let max_extrinsic = limits.get(DispatchClass::Normal).base_extrinsic * 100;
     let max_extrinsic_gas =
         <TestRuntime as pallet_evm::Config>::GasWeightMapping::weight_to_gas(max_extrinsic);
 

@@ -37,7 +37,6 @@ use sp_std::collections::btree_set::BTreeSet;
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
-    InvalidBundlesPerBlock,
     ExceedMaxDomainBlockWeight,
     ExceedMaxDomainBlockSize,
     MaxDomainId,
@@ -65,19 +64,69 @@ pub struct DomainConfig<AccountId: Ord, Balance> {
     pub domain_name: String,
     /// A pointer to the `RuntimeRegistry` entry for this domain.
     pub runtime_id: RuntimeId,
-    /// The max block size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
-    pub max_block_size: u32,
-    /// The max block weight for this domain, may not exceed the system-wide `MaxDomainBlockWeight` limit.
-    pub max_block_weight: Weight,
+    /// The max bundle size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
+    pub max_bundle_size: u32,
+    /// The max bundle weight for this domain, may not exceed the system-wide `MaxDomainBlockWeight` limit.
+    pub max_bundle_weight: Weight,
     /// The probability of successful bundle in a slot (active slots coefficient). This defines the
     /// expected bundle production rate, must be `> 0` and `≤ 1`.
     pub bundle_slot_probability: (u64, u64),
-    /// The expected number of bundles for a domain block, must be `≥ 1` and `≤ MaxBundlesPerBlock`.
-    pub target_bundles_per_block: u32,
     /// Allowed operators to operate for this domain.
     pub operator_allow_list: OperatorAllowList<AccountId>,
     // Initial balances for Domain.
     pub initial_balances: Vec<(MultiAccountId, Balance)>,
+}
+
+/// Parameters of the `instantiate_domain` call, it is similar to `DomainConfig` except the `max_bundle_size/weight`
+/// is replaced by a optional `maybe_bundle_limit`.
+///
+/// It is used to derive `DomainConfig`, and if `maybe_bundle_limit` is `None` a default `max_bundle_size/weight`
+/// derived from the `bundle_slot_probability` and other system-wide parameters will be used.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct DomainConfigParams<AccountId: Ord, Balance> {
+    pub domain_name: String,
+    pub runtime_id: RuntimeId,
+    pub maybe_bundle_limit: Option<DomainBundleLimit>,
+    pub bundle_slot_probability: (u64, u64),
+    pub operator_allow_list: OperatorAllowList<AccountId>,
+    pub initial_balances: Vec<(MultiAccountId, Balance)>,
+}
+
+pub fn into_domain_config<T: Config>(
+    domain_config_params: DomainConfigParams<T::AccountId, BalanceOf<T>>,
+) -> Result<DomainConfig<T::AccountId, BalanceOf<T>>, Error> {
+    let DomainConfigParams {
+        domain_name,
+        runtime_id,
+        maybe_bundle_limit,
+        bundle_slot_probability,
+        operator_allow_list,
+        initial_balances,
+    } = domain_config_params;
+
+    let DomainBundleLimit {
+        max_bundle_size,
+        max_bundle_weight,
+    } = match maybe_bundle_limit {
+        Some(b) => b,
+        None => calculate_max_bundle_weight_and_size(
+            T::MaxDomainBlockSize::get(),
+            T::MaxDomainBlockWeight::get(),
+            T::ConsensusSlotProbability::get(),
+            bundle_slot_probability,
+        )
+        .ok_or(Error::BundleLimitCalculationOverflow)?,
+    };
+
+    Ok(DomainConfig {
+        domain_name,
+        runtime_id,
+        max_bundle_size,
+        max_bundle_weight,
+        bundle_slot_probability,
+        operator_allow_list,
+        initial_balances,
+    })
 }
 
 impl<AccountId, Balance> DomainConfig<AccountId, Balance>
@@ -123,16 +172,6 @@ where
 
         Ok(())
     }
-
-    pub(crate) fn calculate_bundle_limit<T: Config>(&self) -> Result<DomainBundleLimit, Error> {
-        calculate_max_bundle_weight_and_size(
-            self.max_block_size,
-            self.max_block_weight,
-            T::ConsensusSlotProbability::get(),
-            self.bundle_slot_probability,
-        )
-        .ok_or(Error::BundleLimitCalculationOverflow)
-    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -153,8 +192,17 @@ pub struct DomainObject<Number, ReceiptHash, AccountId: Ord, Balance> {
 
 pub(crate) fn can_instantiate_domain<T: Config>(
     owner_account_id: &T::AccountId,
-    domain_config: &DomainConfig<T::AccountId, BalanceOf<T>>,
-) -> Result<(), Error> {
+    domain_config_params: DomainConfigParams<T::AccountId, BalanceOf<T>>,
+) -> Result<DomainConfig<T::AccountId, BalanceOf<T>>, Error> {
+    // `bundle_slot_probability` must be `> 0` and `≤ 1`
+    let (numerator, denominator) = domain_config_params.bundle_slot_probability;
+    ensure!(
+        numerator != 0 && denominator != 0 && numerator <= denominator,
+        Error::InvalidSlotProbability
+    );
+
+    let domain_config = into_domain_config::<T>(domain_config_params)?;
+
     ensure!(
         domain_config.domain_name.len() as u32 <= T::MaxDomainNameLength::get(),
         Error::DomainNameTooLong,
@@ -164,30 +212,15 @@ pub(crate) fn can_instantiate_domain<T: Config>(
         Error::RuntimeNotFound
     );
     ensure!(
-        domain_config.max_block_size <= T::MaxDomainBlockSize::get(),
+        domain_config.max_bundle_size <= T::MaxDomainBlockSize::get(),
         Error::ExceedMaxDomainBlockSize
     );
     ensure!(
         domain_config
-            .max_block_weight
+            .max_bundle_weight
             .all_lte(T::MaxDomainBlockWeight::get()),
         Error::ExceedMaxDomainBlockWeight
     );
-    ensure!(
-        domain_config.target_bundles_per_block != 0
-            && domain_config.target_bundles_per_block <= T::MaxBundlesPerBlock::get(),
-        Error::InvalidBundlesPerBlock
-    );
-
-    // `bundle_slot_probability` must be `> 0` and `≤ 1`
-    let (numerator, denominator) = domain_config.bundle_slot_probability;
-    ensure!(
-        numerator != 0 && denominator != 0 && numerator <= denominator,
-        Error::InvalidSlotProbability
-    );
-
-    // Ensure the bundle limit can be calculated successfully
-    let _ = domain_config.calculate_bundle_limit::<T>()?;
 
     ensure!(
         T::Currency::reducible_balance(owner_account_id, Preservation::Protect, Fortitude::Polite)
@@ -197,15 +230,15 @@ pub(crate) fn can_instantiate_domain<T: Config>(
 
     domain_config.check_initial_balances::<T>()?;
 
-    Ok(())
+    Ok(domain_config)
 }
 
 pub(crate) fn do_instantiate_domain<T: Config>(
-    domain_config: DomainConfig<T::AccountId, BalanceOf<T>>,
+    domain_config_params: DomainConfigParams<T::AccountId, BalanceOf<T>>,
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
 ) -> Result<DomainId, Error> {
-    can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
+    let domain_config = can_instantiate_domain::<T>(&owner_account_id, domain_config_params)?;
 
     let domain_instantiation_deposit = T::DomainInstantiationDeposit::get();
     let domain_id = NextDomainId::<T>::get();
@@ -355,13 +388,14 @@ mod tests {
         let creator = 1u128;
         let created_at = 0u64;
         // Construct an invalid domain config initially
-        let mut domain_config = DomainConfig {
+        let mut domain_config_params = DomainConfigParams {
             domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
             runtime_id: 0,
-            max_block_size: u32::MAX,
-            max_block_weight: Weight::MAX,
+            maybe_bundle_limit: Some(DomainBundleLimit {
+                max_bundle_size: u32::MAX,
+                max_bundle_weight: Weight::MAX,
+            }),
             bundle_slot_probability: (0, 0),
-            target_bundles_per_block: 0,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };
@@ -370,22 +404,45 @@ mod tests {
         ext.execute_with(|| {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
 
+            // Failed to instantiate domain due to invalid `bundle_slot_probability`
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config_params.bundle_slot_probability = (1, 0);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config_params.bundle_slot_probability = (0, 1);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config_params.bundle_slot_probability = (2, 1);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            // Recorrect `bundle_slot_probability`
+            domain_config_params.bundle_slot_probability = (1, 1);
+
             // Failed to instantiate domain due to `domain_name` too long
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Err(Error::DomainNameTooLong)
             );
             // Recorrect `domain_name`
-            "evm-domain".clone_into(&mut domain_config.domain_name);
+            "evm-domain".clone_into(&mut domain_config_params.domain_name);
 
             // Failed to instantiate domain due to using unregistered runtime id
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Err(Error::RuntimeNotFound)
             );
             // Register runtime id
             RuntimeRegistry::<Test>::insert(
-                domain_config.runtime_id,
+                domain_config_params.runtime_id,
                 RuntimeObject {
                     runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
@@ -407,59 +464,31 @@ mod tests {
 
             // Failed to instantiate domain due to exceed max domain block size limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockSize)
             );
-            // Recorrect `max_block_size`
-            domain_config.max_block_size = 1;
+            // Recorrect `max_bundle_size`
+            domain_config_params
+                .maybe_bundle_limit
+                .as_mut()
+                .unwrap()
+                .max_bundle_size = 1;
 
             // Failed to instantiate domain due to exceed max domain block weight limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockWeight)
             );
-            // Recorrect `max_block_weight`
-            domain_config.max_block_weight = Weight::from_parts(1, 0);
-
-            // Failed to instantiate domain due to invalid `target_bundles_per_block`
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidBundlesPerBlock)
-            );
-            domain_config.target_bundles_per_block = u32::MAX;
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidBundlesPerBlock)
-            );
-            // Recorrect `target_bundles_per_block`
-            domain_config.target_bundles_per_block = 1;
-
-            // Failed to instantiate domain due to invalid `bundle_slot_probability`
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidSlotProbability)
-            );
-            domain_config.bundle_slot_probability = (1, 0);
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidSlotProbability)
-            );
-            domain_config.bundle_slot_probability = (0, 1);
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidSlotProbability)
-            );
-            domain_config.bundle_slot_probability = (2, 1);
-            assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
-                Err(Error::InvalidSlotProbability)
-            );
-            // Recorrect `bundle_slot_probability`
-            domain_config.bundle_slot_probability = (1, 1);
+            // Recorrect `max_bundle_weight`
+            domain_config_params
+                .maybe_bundle_limit
+                .as_mut()
+                .unwrap()
+                .max_bundle_weight = Weight::from_parts(1, 0);
 
             // Failed to instantiate domain due to creator don't have enough fund
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Err(Error::InsufficientFund)
             );
             // Set enough fund to creator
@@ -468,26 +497,33 @@ mod tests {
                 <Test as Config>::DomainInstantiationDeposit::get()
                     + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
+            // Set `maybe_bundle_limit` to use the default bundle limit
+            domain_config_params.maybe_bundle_limit = None;
 
             // `instantiate_domain` must success now
             let domain_id =
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at).unwrap();
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at)
+                    .unwrap();
             let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
 
             assert_eq!(domain_obj.owner_account_id, creator);
             assert_eq!(domain_obj.created_at, created_at);
-            assert_eq!(domain_obj.domain_config, domain_config);
+            assert_eq!(
+                domain_obj.domain_config,
+                into_domain_config::<Test>(domain_config_params.clone()).unwrap()
+            );
             assert_eq!(NextDomainId::<Test>::get(), 1.into());
             // Fund locked up thus can't withdraw, and usable balance is zero since ED is 1
             assert_eq!(Balances::usable_balance(creator), Zero::zero());
 
             // instance count must be incremented
-            let runtime_obj = RuntimeRegistry::<Test>::get(domain_config.runtime_id).unwrap();
+            let runtime_obj =
+                RuntimeRegistry::<Test>::get(domain_config_params.runtime_id).unwrap();
             assert_eq!(runtime_obj.instance_count, 1);
 
             // cannot use the locked funds to create a new domain instance
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config, creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params, creator, created_at),
                 Err(Error::InsufficientFund)
             );
 
@@ -512,13 +548,11 @@ mod tests {
         let creator = 1u128;
         let created_at = 0u64;
         // Construct an invalid domain config initially
-        let mut domain_config = DomainConfig {
+        let mut domain_config_params = DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
-            max_block_size: 10,
-            max_block_weight: Weight::from_parts(1, 0),
+            maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 1,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: vec![(MultiAccountId::Raw(vec![0, 1, 2, 3, 4, 5]), 1_000_000 * SSC)],
         };
@@ -528,7 +562,7 @@ mod tests {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
             // Register runtime id
             RuntimeRegistry::<Test>::insert(
-                domain_config.runtime_id,
+                domain_config_params.runtime_id,
                 RuntimeObject {
                     runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
@@ -559,14 +593,14 @@ mod tests {
 
             // should fail due to invalid account ID type
             assert_err!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Error::FailedToGenerateRawGenesis(
                     crate::runtime_registry::Error::InvalidAccountIdType
                 )
             );
 
             // duplicate accounts
-            domain_config.initial_balances = vec![
+            domain_config_params.initial_balances = vec![
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
@@ -582,12 +616,12 @@ mod tests {
             ];
 
             assert_err!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Error::DuplicateInitialAccounts
             );
 
             // max accounts
-            domain_config.initial_balances = vec![
+            domain_config_params.initial_balances = vec![
                 (
                     AccountId20Converter::convert(AccountId20::from(hex!(
                         "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
@@ -627,12 +661,12 @@ mod tests {
             ];
 
             assert_err!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Error::MaxInitialDomainAccounts
             );
 
             // min balance accounts
-            domain_config.initial_balances = vec![(
+            domain_config_params.initial_balances = vec![(
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
@@ -640,11 +674,11 @@ mod tests {
             )];
 
             assert_err!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at),
                 Error::MinInitialAccountBalance
             );
 
-            domain_config.initial_balances = vec![(
+            domain_config_params.initial_balances = vec![(
                 AccountId20Converter::convert(AccountId20::from(hex!(
                     "f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
                 ))),
@@ -662,12 +696,16 @@ mod tests {
 
             // should be successful
             let domain_id =
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at).unwrap();
+                do_instantiate_domain::<Test>(domain_config_params.clone(), creator, created_at)
+                    .unwrap();
             let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
 
             assert_eq!(domain_obj.owner_account_id, creator);
             assert_eq!(domain_obj.created_at, created_at);
-            assert_eq!(domain_obj.domain_config, domain_config);
+            assert_eq!(
+                domain_obj.domain_config,
+                into_domain_config::<Test>(domain_config_params).unwrap()
+            );
         });
     }
 }

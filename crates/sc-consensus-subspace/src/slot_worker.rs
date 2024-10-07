@@ -523,7 +523,11 @@ where
                 }
             }
 
-            let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
+            let sector_id = SectorId::new(
+                solution.public_key.hash(),
+                solution.sector_index,
+                solution.history_size,
+            );
 
             let history_size = runtime_api.history_size(parent_hash).ok()?;
             let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;

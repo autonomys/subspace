@@ -13,7 +13,6 @@ use sp_domains::{DomainId, GenesisDomain, OperatorAllowList, OperatorPublicKey, 
 use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
 use subspace_runtime_primitives::{AccountId, Balance, SSC};
-use subspace_test_runtime::{MaxDomainBlockSize, MaxDomainBlockWeight};
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -122,10 +121,7 @@ pub fn get_genesis_domain(
         // Domain config, mainly for placeholder the concrete value TBD
         owner_account_id: sudo_account,
         domain_name: "evm-domain".to_owned(),
-        max_block_size: MaxDomainBlockSize::get(),
-        max_block_weight: MaxDomainBlockWeight::get(),
         bundle_slot_probability: (1, 1),
-        target_bundles_per_block: 10,
         operator_allow_list: OperatorAllowList::Anyone,
 
         signing_key: get_from_seed::<OperatorPublicKey>("Alice"),

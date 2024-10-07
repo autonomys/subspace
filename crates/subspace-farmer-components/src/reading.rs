@@ -465,9 +465,7 @@ where
         pieces_in_sector,
         &sector_metadata.s_bucket_offsets(),
         &sector_contents_map,
-        &table_generator.generate(
-            &sector_id.derive_evaluation_seed(piece_offset, sector_metadata.history_size),
-        ),
+        &table_generator.generate(&sector_id.derive_evaluation_seed(piece_offset)),
         sector,
         mode,
     )

@@ -456,6 +456,7 @@ where
         let sector_id = SectorId::new(
             pre_digest.solution().public_key.hash(),
             pre_digest.solution().sector_index,
+            pre_digest.solution().history_size,
         );
 
         let max_pieces_in_sector = self

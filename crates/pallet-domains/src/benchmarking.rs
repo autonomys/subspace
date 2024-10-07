@@ -5,7 +5,7 @@ extern crate alloc;
 use super::*;
 use crate::block_tree::{prune_receipt, BlockTreeNode};
 use crate::bundle_storage_fund::refund_storage_fee;
-use crate::domain_registry::DomainConfig;
+use crate::domain_registry::{into_domain_config, DomainConfigParams};
 use crate::staking::{
     do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_reward_operators,
     Error as StakingError, OperatorConfig, OperatorStatus, WithdrawStake,
@@ -23,7 +23,6 @@ use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::Hooks;
-use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
@@ -528,13 +527,11 @@ mod benchmarks {
 
         let runtime_id = register_runtime::<T>();
         let domain_id = NextDomainId::<T>::get();
-        let domain_config = DomainConfig {
+        let domain_config_params = DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
             runtime_id,
-            max_block_size: 1024,
-            max_block_weight: Weight::from_parts(1, 0),
+            maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 10,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };
@@ -545,10 +542,16 @@ mod benchmarks {
         ));
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
+        _(
+            RawOrigin::Signed(creator.clone()),
+            domain_config_params.clone(),
+        );
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
-        assert_eq!(domain_obj.domain_config, domain_config);
+        assert_eq!(
+            domain_obj.domain_config,
+            into_domain_config::<T>(domain_config_params).expect("Must success")
+        );
         assert_eq!(domain_obj.owner_account_id, creator);
         assert!(DomainStakingSummary::<T>::get(domain_id).is_some());
         assert!(
@@ -946,13 +949,11 @@ mod benchmarks {
 
         let runtime_id = register_runtime::<T>();
         let domain_id = NextDomainId::<T>::get();
-        let domain_config = DomainConfig {
+        let domain_config_params = DomainConfigParams {
             domain_name: "evm-domain".to_owned(),
             runtime_id,
-            max_block_size: 1024,
-            max_block_weight: Weight::from_parts(1, 0),
+            maybe_bundle_limit: None,
             bundle_slot_probability: (1, 1),
-            target_bundles_per_block: 10,
             operator_allow_list: OperatorAllowList::Anyone,
             initial_balances: Default::default(),
         };
@@ -964,11 +965,14 @@ mod benchmarks {
 
         assert_ok!(Domains::<T>::instantiate_domain(
             RawOrigin::Signed(creator.clone()).into(),
-            domain_config.clone(),
+            domain_config_params.clone(),
         ));
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
-        assert_eq!(domain_obj.domain_config, domain_config);
+        assert_eq!(
+            domain_obj.domain_config,
+            into_domain_config::<T>(domain_config_params).expect("Must success")
+        );
         assert_eq!(domain_obj.owner_account_id, creator);
 
         domain_id

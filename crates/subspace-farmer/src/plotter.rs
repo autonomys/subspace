@@ -11,6 +11,7 @@ pub mod gpu;
 pub mod pool;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::Stream;
 use std::fmt;
@@ -39,7 +40,7 @@ pub enum SectorPlottingProgress {
         /// How much time it took to plot a sector
         time: Duration,
         /// Stream of all plotted sector bytes
-        sector: Pin<Box<dyn Stream<Item = Result<Vec<u8>, String>> + Send + Sync>>,
+        sector: Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send + Sync>>,
     },
     /// Plotting failed
     Error {

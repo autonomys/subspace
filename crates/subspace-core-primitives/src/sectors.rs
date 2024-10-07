@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::hashes::{blake3_hash_list, blake3_hash_with_key, Blake3Hash};
+use crate::hashes::{
+    blake3_hash_list, blake3_hash_list_with_key, blake3_hash_with_key, Blake3Hash,
+};
 use crate::pieces::{PieceIndex, PieceOffset, Record};
 use crate::pos::PosSeed;
 use crate::segments::{HistorySize, SegmentCommitment};
@@ -54,10 +56,17 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key_hash: Blake3Hash, sector_index: SectorIndex) -> Self {
-        Self(blake3_hash_with_key(
+    pub fn new(
+        public_key_hash: Blake3Hash,
+        sector_index: SectorIndex,
+        history_size: HistorySize,
+    ) -> Self {
+        Self(blake3_hash_list_with_key(
             &public_key_hash,
-            &sector_index.to_le_bytes(),
+            &[
+                &sector_index.to_le_bytes(),
+                &history_size.get().to_le_bytes(),
+            ],
         ))
     }
 
@@ -117,16 +126,8 @@ impl SectorId {
     }
 
     /// Derive evaluation seed
-    pub fn derive_evaluation_seed(
-        &self,
-        piece_offset: PieceOffset,
-        history_size: HistorySize,
-    ) -> PosSeed {
-        let evaluation_seed = blake3_hash_list(&[
-            self.as_ref(),
-            &piece_offset.to_bytes(),
-            &history_size.get().to_le_bytes(),
-        ]);
+    pub fn derive_evaluation_seed(&self, piece_offset: PieceOffset) -> PosSeed {
+        let evaluation_seed = blake3_hash_list(&[self.as_ref(), &piece_offset.to_bytes()]);
 
         PosSeed::from(*evaluation_seed)
     }

@@ -244,11 +244,8 @@ where
         self.count -= 1;
 
         // Derive PoSpace table
-        let pos_table = (self.table_generator)(
-            &self
-                .sector_id
-                .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
-        );
+        let pos_table =
+            (self.table_generator)(&self.sector_id.derive_evaluation_seed(piece_offset));
 
         let maybe_solution: Result<_, ProvingError> = try {
             let sector_record_chunks_fut = read_sector_record_chunks(

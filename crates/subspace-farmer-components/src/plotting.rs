@@ -261,7 +261,11 @@ where
         pieces_in_sector,
     } = options;
 
-    let sector_id = SectorId::new(public_key.hash(), sector_index);
+    let sector_id = SectorId::new(
+        public_key.hash(),
+        sector_index,
+        farmer_protocol_info.history_size,
+    );
 
     let piece_indices = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
@@ -333,7 +337,6 @@ pub trait RecordsEncoder {
         &mut self,
         sector_id: &SectorId,
         records: &mut [Record],
-        history_size: HistorySize,
         abort_early: &AtomicBool,
     ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>>;
 }
@@ -357,7 +360,6 @@ where
         &mut self,
         sector_id: &SectorId,
         records: &mut [Record],
-        history_size: HistorySize,
         abort_early: &AtomicBool,
     ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>> {
         if self.erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
@@ -406,8 +408,7 @@ where
                             else {
                                 return;
                             };
-                            let pos_seed =
-                                sector_id.derive_evaluation_seed(piece_offset, history_size);
+                            let pos_seed = sector_id.derive_evaluation_seed(piece_offset);
 
                             record_encoding::<PosTable>(
                                 &pos_seed,
@@ -504,12 +505,7 @@ where
     );
 
     let sector_contents_map = records_encoder
-        .encode_records(
-            &sector_id,
-            &mut raw_sector.records,
-            history_size,
-            abort_early,
-        )
+        .encode_records(&sector_id, &mut raw_sector.records, abort_early)
         .map_err(|error| PlottingError::RecordsEncoderError { error })?;
 
     let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {

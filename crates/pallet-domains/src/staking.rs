@@ -1505,10 +1505,9 @@ pub(crate) mod tests {
             let domain_config = DomainConfig {
                 domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
                 runtime_id: 0,
-                max_block_size: u32::MAX,
-                max_block_weight: Weight::MAX,
+                max_bundle_size: u32::MAX,
+                max_bundle_weight: Weight::MAX,
                 bundle_slot_probability: (0, 0),
-                target_bundles_per_block: 0,
                 operator_allow_list: OperatorAllowList::Anyone,
                 initial_balances: Default::default(),
             };
@@ -1902,10 +1901,9 @@ pub(crate) mod tests {
             let domain_config = DomainConfig {
                 domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
                 runtime_id: 0,
-                max_block_size: u32::MAX,
-                max_block_weight: Weight::MAX,
+                max_bundle_size: u32::MAX,
+                max_bundle_weight: Weight::MAX,
                 bundle_slot_probability: (0, 0),
-                target_bundles_per_block: 0,
                 operator_allow_list: OperatorAllowList::Anyone,
                 initial_balances: Default::default(),
             };

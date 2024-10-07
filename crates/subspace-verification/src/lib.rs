@@ -212,7 +212,11 @@ where
         piece_check_params,
     } = params;
 
-    let sector_id = SectorId::new(solution.public_key.hash(), solution.sector_index);
+    let sector_id = SectorId::new(
+        solution.public_key.hash(),
+        solution.sector_index,
+        solution.history_size,
+    );
 
     let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);
@@ -221,7 +225,7 @@ where
 
     // Check that proof of space is valid
     if !PosTable::is_proof_valid(
-        &sector_id.derive_evaluation_seed(solution.piece_offset, solution.history_size),
+        &sector_id.derive_evaluation_seed(solution.piece_offset),
         s_bucket_audit_index.into(),
         &solution.proof_of_space,
     ) {
