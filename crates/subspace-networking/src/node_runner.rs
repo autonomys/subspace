@@ -23,8 +23,8 @@ use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     Behaviour as Kademlia, BootstrapOk, Event as KademliaEvent, GetClosestPeersError,
     GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError, GetRecordOk,
-    InboundRequest, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
-    RecordKey,
+    InboundRequest, KBucketKey, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult,
+    Quorum, Record, RecordKey,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
@@ -1408,6 +1408,24 @@ where
                         _permit: permit,
                     },
                 );
+            }
+            Command::GetClosestLocalPeers {
+                key,
+                source,
+                result_sender,
+            } => {
+                let source = source.unwrap_or_else(|| *self.swarm.local_peer_id());
+                let result = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .find_closest(&KBucketKey::from(key), &source)
+                    .into_iter()
+                    .map(|peer| (peer.node_id, peer.multiaddrs))
+                    .collect();
+
+                // Doesn't matter if receiver still waits for response.
+                let _ = result_sender.send(result);
             }
             Command::GenericRequest {
                 peer_id,
