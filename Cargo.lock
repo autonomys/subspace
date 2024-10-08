@@ -12260,8 +12260,7 @@ dependencies = [
 [[package]]
 name = "sppark"
 version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c55f3833d30846a26110dccb1d5366314c2c52516a9173b74238c16b24b1a9f9"
+source = "git+https://github.com/autonomys/sppark?rev=71c49160d7aa24f92c20592d2d26ef16f5400a04#71c49160d7aa24f92c20592d2d26ef16f5400a04"
 dependencies = [
  "cc",
  "which",
@@ -12269,9 +12268,9 @@ dependencies = [
 
 [[package]]
 name = "ss58-registry"
-version = "1.50.0"
+version = "1.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43fce22ed1df64d04b262351c8f9d5c6da4f76f79f25ad15529792f893fad25d"
+checksum = "19409f13998e55816d1c728395af0b52ec066206341d939e22e7766df9b494b8"
 dependencies = [
  "Inflector",
  "num-format",

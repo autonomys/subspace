@@ -50,7 +50,7 @@ schnorrkel = "0.11.4"
 serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
 static_assertions = "1.1.0"
-ss58-registry = "1.50.0"
+ss58-registry = "1.51.0"
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
@@ -77,8 +77,11 @@ zeroize = "1.8.1"
 default = ["default-library", "binary"]
 cluster = ["dep:async-nats"]
 numa = ["dep:hwlocality"]
-# Only Volta+ architectures are supported (GeForce RTX 20xx consumer GPUs and newer)
+# Only Volta+ architectures are supported (GeForce RTX 16xx consumer GPUs and newer)
 cuda = ["_gpu", "subspace-proof-of-space-gpu/cuda"]
+# TODO: ROCm can't be enabled at the same time as `cuda` feature at the moment
+# Seems to support RDNA 2+, at least on Linux
+rocm = ["_gpu", "subspace-proof-of-space-gpu/rocm"]
 # Internal feature, shouldn't be used directly
 _gpu = []
 

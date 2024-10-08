@@ -310,7 +310,7 @@ impl frame_system::Config for Runtime {
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
     type BlockLength = RuntimeBlockLength;
-    type SS58Prefix = ConstU16<2254>;
+    type SS58Prefix = ConstU16<6094>;
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type SingleBlockMigrations = ();
