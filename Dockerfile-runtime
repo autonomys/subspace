@@ -1,12 +1,15 @@
-FROM ubuntu:20.04
+# This Dockerfile supports both native building and cross-compilation to aarch64 on x86-64
+FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
 ARG RUSTC_VERSION=nightly-2024-09-26
 ARG PROFILE=production
 ARG RUSTFLAGS
-# Workaround for https://github.com/rust-lang/cargo/issues/10583
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 # Incremental compilation here isn't helpful
 ENV CARGO_INCREMENTAL=0
+ENV PKG_CONFIG_ALLOW_CROSS=true
+
+ARG BUILDARCH
+ARG TARGETARCH
 
 WORKDIR /code
 
@@ -22,10 +25,19 @@ RUN \
         automake \
         libtool \
         pkg-config \
-        make && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
+        make
 
-RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
+RUN \
+    if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          g++-aarch64-linux-gnu \
+          gcc-aarch64-linux-gnu \
+          libc6-dev-arm64-cross \
+    ; fi
+
+RUN \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
+    /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
 COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
@@ -39,12 +51,19 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
+    if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
+      export RUSTFLAGS="$RUSTFLAGS -C linker=aarch64-linux-gnu-gcc" \
+    ; fi && \
+    if [ $TARGETARCH = "amd64" ] && [ $RUSTFLAGS = ""]; then \
+      export RUSTFLAGS="-C target-cpu=skylake" \
+    ; fi && \
+    RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g") && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
         --profile $PROFILE \
         --package subspace-runtime \
-        --target x86_64-unknown-linux-gnu && \
+        --target $RUSTC_TARGET_ARCH-unknown-linux-gnu && \
     mv \
       target/*/*/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
       subspace_runtime.compact.compressed.wasm && \
