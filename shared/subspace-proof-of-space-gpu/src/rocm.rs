@@ -50,24 +50,24 @@ extern "C" {
     ) -> sppark::Error;
 }
 
-/// Returns [`CudaDevice`] for each available device
-pub fn cuda_devices() -> Vec<CudaDevice> {
+/// Returns [`RocmDevice`] for each available device
+pub fn rocm_devices() -> Vec<RocmDevice> {
     let num_devices = unsafe { gpu_count() };
 
     (0i32..)
         .take(num_devices)
-        .map(|gpu_id| CudaDevice { gpu_id })
+        .map(|gpu_id| RocmDevice { gpu_id })
         .collect()
 }
 
-/// Wrapper data structure encapsulating a single CUDA-capable device
+/// Wrapper data structure encapsulating a single ROCm-capable device
 #[derive(Debug)]
-pub struct CudaDevice {
+pub struct RocmDevice {
     gpu_id: i32,
 }
 
-impl CudaDevice {
-    /// Cuda device ID
+impl RocmDevice {
+    /// ROCm device ID
     pub fn id(&self) -> i32 {
         self.gpu_id
     }
@@ -108,14 +108,7 @@ impl CudaDevice {
         };
 
         if error.code != 0 {
-            let error = error.to_string();
-            if error.contains("the provided PTX was compiled with an unsupported toolchain.") {
-                return Err(format!(
-                    "Nvidia driver is likely too old, make sure install version 550 or newer: \
-                    {error}"
-                ));
-            }
-            return Err(error);
+            return Err(error.to_string());
         }
 
         let proof_count = proof_count as usize;
