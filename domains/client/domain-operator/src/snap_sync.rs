@@ -5,7 +5,6 @@ use sc_client_api::{AuxStore, Backend, ProofProvider};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction, StorageChanges,
 };
-use sc_consensus_subspace::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use sc_network::{NetworkRequest, PeerId};
 use sc_network_common::sync::message::{
     BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
@@ -346,27 +345,7 @@ where
         .backend
         .offchain_storage()
     {
-        // let target_block = sync_params
-        //     .consensus_chain_sync_params
-        //     .segment_headers_store
-        //     .last_segment_header()
-        //     .map(|header| header.last_archived_block().number);
-
-        let target_block = sync_params
-            .consensus_chain_sync_params
-            .segment_headers_store
-            .max_segment_index()
-            // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
-            .and_then(|max_segment_index| {
-                max_segment_index.checked_sub(FINALIZATION_DEPTH_IN_SEGMENTS)
-            })
-            .and_then(|segment_index| {
-                sync_params
-                    .consensus_chain_sync_params
-                    .segment_headers_store
-                    .get_segment_header(segment_index)
-            })
-            .map(|segment_header| segment_header.last_archived_block().number);
+        let target_block = Some(consensus_block_number);
 
         mmr_sync(
             sync_params.consensus_chain_sync_params.fork_id,

@@ -28,7 +28,7 @@ type MmrLeafOf = MmrLeaf<BlockNumber, BlockHash>;
 type NodeOf = Node<Keccak256, MmrLeafOf>;
 type MmrOf<OS> = mmr_lib::MMR<NodeOf, MmrHasher, OffchainMmrStorage<OS>>;
 
-fn decode_mmr_data(mut data: &[u8]) -> mmr_lib::Result<NodeOf> {
+pub(crate) fn decode_mmr_data(mut data: &[u8]) -> mmr_lib::Result<NodeOf> {
     let node = match NodeOf::decode(&mut data) {
         Ok(node) => node,
         Err(err) => {
@@ -203,35 +203,34 @@ where
 
                         // Save the MMR-nodes from response to the local storage
                         'data: for (position, data) in response.mmr_data.iter() {
-                            // Ensure continuous sync
-                            if *position == starting_position {
-                                let node = decode_mmr_data(data);
+                            let node = decode_mmr_data(data);
 
-                                let node = match node {
-                                    Ok(node) => node,
-                                    Err(err) => {
-                                        debug!(?peer_info, ?err, %position, "Can't decode MMR data received from the peer.");
+                            let node = match node {
+                                Ok(node) => node,
+                                Err(err) => {
+                                    debug!(?peer_info, ?err, %position, "Can't decode MMR data received from the peer.");
 
-                                        continue 'peers;
-                                    }
-                                };
+                                    continue 'peers;
+                                }
+                            };
 
-                                if matches!(node, Node::Data(_)) {
-                                    if let Err(err) = mmr.push(node) {
-                                        debug!(?peer_info, ?err, %position, "Can't add MMR data received from the peer.");
+                            if matches!(node, Node::Data(_)) {
+                                if let Err(err) = mmr.push(node) {
+                                    debug!(?peer_info, ?err, %position, "Can't add MMR data received from the peer.");
 
-                                        return Err(sp_blockchain::Error::Backend(
-                                            "Can't add MMR data to the MMR storage".to_string(),
-                                        ));
-                                    }
-
-                                    leaves_number += 1;
+                                    return Err(sp_blockchain::Error::Backend(
+                                        "Can't add MMR data to the MMR storage".to_string(),
+                                    ));
                                 }
 
-                                starting_position += 1;
-                            } else {
-                                debug!("MMR-sync gap detected={peer_id}, position={position}",);
-                                break 'data; // We don't support gaps in MMR data
+                                leaves_number += 1;
+                            }
+
+                            starting_position += 1;
+
+                            if u64::from(*position) >= target_position {
+                                debug!(%target_position, "MMR-sync: target position reached.");
+                                break 'data;
                             }
                         }
                     }
@@ -249,7 +248,7 @@ where
 
                     if !verify_mmr_data(client, &mmr, leaves_number) {
                         return Err(sp_blockchain::Error::Application(
-                            "Can't get starting MMR position - data verification failed.".into(),
+                            "MMR data verification failed.".into(),
                         ));
                     }
 

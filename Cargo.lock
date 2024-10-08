@@ -2626,7 +2626,6 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-subspace",
  "sc-domains",
  "sc-network",
  "sc-network-common",

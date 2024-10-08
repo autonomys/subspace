@@ -893,7 +893,7 @@ where
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
         let (handler, protocol_config) =
-            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>, _>(
+            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
                 &config.base.protocol_id(),
                 fork_id.as_deref(),
                 client.clone(),
