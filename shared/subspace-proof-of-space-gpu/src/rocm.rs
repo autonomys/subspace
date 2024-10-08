@@ -25,7 +25,6 @@ extern "C" {
     /// * `record: A pointer to the record data.
     /// * `chunks_scratch: A mutable pointer to a scratch space for chunk data.
     /// * `proof_count: A mutable pointer to store the count of proofs.
-    /// * `source_record_chunks: A mutable pointer to the source record chunks.
     /// * `parity_record_chunks: A mutable pointer to the parity record chunks.
     /// * `gpu_id: The ID of the GPU to use.
     ///
@@ -35,7 +34,7 @@ extern "C" {
     /// # Assumptions
     /// * `seed` must be a valid pointer to a 32-byte.
     /// * `record` must be a valid pointer to the record data (`*const Record`), with a length of `1 << lg_record_size`.
-    /// * `source_record_chunks` and `parity_record_chunks` must be valid mutable pointers to `Scalar` elements, each with a length of `1 << lg_record_size`.
+    /// * `parity_record_chunks` must be valid mutable pointer to `Scalar` elements, each with a length of `1 << lg_record_size`.
     /// * `chunks_scratch` must be a valid mutable pointer where up to `challenges_count` 32-byte chunks of GPU-calculated data will be written.
     /// * `gpu_id` must be a valid identifier of an available GPU. The available GPUs can be determined by using the `gpu_count` function.
     fn generate_and_encode_pospace_dispatch(
@@ -73,28 +72,7 @@ impl RocmDevice {
         self.gpu_id
     }
 
-    /// Generates and encodes PoSpace on the GPU.
-    ///
-    /// This function performs the generation and encoding of PoSpace
-    /// on a GPU. It uses the specified parameters to perform the computations and
-    /// ensures that errors are properly handled by returning a `Result` type.
-    ///
-    /// # Parameters
-    ///
-    /// ## Input
-    ///
-    /// - `k`: The size parameter for the table.
-    /// - `seed`: A 32-byte seed used for the table generation process.
-    /// - `record`: A slice of bytes (`&[u8]`). These records are the data on which the proof of space will be generated.
-    /// - `gpu_id`: ID of the GPU to use. This parameter specifies which GPU to use for the computation.
-    ///
-    /// ## Output
-    ///
-    /// - `source_record_chunks`: A mutable vector of original data chunks of type FsFr, each 32 bytes in size.
-    /// - `parity_record_chunks`: A mutable vector of parity chunks derived from the source, each 32 bytes in size.
-    /// - `proof_count`: A mutable reference to the proof count. This value will be updated with the number of proofs generated.
-    /// - `chunks_scratch`:  A mutable vector used to store the processed chunks. This vector holds the final results after combining record chunks and proof hashes.
-    /// - `challenge_index`: A mutable vector used to map the challenges to specific parts of the data.
+    /// Generates and encodes PoSpace on the GPU
     pub fn generate_and_encode_pospace(
         &self,
         seed: &PosSeed,
