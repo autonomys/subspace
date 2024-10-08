@@ -124,8 +124,14 @@ void create_chunks_scratch(uint32_t* chunks_scratch, uint32_t* proof_counter,
 
             // Determine the appropriate record chunk based on the index
             // and convert the record chunk from Montgomery form
+            // While two endianness swaps are redundant, we do this so that
+            // we queue up an endianness swap kernel just after NTTs, allowing
+            // us to overlap a device to host copy which nets us a significant
+            // performance gain
             fr_t record_chunk = record[i];
+            record_chunk = endianness_swap(record_chunk);
             record_chunk.from();
+            record_chunk = endianness_swap(record_chunk);
 
             // Calculate where to store the chunks_scratch in the output array
             uint32_t proof_offset = atomicAdd(proof_counter, 1);
