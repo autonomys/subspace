@@ -7000,6 +7000,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "076d548d76a0e2a0d4ab471d0b1c36c577786dfc4471242035d97a12a735c492"
 dependencies = [
  "core2",
+ "parity-scale-codec",
  "serde",
  "unsigned-varint 0.7.2",
 ]
@@ -12686,6 +12687,7 @@ dependencies = [
  "libp2p 0.54.1",
  "libp2p-swarm-test",
  "memmap2 0.9.5",
+ "multihash 0.19.1",
  "nohash-hasher",
  "parity-scale-codec",
  "parking_lot 0.12.3",

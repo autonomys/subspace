@@ -1,5 +1,6 @@
 use async_lock::RwLock as AsyncRwLock;
 use clap::Parser;
+use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::fmt;
@@ -16,6 +17,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::{
     CachedPieceByIndexRequest, CachedPieceByIndexRequestHandler, CachedPieceByIndexResponse,
+    PieceResult,
 };
 use subspace_networking::protocols::request_response::handlers::piece_by_index::{
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
@@ -27,9 +29,10 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
+    WeakNode,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
-use tracing::{debug, error, info, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 /// How many segment headers can be requested at a time.
 ///
@@ -117,6 +120,7 @@ where
     })
     .map(Box::new)?;
 
+    let maybe_weak_node = Arc::new(Mutex::new(None::<WeakNode>));
     let default_config = Config::new(
         protocol_prefix,
         keypair,
@@ -130,15 +134,17 @@ where
         known_peers_registry,
         request_response_protocols: vec![
             {
+                let maybe_weak_node = Arc::clone(&maybe_weak_node);
                 let farmer_cache = farmer_cache.clone();
 
-                CachedPieceByIndexRequestHandler::create(move |_, request| {
+                CachedPieceByIndexRequestHandler::create(move |peer_id, request| {
                     let CachedPieceByIndexRequest {
                         piece_index,
                         mut cached_pieces,
                     } = request;
                     debug!(?piece_index, "Cached piece request received");
 
+                    let maybe_weak_node = Arc::clone(&maybe_weak_node);
                     let farmer_cache = farmer_cache.clone();
 
                     async move {
@@ -147,8 +153,33 @@ where
                         cached_pieces.truncate(MAX_CACHED_PIECES);
                         let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
-                        piece_from_cache.map(|piece| CachedPieceByIndexResponse {
-                            piece: Some(piece),
+                        Some(CachedPieceByIndexResponse {
+                            result: match piece_from_cache {
+                                Some(piece) => PieceResult::Piece(piece),
+                                None => {
+                                    let maybe_node = maybe_weak_node
+                                        .lock()
+                                        .as_ref()
+                                        .expect("Always called after network instantiation; qed")
+                                        .upgrade();
+
+                                    let closest_peers = if let Some(node) = maybe_node {
+                                        node.get_closest_local_peers(
+                                            piece_index.to_multihash(),
+                                            Some(peer_id),
+                                        )
+                                        .await
+                                        .inspect_err(|error| {
+                                            warn!(%error, "Failed to get closest local peers");
+                                        })
+                                        .unwrap_or_default()
+                                    } else {
+                                        Vec::new()
+                                    };
+
+                                    PieceResult::ClosestPeers(closest_peers.into())
+                                }
+                            },
                             cached_pieces,
                         })
                     }
@@ -269,22 +300,21 @@ where
         ..default_config
     };
 
-    construct(config)
-        .map(|(node, node_runner)| {
-            node.on_new_listener(Arc::new({
-                let node = node.clone();
+    let (node, node_runner) = construct(config)?;
+    maybe_weak_node.lock().replace(node.downgrade());
 
-                move |address| {
-                    info!(
-                        "DSN listening on {}",
-                        address.clone().with(Protocol::P2p(node.id()))
-                    );
-                }
-            }))
-            .detach();
+    node.on_new_listener(Arc::new({
+        let node = node.clone();
 
-            // Consider returning HandlerId instead of each `detach()` calls for other usages.
-            (node, node_runner)
-        })
-        .map_err(Into::into)
+        move |address| {
+            info!(
+                "DSN listening on {}",
+                address.clone().with(Protocol::P2p(node.id()))
+            );
+        }
+    }))
+    .detach();
+
+    // Consider returning HandlerId instead of each `detach()` calls for other usages.
+    Ok((node, node_runner))
 }

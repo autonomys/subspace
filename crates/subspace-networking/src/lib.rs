@@ -32,7 +32,7 @@ pub use crate::behavior::persistent_parameters::{
     KnownPeersRegistry, PeerAddressRemovedEvent,
 };
 pub use crate::node::{
-    GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
+    GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription, WeakNode,
 };
 pub use crate::node_runner::NodeRunner;
 pub use constructor::{

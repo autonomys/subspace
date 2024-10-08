@@ -30,6 +30,7 @@ futures = "0.3.30"
 futures-timer = "3.0.3"
 hex = "0.4.3"
 memmap2 = "0.9.5"
+multihash = { version = "0.19.1", features = ["scale-codec"] }
 nohash-hasher = "0.2.0"
 parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"

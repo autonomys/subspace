@@ -12,7 +12,7 @@ use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
@@ -626,6 +626,26 @@ impl Node {
             _permit,
             node: self.clone(),
         }
+    }
+
+    /// Downgrade to [`WeakNode`]
+    pub fn downgrade(&self) -> WeakNode {
+        WeakNode {
+            shared: Arc::downgrade(&self.shared),
+        }
+    }
+}
+
+/// Weak counterpart of [`Node`]
+#[derive(Debug, Clone)]
+pub struct WeakNode {
+    shared: Weak<Shared>,
+}
+
+impl WeakNode {
+    /// Try to upgrade to [`Node`]
+    pub fn upgrade(&self) -> Option<Node> {
+        self.shared.upgrade().map(|shared| Node { shared })
     }
 }
 
