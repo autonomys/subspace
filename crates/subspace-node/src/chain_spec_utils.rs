@@ -20,7 +20,7 @@ pub(crate) fn chain_spec_properties() -> Properties {
         <SS58Prefix as Get<u16>>::get().into(),
     );
     properties.insert("tokenDecimals".to_string(), DECIMAL_PLACES.into());
-    properties.insert("tokenSymbol".to_string(), "tSSC".into());
+    properties.insert("tokenSymbol".to_string(), "AI3".into());
     properties.insert(
         "domainsBootstrapNodes".to_string(),
         serde_json::to_value(HashMap::<DomainId, Vec<MultiaddrWithPeerId>>::new())
