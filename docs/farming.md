@@ -192,7 +192,6 @@ Create `subspace` directory and `docker-compose.yml` in it with following conten
 services:
   node:
     # Replace `snapshot-DATE` with the latest release (like `snapshot-2022-apr-29`)
-    # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/autonomys/node:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
@@ -230,7 +229,6 @@ services:
       node:
         condition: service_healthy
     # Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
-    # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/autonomys/farmer:snapshot-DATE
     volumes:
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
