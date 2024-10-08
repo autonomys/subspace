@@ -197,7 +197,7 @@ parameter_types! {
     pub SubspaceBlockLength: BlockLength = maximum_normal_block_length();
 }
 
-pub type SS58Prefix = ConstU16<2254>;
+pub type SS58Prefix = ConstU16<6094>;
 
 // Configure FRAME pallets to include in runtime.
 
