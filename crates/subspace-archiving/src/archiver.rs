@@ -124,6 +124,24 @@ impl Segment {
         let Self::V0 { items } = self;
         items.push(segment_item);
     }
+
+    pub fn items(&self) -> &[SegmentItem] {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub(crate) fn items_mut(&mut self) -> &mut Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub fn into_items(self) -> Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -387,9 +405,8 @@ impl Archiver {
                         );
                     }
 
-                    let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
-                    for segment_item in items.into_iter().rev() {
+                    for segment_item in segment.into_items().into_iter().rev() {
                         self.buffer.push_front(segment_item);
                     }
 
@@ -478,7 +495,7 @@ impl Archiver {
             .unwrap_or_default();
 
         if spill_over > 0 {
-            let Segment::V0 { items } = &mut segment;
+            let items = segment.items_mut();
             let segment_item = items
                 .pop()
                 .expect("Segment over segment size always has at least one item; qed");
@@ -602,12 +619,11 @@ impl Archiver {
     fn produce_object_mappings(&self, segment: &Segment) -> Vec<GlobalObject> {
         let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
-        let Segment::V0 { items } = &segment;
 
         let mut corrected_object_mapping = Vec::new();
         // `+1` corresponds to enum variant encoding
         let mut base_offset_in_segment = 1;
-        for segment_item in items {
+        for segment_item in segment.items() {
             match segment_item {
                 SegmentItem::Padding => {
                     unreachable!(
