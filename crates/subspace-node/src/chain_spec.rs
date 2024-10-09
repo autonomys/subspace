@@ -264,7 +264,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
             GenesisParams {
                 enable_rewards_at: EnableRewardsAt::Manually,
                 allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
+                pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
