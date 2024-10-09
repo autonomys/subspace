@@ -168,7 +168,7 @@ impl Reconstructor {
         &mut self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<ReconstructedContents, ReconstructorError> {
-        let Segment::V0 { items } = self.reconstruct_segment(segment_pieces)?;
+        let items = self.reconstruct_segment(segment_pieces)?.into_items();
 
         let mut reconstructed_contents = ReconstructedContents::default();
         let mut next_block_number = 0;
