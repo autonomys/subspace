@@ -170,14 +170,13 @@ jobs:
           sub-packages: '["nvcc", "cudart"]'
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
-      # TODO: ROCm compilation doesn't work in CI right now, good luck fixing it
-      # - name: Configure ROCm cache (Windows)
-      #   uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
-      #   id: rocm-cache
-      #   with:
-      #     path: C:\Program Files\AMD\ROCm
-      #     key: ${{ runner.os }}-rocm
-      #   if: runner.os == 'Windows'
+      - name: Configure ROCm cache (Windows)
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        id: rocm-cache
+        with:
+          path: C:\Program Files\AMD\ROCm
+          key: ${{ runner.os }}-rocm
+        if: runner.os == 'Windows'
 
       - name: ROCm toolchain
         run: |
@@ -193,19 +192,13 @@ jobs:
         # TODO: ROCm packages are only available for x86-64 for now
         if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
 
-      # TODO: ROCm compilation doesn't work in CI right now, good luck fixing it
-      # - name: ROCm toolchain
-      #   run: |
-      #     $ErrorActionPreference = "Stop"
-      #     Invoke-WebRequest -Uri https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe -OutFile "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
-      #     Start-Process "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe" -ArgumentList '-install' -NoNewWindow -Wait
-      #     Remove-Item "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
-      #   if: runner.os == 'Windows' && steps.rocm-cache.outputs.cache-hit != 'true'
-      #
-      # - name: ROCm toolchain environment (Windows)
-      #   run: |
-      #     Add-Content $env:GITHUB_PATH "C:\Program Files\AMD\ROCm\6.1\bin"
-      #   if: runner.os == 'Windows'
+      - name: ROCm toolchain
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe -OutFile "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
+          Start-Process "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe" -ArgumentList '-install' -NoNewWindow -Wait
+          Remove-Item "${env:RUNNER_TEMP}\HIP-SDK-Installer.exe"
+        if: runner.os == 'Windows' && steps.rocm-cache.outputs.cache-hit != 'true'
 
       - name: Configure cache
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
@@ -222,26 +215,21 @@ jobs:
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
         if: runner.os == 'macOS' || !startsWith(matrix.build.target, 'x86_64')
 
-      # TODO: ROCm compilation doesn't work in CI right now, good luck fixing it
-      # # ROCm can't be enabled together with CUDA for now
-      # - name: Build farmer (ROCm, Windows)
-      #   env:
-      #     NVCC: off
-      #     HIPCC: hipcc.bin.exe
-      #   run: |
-      #     cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features rocm
-      #     move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe
-      #   # TODO: ROCm packages are only available for x86-64 for now
-      #   if: runner.os == 'Windows' && startsWith(matrix.build.target, 'x86_64')
+      # ROCm can't be enabled together with CUDA for now
+      - name: Build farmer (ROCm, Windows)
+        env:
+          # Why `PROGRA~1` instead of `Program Files`? Because Windows!
+          HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
+        run: |
+          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features rocm
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe
+        if: runner.os == 'Windows' && startsWith(matrix.build.target, 'x86_64')
 
       # ROCm can't be enabled together with CUDA for now
       - name: Build farmer (ROCm, Ubuntu)
-        env:
-          NVCC: off
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features rocm
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm
-        # TODO: ROCm packages are only available for x86-64 for now
         if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
 
       - name: Build farmer
@@ -291,8 +279,7 @@ jobs:
       - name: Sign Application (Windows)
         run: |
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe"
-          # TODO: ROCm compilation doesn't work in CI right now, good luck fixing it
-          # AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe"
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe"
           AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ env.PRODUCTION_TARGET }}/subspace-node.exe"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
@@ -308,7 +295,6 @@ jobs:
       - name: Prepare executables for uploading (Ubuntu, ROCm)
         run: |
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm executables/subspace-farmer-rocm-${{ matrix.build.suffix }}
-        # TODO: ROCm packages are only available for x86-64 for now
         if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
 
       - name: Prepare executables for uploading (macOS)
@@ -327,8 +313,7 @@ jobs:
         run: |
           mkdir executables
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
-          # TODO: ROCm compilation doesn't work in CI right now, good luck fixing it
-          # move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe executables/subspace-farmer-rocm-${{ matrix.build.suffix }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe executables/subspace-farmer-rocm-${{ matrix.build.suffix }}.exe
           move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 

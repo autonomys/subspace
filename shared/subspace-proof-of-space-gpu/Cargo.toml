@@ -15,8 +15,8 @@ include = [
 [dependencies]
 blst = { version = "0.3.13", optional = true }
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", rev = "6c8fcc623df3d7e8c0f30951a49bfea764f90bf4", default-features = false, optional = true }
-# TODO: Fork with ROCm support, switch to upstream once `rocm` branch from `https://github.com/dot-asm/sppark` is upstreamed
-sppark = { version = "0.1.8", git = "https://github.com/autonomys/sppark", rev = "71c49160d7aa24f92c20592d2d26ef16f5400a04", optional = true }
+# TODO: Fork with ROCm support, switch to upstream once `rocm` branch from `https://github.com/dot-asm/sppark` + https://github.com/dot-asm/sppark/pull/2 are upstreamed
+sppark = { version = "0.1.8", git = "https://github.com/autonomys/sppark", rev = "b2a181eb99c8200f1a604f04122551ea39fbf63f", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives", default-features = false, optional = true }
 subspace-kzg = { version = "0.1.0", path = "../subspace-kzg", optional = true }
 
@@ -30,15 +30,14 @@ cc = "1.1.23"
 
 [features]
 # Only Volta+ architectures are supported (GeForce RTX 16xx consumer GPUs and newer)
-cuda = ["_gpu"]
+cuda = ["_gpu", "sppark/cuda"]
 # TODO: ROCm can't be enabled at the same time as `cuda` feature at the moment
 # Seems to support RDNA 2+, at least on Linux
-rocm = ["_gpu"]
+rocm = ["_gpu", "sppark/rocm"]
 # Internal feature, shouldn't be used directly
 _gpu = [
     "dep:blst",
     "dep:rust-kzg-blst",
-    "dep:sppark",
     "dep:subspace-core-primitives",
     "dep:subspace-kzg",
 ]

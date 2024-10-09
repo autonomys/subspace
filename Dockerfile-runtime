@@ -65,7 +65,7 @@ RUN \
     if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
       export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
     ; fi && \
-    if [ $TARGETARCH = "amd64" ] && [ $RUSTFLAGS = ""]; then \
+    if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = ""]; then \
       export RUSTFLAGS="-C target-cpu=skylake" \
     ; fi && \
     RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \

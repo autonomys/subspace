@@ -98,7 +98,6 @@ RUN \
       ldconfig \
     ; fi
 
-# TODO: Remove `NVCC=off` hack once `sppark` has proper features for CUDA and ROCm
 # ROCm is only used on x86-64 since they don't have other packages
 RUN \
     if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
@@ -107,13 +106,13 @@ RUN \
     if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
       export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
     ; fi && \
-    if [ $TARGETARCH = "amd64" ] && [ $RUSTFLAGS = "" ]; then \
+    if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = "" ]; then \
       export RUSTFLAGS="-C target-cpu=skylake" \
     ; fi && \
     export PATH=/usr/local/cuda/bin${PATH:+:${PATH}} && \
     RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \
     if [ $BUILDARCH = "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
-      NVCC=off /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
+      /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
           --locked \
           -Z build-std \
           --profile $PROFILE \

@@ -24,8 +24,3 @@ For other operating systems/platforms check official documentation: <https://doc
 ### ROCm
 
 For AMD/ROCm support follow their official documentation: <https://rocm.docs.amd.com/en/latest/>
-
-For compilation `NVCC=off` environment variable must be additionally used:
-```bash
-NVCC=off cargo build
-```
