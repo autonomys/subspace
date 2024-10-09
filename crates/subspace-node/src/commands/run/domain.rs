@@ -20,7 +20,7 @@ use sc_cli::{
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, NetworkRequest};
 use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::KeystoreConfig;
 use sc_service::Configuration;
@@ -36,6 +36,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
+use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_service::FullClient as CFullClient;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -130,6 +131,7 @@ pub(super) struct DomainOptions {
     additional_args: Vec<String>,
 }
 
+#[derive(Debug)]
 pub(super) struct DomainConfiguration {
     pub(super) domain_config: Configuration,
     pub(super) domain_id: DomainId,
@@ -153,6 +155,7 @@ pub(super) fn create_domain_configuration(
         keystore_options,
         pool_config,
         additional_args,
+        ..
     } = domain_options;
 
     let domain_id;
@@ -388,11 +391,15 @@ pub(super) struct DomainStartOptions {
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
 }
 
-pub(super) async fn run_domain(
+pub(super) async fn run_domain<CNR>(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-) -> Result<(), Error> {
+    consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+) -> Result<(), Error>
+where
+    CNR: NetworkRequest + Send + Sync + 'static,
+{
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -427,14 +434,15 @@ pub(super) async fn run_domain(
         gossip_message_sink,
     } = domain_start_options;
 
-    let block_importing_notification_stream = block_importing_notification_stream.subscribe().then(
-        |block_importing_notification| async move {
+    let block_importing_notification_stream = block_importing_notification_stream
+        .subscribe()
+        .then(|block_importing_notification| async move {
             (
                 block_importing_notification.block_number,
                 block_importing_notification.acknowledgement_sender,
             )
-        },
-    );
+        })
+        .boxed();
 
     let pot_slot_info_stream = tokio_stream::StreamExt::filter_map(
         tokio_stream::wrappers::BroadcastStream::new(pot_slot_info_stream),
@@ -497,6 +505,7 @@ pub(super) async fn run_domain(
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                consensus_chain_sync_params,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -508,6 +517,7 @@ pub(super) async fn run_domain(
                 _,
                 evm_domain_runtime::RuntimeApi,
                 AccountId20,
+                _,
                 _,
             >(domain_params)
             .await?;
@@ -535,6 +545,7 @@ pub(super) async fn run_domain(
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                consensus_chain_sync_params,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -546,6 +557,7 @@ pub(super) async fn run_domain(
                 _,
                 auto_id_domain_runtime::RuntimeApi,
                 AccountId32,
+                _,
                 _,
             >(domain_params)
             .await?;
