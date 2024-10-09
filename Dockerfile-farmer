@@ -107,7 +107,7 @@ RUN \
     if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
       export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
     ; fi && \
-    if [ $TARGETARCH = "amd64" ] && [ $RUSTFLAGS = "" ]; then \
+    if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = "" ]; then \
       export RUSTFLAGS="-C target-cpu=skylake" \
     ; fi && \
     export PATH=/usr/local/cuda/bin${PATH:+:${PATH}} && \
