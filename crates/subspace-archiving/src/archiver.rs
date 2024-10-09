@@ -604,59 +604,55 @@ impl Archiver {
         segment: Segment,
     ) -> (NewArchivedSegment, Vec<GlobalObject>) {
         // Create mappings
-        let object_mapping = {
-            let mut corrected_object_mapping = Vec::new();
-            let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
-                [..RecordedHistorySegment::NUM_RAW_RECORDS];
-            let Segment::V0 { items } = &segment;
-            // `+1` corresponds to enum variant encoding
-            let mut base_offset_in_segment = 1;
-            for segment_item in items {
-                match segment_item {
-                    SegmentItem::Padding => {
-                        unreachable!(
-                            "Segment during archiving never contains SegmentItem::Padding; qed"
-                        );
-                    }
-                    SegmentItem::Block {
-                        bytes,
-                        object_mapping,
-                    }
-                    | SegmentItem::BlockStart {
-                        bytes,
-                        object_mapping,
-                    }
-                    | SegmentItem::BlockContinuation {
-                        bytes,
-                        object_mapping,
-                    } => {
-                        for block_object in object_mapping.objects() {
-                            // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
-                            let offset_in_segment = base_offset_in_segment
-                                + 1
-                                + Compact::compact_len(&(bytes.len() as u32))
-                                + block_object.offset as usize;
-                            let raw_piece_offset =
-                                (offset_in_segment % RawRecord::SIZE).try_into().expect(
-                                    "Offset within piece should always fit in 32-bit integer; qed",
-                                );
-                            corrected_object_mapping.push(GlobalObject {
-                                hash: block_object.hash,
-                                piece_index: source_piece_indexes
-                                    [offset_in_segment / RawRecord::SIZE],
-                                offset: raw_piece_offset,
-                            });
-                        }
-                    }
-                    SegmentItem::ParentSegmentHeader(_) => {
-                        // Ignore, no objects mappings here
+        let mut corrected_object_mapping = Vec::new();
+        let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
+            [..RecordedHistorySegment::NUM_RAW_RECORDS];
+
+        let Segment::V0 { items } = &segment;
+        // `+1` corresponds to enum variant encoding
+        let mut base_offset_in_segment = 1;
+        for segment_item in items {
+            match segment_item {
+                SegmentItem::Padding => {
+                    unreachable!(
+                        "Segment during archiving never contains SegmentItem::Padding; qed"
+                    );
+                }
+                SegmentItem::Block {
+                    bytes,
+                    object_mapping,
+                }
+                | SegmentItem::BlockStart {
+                    bytes,
+                    object_mapping,
+                }
+                | SegmentItem::BlockContinuation {
+                    bytes,
+                    object_mapping,
+                } => {
+                    for block_object in object_mapping.objects() {
+                        // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
+                        let offset_in_segment = base_offset_in_segment
+                            + 1
+                            + Compact::compact_len(&(bytes.len() as u32))
+                            + block_object.offset as usize;
+                        let raw_piece_offset = (offset_in_segment % RawRecord::SIZE)
+                            .try_into()
+                            .expect("Offset within piece should always fit in 32-bit integer; qed");
+                        corrected_object_mapping.push(GlobalObject {
+                            hash: block_object.hash,
+                            piece_index: source_piece_indexes[offset_in_segment / RawRecord::SIZE],
+                            offset: raw_piece_offset,
+                        });
                     }
                 }
-
-                base_offset_in_segment += segment_item.encoded_size();
+                SegmentItem::ParentSegmentHeader(_) => {
+                    // Ignore, no objects mappings here
+                }
             }
-            corrected_object_mapping
-        };
+
+            base_offset_in_segment += segment_item.encoded_size();
+        }
 
         let mut pieces = {
             // Serialize segment into concatenation of raw records
@@ -828,7 +824,7 @@ impl Archiver {
                 segment_header,
                 pieces: pieces.to_shared(),
             },
-            object_mapping,
+            corrected_object_mapping,
         )
     }
 }
