@@ -903,13 +903,14 @@ where
 
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) = MmrRequestHandler::new::<NetworkWorker<_, _>, _>(
-            &protocol_id,
-            fork_id,
-            client.clone(),
-            num_peer_hint,
-            offchain_storage,
-        );
+        let (handler, protocol_config) =
+            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
+                &config.base.protocol_id(),
+                fork_id.as_deref(),
+                client.clone(),
+                num_peer_hint,
+                offchain_storage,
+            );
         task_manager
             .spawn_handle()
             .spawn("mmr-request-handler", Some("networking"), handler.run());
