@@ -27,7 +27,7 @@
 )]
 
 pub mod config;
-pub(crate) mod domains;
+pub mod domains;
 pub mod dsn;
 mod metrics;
 pub(crate) mod mmr;
@@ -38,9 +38,11 @@ pub mod transaction_pool;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::domains::request_handler::LastDomainBlockERRequestHandler;
+use crate::domains::snap_sync_orchestrator::{create_target_block_provider, SnapSyncOrchestrator};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
+pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
 use crate::transaction_pool::FullPool;
@@ -731,6 +733,7 @@ pub async fn new_full<PosTable, RuntimeApi>(
     prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
+    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
 ) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
@@ -906,7 +909,7 @@ where
         let (handler, protocol_config) =
             MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
                 &config.base.protocol_id(),
-                fork_id.as_deref(),
+                fork_id,
                 client.clone(),
                 num_peer_hint,
                 offchain_storage,
@@ -1086,6 +1089,7 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
+        create_target_block_provider(snap_sync_orchestrator.clone()),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
@@ -1111,7 +1115,7 @@ where
             Box::pin(async move {
                 // Run snap-sync before DSN-sync.
                 if config.sync == ChainSyncMode::Snap {
-                    snap_sync_task.await;
+                    snap_sync_task.in_current_span().await;
                 }
 
                 if let Err(error) = worker.await {
