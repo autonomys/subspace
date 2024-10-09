@@ -143,6 +143,9 @@ RUN \
 
 FROM ubuntu:22.04
 
+ARG BUILDARCH
+ARG TARGETARCH
+
 # Next block is for ROCm support
 # ROCm is only used on x86-64 since they don't have other packages
 ARG ROCM_VERSION=6.2.2
