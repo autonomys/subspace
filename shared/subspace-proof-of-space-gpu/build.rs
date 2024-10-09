@@ -18,6 +18,8 @@ fn main() {
     }
 
     if cfg!(feature = "rocm") {
+        println!("cargo::rerun-if-env-changed=HIPCC");
+
         let mut hipcc = cc::Build::new();
         hipcc.compiler(env::var("HIPCC").unwrap_or("hipcc".to_string()));
         hipcc.cpp(true);
@@ -88,5 +90,4 @@ fn main() {
     }
 
     println!("cargo::rerun-if-changed=src");
-    println!("cargo::rerun-if-env-changed=CXXFLAGS");
 }
