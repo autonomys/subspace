@@ -26,7 +26,9 @@ use jsonrpsee::RpcModule;
 use mmr_rpc::{Mmr, MmrApiServer};
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus_subspace::archiver::{ArchivedSegmentNotification, SegmentHeadersStore};
+use sc_consensus_subspace::archiver::{
+    ArchivedSegmentNotification, ObjectMappingNotification, SegmentHeadersStore,
+};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
     NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
@@ -65,6 +67,8 @@ where
     /// A stream with notifications about headers that need to be signed with ability to send
     /// signature back.
     pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
+    /// A stream with notifications about mappings.
+    pub object_mapping_notification_stream: SubspaceNotificationStream<ObjectMappingNotification>,
     /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -113,6 +117,7 @@ where
         subscription_executor,
         new_slot_notification_stream,
         reward_signing_notification_stream,
+        object_mapping_notification_stream,
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
         segment_headers_store,
@@ -131,6 +136,7 @@ where
             subscription_executor,
             new_slot_notification_stream,
             reward_signing_notification_stream,
+            object_mapping_notification_stream,
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
             segment_headers_store,

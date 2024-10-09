@@ -453,7 +453,8 @@
 //
 //     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
 //     archiver
-//         .add_block(genesis_block.encode(), BlockObjectMapping::default())
+//         .add_block(genesis_block.encode(), BlockObjectMapping::default(), true)
+//         .archived_segments
 //         .into_iter()
 //         .map(|archived_segment| archived_segment.pieces)
 //         .collect()

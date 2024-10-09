@@ -217,6 +217,7 @@ where
             BlockObjectMapping::default(),
             true,
         )
+        .archived_segments
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
