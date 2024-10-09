@@ -82,6 +82,11 @@ pub(crate) enum Command {
         result_sender: mpsc::UnboundedSender<PeerId>,
         permit: Option<OwnedSemaphorePermit>,
     },
+    GetClosestLocalPeers {
+        key: Multihash,
+        source: Option<PeerId>,
+        result_sender: oneshot::Sender<Vec<(PeerId, Vec<Multiaddr>)>>,
+    },
     GenericRequest {
         peer_id: PeerId,
         protocol_name: &'static str,

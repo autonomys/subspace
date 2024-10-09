@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Generic request-response handler, typically is used with a type implementing [`GenericRequest`]
+//! to significantly reduce boilerplate when implementing [`RequestHandler`].
+
 use crate::protocols::request_response::request_response_factory::{
     IncomingRequest, OutgoingResponse, ProtocolConfig, RequestHandler,
 };
@@ -39,10 +42,10 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
     type Response: Encode + Decode + Send + Sync + 'static;
 }
 
-pub type RequestHandlerFn<Request> = Arc<
+type RequestHandlerFn<Request> = Arc<
     dyn (Fn(
             PeerId,
-            &Request,
+            Request,
         )
             -> Pin<Box<dyn Future<Output = Option<<Request as GenericRequest>::Response>> + Send>>)
         + Send
@@ -61,7 +64,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
     /// Creates new [`GenericRequestHandler`] by given handler.
     pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
     where
-        RH: (Fn(PeerId, &Request) -> Fut) + Send + Sync + 'static,
+        RH: (Fn(PeerId, Request) -> Fut) + Send + Sync + 'static,
         Fut: Future<Output = Option<Request::Response>> + Send + 'static,
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
@@ -87,7 +90,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         trace!(%peer, protocol=Request::LOG_TARGET, "Handling request...");
         let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
-        let response = (self.request_handler)(peer, &request).await;
+        let response = (self.request_handler)(peer, request).await;
 
         Ok(response.ok_or(RequestHandlerError::NoResponse)?.encode())
     }

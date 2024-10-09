@@ -10,7 +10,10 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
+use subspace_networking::protocols::request_response::handlers::generic_request_handler::{
+    GenericRequest, GenericRequestHandler,
+};
+use subspace_networking::Config;
 use tokio::time::sleep;
 
 #[derive(Encode, Decode)]
@@ -32,8 +35,8 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(
-            |_, &ExampleRequest| async {
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            |_, _example_request| async {
                 sleep(Duration::from_secs(2)).await;
 
                 println!("Request handler for request");

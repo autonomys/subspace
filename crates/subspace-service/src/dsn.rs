@@ -4,11 +4,13 @@ use std::fs;
 use std::path::PathBuf;
 use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::protocols::request_response::handlers::cached_piece_by_index::CachedPieceByIndexRequestHandler;
+use subspace_networking::protocols::request_response::handlers::piece_by_index::PieceByIndexRequestHandler;
+use subspace_networking::protocols::request_response::handlers::segment_header::SegmentHeaderBySegmentIndexesRequestHandler;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
-    KnownPeersManagerPersistenceError, Node, NodeRunner, PieceByIndexRequestHandler,
-    SegmentHeaderBySegmentIndexesRequestHandler,
+    KnownPeersManagerPersistenceError, Node, NodeRunner,
 };
 use thiserror::Error;
 use tracing::{error, trace};
@@ -102,6 +104,8 @@ pub(crate) fn create_dsn_instance(
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         known_peers_registry,
         request_response_protocols: vec![
+            // We need to enable protocol to request pieces
+            CachedPieceByIndexRequestHandler::create(|_, _| async { None }),
             // We need to enable protocol to request pieces
             PieceByIndexRequestHandler::create(|_, _| async { None }),
             SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, _| async move { None }),

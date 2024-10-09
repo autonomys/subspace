@@ -12,7 +12,7 @@ use libp2p::kad::{PeerRecord, RecordKey};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
@@ -111,6 +111,24 @@ pub enum GetClosestPeersError {
 }
 
 impl From<oneshot::Canceled> for GetClosestPeersError {
+    #[inline]
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+/// Defines errors for `get-closest-peers` operation.
+#[derive(Debug, Error)]
+pub enum GetClosestLocalPeersError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] mpsc::SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+}
+
+impl From<oneshot::Canceled> for GetClosestLocalPeersError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -402,6 +420,31 @@ impl Node {
         self.get_closest_peers_internal(key, true).await
     }
 
+    /// Get closest peers by multihash key using Kademlia DHT's local view without any network
+    /// requests.
+    ///
+    /// Optional `source` is peer for which results will be sent as a response, defaults to local
+    /// peer ID.
+    pub async fn get_closest_local_peers(
+        &self,
+        key: Multihash,
+        source: Option<PeerId>,
+    ) -> Result<Vec<(PeerId, Vec<Multiaddr>)>, GetClosestLocalPeersError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::GetClosestLocalPeers {
+                key,
+                source,
+                result_sender,
+            })
+            .await?;
+
+        Ok(result_receiver.await?)
+    }
+
     /// Get closest peers by multihash key using Kademlia DHT.
     async fn get_closest_peers_internal(
         &self,
@@ -583,6 +626,26 @@ impl Node {
             _permit,
             node: self.clone(),
         }
+    }
+
+    /// Downgrade to [`WeakNode`]
+    pub fn downgrade(&self) -> WeakNode {
+        WeakNode {
+            shared: Arc::downgrade(&self.shared),
+        }
+    }
+}
+
+/// Weak counterpart of [`Node`]
+#[derive(Debug, Clone)]
+pub struct WeakNode {
+    shared: Weak<Shared>,
+}
+
+impl WeakNode {
+    /// Try to upgrade to [`Node`]
+    pub fn upgrade(&self) -> Option<Node> {
+        self.shared.upgrade().map(|shared| Node { shared })
     }
 }
 

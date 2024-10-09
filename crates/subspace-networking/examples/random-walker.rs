@@ -16,10 +16,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::PieceIndex;
-use subspace_networking::{
-    Config, Multihash, Node, PeerDiscovered, PieceByIndexRequest, PieceByIndexRequestHandler,
-    PieceByIndexResponse, SendRequestError,
+use subspace_networking::protocols::request_response::handlers::piece_by_index::{
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
+use subspace_networking::{Config, Multihash, Node, PeerDiscovered, SendRequestError};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -331,18 +331,25 @@ async fn request_sample_piece(
             peer_id,
             PieceByIndexRequest {
                 piece_index: sample_piece_index,
+                cached_pieces: Vec::new(),
             },
         )
         .await;
 
     match request_result {
-        Ok(PieceByIndexResponse { piece: Some(..) }) => {
+        Ok(PieceByIndexResponse {
+            piece: Some(..),
+            cached_pieces: _,
+        }) => {
             debug!(%peer_id, ?short_key, "Piece request succeeded.");
             stats.report_successful_request(peer_id, retry);
 
             (true, None)
         }
-        Ok(PieceByIndexResponse { piece: None }) => {
+        Ok(PieceByIndexResponse {
+            piece: None,
+            cached_pieces: _,
+        }) => {
             debug!(%peer_id, ?short_key, "Piece request returned empty piece.");
             stats.report_successful_request(peer_id, retry); // we just need to connect to the peer
 
