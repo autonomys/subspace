@@ -12260,7 +12260,7 @@ dependencies = [
 [[package]]
 name = "sppark"
 version = "0.1.8"
-source = "git+https://github.com/autonomys/sppark?rev=71c49160d7aa24f92c20592d2d26ef16f5400a04#71c49160d7aa24f92c20592d2d26ef16f5400a04"
+source = "git+https://github.com/autonomys/sppark?rev=b2a181eb99c8200f1a604f04122551ea39fbf63f#b2a181eb99c8200f1a604f04122551ea39fbf63f"
 dependencies = [
  "cc",
  "which",

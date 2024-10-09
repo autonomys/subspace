@@ -154,15 +154,12 @@ jobs:
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: cargo clippy (ROCm)
-        env:
-          NVCC: off
         run: |
           cargo -Zgitoxide -Zgit clippy --locked --all-targets --features rocm -- -D warnings
         if: runner.os == 'Linux'
 
       - name: cargo clippy (ROCm)
         env:
-          NVCC: off
           # Why `PROGRA~1` instead of `Program Files`? Because Windows!
           HIPCC: C:\PROGRA~1\AMD\ROCm\6.1\bin\hipcc.bin.exe
         run: |
