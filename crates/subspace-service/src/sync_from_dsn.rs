@@ -2,7 +2,7 @@ pub(crate) mod import_blocks;
 pub(crate) mod piece_validator;
 pub(crate) mod segment_header_downloader;
 pub(crate) mod snap_sync;
-pub(crate) mod snap_sync_engine;
+pub mod snap_sync_engine;
 
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
@@ -14,6 +14,7 @@ use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::service::traits::NetworkService;
 use sc_network::NetworkBlock;
+pub use snap_sync::wait_for_block_import;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::SubspaceApi;

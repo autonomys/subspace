@@ -2,7 +2,9 @@ use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use sc_client_api::{AuxStore, ProofProvider};
+use async_trait::async_trait;
+use futures::StreamExt;
+use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
@@ -29,7 +31,22 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
-use tracing::{debug, error};
+use tracing::{debug, error, trace, warn};
+
+/// Provides target block number for snap-sync (blocking operation).
+#[async_trait]
+pub trait SnapSyncTargetBlockProvider: Send + Sync {
+    async fn target_block(&self) -> Option<BlockNumber>;
+}
+
+pub(crate) struct DefaultTargetBlockProvider;
+
+#[async_trait]
+impl SnapSyncTargetBlockProvider for DefaultTargetBlockProvider {
+    async fn target_block(&self) -> Option<BlockNumber> {
+        None
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn snap_sync<Block, AS, Client, PG>(
@@ -43,6 +60,7 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     sync_service: Arc<SyncingService<Block>>,
     network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
+    target_block_provider: Arc<dyn SnapSyncTargetBlockProvider>,
 ) where
     Block: BlockT,
     AS: AuxStore,
@@ -50,6 +68,7 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -63,6 +82,10 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
+        let target_block = target_block_provider.target_block().await;
+
+        debug!("Snap sync target block: {:?}", target_block);
+
         let snap_sync_fut = sync(
             &segment_headers_store,
             &node,
@@ -72,18 +95,22 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
             import_queue_service.as_mut(),
             &sync_service,
             &network_service_handle,
-            None,
+            target_block,
             &erasure_coding,
         );
 
         match snap_sync_fut.await {
-            Ok(()) => {
+            Ok(success) => {
                 debug!("Snap sync finished successfully");
+
+                success
             }
             Err(error) => {
                 error!(%error, "Snap sync failed");
+
+                false
             }
-        }
+        };
 
         // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
         // gracefully
@@ -126,39 +153,46 @@ where
                     "Can't get segment header from the store: {last_segment_index}"
                 ))?;
 
+            let mut target_block_exceeded_last_archived_block = false;
             if target_block > segment_header.last_archived_block().number {
-                return Err(format!(
-                    "Target block is greater than the last archived block. \
-                    Last segment index = {last_segment_index}, target block = {target_block}, \
-                    last block from the segment = {}
+                warn!(
+                   %last_segment_index,
+                   %target_block,
+
+                    "Specified target block is greater than the last archived block. \
+                     Choosing the last archived block (#{}) as target block...
                     ",
                     segment_header.last_archived_block().number
-                )
-                .into());
+                );
+                target_block_exceeded_last_archived_block = true;
             }
 
-            let mut current_segment_index = last_segment_index;
+            if !target_block_exceeded_last_archived_block {
+                let mut current_segment_index = last_segment_index;
 
-            loop {
-                if current_segment_index <= SegmentIndex::ONE {
-                    break;
+                loop {
+                    if current_segment_index <= SegmentIndex::ONE {
+                        break;
+                    }
+
+                    if target_block > segment_header.last_archived_block().number {
+                        current_segment_index += SegmentIndex::ONE;
+                        break;
+                    }
+
+                    current_segment_index -= SegmentIndex::ONE;
+
+                    segment_header = segment_headers_store
+                        .get_segment_header(current_segment_index)
+                        .ok_or(format!(
+                            "Can't get segment header from the store: {last_segment_index}"
+                        ))?;
                 }
 
-                if target_block > segment_header.last_archived_block().number {
-                    current_segment_index += SegmentIndex::ONE;
-                    break;
-                }
-
-                current_segment_index -= SegmentIndex::ONE;
-
-                segment_header = segment_headers_store
-                    .get_segment_header(current_segment_index)
-                    .ok_or(format!(
-                        "Can't get segment header from the store: {last_segment_index}"
-                    ))?;
+                current_segment_index
+            } else {
+                last_segment_index
             }
-
-            current_segment_index
         } else {
             last_segment_index
         }
@@ -241,7 +275,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
-/// segment) or to the last archived block.
+/// segment) or to the last archived block. Returns false when sync is skipped.
 async fn sync<PG, AS, Block, Client, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -253,7 +287,7 @@ async fn sync<PG, AS, Block, Client, IQS>(
     network_service_handle: &NetworkServiceHandle,
     target_block: Option<BlockNumber>,
     erasure_coding: &ErasureCoding,
-) -> Result<(), Error>
+) -> Result<bool, Error>
 where
     PG: DsnSyncPieceGetter,
     AS: AuxStore,
@@ -262,6 +296,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -280,7 +315,7 @@ where
     .await?
     else {
         // Snap-sync skipped
-        return Ok(());
+        return Ok(false);
     };
 
     debug!(
@@ -379,42 +414,35 @@ where
 
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
-    Ok(())
+    Ok(true)
 }
 
-async fn wait_for_block_import<Block, Client>(
+pub async fn wait_for_block_import<Block, Client>(
     client: &Client,
     waiting_block_number: NumberFor<Block>,
 ) where
     Block: BlockT,
-    Client: HeaderBackend<Block>,
+    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
-    const WAIT_DURATION: Duration = Duration::from_secs(5);
-    const MAX_NO_NEW_IMPORT_ITERATIONS: u32 = 10;
-    let mut current_iteration = 0;
-    let mut last_best_block_number = client.info().best_number;
-    loop {
-        let info = client.info();
-        debug!(%current_iteration, %waiting_block_number, "Waiting client info: {:?}", info);
+    let mut blocks_stream = client.every_import_notification_stream();
 
-        tokio::time::sleep(WAIT_DURATION).await;
+    let info = client.info();
+    debug!(
+        %waiting_block_number,
+        "Waiting client info: {:?}", info
+    );
 
-        if info.best_number >= waiting_block_number {
-            break;
+    if info.best_number >= waiting_block_number {
+        return;
+    }
+
+    while let Some(block) = blocks_stream.next().await {
+        let current_block_number = *block.header.number();
+        trace!(%current_block_number, %waiting_block_number, "Waiting for the target block");
+
+        if current_block_number >= waiting_block_number {
+            return;
         }
-
-        if last_best_block_number == info.best_number {
-            current_iteration += 1;
-        } else {
-            current_iteration = 0;
-        }
-
-        if current_iteration >= MAX_NO_NEW_IMPORT_ITERATIONS {
-            debug!(%current_iteration, %waiting_block_number, "Max idle period reached. {:?}", info);
-            break;
-        }
-
-        last_best_block_number = info.best_number;
     }
 }
 

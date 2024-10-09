@@ -1,5 +1,6 @@
 //! Provides synchronization primitives for consensus and domain chains snap sync.
 
+use crate::sync_from_dsn::snap_sync::{DefaultTargetBlockProvider, SnapSyncTargetBlockProvider};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -7,12 +8,31 @@ use subspace_core_primitives::BlockNumber;
 use tokio::sync::Notify;
 use tracing::debug;
 
+pub(crate) fn create_target_block_provider(
+    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
+) -> Arc<dyn SnapSyncTargetBlockProvider> {
+    if let Some(snap_sync_orchestrator) = snap_sync_orchestrator {
+        snap_sync_orchestrator
+    } else {
+        Arc::new(DefaultTargetBlockProvider)
+    }
+}
+
 /// Synchronizes consensus and domain chain snap sync.
 pub struct SnapSyncOrchestrator {
     notify_consensus_snap_sync_unblocked: Notify,
     consensus_snap_sync_block_number: Mutex<Option<BlockNumber>>,
     notify_domain_snap_sync_finished: Notify,
     domain_snap_sync_finished: Mutex<bool>,
+}
+
+#[async_trait]
+impl SnapSyncTargetBlockProvider for SnapSyncOrchestrator {
+    async fn target_block(&self) -> Option<BlockNumber> {
+        self.consensus_snap_sync_unblocked().await;
+
+        self.target_consensus_snap_sync_block_number()
+    }
 }
 
 impl Default for SnapSyncOrchestrator {
