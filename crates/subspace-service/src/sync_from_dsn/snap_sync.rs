@@ -19,6 +19,8 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::SubspaceApi;
 use sp_core::offchain::OffchainStorage;
+use sp_core::H256;
+use sp_mmr_primitives::MmrApi;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
@@ -87,7 +89,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
+    Client::Api:
+        SubspaceApi<Block, PublicKey> + ObjectsApi<Block> + MmrApi<Block, H256, NumberFor<Block>>,
     PG: DsnSyncPieceGetter,
     OS: OffchainStorage,
 {
@@ -298,7 +301,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
+    Client::Api:
+        SubspaceApi<Block, PublicKey> + ObjectsApi<Block> + MmrApi<Block, H256, NumberFor<Block>>,
     IQS: ImportQueueService<Block> + ?Sized,
     OS: OffchainStorage,
     NR: NetworkRequest + Sync + Send,
