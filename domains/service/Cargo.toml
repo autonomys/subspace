@@ -13,6 +13,8 @@ build = "build.rs"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+array-bytes = "6.2.3"
+async-channel = "1.8.0"
 async-trait = "0.1.83"
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
@@ -63,8 +65,10 @@ sp-subspace-mmr = { version = "0.1.0", path = "../../crates/sp-subspace-mmr" }
 sp-transaction-pool = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
+subspace-service = { version = "0.1.0", path = "../../crates/subspace-service" }
 substrate-frame-rpc-system = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
+thiserror = "1.0.64"
 tokio = "1.40.0"
 tracing = "0.1.40"
 

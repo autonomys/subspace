@@ -1,3 +1,5 @@
+use crate::network::build_network;
+use crate::network::receipt_receiver::LastDomainBlockInfoReceiver;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
@@ -9,6 +11,7 @@ use domain_runtime_primitives::{Balance, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
+use sc_chain_spec::GenesisBlockBuilder;
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ExecutorProvider,
     ProofProvider, UsageProvider,
@@ -16,7 +19,7 @@ use sc_client_api::{
 use sc_consensus::{BasicQueue, BoxBlockImport};
 use sc_domains::{ExtensionsFactory, RuntimeExecutor};
 use sc_network::service::traits::NetworkService;
-use sc_network::{NetworkPeers, NetworkWorker, NotificationMetrics};
+use sc_network::{NetworkPeers, NetworkRequest, NetworkWorker, NotificationMetrics};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -49,6 +52,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Nonce;
+use subspace_service::domains::ConsensusChainSyncParams;
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
@@ -110,6 +114,7 @@ where
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi>,
     /// Transaction pool
     pub transaction_pool: Arc<FullPool<RuntimeApi>>,
+
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -124,6 +129,7 @@ fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
     confirmation_depth_k: NumberFor<CBlock>,
+    snap_sync: bool,
 ) -> Result<
     PartialComponents<
         FullClient<Block, RuntimeApi>,
@@ -172,11 +178,24 @@ where
 
     let executor = sc_service::new_wasm_executor(&config.executor);
 
-    let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
-        config,
-        telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+    let backend = sc_service::new_db_backend(config.db_config())?;
+    let genesis_block_builder = GenesisBlockBuilder::new(
+        config.chain_spec.as_storage_builder(),
+        !snap_sync,
+        backend.clone(),
         executor.clone(),
     )?;
+
+    let (client, backend, keystore_container, task_manager) =
+        sc_service::new_full_parts_with_genesis_builder(
+            config,
+            telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+            executor.clone(),
+            backend,
+            genesis_block_builder,
+            false,
+        )?;
+
     let client = Arc::new(client);
 
     let executor = Arc::new(executor);
@@ -243,9 +262,10 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>
 where
     CBlock: BlockT,
+    CNR: NetworkRequest + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_config: ServiceConfiguration,
@@ -262,11 +282,23 @@ where
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
 }
 
 /// Builds service for a domain full node.
-pub async fn new_full<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, RuntimeApi, AccountId, Provider>(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
+pub async fn new_full<
+    CBlock,
+    CClient,
+    IBNS,
+    CIBNS,
+    NSNS,
+    ASS,
+    RuntimeApi,
+    AccountId,
+    Provider,
+    CNR,
+>(
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi>>,
@@ -297,8 +329,8 @@ where
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + Unpin + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + Unpin + 'static,
     NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
@@ -333,6 +365,7 @@ where
             CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
+    CNR: NetworkRequest + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,
@@ -350,6 +383,7 @@ where
         skip_empty_bundle_production,
         skip_out_of_order_slot,
         confirmation_depth_k,
+        consensus_chain_sync_params,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -360,6 +394,7 @@ where
         consensus_client.clone(),
         &provider,
         confirmation_depth_k,
+        consensus_chain_sync_params.is_some(),
     )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
@@ -377,8 +412,16 @@ where
             .map(|cfg| cfg.registry.clone()),
     );
 
-    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
-        sc_service::build_network(BuildNetworkParams {
+    let (
+        network_service,
+        system_rpc_tx,
+        tx_handler_controller,
+        network_starter,
+        sync_service,
+        network_service_handle,
+        block_downloader,
+    ) = build_network(
+        BuildNetworkParams {
             config: &domain_config,
             net_config,
             client: client.clone(),
@@ -395,7 +438,11 @@ where
                     .as_ref()
                     .map(|cfg| &cfg.registry),
             ),
-        })?;
+        },
+        consensus_client.clone(),
+    )?;
+
+    let fork_id = domain_config.chain_spec.fork_id().map(String::from);
 
     let is_authority = domain_config.role.is_authority();
     domain_config.rpc.id_provider = provider.rpc_id();
@@ -463,6 +510,14 @@ where
     // TODO: Implement when block tree is ready.
     let domain_confirmation_depth = 256u32;
 
+    let execution_receipt_provider = LastDomainBlockInfoReceiver::new(
+        domain_id,
+        fork_id.clone(),
+        consensus_client.clone(),
+        network_service.clone(),
+        sync_service.clone(),
+    );
+
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
         OperatorParams {
@@ -483,6 +538,13 @@ where
             block_import: Arc::new(block_import),
             skip_empty_bundle_production,
             skip_out_of_order_slot,
+            sync_service: sync_service.clone(),
+            network_service: Arc::clone(&network_service),
+            block_downloader,
+            consensus_chain_sync_params,
+            domain_fork_id: fork_id,
+            domain_network_service_handle: network_service_handle,
+            domain_execution_receipt_provider: Arc::new(execution_receipt_provider),
         },
     )
     .await?;
