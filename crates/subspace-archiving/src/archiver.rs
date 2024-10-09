@@ -348,9 +348,8 @@ impl Archiver {
         let mut object_mapping = Vec::new();
 
         while let Some(segment) = self.produce_segment(incremental) {
-            let (archived_segment, segment_object_mapping) = self.produce_archived_segment(segment);
-            archived_segments.push(archived_segment);
-            object_mapping.extend(segment_object_mapping);
+            object_mapping.extend(self.produce_object_mappings(&segment));
+            archived_segments.push(self.produce_archived_segment(segment));
         }
 
         ArchiveBlockOutcome {
@@ -598,17 +597,14 @@ impl Archiver {
         Some(segment)
     }
 
-    /// Take segment as an input, apply necessary transformations and produce archived segment
-    fn produce_archived_segment(
-        &mut self,
-        segment: Segment,
-    ) -> (NewArchivedSegment, Vec<GlobalObject>) {
-        // Create mappings
-        let mut corrected_object_mapping = Vec::new();
+    /// Take segment as an input, apply necessary transformations and produce archived object mappings.
+    /// Must be called before `produce_archived_segment()`.
+    fn produce_object_mappings(&self, segment: &Segment) -> Vec<GlobalObject> {
         let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
-
         let Segment::V0 { items } = &segment;
+
+        let mut corrected_object_mapping = Vec::new();
         // `+1` corresponds to enum variant encoding
         let mut base_offset_in_segment = 1;
         for segment_item in items {
@@ -654,6 +650,11 @@ impl Archiver {
             base_offset_in_segment += segment_item.encoded_size();
         }
 
+        corrected_object_mapping
+    }
+
+    /// Take segment as an input, apply necessary transformations and produce archived segment
+    fn produce_archived_segment(&mut self, segment: Segment) -> NewArchivedSegment {
         let mut pieces = {
             // Serialize segment into concatenation of raw records
             let mut raw_record_shards = Vec::<u8>::with_capacity(RecordedHistorySegment::SIZE);
@@ -819,12 +820,9 @@ impl Archiver {
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
-        (
-            NewArchivedSegment {
-                segment_header,
-                pieces: pieces.to_shared(),
-            },
-            corrected_object_mapping,
-        )
+        NewArchivedSegment {
+            segment_header,
+            pieces: pieces.to_shared(),
+        }
     }
 }
