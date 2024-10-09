@@ -2,6 +2,9 @@
 //!
 //! Request handler can be created with [`CachedPieceByIndexRequestHandler`].
 
+#[cfg(test)]
+mod tests;
+
 use crate::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
@@ -81,6 +84,12 @@ impl Decode for ClosestPeers {
             let mut addresses = Vec::new();
 
             let addresses_count = Compact::<u32>::decode(input)?.0 as usize;
+
+            if addresses_count == 0 {
+                return Err(parity_scale_codec::Error::from(
+                    "List of addresses must not be empty",
+                ));
+            }
 
             for _ in 0..addresses_count {
                 let address = Multiaddr::try_from(Vec::<u8>::decode(input)?).map_err(|error| {

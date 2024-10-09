@@ -1421,6 +1421,7 @@ where
                     .kademlia
                     .find_closest(&KBucketKey::from(key), &source)
                     .into_iter()
+                    .filter(|peer| !peer.multiaddrs.is_empty())
                     .map(|peer| (peer.node_id, peer.multiaddrs))
                     .collect();
 
