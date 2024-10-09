@@ -36,6 +36,14 @@ RUN \
     ; fi
 
 RUN \
+    if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          g++-riscv64-linux-gnu \
+          gcc-riscv64-linux-gnu \
+          libc6-dev-riscv64-cross \
+    ; fi
+
+RUN \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
     /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
@@ -54,10 +62,13 @@ RUN \
     if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
       export RUSTFLAGS="$RUSTFLAGS -C linker=aarch64-linux-gnu-gcc" \
     ; fi && \
+    if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
+      export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
+    ; fi && \
     if [ $TARGETARCH = "amd64" ] && [ $RUSTFLAGS = ""]; then \
       export RUSTFLAGS="-C target-cpu=skylake" \
     ; fi && \
-    RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g") && \
+    RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
         --locked \
         -Z build-std \
