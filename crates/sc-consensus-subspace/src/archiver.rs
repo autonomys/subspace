@@ -96,7 +96,7 @@ const ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_mins(2);
 /// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
 /// Substrate and is not worth it right now.
 /// https://github.com/paritytech/substrate/discussions/14359
-pub const FINALIZATION_DEPTH_IN_SEGMENTS: SegmentIndex = SegmentIndex::new(5);
+const FINALIZATION_DEPTH_IN_SEGMENTS: SegmentIndex = SegmentIndex::new(5);
 
 #[derive(Debug)]
 struct SegmentHeadersStoreInner<AS> {
