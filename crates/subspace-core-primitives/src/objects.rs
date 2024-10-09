@@ -15,10 +15,9 @@
 
 //! Data structures related to objects (useful data) stored on Subspace Network.
 //!
-//! Mappings provided are of 3 kinds:
+//! There are two kinds of mappings:
 //! * for objects within a block
-//! * for objects within a piece
-//! * for global objects in the global history of the blockchain
+//! * for global objects in the global history of the blockchain (inside a piece)
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -91,64 +90,6 @@ impl BlockObjectMapping {
     }
 }
 
-/// Object stored inside of the piece
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct PieceObject {
-    /// Object hash
-    #[cfg_attr(feature = "serde", serde(with = "hex"))]
-    pub hash: Blake3Hash,
-    /// Raw record offset of the object in that piece, for use with `Record::to_raw_record_bytes`
-    pub offset: u32,
-}
-
-/// Mapping of objects stored inside of the piece
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-#[cfg_attr(feature = "serde", serde(rename_all_fields = "camelCase"))]
-pub enum PieceObjectMapping {
-    /// V0 of object mapping data structure
-    #[codec(index = 0)]
-    V0 {
-        /// Objects stored inside of the piece
-        objects: Vec<PieceObject>,
-    },
-}
-
-impl Default for PieceObjectMapping {
-    fn default() -> Self {
-        Self::V0 {
-            objects: Vec::new(),
-        }
-    }
-}
-
-impl PieceObjectMapping {
-    /// Returns a newly created PieceObjectMapping from a list of object mappings
-    #[inline]
-    pub fn from_objects(objects: impl IntoIterator<Item = PieceObject>) -> Self {
-        Self::V0 {
-            objects: objects.into_iter().collect(),
-        }
-    }
-
-    /// Returns the object mappings as a read-only slice
-    pub fn objects(&self) -> &[PieceObject] {
-        match self {
-            Self::V0 { objects, .. } => objects,
-        }
-    }
-
-    /// Returns the object mappings as a mutable slice
-    pub fn objects_mut(&mut self) -> &mut Vec<PieceObject> {
-        match self {
-            Self::V0 { objects, .. } => objects,
-        }
-    }
-}
-
 /// Object stored in the history of the blockchain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -179,17 +120,6 @@ impl From<CompactGlobalObject> for GlobalObject {
 impl From<GlobalObject> for CompactGlobalObject {
     fn from(object: GlobalObject) -> Self {
         Self(object.hash, object.piece_index, object.offset)
-    }
-}
-
-impl GlobalObject {
-    /// Returns a newly created GlobalObject from a piece index and object.
-    pub fn new(piece_index: PieceIndex, piece_object: &PieceObject) -> Self {
-        Self {
-            hash: piece_object.hash,
-            piece_index,
-            offset: piece_object.offset,
-        }
     }
 }
 
