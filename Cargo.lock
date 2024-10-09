@@ -2836,6 +2836,7 @@ dependencies = [
  "sp-session",
  "sp-transaction-pool",
  "subspace-runtime-primitives",
+ "subspace-service",
  "subspace-test-client",
  "subspace-test-service",
  "substrate-frame-rpc-system",

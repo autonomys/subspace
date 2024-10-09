@@ -13,7 +13,7 @@ use sc_cli::CliConfiguration;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, NetworkRequest};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
@@ -28,6 +28,7 @@ use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::AccountId;
+use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
@@ -101,7 +102,8 @@ impl DomainInstanceStarter {
                     block_importing_notification.block_number,
                     block_importing_notification.acknowledgement_sender,
                 )
-            });
+            })
+            .boxed();
 
         let new_slot_notification_stream = || {
             new_slot_notification_stream
@@ -161,6 +163,9 @@ impl DomainInstanceStarter {
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                    consensus_chain_sync_params: None::<
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                    >,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -172,6 +177,7 @@ impl DomainInstanceStarter {
                     _,
                     evm_domain_runtime::RuntimeApi,
                     AccountId20,
+                    _,
                     _,
                 >(domain_params)
                 .await?;
@@ -219,6 +225,9 @@ impl DomainInstanceStarter {
                     // Always set it to `None` to not running the normal bundle producer
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                    consensus_chain_sync_params: None::<
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
+                    >,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -230,6 +239,7 @@ impl DomainInstanceStarter {
                     _,
                     auto_id_domain_runtime::RuntimeApi,
                     AccountId32,
+                    _,
                     _,
                 >(domain_params)
                 .await?;
