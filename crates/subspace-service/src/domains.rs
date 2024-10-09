@@ -1,5 +1,6 @@
 // Remove after adding domain snap-sync
 #![allow(dead_code)]
+pub mod snap_sync_orchestrator;
 
 use crate::domains::request_handler::{
     generate_protocol_name, LastConfirmedBlockRequest, LastConfirmedBlockResponse,
