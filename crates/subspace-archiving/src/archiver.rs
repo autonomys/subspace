@@ -367,9 +367,12 @@ impl Archiver {
         });
 
         // Add completed segments and their mappings for this block.
-        while let Some(segment) = self.produce_segment(incremental) {
+        while let Some(mut segment) = self.produce_segment(incremental) {
             // Produce mappings for the part of this block in this segment.
-            global_object_mapping.extend(self.produce_object_mappings(segment.items().iter()));
+            global_object_mapping.extend(Self::produce_object_mappings(
+                self.segment_index,
+                segment.items_mut().iter_mut(),
+            ));
             archived_segments.push(self.produce_archived_segment(segment));
         }
 
@@ -627,29 +630,18 @@ impl Archiver {
     ///
     /// Must be called when the buffer contains an incomplete segment.
     fn produce_next_segment_mappings(&mut self) -> Vec<GlobalObject> {
-        let object_mapping = self.produce_object_mappings(self.buffer.iter());
-
-        // We've already produced these mappings, so we don't need to store them in the buffer.
-        if let Some(SegmentItem::BlockContinuation {
-            bytes: _,
-            object_mapping,
-        }) = self.buffer.back_mut()
-        {
-            object_mapping.objects_mut().clear();
-        }
-
-        object_mapping
+        Self::produce_object_mappings(self.segment_index, self.buffer.iter_mut())
     }
 
     /// Take the last block item in `segment_items`, apply necessary transformations, and produce
-    /// object mappings for `segment_index`.
+    /// object mappings for `segment_index`. Then remove the mappings from that block item.
     ///
     /// This method can be called on a `Segment`’s items, or on the `Archiver`'s internal buffer.
     /// It must only be called on the buffer when all segments for a block have been produced.
     /// Before that, the buffer can contain a `BlockContinuation` which spans multiple segments.
     fn produce_object_mappings<'a>(
-        &self,
-        mut segment_items: impl DoubleEndedIterator<Item = &'a SegmentItem>,
+        segment_index: SegmentIndex,
+        mut segment_items: impl DoubleEndedIterator<Item = &'a mut SegmentItem>,
     ) -> Vec<GlobalObject> {
         // Any mappings for the previous block have already been produced, and each block can only
         // add one item per segment. So we only need to produce mappings for the last Block,
@@ -659,10 +651,10 @@ impl Archiver {
             return Vec::new();
         };
 
-        let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
+        let source_piece_indexes = &segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
         let base_offset_in_segment = Segment::default().encoded_size()
-            + segment_items.map(Encode::encoded_size).sum::<usize>();
+            + segment_items.map(|item| item.encoded_size()).sum::<usize>();
 
         let mut corrected_object_mapping = Vec::new();
         match last_item {
@@ -681,7 +673,7 @@ impl Archiver {
                 bytes,
                 object_mapping,
             } => {
-                for block_object in object_mapping.objects() {
+                for block_object in object_mapping.objects_mut().drain(..) {
                     // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
                     let offset_in_segment = base_offset_in_segment
                         + 1
