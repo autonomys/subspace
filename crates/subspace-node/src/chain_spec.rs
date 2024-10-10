@@ -83,7 +83,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
     })
     .with_genesis_config({
         let sudo_account =
-            AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
+            AccountId::from_ss58check("5F1XZHUSixAq58W8fstCUNtP1WDGoRpCEuLzGRDmJo32sbGc")
                 .expect("Wrong root account address");
 
         let balances = vec![(sudo_account.clone(), 1_000 * SSC)];
