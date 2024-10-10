@@ -19,7 +19,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::HeaderBackend;
 use sc_domains::RuntimeExecutor;
 use sc_network::service::traits::NetworkService;
-use sc_network::NetworkStateInfo;
+use sc_network::{NetworkRequest, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
@@ -42,6 +42,7 @@ use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Nonce;
+use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
@@ -215,6 +216,14 @@ where
             skip_out_of_order_slot: true,
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
+            consensus_chain_sync_params: None::<
+                ConsensusChainSyncParams<
+                    _,
+                    _,
+                    Arc<dyn NetworkRequest + Sync + Send>,
+                    subspace_test_client::Client,
+                >,
+            >,
         };
 
         let domain_node = domain_service::new_full::<
@@ -226,6 +235,8 @@ where
             _,
             RuntimeApi,
             <Runtime as DomainRuntime>::AccountId,
+            _,
+            _,
             _,
         >(domain_params)
         .await

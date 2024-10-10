@@ -16,6 +16,7 @@
 
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::{DomainBundleProducer, DomainProposal};
+use crate::snap_sync::{snap_sync, SyncParams};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -23,6 +24,8 @@ use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
+use sc_consensus::BlockImport;
+use sc_network::NetworkRequest;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -36,10 +39,14 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::collections::VecDeque;
+use std::future::pending;
 use std::pin::pin;
 use std::sync::Arc;
+use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::Balance;
-use tracing::{info, Instrument};
+use subspace_service::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
+use tracing::{debug, error, info, trace, Instrument, Span};
 
 pub type OpaqueBundleFor<Block, CBlock> =
     OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Header, Balance>;
@@ -57,6 +64,8 @@ pub(super) async fn start_worker<
     NSNS,
     ASS,
     E,
+    CNR,
+    AS,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
@@ -65,6 +74,7 @@ pub(super) async fn start_worker<
     mut bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
+    sync_params: Option<SyncParams<Client, CClient, Block, CBlock, CNR, AS>>,
 ) where
     Block: BlockT,
     Block::Hash: Into<H256>,
@@ -77,7 +87,10 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + Finalizer<Block, Backend>
+        + BlockImport<Block>
+        + BlockchainEvents<Block>
         + 'static,
+    for<'a> &'a Client: BlockImport<Block>,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + BlockBuilder<Block>
@@ -103,8 +116,67 @@ pub(super) async fn start_worker<
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     E: CodeExecutor,
+    CNR: NetworkRequest + Send + Sync + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
-    let span = tracing::Span::current();
+    let span = Span::current();
+    let snap_sync_orchestrator = sync_params.as_ref().map(|params| {
+        params
+            .consensus_chain_sync_params
+            .snap_sync_orchestrator
+            .clone()
+    });
+
+    if let Some(sync_params) = sync_params {
+        let snap_sync_orchestrator = sync_params
+            .consensus_chain_sync_params
+            .snap_sync_orchestrator
+            .clone();
+        let domain_sync_task = {
+            async move {
+                let info = sync_params.domain_client.info();
+                // Only attempt snap sync with genesis state
+                // TODO: Support snap sync from any state once
+                //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
+                if info.best_hash == info.genesis_hash {
+                    info!("Starting domain snap sync...");
+
+                    let result = snap_sync(sync_params).await;
+
+                    match result {
+                        Ok(_) => {
+                            info!("Domain snap sync completed.");
+                        }
+                        Err(err) => {
+                            snap_sync_orchestrator.unblock_all();
+
+                            error!(%err, "Domain snap sync failed.");
+
+                            // essential task failed
+                            return;
+                        }
+                    };
+                } else {
+                    debug!("Snap sync can only work with genesis state, skipping");
+
+                    snap_sync_orchestrator.unblock_all();
+                }
+
+                // Don't exit essential task.
+                pending().await
+            }
+        };
+
+        spawn_essential.spawn_essential("domain-sync", None, Box::pin(domain_sync_task));
+    }
+
+    let mut block_queue = VecDeque::<BlockInfo<CBlock>>::new();
+    let mut target_block_number = None;
+
+    if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
+        snap_sync_orchestrator.consensus_snap_sync_unblocked().await;
+        target_block_number = snap_sync_orchestrator.target_consensus_snap_sync_block_number();
+    }
 
     let OperatorStreams {
         consensus_block_import_throttling_buffer_size,
@@ -135,6 +207,16 @@ pub(super) async fn start_worker<
                 biased;
 
                 Some((slot, proof_of_time)) = new_slot_notification_stream.next() => {
+                    if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
+                        if !snap_sync_orchestrator.domain_snap_sync_finished(){
+                            debug!(
+                                "Domain snap sync: skipping bundle production on slot {slot}"
+                            );
+
+                            continue
+                        }
+                    }
+
                     let res = bundle_producer
                         .produce_bundle(
                             operator_id,
@@ -172,6 +254,22 @@ pub(super) async fn start_worker<
                 }
                 Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {
                     if let Some(block_info) = maybe_block_info {
+                        let cache_result = maybe_cache_block_info(
+                            block_info.clone(),
+                            target_block_number,
+                            snap_sync_orchestrator.clone(),
+                            &mut block_queue,
+                            &bundle_processor,
+                            span.clone(),
+                        )
+                        .await;
+
+                        match cache_result {
+                            CacheBlockInfoResult::Cached => continue,
+                            CacheBlockInfoResult::Error => break,
+                            CacheBlockInfoResult::NotCached => {}
+                        };
+
                         if let Err(error) = bundle_processor
                             .clone()
                             .process_bundles((
@@ -205,8 +303,29 @@ pub(super) async fn start_worker<
         info!("🧑‍ Running as Full node...");
         drop(new_slot_notification_stream);
         drop(acknowledgement_sender_stream);
-        while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
+
+        'import_loop: while let Some(maybe_block_info) =
+            throttled_block_import_notification_stream.next().await
+        {
             if let Some(block_info) = maybe_block_info {
+                println!("Inside operator processing: {block_info:?}");
+
+                let cache_result = maybe_cache_block_info(
+                    block_info.clone(),
+                    target_block_number,
+                    snap_sync_orchestrator.clone(),
+                    &mut block_queue,
+                    &bundle_processor,
+                    span.clone(),
+                )
+                .await;
+
+                match cache_result {
+                    CacheBlockInfoResult::Cached => continue 'import_loop,
+                    CacheBlockInfoResult::Error => break 'import_loop,
+                    CacheBlockInfoResult::NotCached => {}
+                };
+
                 if let Err(error) = bundle_processor
                     .clone()
                     .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
@@ -216,11 +335,106 @@ pub(super) async fn start_worker<
                     tracing::error!(?error, "Failed to process consensus block");
                     // Bring down the service as bundles processor is an essential task.
                     // TODO: more graceful shutdown.
-                    break;
+                    break 'import_loop;
                 }
             }
         }
     }
+}
+
+enum CacheBlockInfoResult {
+    Error,
+    Cached,
+    NotCached,
+}
+
+async fn maybe_cache_block_info<Block, CBlock, Client, CClient, Backend, E>(
+    block_info: BlockInfo<CBlock>,
+    target_block_number: Option<BlockNumber>,
+    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
+    block_queue: &mut VecDeque<BlockInfo<CBlock>>,
+    bundle_processor: &BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
+    span: Span,
+) -> CacheBlockInfoResult
+where
+    Block: BlockT,
+    Block::Hash: Into<H256>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    CBlock::Hash: From<Block::Hash>,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + Finalizer<Block, Backend>
+        + BlockImport<Block>
+        + 'static,
+    for<'a> &'a Client: BlockImport<Block>,
+    Client::Api: DomainCoreApi<Block>
+        + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
+        + BlockBuilder<Block>
+        + sp_api::ApiExt<Block>
+        + TaggedTransactionQueue<Block>,
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>
+        + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>, CBlock::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>
+        + FraudProofApi<CBlock, Block::Header>
+        + MmrApi<CBlock, H256, NumberFor<CBlock>>,
+    Backend: sc_client_api::Backend<Block> + 'static,
+    E: CodeExecutor,
+{
+    trace!(?target_block_number, ?block_info, "Maybe cache block info.");
+
+    let target_block_number: NumberFor<CBlock> = {
+        if let Some(target_block_number) = target_block_number {
+            target_block_number.into()
+        } else {
+            return CacheBlockInfoResult::NotCached;
+        }
+    };
+
+    if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
+        if snap_sync_orchestrator.domain_snap_sync_finished() && !block_queue.is_empty() {
+            while !block_queue.is_empty() {
+                if let Some(cached_block_info) = block_queue.pop_front() {
+                    debug!(?cached_block_info, "Processing cached block info.");
+
+                    if let Err(error) = bundle_processor
+                        .clone()
+                        .process_bundles((
+                            cached_block_info.hash,
+                            cached_block_info.number,
+                            cached_block_info.is_new_best,
+                        ))
+                        .instrument(span.clone())
+                        .await
+                    {
+                        error!(?error, "Failed to process consensus block");
+                        return CacheBlockInfoResult::Error;
+                    }
+                }
+            }
+        } else if !snap_sync_orchestrator.domain_snap_sync_finished() {
+            if target_block_number >= block_info.number {
+                debug!(%target_block_number, "Skipped consensus block: {:?}", block_info);
+            } else {
+                debug!(%target_block_number, "Cached consensus block: {:?}", block_info);
+                block_queue.push_back(block_info);
+            }
+
+            return CacheBlockInfoResult::Cached;
+        }
+    }
+
+    CacheBlockInfoResult::NotCached
 }
 
 /// Throttle the consensus block import notification based on the `consensus_block_import_throttling_buffer_size`
