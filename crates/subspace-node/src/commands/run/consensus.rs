@@ -495,8 +495,8 @@ pub(super) fn create_consensus_chain_configuration(
     let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
     let chain_spec = match chain.as_deref() {
-        Some("gemini-3h-compiled") => chain_spec::gemini_3h_compiled()?,
-        Some("gemini-3h") => chain_spec::gemini_3h_config()?,
+        Some("taurus-compiled") => chain_spec::taurus_compiled()?,
+        Some("taurus") => chain_spec::taurus_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
         Some("dev") => chain_spec::dev_config()?,

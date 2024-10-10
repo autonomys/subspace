@@ -67,21 +67,21 @@ pub fn development_config(
     .build())
 }
 
-pub fn gemini_3h_config(
+pub fn taurus_config(
     runtime_genesis_config: RuntimeGenesisConfig,
 ) -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "WASM binary was not build, please build it!".to_string())?,
         None,
     )
-    .with_name("Subspace Gemini 3h EVM Domain")
-    .with_id("subspace_gemini_3h_evm_domain")
+    .with_name("Autonomys Taurus EVM Domain")
+    .with_id("autonomys_taurus_evm_domain")
     .with_chain_type(ChainType::Live)
     .with_genesis_config(
         serde_json::to_value(runtime_genesis_config)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
     )
-    .with_protocol_id("subspace-gemini-3h-evm-domain")
+    .with_protocol_id("autonomys-taurus-evm-domain")
     .with_properties(chain_spec_properties())
     .build())
 }
@@ -107,7 +107,7 @@ pub fn devnet_config(
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "gemini-3h" => gemini_3h_config(get_testnet_genesis_by_spec_id(SpecId::Gemini))?,
+        "taurus" => taurus_config(get_testnet_genesis_by_spec_id(SpecId::Taurus))?,
         "devnet" => devnet_config(get_testnet_genesis_by_spec_id(SpecId::DevNet))?,
         "dev" => development_config(get_testnet_genesis_by_spec_id(SpecId::Dev))?,
         path => GenericChainSpec::from_json_file(std::path::PathBuf::from(path))?,
@@ -118,7 +118,7 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
     match spec_id {
         SpecId::Dev => testnet_genesis(),
-        SpecId::Gemini => testnet_genesis(),
+        SpecId::Taurus => testnet_genesis(),
         SpecId::DevNet => testnet_genesis(),
     }
 }
@@ -129,7 +129,7 @@ pub fn get_testnet_endowed_accounts_by_spec_id(spec_id: SpecId) -> Vec<(MultiAcc
             .into_iter()
             .map(|acc| (AccountId20Converter::convert(acc), 1_000_000 * SSC))
             .collect(),
-        SpecId::DevNet | SpecId::Gemini => vec![],
+        SpecId::DevNet | SpecId::Taurus => vec![],
     }
 }
 
@@ -178,7 +178,7 @@ fn get_operator_params(
             operator_allow_list: OperatorAllowList::Anyone,
             operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Bob"),
         },
-        SpecId::Gemini => GenesisOperatorParams {
+        SpecId::Taurus => GenesisOperatorParams {
             operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
                 sudo_account.clone(),
             ])),
@@ -201,7 +201,7 @@ pub fn get_genesis_domain(
 ) -> Result<GenesisDomain, String> {
     let chain_spec = match spec_id {
         SpecId::Dev => development_config(get_testnet_genesis_by_spec_id(spec_id))?,
-        SpecId::Gemini => gemini_3h_config(get_testnet_genesis_by_spec_id(spec_id))?,
+        SpecId::Taurus => taurus_config(get_testnet_genesis_by_spec_id(spec_id))?,
         SpecId::DevNet => devnet_config(get_testnet_genesis_by_spec_id(spec_id))?,
     };
 

@@ -75,20 +75,20 @@ pub fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
         .collect()
 }
 
-pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
+pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
-        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Gemini".to_string())?,
+        WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Taurus".to_string())?,
         None,
     )
-    .with_name("Subspace Gemini 3h")
+    .with_name("Autonomys Taurus Testnet")
     // ID
-    .with_id("subspace_gemini_3h")
-    .with_chain_type(ChainType::Custom("Subspace Gemini 3h".to_string()))
+    .with_id("autonomys_taurus")
+    .with_chain_type(ChainType::Custom("Autonomys Taurus Testnet".to_string()))
     .with_telemetry_endpoints(
         TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
             .map_err(|error| error.to_string())?,
     )
-    .with_protocol_id("subspace-gemini-3h")
+    .with_protocol_id("autonomys-taurus")
     .with_properties({
         let mut properties = chain_spec_properties();
         properties.insert(
@@ -121,7 +121,6 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                 enable_balance_transfers: true,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
-                // TODO: Proper value here
                 rewards_config: RewardsConfig {
                     remaining_issuance: 360_000_000 * SSC,
                     proposer_subsidy_points: BoundedVec::try_from(vec![
@@ -225,8 +224,8 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
                     sudo_account.clone(),
                 ]),
                 genesis_domains: vec![
-                    evm_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
-                    auto_id_chain_spec::get_genesis_domain(SpecId::Gemini, sudo_account.clone())?,
+                    evm_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
+                    auto_id_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
                 ],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
@@ -238,8 +237,8 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
     .build())
 }
 
-pub fn gemini_3h_config() -> Result<GenericChainSpec, String> {
-    Err("Gemini 3h is not supported".to_string())
+pub fn taurus_config() -> Result<GenericChainSpec, String> {
+    Err("Taurus is not supported".to_string())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec, String> {
