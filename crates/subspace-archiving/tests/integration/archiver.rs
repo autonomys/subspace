@@ -100,8 +100,11 @@ fn archiver() {
     };
     let block_0_outcome = archiver.add_block(block_0.clone(), block_0_object_mapping.clone(), true);
     let archived_segments = block_0_outcome.archived_segments;
+    let object_mapping = block_0_outcome.object_mapping.clone();
     // There is not enough data to produce archived segment yet
     assert!(archived_segments.is_empty());
+    // All block mappings must appear in the global object mapping
+    assert_eq!(object_mapping.len(), block_0_object_mapping.objects().len());
 
     let (block_1, block_1_object_mapping) = {
         let mut block = vec![0u8; RecordedHistorySegment::SIZE / 3 * 2];
@@ -140,7 +143,7 @@ fn archiver() {
     // This should produce 1 archived segment
     let block_1_outcome = archiver.add_block(block_1.clone(), block_1_object_mapping.clone(), true);
     let archived_segments = block_1_outcome.archived_segments;
-    let object_mapping = block_1_outcome.object_mapping;
+    let object_mapping = block_1_outcome.object_mapping.clone();
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.first().cloned().unwrap();
@@ -164,20 +167,28 @@ fn archiver() {
         assert_eq!(last_archived_block.partial_archived(), Some(65011701));
     }
 
-    // 4 objects fit into the first segment
-    assert_eq!(object_mapping.len(), 4);
+    // All block mappings must appear in the global object mapping
+    assert_eq!(object_mapping.len(), block_1_object_mapping.objects().len());
     {
+        // 4 objects fit into the first segment, 2 from block 0 and 2 from block 1
         let block_objects = iter::repeat(block_0.as_ref())
             .zip(block_0_object_mapping.objects())
-            .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects()));
-        let global_objects = object_mapping.into_iter().map(|object_mapping| {
-            (
-                Piece::from(
-                    &first_archived_segment.pieces[object_mapping.piece_index.position() as usize],
-                ),
-                object_mapping,
-            )
-        });
+            .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects()))
+            .take(4);
+        let global_objects = block_0_outcome
+            .object_mapping
+            .into_iter()
+            .chain(object_mapping)
+            .take(4)
+            .map(|object_mapping| {
+                (
+                    Piece::from(
+                        &first_archived_segment.pieces
+                            [object_mapping.piece_index.position() as usize],
+                    ),
+                    object_mapping,
+                )
+            });
 
         compare_block_objects_to_global_objects(block_objects, global_objects);
     }
@@ -215,7 +226,7 @@ fn archiver() {
     assert_eq!(archived_segments.len(), 2);
 
     // Check that initializing archiver with initial state before last block results in the same
-    // archived segments and mappings once last block is added
+    // archived segments once last block is added.
     {
         let mut archiver_with_initial_state = Archiver::with_initial_state(
             kzg.clone(),
@@ -226,21 +237,35 @@ fn archiver() {
         )
         .unwrap();
 
+        let initial_block_2_outcome = archiver_with_initial_state.add_block(
+            block_2.clone(),
+            BlockObjectMapping::default(),
+            true,
+        );
+
+        // The rest of block 1 doesn't create any segments by itself
         assert_eq!(
-            archiver_with_initial_state.add_block(
-                block_2.clone(),
-                BlockObjectMapping::default(),
-                true
-            ),
-            block_2_outcome,
+            initial_block_2_outcome.archived_segments,
+            block_2_outcome.archived_segments
+        );
+
+        // The rest of block 1 doesn't create any segments, but it does have the final block 1
+        // object mapping. And there are no mappings in block 2.
+        assert_eq!(initial_block_2_outcome.object_mapping.len(), 1);
+        assert_eq!(
+            initial_block_2_outcome.object_mapping[0],
+            block_1_outcome.object_mapping[2]
         );
     }
 
+    // No block mappings should appear in the global object mapping
+    assert_eq!(object_mapping.len(), 0);
     // 1 object fits into the second segment
     // There are no objects left for the third segment
-    assert_eq!(object_mapping.len(), 1);
     assert_eq!(
-        object_mapping[0].piece_index.segment_index(),
+        block_1_outcome.object_mapping[2]
+            .piece_index
+            .segment_index(),
         archived_segments[0].segment_header.segment_index(),
     );
     {
@@ -341,9 +366,19 @@ fn archiver() {
         )
         .unwrap();
 
+        let initial_block_3_outcome =
+            archiver_with_initial_state.add_block(block_3, BlockObjectMapping::default(), true);
+
+        // The rest of block 2 doesn't create any segments by itself
         assert_eq!(
-            archiver_with_initial_state.add_block(block_3, BlockObjectMapping::default(), true),
-            block_3_outcome,
+            initial_block_3_outcome.archived_segments,
+            block_3_outcome.archived_segments,
+        );
+
+        // The rest of block 2 doesn't have any mappings
+        assert_eq!(
+            initial_block_3_outcome.object_mapping,
+            block_3_outcome.object_mapping
         );
     }
 
