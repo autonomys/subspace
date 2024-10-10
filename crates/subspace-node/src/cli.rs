@@ -98,8 +98,8 @@ impl SubstrateCli for SubspaceCliPlaceholder {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let chain_spec = match id {
-            "gemini-3h-compiled" => chain_spec::gemini_3h_compiled()?,
-            "gemini-3h" => chain_spec::gemini_3h_config()?,
+            "taurus-compiled" => chain_spec::taurus_compiled()?,
+            "taurus" => chain_spec::taurus_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
