@@ -76,7 +76,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::objects::{BlockObjectMapping, GlobalObject};
+use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::segments::{RecordedHistorySegment, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
@@ -360,7 +360,7 @@ fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
     segment_headers_store: &SegmentHeadersStore<AS>,
     best_block_to_archive: NumberFor<Block>,
-) -> sp_blockchain::Result<Option<(SegmentHeader, SignedBlock<Block>, BlockObjectMapping)>>
+) -> sp_blockchain::Result<Option<(SegmentHeader, SignedBlock<Block>)>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
@@ -399,19 +399,7 @@ where
             .block(last_archived_block_hash)?
             .expect("Last archived block must always be retrievable; qed");
 
-        let block_object_mappings = client
-            .runtime_api()
-            .extract_block_object_mapping(
-                *last_archived_block.block.header().parent_hash(),
-                last_archived_block.block.clone(),
-            )
-            .unwrap_or_default();
-
-        return Ok(Some((
-            last_segment_header,
-            last_archived_block,
-            block_object_mappings,
-        )));
+        return Ok(Some((last_segment_header, last_archived_block)));
     }
 
     Ok(None)
@@ -569,9 +557,7 @@ where
     let mut best_archived_block = None;
 
     let mut archiver =
-        if let Some((last_segment_header, last_archived_block, block_object_mappings)) =
-            maybe_last_archived_block
-        {
+        if let Some((last_segment_header, last_archived_block)) = maybe_last_archived_block {
             // Continuing from existing initial state
             let last_archived_block_number = last_segment_header.last_archived_block().number;
             info!(
@@ -593,7 +579,6 @@ where
                 subspace_link.erasure_coding().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
-                block_object_mappings,
             )
             .expect("Incorrect parameters for archiver");
 

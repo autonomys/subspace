@@ -290,7 +290,6 @@ impl Archiver {
         erasure_coding: ErasureCoding,
         segment_header: SegmentHeader,
         encoded_block: &[u8],
-        mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(kzg, erasure_coding);
 
@@ -321,20 +320,12 @@ impl Archiver {
                 }
                 Ordering::Greater => {
                     // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
-                    object_mapping
-                        .objects_mut()
-                        .retain_mut(|block_object: &mut BlockObject| {
-                            if block_object.offset >= archived_block_bytes {
-                                block_object.offset -= archived_block_bytes;
-                                true
-                            } else {
-                                false
-                            }
-                        });
+                    // buffer as a block continuation
                     archiver.buffer.push_back(SegmentItem::BlockContinuation {
                         bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                        object_mapping,
+                        // The mappings were already produced the first time this block was
+                        // archived, so we don't need to do it again.
+                        object_mapping: BlockObjectMapping::default(),
                     });
                 }
             }

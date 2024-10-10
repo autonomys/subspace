@@ -233,7 +233,6 @@ fn archiver() {
             erasure_coding.clone(),
             first_archived_segment.segment_header,
             &block_1,
-            block_1_object_mapping.clone(),
         )
         .unwrap();
 
@@ -351,7 +350,6 @@ fn archiver() {
             erasure_coding.clone(),
             last_segment_header,
             &block_2,
-            BlockObjectMapping::default(),
         )
         .unwrap();
 
@@ -413,7 +411,6 @@ fn invalid_usage() {
                 },
             },
             &[0u8; 10],
-            BlockObjectMapping::default(),
         );
 
         assert_matches!(
@@ -440,7 +437,6 @@ fn invalid_usage() {
                 },
             },
             &[0u8; 6],
-            BlockObjectMapping::default(),
         );
 
         assert_matches!(
