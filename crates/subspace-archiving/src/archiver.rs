@@ -61,6 +61,12 @@ pub enum Segment {
     },
 }
 
+impl Default for Segment {
+    fn default() -> Self {
+        Segment::V0 { items: Vec::new() }
+    }
+}
+
 impl Encode for Segment {
     fn size_hint(&self) -> usize {
         RecordedHistorySegment::SIZE
@@ -123,6 +129,24 @@ impl Segment {
     fn push_item(&mut self, segment_item: SegmentItem) {
         let Self::V0 { items } = self;
         items.push(segment_item);
+    }
+
+    pub fn items(&self) -> &[SegmentItem] {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub(crate) fn items_mut(&mut self) -> &mut Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub fn into_items(self) -> Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
     }
 }
 
@@ -260,13 +284,12 @@ impl Archiver {
 
     /// Create a new instance of the archiver with initial state in case of restart.
     ///
-    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    /// `block` corresponds to `last_archived_block` and will be processed according to its state.
     pub fn with_initial_state(
         kzg: Kzg,
         erasure_coding: ErasureCoding,
         segment_header: SegmentHeader,
         encoded_block: &[u8],
-        mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(kzg, erasure_coding);
 
@@ -297,20 +320,12 @@ impl Archiver {
                 }
                 Ordering::Greater => {
                     // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
-                    object_mapping
-                        .objects_mut()
-                        .retain_mut(|block_object: &mut BlockObject| {
-                            if block_object.offset >= archived_block_bytes {
-                                block_object.offset -= archived_block_bytes;
-                                true
-                            } else {
-                                false
-                            }
-                        });
+                    // buffer as a block continuation
                     archiver.buffer.push_back(SegmentItem::BlockContinuation {
                         bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                        object_mapping,
+                        // The mappings were already produced the first time any part of this block
+                        // was archived, so we don't need to produce its mappings again.
+                        object_mapping: BlockObjectMapping::default(),
                     });
                 }
             }
@@ -328,7 +343,8 @@ impl Archiver {
         }
     }
 
-    /// Adds new block to internal buffer, potentially producing pieces and segment header headers.
+    /// Adds new block to internal buffer, potentially producing pieces, segment headers, and
+    /// object mappings.
     ///
     /// Incremental archiving can be enabled if amortized block addition cost is preferred over
     /// throughput.
@@ -338,23 +354,35 @@ impl Archiver {
         object_mapping: BlockObjectMapping,
         incremental: bool,
     ) -> ArchiveBlockOutcome {
+        let mut archived_segments = Vec::new();
+        let mut global_object_mapping = Vec::new();
+
+        // Since mappings are produced immediately after the block is added, we can assume that
+        // the mappings from any with_initial_state() block have already been produced.
+
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block {
             bytes,
             object_mapping,
         });
 
-        let mut archived_segments = Vec::new();
-        let mut object_mapping = Vec::new();
-
-        while let Some(segment) = self.produce_segment(incremental) {
-            object_mapping.extend(self.produce_object_mappings(&segment));
+        // Add completed segments and their mappings for this block.
+        while let Some(mut segment) = self.produce_segment(incremental) {
+            // Produce mappings for the part of this block in this segment.
+            global_object_mapping.extend(Self::produce_object_mappings(
+                self.segment_index,
+                segment.items_mut().iter_mut(),
+            ));
             archived_segments.push(self.produce_archived_segment(segment));
         }
 
+        // Then add any mappings for the final BlockContinuation for this block in the next
+        // segment.
+        global_object_mapping.extend(self.produce_next_segment_mappings());
+
         ArchiveBlockOutcome {
             archived_segments,
-            object_mapping,
+            object_mapping: global_object_mapping,
         }
     }
 
@@ -387,9 +415,8 @@ impl Archiver {
                         );
                     }
 
-                    let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
-                    for segment_item in items.into_iter().rev() {
+                    for segment_item in segment.into_items().into_iter().rev() {
                         self.buffer.push_front(segment_item);
                     }
 
@@ -478,7 +505,7 @@ impl Archiver {
             .unwrap_or_default();
 
         if spill_over > 0 {
-            let Segment::V0 { items } = &mut segment;
+            let items = segment.items_mut();
             let segment_item = items
                 .pop()
                 .expect("Segment over segment size always has at least one item; qed");
@@ -597,57 +624,75 @@ impl Archiver {
         Some(segment)
     }
 
-    /// Take segment as an input, apply necessary transformations and produce archived object mappings.
-    /// Must be called before `produce_archived_segment()`.
-    fn produce_object_mappings(&self, segment: &Segment) -> Vec<GlobalObject> {
-        let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
+    /// Take the last block continuation in the buffered items for the next segment, apply
+    /// necessary transformations, and produce object mappings. Then remove the mappings from that
+    /// block continuation.
+    ///
+    /// Must be called when the buffer contains an incomplete segment.
+    fn produce_next_segment_mappings(&mut self) -> Vec<GlobalObject> {
+        Self::produce_object_mappings(self.segment_index, self.buffer.iter_mut())
+    }
+
+    /// Take the last block item in `segment_items`, apply necessary transformations, and produce
+    /// object mappings for `segment_index`. Then remove the mappings from that block item.
+    ///
+    /// This method can be called on a `Segment`’s items, or on the `Archiver`'s internal buffer.
+    /// It must only be called on the buffer when all segments for a block have been produced.
+    /// Before that, the buffer can contain a `BlockContinuation` which spans multiple segments.
+    fn produce_object_mappings<'a>(
+        segment_index: SegmentIndex,
+        mut segment_items: impl DoubleEndedIterator<Item = &'a mut SegmentItem>,
+    ) -> Vec<GlobalObject> {
+        // Any mappings for the previous block have already been produced, and each block can only
+        // add one item per segment. So we only need to produce mappings for the last Block,
+        // BlockStart, or BlockContinuation in the segment.
+        let Some(last_item) = segment_items.next_back() else {
+            // No items to produce mappings for.
+            return Vec::new();
+        };
+
+        let source_piece_indexes = &segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
-        let Segment::V0 { items } = &segment;
+        let base_offset_in_segment = Segment::default().encoded_size()
+            + segment_items.map(|item| item.encoded_size()).sum::<usize>();
 
         let mut corrected_object_mapping = Vec::new();
-        // `+1` corresponds to enum variant encoding
-        let mut base_offset_in_segment = 1;
-        for segment_item in items {
-            match segment_item {
-                SegmentItem::Padding => {
-                    unreachable!(
-                        "Segment during archiving never contains SegmentItem::Padding; qed"
-                    );
-                }
-                SegmentItem::Block {
-                    bytes,
-                    object_mapping,
-                }
-                | SegmentItem::BlockStart {
-                    bytes,
-                    object_mapping,
-                }
-                | SegmentItem::BlockContinuation {
-                    bytes,
-                    object_mapping,
-                } => {
-                    for block_object in object_mapping.objects() {
-                        // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
-                        let offset_in_segment = base_offset_in_segment
-                            + 1
-                            + Compact::compact_len(&(bytes.len() as u32))
-                            + block_object.offset as usize;
-                        let raw_piece_offset = (offset_in_segment % RawRecord::SIZE)
-                            .try_into()
-                            .expect("Offset within piece should always fit in 32-bit integer; qed");
-                        corrected_object_mapping.push(GlobalObject {
-                            hash: block_object.hash,
-                            piece_index: source_piece_indexes[offset_in_segment / RawRecord::SIZE],
-                            offset: raw_piece_offset,
-                        });
-                    }
-                }
-                SegmentItem::ParentSegmentHeader(_) => {
-                    // Ignore, no objects mappings here
+        match last_item {
+            SegmentItem::Padding => {
+                unreachable!("Segment during archiving never contains SegmentItem::Padding; qed");
+            }
+            SegmentItem::Block {
+                bytes,
+                object_mapping,
+            }
+            | SegmentItem::BlockStart {
+                bytes,
+                object_mapping,
+            }
+            | SegmentItem::BlockContinuation {
+                bytes,
+                object_mapping,
+            } => {
+                for block_object in object_mapping.objects_mut().drain(..) {
+                    // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
+                    let offset_in_segment = base_offset_in_segment
+                        + 1
+                        + Compact::compact_len(&(bytes.len() as u32))
+                        + block_object.offset as usize;
+                    let raw_piece_offset = (offset_in_segment % RawRecord::SIZE)
+                        .try_into()
+                        .expect("Offset within piece should always fit in 32-bit integer; qed");
+                    corrected_object_mapping.push(GlobalObject {
+                        hash: block_object.hash,
+                        piece_index: source_piece_indexes[offset_in_segment / RawRecord::SIZE],
+                        offset: raw_piece_offset,
+                    });
                 }
             }
-
-            base_offset_in_segment += segment_item.encoded_size();
+            SegmentItem::ParentSegmentHeader(_) => {
+                // Headers never contain object mappings. They can only be the last item when
+                // the latest block filled the last segment exactly.
+            }
         }
 
         corrected_object_mapping

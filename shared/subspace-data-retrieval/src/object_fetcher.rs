@@ -389,7 +389,7 @@ impl ObjectFetcher {
         );
 
         let mut data = {
-            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            let items = self.read_segment(segment_index).await?.into_items();
             // Go through the segment until we reach the offset.
             // Unconditional progress is enum variant + compact encoding of number of elements
             let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
@@ -495,7 +495,7 @@ impl ObjectFetcher {
         // headers and optional padding.
         loop {
             segment_index += SegmentIndex::ONE;
-            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            let items = self.read_segment(segment_index).await?.into_items();
             for segment_item in items {
                 match segment_item {
                     SegmentItem::BlockContinuation { bytes, .. } => {
