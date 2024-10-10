@@ -91,7 +91,7 @@ pub struct DomainCli {
 #[derive(Debug, Copy, Clone)]
 pub enum SpecId {
     Dev,
-    Gemini,
+    Taurus,
     DevNet,
 }
 
