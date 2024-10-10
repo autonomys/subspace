@@ -59,7 +59,7 @@
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(array_windows)]
-#![feature(const_option)]
+#![feature(box_into_inner)]
 #![feature(duration_constructors)]
 #![feature(extract_if)]
 
@@ -82,18 +82,24 @@ pub use self::aux_schema::load_execution_receipt;
 pub use self::fetch_domain_bootstrap_info::{fetch_domain_bootstrap_info, BootstrapResult};
 pub use self::operator::Operator;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications, OperatorSlotInfo};
+pub use crate::snap_sync::LastDomainBlockReceiptProvider;
 pub use domain_worker::OpaqueBundleFor;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
 use sc_consensus::BoxBlockImport;
+use sc_network::service::traits::NetworkService;
+use sc_network::NetworkRequest;
+use sc_network_sync::block_relay_protocol::BlockDownloader;
+use sc_network_sync::service::network::NetworkServiceHandle;
+use sc_network_sync::SyncingService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, DomainId, ExecutionReceipt, OperatorId};
+use sp_domains::{Bundle, DomainId, ExecutionReceiptFor as ExecutionReceipt, OperatorId};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
@@ -101,14 +107,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
+use subspace_service::domains::ConsensusChainSyncParams;
 
-pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
-    NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
-    Balance,
->;
+pub type ExecutionReceiptFor<Block, CBlock> =
+    ExecutionReceipt<<Block as BlockT>::Header, CBlock, Balance>;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
@@ -155,6 +157,7 @@ pub struct OperatorParams<
     CIBNS,
     NSNS,
     ASS,
+    CNR,
 > where
     Block: BlockT,
     CBlock: BlockT,
@@ -162,6 +165,7 @@ pub struct OperatorParams<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
+    CNR: NetworkRequest + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
@@ -180,9 +184,16 @@ pub struct OperatorParams<
     pub block_import: Arc<BoxBlockImport<Block>>,
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
+    pub sync_service: Arc<SyncingService<Block>>,
+    pub network_service: Arc<dyn NetworkService>,
+    pub block_downloader: Arc<dyn BlockDownloader<Block>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+    pub domain_fork_id: Option<String>,
+    pub domain_network_service_handle: NetworkServiceHandle,
+    pub domain_execution_receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
 }
 
-pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
+pub fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
     domain_client: &Client,
     domain_hash: Block::Hash,
     domain_number: NumberFor<Block>,

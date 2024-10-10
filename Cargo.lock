@@ -2582,6 +2582,7 @@ dependencies = [
 name = "domain-client-operator"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-block-builder",
@@ -2606,6 +2607,9 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-domains",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-sync",
  "sc-service",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -2631,6 +2635,7 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-service",
  "subspace-test-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -2719,6 +2724,8 @@ dependencies = [
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
+ "array-bytes",
+ "async-channel 1.9.0",
  "async-trait",
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
@@ -2769,9 +2776,11 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "thiserror",
  "tokio",
  "tracing",
 ]
