@@ -118,7 +118,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
-                enable_balance_transfers: true,
+                enable_balance_transfers: false,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 rewards_config: RewardsConfig {
