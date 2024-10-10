@@ -323,8 +323,8 @@ impl Archiver {
                     // buffer as a block continuation
                     archiver.buffer.push_back(SegmentItem::BlockContinuation {
                         bytes: encoded_block[(archived_block_bytes as usize)..].to_vec(),
-                        // The mappings were already produced the first time this block was
-                        // archived, so we don't need to do it again.
+                        // The mappings were already produced the first time any part of this block
+                        // was archived, so we don't need to produce its mappings again.
                         object_mapping: BlockObjectMapping::default(),
                     });
                 }
@@ -368,14 +368,13 @@ impl Archiver {
 
         // Add completed segments and their mappings for this block.
         while let Some(segment) = self.produce_segment(incremental) {
-            // Any mappings for the previous BlockContinuation or Blocks have already been
-            // produced, so we only need to produce mappings for the latest Block, BlockStart, or
-            // BlockContinuation from this block.
+            // Produce mappings for the part of this block in this segment.
             global_object_mapping.extend(self.produce_object_mappings(segment.items().iter()));
             archived_segments.push(self.produce_archived_segment(segment));
         }
 
-        // Then add any mappings for a BlockContinuation for this block in the next segment.
+        // Then add any mappings for the final BlockContinuation for this block in the next
+        // segment.
         global_object_mapping.extend(self.produce_next_segment_mappings());
 
         ArchiveBlockOutcome {
@@ -622,11 +621,11 @@ impl Archiver {
         Some(segment)
     }
 
-    /// Take the last block continuation in the next segment's items, apply necessary
-    /// transformations, and produce object mappings. Then remove the mappings from that block
-    /// continuation.
+    /// Take the last block continuation in the buffered items for the next segment, apply
+    /// necessary transformations, and produce object mappings. Then remove the mappings from that
+    /// block continuation.
     ///
-    /// Must be called on an incomplete segment.
+    /// Must be called when the buffer contains an incomplete segment.
     fn produce_next_segment_mappings(&mut self) -> Vec<GlobalObject> {
         let object_mapping = self.produce_object_mappings(self.buffer.iter());
 
@@ -642,15 +641,19 @@ impl Archiver {
         object_mapping
     }
 
-    /// Take the last block in the segment items, apply necessary transformations, and produce
-    /// object mappings.
+    /// Take the last block item in `segment_items`, apply necessary transformations, and produce
+    /// object mappings for `segment_index`.
     ///
-    /// Must be called in the correct order with `produce_archived_segment()`, because that method
-    /// updates the archiver's state.
+    /// This method can be called on a `Segment`’s items, or on the `Archiver`'s internal buffer.
+    /// It must only be called on the buffer when all segments for a block have been produced.
+    /// Before that, the buffer can contain a `BlockContinuation` which spans multiple segments.
     fn produce_object_mappings<'a>(
         &self,
         mut segment_items: impl DoubleEndedIterator<Item = &'a SegmentItem>,
     ) -> Vec<GlobalObject> {
+        // Any mappings for the previous block have already been produced, and each block can only
+        // add one item per segment. So we only need to produce mappings for the last Block,
+        // BlockStart, or BlockContinuation in the segment.
         let Some(last_item) = segment_items.next_back() else {
             // No items to produce mappings for.
             return Vec::new();
@@ -695,8 +698,8 @@ impl Archiver {
                 }
             }
             SegmentItem::ParentSegmentHeader(_) => {
-                // If this block filled the last segment, then the last item in the next segment
-                // will be a header, with no mappings.
+                // Headers never contain object mappings. They can only be the last item when
+                // the latest block filled the last segment exactly.
             }
         }
 
