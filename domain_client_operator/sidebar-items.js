@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["fetch_domain_bootstrap_info","load_execution_receipt"],"mod":["domain_bundle_producer","domain_bundle_proposer"],"struct":["BootstrapResult","DomainBlockImportNotification","Operator","OperatorParams","OperatorSlotInfo","OperatorStreams"],"type":["DomainImportNotifications","ExecutionReceiptFor","OpaqueBundleFor"]};
