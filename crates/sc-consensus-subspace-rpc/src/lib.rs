@@ -177,6 +177,7 @@ pub trait SubspaceRpcApi {
         name = "subspace_subscribeObjectMappings" => "subspace_object_mappings",
         unsubscribe = "subspace_unsubscribeObjectMappings",
         item = GlobalObjectMapping,
+        with_extensions,
     )]
     fn subscribe_object_mappings(&self);
 
@@ -185,6 +186,7 @@ pub trait SubspaceRpcApi {
         name = "subspace_subscribeFilteredObjectMappings" => "subspace_filtered_object_mappings",
         unsubscribe = "subspace_unsubscribeFilteredObjectMappings",
         item = GlobalObjectMapping,
+        with_extensions,
     )]
     fn subscribe_filtered_object_mappings(&self, hashes: Vec<Blake3Hash>);
 }
@@ -846,8 +848,11 @@ where
     // - the number of object mappings in each segment can be very large (hundreds or thousands).
     //   To avoid RPC connection failures, limit the number of mappings returned in each response,
     //   or the number of in-flight responses.
-    fn subscribe_object_mappings(&self, pending: PendingSubscriptionSink) {
-        // TODO: deny unsafe subscriptions?
+    fn subscribe_object_mappings(&self, pending: PendingSubscriptionSink, ext: &Extensions) {
+        if check_if_safe(ext).is_err() {
+            debug!("Unsafe subscribe_object_mappings ignored");
+            return;
+        }
 
         let mapping_stream = self
             .object_mapping_notification_stream
@@ -871,9 +876,13 @@ where
     fn subscribe_filtered_object_mappings(
         &self,
         pending: PendingSubscriptionSink,
+        ext: &Extensions,
         hashes: Vec<Blake3Hash>,
     ) {
-        // TODO: deny unsafe subscriptions?
+        if check_if_safe(ext).is_err() {
+            debug!("Unsafe subscribe_filtered_object_mappings ignored");
+            return;
+        }
 
         if hashes.len() > MAX_OBJECT_HASHES_PER_SUBSCRIPTION {
             error!(
@@ -900,8 +909,6 @@ where
         let mut hashes = HashSet::<Blake3Hash>::from_iter(hashes);
         let hash_count = hashes.len();
 
-        // The genesis segment isn't included in this stream, see
-        // `subscribe_object_mappings` for details.
         let mapping_stream = self
             .object_mapping_notification_stream
             .subscribe()
