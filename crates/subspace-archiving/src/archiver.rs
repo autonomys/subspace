@@ -61,6 +61,12 @@ pub enum Segment {
     },
 }
 
+impl Default for Segment {
+    fn default() -> Self {
+        Segment::V0 { items: Vec::new() }
+    }
+}
+
 impl Encode for Segment {
     fn size_hint(&self) -> usize {
         RecordedHistorySegment::SIZE
@@ -123,6 +129,24 @@ impl Segment {
     fn push_item(&mut self, segment_item: SegmentItem) {
         let Self::V0 { items } = self;
         items.push(segment_item);
+    }
+
+    pub fn items(&self) -> &[SegmentItem] {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub(crate) fn items_mut(&mut self) -> &mut Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
+    }
+
+    pub fn into_items(self) -> Vec<SegmentItem> {
+        match self {
+            Segment::V0 { items } => items,
+        }
     }
 }
 
@@ -260,7 +284,7 @@ impl Archiver {
 
     /// Create a new instance of the archiver with initial state in case of restart.
     ///
-    /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
+    /// `block` corresponds to `last_archived_block` and will be processed according to its state.
     pub fn with_initial_state(
         kzg: Kzg,
         erasure_coding: ErasureCoding,
@@ -297,7 +321,7 @@ impl Archiver {
                 }
                 Ordering::Greater => {
                     // Take part of the encoded block that wasn't archived yet and push to the
-                    // buffer and block continuation
+                    // buffer as a block continuation
                     object_mapping
                         .objects_mut()
                         .retain_mut(|block_object: &mut BlockObject| {
@@ -328,7 +352,8 @@ impl Archiver {
         }
     }
 
-    /// Adds new block to internal buffer, potentially producing pieces and segment header headers.
+    /// Adds new block to internal buffer, potentially producing pieces, segment headers, and
+    /// object mappings.
     ///
     /// Incremental archiving can be enabled if amortized block addition cost is preferred over
     /// throughput.
@@ -347,10 +372,18 @@ impl Archiver {
         let mut archived_segments = Vec::new();
         let mut object_mapping = Vec::new();
 
-        while let Some(segment) = self.produce_segment(incremental) {
-            object_mapping.extend(self.produce_object_mappings(&segment));
+        // Add completed segments and their mappings for this block.
+        while let Some(mut segment) = self.produce_segment(incremental) {
+            // Produce any segment mappings that haven't already been produced.
+            object_mapping.extend(Self::produce_object_mappings(
+                self.segment_index,
+                segment.items_mut().iter_mut(),
+            ));
             archived_segments.push(self.produce_archived_segment(segment));
         }
+
+        // Produce any next segment buffer mappings that haven't already been produced.
+        object_mapping.extend(self.produce_next_segment_mappings());
 
         ArchiveBlockOutcome {
             archived_segments,
@@ -387,9 +420,8 @@ impl Archiver {
                         );
                     }
 
-                    let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
-                    for segment_item in items.into_iter().rev() {
+                    for segment_item in segment.into_items().into_iter().rev() {
                         self.buffer.push_front(segment_item);
                     }
 
@@ -478,7 +510,7 @@ impl Archiver {
             .unwrap_or_default();
 
         if spill_over > 0 {
-            let Segment::V0 { items } = &mut segment;
+            let items = segment.items_mut();
             let segment_item = items
                 .pop()
                 .expect("Segment over segment size always has at least one item; qed");
@@ -597,16 +629,28 @@ impl Archiver {
         Some(segment)
     }
 
-    /// Take segment as an input, apply necessary transformations and produce archived object mappings.
-    /// Must be called before `produce_archived_segment()`.
-    fn produce_object_mappings(&self, segment: &Segment) -> Vec<GlobalObject> {
-        let source_piece_indexes = &self.segment_index.segment_piece_indexes_source_first()
+    /// Produce object mappings for the buffered items for the next segment. Then remove the
+    /// mappings in those items.
+    ///
+    /// Must only be called after all complete segments for a block have been produced. Before
+    /// that, the buffer can contain a `BlockContinuation` which spans multiple segments.
+    fn produce_next_segment_mappings(&mut self) -> Vec<GlobalObject> {
+        Self::produce_object_mappings(self.segment_index, self.buffer.iter_mut())
+    }
+
+    /// Produce object mappings for `items` in `segment_index`. Then remove the mappings from those
+    /// items.
+    ///
+    /// This method can be called on a `Segment`’s items, or on the `Archiver`'s internal buffer.
+    fn produce_object_mappings<'a>(
+        segment_index: SegmentIndex,
+        items: impl Iterator<Item = &'a mut SegmentItem>,
+    ) -> Vec<GlobalObject> {
+        let source_piece_indexes = &segment_index.segment_piece_indexes_source_first()
             [..RecordedHistorySegment::NUM_RAW_RECORDS];
-        let Segment::V0 { items } = &segment;
 
         let mut corrected_object_mapping = Vec::new();
-        // `+1` corresponds to enum variant encoding
-        let mut base_offset_in_segment = 1;
+        let mut base_offset_in_segment = Segment::default().encoded_size();
         for segment_item in items {
             match segment_item {
                 SegmentItem::Padding => {
@@ -626,7 +670,7 @@ impl Archiver {
                     bytes,
                     object_mapping,
                 } => {
-                    for block_object in object_mapping.objects() {
+                    for block_object in object_mapping.objects_mut().drain(..) {
                         // `+1` corresponds to `SegmentItem::X {}` enum variant encoding
                         let offset_in_segment = base_offset_in_segment
                             + 1
@@ -643,7 +687,7 @@ impl Archiver {
                     }
                 }
                 SegmentItem::ParentSegmentHeader(_) => {
-                    // Ignore, no objects mappings here
+                    // Ignore, no object mappings here
                 }
             }
 
