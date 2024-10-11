@@ -20,7 +20,7 @@ use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::domain::auto_id_chain_spec;
 use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
-use crate::genesis_allocations::get_genesis_allocations;
+use crate::genesis_allocations::{GENESIS_ALLOCATIONS, get_genesis_allocations};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
@@ -87,7 +87,7 @@ pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {
             AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
                 .expect("Wrong root account address");
 
-        let balances=get_genesis_allocations();
+        let balances=get_genesis_allocations(GENESIS_ALLOCATIONS);
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
