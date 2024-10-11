@@ -157,7 +157,6 @@ fn convert_block_number<Block: BlockT>(block_number: NumberFor<Block>) -> u32 {
     block_number
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn snap_sync<Block, Client, CBlock, CClient, CNR, AS>(
     sync_params: SyncParams<Client, CClient, Block, CBlock, CNR, AS>,
 ) -> Result<(), sp_blockchain::Error>
