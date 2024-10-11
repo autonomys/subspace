@@ -18,9 +18,7 @@ env:
 
 jobs:
   container-linux:
-    # TODO: Restore once we have self-hosted runners with Ubuntu 22.04
-    #runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
     permissions:
       contents: write
       packages: write
@@ -84,15 +82,15 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2"
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
+          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             rustflags: "-C linker=aarch64-linux-gnu-gcc"
@@ -183,7 +181,7 @@ jobs:
           ROCM_VERSION=6.2.2
           sudo mkdir -p --mode=0755 /etc/apt/keyrings
           curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION focal main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
           echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
