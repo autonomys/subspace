@@ -165,12 +165,10 @@ pub(super) async fn controller(
     };
 
     let kzg = Kzg::new();
-    let validator = Some(SegmentCommitmentPieceValidator::new(
+    let piece_provider = PieceProvider::new(
         node.clone(),
-        node_client.clone(),
-        kzg.clone(),
-    ));
-    let piece_provider = PieceProvider::new(node.clone(), validator.clone());
+        SegmentCommitmentPieceValidator::new(node.clone(), node_client.clone(), kzg.clone()),
+    );
 
     let piece_getter = FarmerPieceGetter::new(
         piece_provider,

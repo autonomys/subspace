@@ -39,7 +39,7 @@ impl PieceValidator for NoPieceValidator {
 /// Piece provider with cancellation and optional piece validator.
 pub struct PieceProvider<PV> {
     node: Node,
-    piece_validator: Option<PV>,
+    piece_validator: PV,
 }
 
 impl<PV> fmt::Debug for PieceProvider<PV> {
@@ -54,7 +54,7 @@ where
     PV: PieceValidator,
 {
     /// Creates new piece provider.
-    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
+    pub fn new(node: Node, piece_validator: PV) -> Self {
         Self {
             node,
             piece_validator,
@@ -100,13 +100,10 @@ where
                                 "Piece request succeeded"
                             );
 
-                            if let Some(validator) = &self.piece_validator {
-                                return validator
-                                    .validate_piece(provider_id, piece_index, piece)
-                                    .await;
-                            } else {
-                                return Some(piece);
-                            }
+                            return self
+                                .piece_validator
+                                .validate_piece(provider_id, piece_index, piece)
+                                .await;
                         }
                         Ok(PieceByIndexResponse {
                             piece: None,
@@ -164,11 +161,10 @@ where
             }) => {
                 trace!(%peer_id, %piece_index, "Piece request succeeded");
 
-                if let Some(validator) = &self.piece_validator {
-                    return validator.validate_piece(peer_id, piece_index, piece).await;
-                } else {
-                    return Some(piece);
-                }
+                return self
+                    .piece_validator
+                    .validate_piece(peer_id, piece_index, piece)
+                    .await;
             }
             Ok(PieceByIndexResponse {
                 piece: None,
@@ -301,11 +297,10 @@ where
                         }) => {
                             trace!(%peer_id, %piece_index, ?key, %round,  "Piece request succeeded.");
 
-                            if let Some(validator) = &self.piece_validator {
-                                return validator.validate_piece(peer_id, piece_index, piece).await;
-                            } else {
-                                return Some(piece);
-                            }
+                            return self
+                                .piece_validator
+                                .validate_piece(peer_id, piece_index, piece)
+                                .await;
                         }
                         Ok(PieceByIndexResponse {
                             piece: None,
