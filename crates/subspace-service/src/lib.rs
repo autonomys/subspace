@@ -1064,11 +1064,11 @@ where
     let dsn_sync_piece_getter = config.dsn_piece_getter.unwrap_or_else(|| {
         Arc::new(PieceProvider::new(
             node.clone(),
-            Some(SegmentCommitmentPieceValidator::new(
+            SegmentCommitmentPieceValidator::new(
                 node.clone(),
                 subspace_link.kzg().clone(),
                 segment_headers_store.clone(),
-            )),
+            ),
         ))
     });
 
