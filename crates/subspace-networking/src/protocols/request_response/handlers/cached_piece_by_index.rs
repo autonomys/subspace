@@ -33,6 +33,12 @@ impl GenericRequest for CachedPieceByIndexRequest {
     type Response = CachedPieceByIndexResponse;
 }
 
+impl CachedPieceByIndexRequest {
+    /// Max number of cached pieces to accept per request, equals to the number of source shards in
+    /// a sector and fits nicely into a single TCP packet
+    pub const RECOMMENDED_LIMIT: usize = 128;
+}
+
 /// Closest peers
 #[derive(Debug, Default, PartialEq, Eq, Clone, From, Into, Deref, DerefMut)]
 pub struct ClosestPeers(Vec<(PeerId, Vec<Multiaddr>)>);

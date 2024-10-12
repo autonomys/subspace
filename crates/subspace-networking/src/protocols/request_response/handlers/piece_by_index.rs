@@ -23,6 +23,12 @@ impl GenericRequest for PieceByIndexRequest {
     type Response = PieceByIndexResponse;
 }
 
+impl PieceByIndexRequest {
+    /// Max number of cached pieces to accept per request, equals to the number of source shards in
+    /// a sector and fits nicely into a single TCP packet
+    pub const RECOMMENDED_LIMIT: usize = 128;
+}
+
 /// Piece-by-index response, may be cached piece or stored in one of the farms
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
 pub struct PieceByIndexResponse {

@@ -38,8 +38,6 @@ use tracing::{debug, error, info, warn, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADERS_LIMIT: u32 = MAX_SEGMENT_HEADERS_PER_REQUEST as u32;
-/// Max number of cached pieces to accept per request
-const MAX_CACHED_PIECES: usize = 128;
 
 /// Configuration for network stack
 #[derive(Debug, Parser)]
@@ -150,7 +148,7 @@ where
                     async move {
                         let piece_from_cache =
                             farmer_cache.get_piece(piece_index.to_multihash()).await;
-                        cached_pieces.truncate(MAX_CACHED_PIECES);
+                        cached_pieces.truncate(CachedPieceByIndexRequest::RECOMMENDED_LIMIT);
                         let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
                         Some(CachedPieceByIndexResponse {
@@ -198,7 +196,7 @@ where
 
                 async move {
                     let piece_from_cache = farmer_cache.get_piece(piece_index.to_multihash()).await;
-                    cached_pieces.truncate(MAX_CACHED_PIECES);
+                    cached_pieces.truncate(PieceByIndexRequest::RECOMMENDED_LIMIT);
                     let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
                     if let Some(piece) = piece_from_cache {
