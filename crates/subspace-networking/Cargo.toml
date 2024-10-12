@@ -44,6 +44,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream = "0.1.16"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_codec"] }
