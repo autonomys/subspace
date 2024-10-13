@@ -14,6 +14,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use multihash::Multihash;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, EncodeLike, Input, Output};
+use std::sync::Arc;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
 /// Cached-piece-by-index request.
@@ -24,7 +25,9 @@ pub struct CachedPieceByIndexRequest {
     /// Request key - piece index
     pub piece_index: PieceIndex,
     /// Additional pieces that requester is interested in if they are cached locally
-    pub cached_pieces: Vec<PieceIndex>,
+    // TODO: Use `Arc<[PieceIndex]>` once
+    //  https://github.com/paritytech/parity-scale-codec/issues/633 is resolved
+    pub cached_pieces: Arc<Vec<PieceIndex>>,
 }
 
 impl GenericRequest for CachedPieceByIndexRequest {

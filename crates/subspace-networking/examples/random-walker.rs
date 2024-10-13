@@ -331,7 +331,7 @@ async fn request_sample_piece(
             peer_id,
             PieceByIndexRequest {
                 piece_index: sample_piece_index,
-                cached_pieces: Vec::new(),
+                cached_pieces: Arc::default(),
             },
         )
         .await;
