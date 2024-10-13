@@ -1043,6 +1043,7 @@ where
             client.clone(),
             sync_oracle.clone(),
             telemetry.as_ref().map(|telemetry| telemetry.handle()),
+            config.create_object_mappings,
         )
     })
     .map_err(ServiceError::Client)?;
