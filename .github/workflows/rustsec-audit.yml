@@ -14,7 +14,7 @@ on:
     - cron: "40 13 * * 0"
 jobs:
   security_audit:
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
     steps:
       - uses: actions/checkout@v3
       - uses: rustsec/audit-check@dd51754d4e59da7395a4cd9b593f0ff2d61a9b95 #v1.4.1
