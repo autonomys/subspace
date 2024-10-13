@@ -11,6 +11,7 @@ use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::Arc;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace, warn};
 
@@ -36,10 +37,11 @@ impl PieceValidator for NoPieceValidator {
     }
 }
 
-/// Piece provider with cancellation and optional piece validator.
+/// Piece provider with cancellation and piece validator.
+/// Use `NoPieceValidator` to disable validation.
 pub struct PieceProvider<PV> {
     node: Node,
-    piece_validator: Option<PV>,
+    piece_validator: PV,
 }
 
 impl<PV> fmt::Debug for PieceProvider<PV> {
@@ -54,7 +56,7 @@ where
     PV: PieceValidator,
 {
     /// Creates new piece provider.
-    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
+    pub fn new(node: Node, piece_validator: PV) -> Self {
         Self {
             node,
             piece_validator,
@@ -83,7 +85,7 @@ where
                             provider_id,
                             PieceByIndexRequest {
                                 piece_index,
-                                cached_pieces: Vec::new(),
+                                cached_pieces: Arc::default(),
                             },
                         )
                         .await;
@@ -100,13 +102,10 @@ where
                                 "Piece request succeeded"
                             );
 
-                            if let Some(validator) = &self.piece_validator {
-                                return validator
-                                    .validate_piece(provider_id, piece_index, piece)
-                                    .await;
-                            } else {
-                                return Some(piece);
-                            }
+                            return self
+                                .piece_validator
+                                .validate_piece(provider_id, piece_index, piece)
+                                .await;
                         }
                         Ok(PieceByIndexResponse {
                             piece: None,
@@ -152,7 +151,7 @@ where
                 peer_id,
                 PieceByIndexRequest {
                     piece_index,
-                    cached_pieces: Vec::new(),
+                    cached_pieces: Arc::default(),
                 },
             )
             .await;
@@ -164,11 +163,10 @@ where
             }) => {
                 trace!(%peer_id, %piece_index, "Piece request succeeded");
 
-                if let Some(validator) = &self.piece_validator {
-                    return validator.validate_piece(peer_id, piece_index, piece).await;
-                } else {
-                    return Some(piece);
-                }
+                return self
+                    .piece_validator
+                    .validate_piece(peer_id, piece_index, piece)
+                    .await;
             }
             Ok(PieceByIndexResponse {
                 piece: None,
@@ -289,7 +287,7 @@ where
                             peer_id,
                             PieceByIndexRequest {
                                 piece_index,
-                                cached_pieces: Vec::new(),
+                                cached_pieces: Arc::default(),
                             },
                         )
                         .await;
@@ -301,11 +299,10 @@ where
                         }) => {
                             trace!(%peer_id, %piece_index, ?key, %round,  "Piece request succeeded.");
 
-                            if let Some(validator) = &self.piece_validator {
-                                return validator.validate_piece(peer_id, piece_index, piece).await;
-                            } else {
-                                return Some(piece);
-                            }
+                            return self
+                                .piece_validator
+                                .validate_piece(peer_id, piece_index, piece)
+                                .await;
                         }
                         Ok(PieceByIndexResponse {
                             piece: None,

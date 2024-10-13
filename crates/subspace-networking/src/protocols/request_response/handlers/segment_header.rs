@@ -5,6 +5,7 @@
 
 use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
+use std::sync::Arc;
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 
 /// Segment header by segment indexes protocol request.
@@ -13,7 +14,9 @@ pub enum SegmentHeaderRequest {
     /// Segment headers by segment indexes.
     SegmentIndexes {
         /// Segment indexes to get.
-        segment_indexes: Vec<SegmentIndex>,
+        // TODO: Use `Arc<[SegmentIndex]>` once
+        //  https://github.com/paritytech/parity-scale-codec/issues/633 is resolved
+        segment_indexes: Arc<Vec<SegmentIndex>>,
     },
     /// Defines how many segment headers to return, segments will be in ascending order.
     LastSegmentHeaders {

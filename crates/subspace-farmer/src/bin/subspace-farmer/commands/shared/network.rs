@@ -38,8 +38,6 @@ use tracing::{debug, error, info, warn, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADERS_LIMIT: u32 = MAX_SEGMENT_HEADERS_PER_REQUEST as u32;
-/// Max number of cached pieces to accept per request
-const MAX_CACHED_PIECES: usize = 128;
 
 /// Configuration for network stack
 #[derive(Debug, Parser)]
@@ -140,17 +138,18 @@ where
                 CachedPieceByIndexRequestHandler::create(move |peer_id, request| {
                     let CachedPieceByIndexRequest {
                         piece_index,
-                        mut cached_pieces,
+                        cached_pieces,
                     } = request;
                     debug!(?piece_index, "Cached piece request received");
 
                     let maybe_weak_node = Arc::clone(&maybe_weak_node);
                     let farmer_cache = farmer_cache.clone();
+                    let mut cached_pieces = Arc::unwrap_or_clone(cached_pieces);
 
                     async move {
                         let piece_from_cache =
                             farmer_cache.get_piece(piece_index.to_multihash()).await;
-                        cached_pieces.truncate(MAX_CACHED_PIECES);
+                        cached_pieces.truncate(CachedPieceByIndexRequest::RECOMMENDED_LIMIT);
                         let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
                         Some(CachedPieceByIndexResponse {
@@ -189,16 +188,17 @@ where
             PieceByIndexRequestHandler::create(move |_, request| {
                 let PieceByIndexRequest {
                     piece_index,
-                    mut cached_pieces,
+                    cached_pieces,
                 } = request;
                 debug!(?piece_index, "Piece request received. Trying cache...");
 
                 let weak_plotted_pieces = weak_plotted_pieces.clone();
                 let farmer_cache = farmer_cache.clone();
+                let mut cached_pieces = Arc::unwrap_or_clone(cached_pieces);
 
                 async move {
                     let piece_from_cache = farmer_cache.get_piece(piece_index.to_multihash()).await;
-                    cached_pieces.truncate(MAX_CACHED_PIECES);
+                    cached_pieces.truncate(PieceByIndexRequest::RECOMMENDED_LIMIT);
                     let cached_pieces = farmer_cache.has_pieces(cached_pieces).await;
 
                     if let Some(piece) = piece_from_cache {
@@ -241,6 +241,8 @@ where
                 async move {
                     let internal_result = match req {
                         SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
+                            let segment_indexes = Arc::unwrap_or_clone(segment_indexes);
+
                             if segment_indexes.len() > SEGMENT_HEADERS_LIMIT as usize {
                                 debug!(
                                     "segment_indexes length exceed the limit: {} ",

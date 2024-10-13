@@ -3,6 +3,7 @@ use futures::StreamExt;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::pin::pin;
+use std::sync::Arc;
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::protocols::request_response::handlers::segment_header::{
@@ -344,6 +345,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
     ) -> Result<(PeerId, Vec<SegmentHeader>), Box<dyn Error>> {
         trace!(?segment_indexes, "Getting segment header batch..");
 
+        let segment_indexes = Arc::new(segment_indexes);
+
         for &peer_id in peers {
             trace!(%peer_id, "get_closest_peers returned an item");
 
@@ -352,7 +355,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .send_generic_request(
                     peer_id,
                     SegmentHeaderRequest::SegmentIndexes {
-                        segment_indexes: segment_indexes.clone(),
+                        segment_indexes: Arc::clone(&segment_indexes),
                     },
                 )
                 .await;
