@@ -822,7 +822,7 @@ impl AsMut<[u8]> for CowBytes {
     fn as_mut(&mut self) -> &mut [u8] {
         match self {
             CowBytes::Shared(bytes) => {
-                *self = CowBytes::Owned(BytesMut::from(bytes.as_ref()));
+                *self = CowBytes::Owned(BytesMut::from(mem::take(bytes)));
 
                 let CowBytes::Owned(bytes) = self else {
                     unreachable!("Just replaced; qed");
