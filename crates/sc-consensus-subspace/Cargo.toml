@@ -62,7 +62,3 @@ tracing = "0.1.40"
 #substrate-test-runtime = { version = "2.0.0", path = "../../substrate/substrate-test-runtime" }
 #substrate-test-runtime-client = { version = "2.0.0", path = "../../substrate/substrate-test-runtime-client" }
 #tokio = "1.27.0"
-
-[features]
-# Temporary feature, TODO: replace with a CLI option
-full-archive = []

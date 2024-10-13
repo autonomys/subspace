@@ -333,6 +333,7 @@ pub(super) struct ConsensusChainOptions {
     /// * `--tmp` (unless `--base-path` specified explicitly)
     /// * `--force-synced`
     /// * `--force-authoring`
+    /// * `--create-object-mappings`
     /// * `--allow-private-ips`
     /// * `--rpc-cors all` (unless specified explicitly)
     /// * `--dsn-disable-bootstrap-on-start`
@@ -388,6 +389,13 @@ pub(super) struct ConsensusChainOptions {
     /// Enable authoring even when offline, needed for network bootstrapping only.
     #[arg(long)]
     force_authoring: bool,
+
+    /// Create object mappings for new blocks, and blocks that have already been archived.
+    /// By default, mappings are not created for any blocks.
+    ///
+    /// --dev mode enables this option automatically.
+    #[arg(long)]
+    create_object_mappings: bool,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long)]
@@ -446,6 +454,7 @@ pub(super) fn create_consensus_chain_configuration(
         pool_config,
         mut force_synced,
         mut force_authoring,
+        mut create_object_mappings,
         pot_external_entropy,
         dsn_options,
         storage_monitor,
@@ -466,6 +475,7 @@ pub(super) fn create_consensus_chain_configuration(
             tmp = true;
             force_synced = true;
             force_authoring = true;
+            create_object_mappings = true;
             network_options.allow_private_ips = true;
             timekeeper_options.timekeeper = true;
 
@@ -677,6 +687,7 @@ pub(super) fn create_consensus_chain_configuration(
             base: consensus_chain_config,
             // Domain node needs slots notifications for bundle production.
             force_new_slot_notifications: domains_enabled,
+            create_object_mappings,
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
             sync,
