@@ -1064,6 +1064,10 @@ fn send_object_mapping_notification(
     object_mapping_notification_sender: &SubspaceNotificationSender<ObjectMappingNotification>,
     object_mapping: Vec<GlobalObject>,
 ) {
+    if object_mapping.is_empty() {
+        return;
+    }
+
     let object_mapping_notification = ObjectMappingNotification { object_mapping };
 
     object_mapping_notification_sender.notify(move || object_mapping_notification);
