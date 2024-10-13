@@ -399,13 +399,18 @@ where
             .block(last_archived_block_hash)?
             .expect("Last archived block must always be retrievable; qed");
 
-        let block_object_mappings = client
-            .runtime_api()
-            .extract_block_object_mapping(
-                *last_archived_block.block.header().parent_hash(),
-                last_archived_block.block.clone(),
-            )
-            .unwrap_or_default();
+        // RPC clients only want these mappings in full mapping mode
+        let block_object_mappings = if cfg!(feature = "full-archive") {
+            client
+                .runtime_api()
+                .extract_block_object_mapping(
+                    *last_archived_block.block.header().parent_hash(),
+                    last_archived_block.block.clone(),
+                )
+                .unwrap_or_default()
+        } else {
+            BlockObjectMapping::default()
+        };
 
         return Ok(Some((
             last_segment_header,
@@ -654,12 +659,17 @@ where
                                 .block(block_hash)?
                                 .expect("All blocks since last archived must be present; qed");
 
-                            let block_object_mappings = runtime_api
-                                .extract_block_object_mapping(
-                                    *block.block.header().parent_hash(),
-                                    block.block.clone(),
-                                )
-                                .unwrap_or_default();
+                            // RPC clients only want these mappings in full mapping mode
+                            let block_object_mappings = if cfg!(feature = "full-archive") {
+                                runtime_api
+                                    .extract_block_object_mapping(
+                                        *block.block.header().parent_hash(),
+                                        block.block.clone(),
+                                    )
+                                    .unwrap_or_default()
+                            } else {
+                                BlockObjectMapping::default()
+                            };
 
                             Ok((block, block_object_mappings))
                         },
@@ -686,14 +696,10 @@ where
                 );
 
                 let block_outcome = archiver.add_block(encoded_block, block_object_mappings, false);
-                // RPC clients only want these mappings in full mapping mode
-                // TODO: turn this into a command-line argument named `--full-mapping`
-                if cfg!(feature = "full-archive") {
-                    send_object_mapping_notification(
-                        &subspace_link.object_mapping_notification_sender,
-                        block_outcome.object_mapping,
-                    );
-                }
+                send_object_mapping_notification(
+                    &subspace_link.object_mapping_notification_sender,
+                    block_outcome.object_mapping,
+                );
                 let new_segment_headers: Vec<SegmentHeader> = block_outcome
                     .archived_segments
                     .iter()
