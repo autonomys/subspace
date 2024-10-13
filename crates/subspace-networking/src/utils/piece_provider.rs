@@ -37,7 +37,8 @@ impl PieceValidator for NoPieceValidator {
     }
 }
 
-/// Piece provider with cancellation and optional piece validator.
+/// Piece provider with cancellation and piece validator.
+/// Use `NoPieceValidator` to disable validation.
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: PV,
