@@ -37,7 +37,7 @@ impl GenericRequest for CachedPieceByIndexRequest {
 }
 
 impl CachedPieceByIndexRequest {
-    /// Max number of cached pieces to accept per request, equals to the number of source shards in
+    /// Max number of cached piece indexes to accept per request, equals to the number of source shards in
     /// a sector and fits nicely into a single TCP packet
     pub const RECOMMENDED_LIMIT: usize = 128;
 }
