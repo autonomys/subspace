@@ -11,6 +11,7 @@ use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::Arc;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tracing::{debug, trace, warn};
 
@@ -83,7 +84,7 @@ where
                             provider_id,
                             PieceByIndexRequest {
                                 piece_index,
-                                cached_pieces: Vec::new(),
+                                cached_pieces: Arc::default(),
                             },
                         )
                         .await;
@@ -149,7 +150,7 @@ where
                 peer_id,
                 PieceByIndexRequest {
                     piece_index,
-                    cached_pieces: Vec::new(),
+                    cached_pieces: Arc::default(),
                 },
             )
             .await;
@@ -285,7 +286,7 @@ where
                             peer_id,
                             PieceByIndexRequest {
                                 piece_index,
-                                cached_pieces: Vec::new(),
+                                cached_pieces: Arc::default(),
                             },
                         )
                         .await;
