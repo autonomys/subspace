@@ -1,6 +1,0 @@
-version: 2
-iac:
-  ignored-paths:
-    - path: 'domains/pallets/auto-id/res/*'
-      comment: 'Ignore secrets used for testing'
-

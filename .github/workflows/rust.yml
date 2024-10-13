@@ -27,7 +27,7 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
 
     steps:
       - name: Checkout
@@ -54,7 +54,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-20.04", "macos-14", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-22.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -117,7 +117,7 @@ jobs:
           ROCM_VERSION=6.2.2
           sudo mkdir -p --mode=0755 /etc/apt/keyrings
           curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION focal main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
           echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
@@ -167,7 +167,7 @@ jobs:
         if: runner.os == 'Windows'
 
   cargo-docs:
-    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
+    runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
@@ -195,7 +195,7 @@ jobs:
   cargo-test:
     strategy:
       matrix:
-        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
+        os: ${{ fromJson(github.repository_owner == 'autonomys' && '[["self-hosted", "ubuntu-22.04-x86-64"], ["self-hosted", "macos-14-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-14", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
     # Don't use the full 6 hours if a test hangs
