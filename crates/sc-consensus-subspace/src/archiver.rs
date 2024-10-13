@@ -433,19 +433,14 @@ where
         return Ok(None);
     };
 
-    let block_object_mappings = client
-        .runtime_api()
-        .extract_block_object_mapping(
-            *signed_block.block.header().parent_hash(),
-            signed_block.block.clone(),
-        )
-        .unwrap_or_default();
-
     let encoded_block = encode_block(signed_block);
 
     // There are no mappings in the genesis block, so they can be ignored
-    let block_outcome =
-        Archiver::new(kzg, erasure_coding).add_block(encoded_block, block_object_mappings, false);
+    let block_outcome = Archiver::new(kzg, erasure_coding).add_block(
+        encoded_block,
+        BlockObjectMapping::default(),
+        false,
+    );
     let new_archived_segment = block_outcome
         .archived_segments
         .into_iter()
