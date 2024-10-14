@@ -28,7 +28,7 @@ use libp2p::kad::{
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::dial_opts::DialOpts;
+use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -1430,10 +1430,26 @@ where
             }
             Command::GenericRequest {
                 peer_id,
+                addresses,
                 protocol_name,
                 request,
                 result_sender,
             } => {
+                if !addresses.is_empty()
+                    && !self
+                        .swarm
+                        .connected_peers()
+                        .any(|candidate| candidate == &peer_id)
+                {
+                    if let Err(error) = self.swarm.dial(
+                        DialOpts::peer_id(peer_id)
+                            .addresses(addresses)
+                            .condition(PeerCondition::DisconnectedAndNotDialing)
+                            .build(),
+                    ) {
+                        warn!(%error, "Failed to dial disconnected peer on generic request");
+                    }
+                }
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
                     protocol_name,

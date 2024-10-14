@@ -160,6 +160,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                         .dsn_node
                         .send_generic_request(
                             peer_id,
+                            Vec::new(),
                             SegmentHeaderRequest::LastSegmentHeaders {
                                 // Request 2 top segment headers, accounting for situations when new
                                 // segment header was just produced and not all nodes have it
@@ -354,6 +355,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .dsn_node
                 .send_generic_request(
                     peer_id,
+                    Vec::new(),
                     SegmentHeaderRequest::SegmentIndexes {
                         segment_indexes: Arc::clone(&segment_indexes),
                     },

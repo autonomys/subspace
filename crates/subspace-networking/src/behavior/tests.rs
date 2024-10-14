@@ -250,7 +250,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
     });
 
     let resp = node_2
-        .send_generic_request(node_1.id(), ExampleRequest)
+        .send_generic_request(node_1.id(), Vec::new(), ExampleRequest)
         .await
         .unwrap();
 
