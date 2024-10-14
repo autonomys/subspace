@@ -93,7 +93,7 @@ async fn main() {
 
     tokio::spawn(async move {
         let resp = node_2
-            .send_generic_request(node_1.id(), ExampleRequest)
+            .send_generic_request(node_1.id(), Vec::new(), ExampleRequest)
             .await
             .unwrap();
 
