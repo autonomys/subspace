@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
 use crate::protocols::request_response::request_response_factory;
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
