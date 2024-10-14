@@ -360,6 +360,7 @@ fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
     segment_headers_store: &SegmentHeadersStore<AS>,
     best_block_to_archive: NumberFor<Block>,
+    create_object_mappings: bool,
 ) -> sp_blockchain::Result<Option<(SegmentHeader, SignedBlock<Block>, BlockObjectMapping)>>
 where
     Block: BlockT,
@@ -399,13 +400,17 @@ where
             .block(last_archived_block_hash)?
             .expect("Last archived block must always be retrievable; qed");
 
-        let block_object_mappings = client
-            .runtime_api()
-            .extract_block_object_mapping(
-                *last_archived_block.block.header().parent_hash(),
-                last_archived_block.block.clone(),
-            )
-            .unwrap_or_default();
+        let block_object_mappings = if create_object_mappings {
+            client
+                .runtime_api()
+                .extract_block_object_mapping(
+                    *last_archived_block.block.header().parent_hash(),
+                    last_archived_block.block.clone(),
+                )
+                .unwrap_or_default()
+        } else {
+            BlockObjectMapping::default()
+        };
 
         return Ok(Some((
             last_segment_header,
@@ -532,6 +537,7 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
+    create_object_mappings: bool,
 ) -> sp_blockchain::Result<InitializedArchiver<Block>>
 where
     Block: BlockT,
@@ -557,8 +563,12 @@ where
         best_block_to_archive = best_block_number;
     }
 
-    let maybe_last_archived_block =
-        find_last_archived_block(client, segment_headers_store, best_block_to_archive.into())?;
+    let maybe_last_archived_block = find_last_archived_block(
+        client,
+        segment_headers_store,
+        best_block_to_archive.into(),
+        create_object_mappings,
+    )?;
 
     let have_last_segment_header = maybe_last_archived_block.is_some();
     let mut best_archived_block = None;
@@ -649,12 +659,16 @@ where
                                 .block(block_hash)?
                                 .expect("All blocks since last archived must be present; qed");
 
-                            let block_object_mappings = runtime_api
-                                .extract_block_object_mapping(
-                                    *block.block.header().parent_hash(),
-                                    block.block.clone(),
-                                )
-                                .unwrap_or_default();
+                            let block_object_mappings = if create_object_mappings {
+                                runtime_api
+                                    .extract_block_object_mapping(
+                                        *block.block.header().parent_hash(),
+                                        block.block.clone(),
+                                    )
+                                    .unwrap_or_default()
+                            } else {
+                                BlockObjectMapping::default()
+                            };
 
                             Ok((block, block_object_mappings))
                         },
@@ -681,14 +695,10 @@ where
                 );
 
                 let block_outcome = archiver.add_block(encoded_block, block_object_mappings, false);
-                // RPC clients only want these mappings in full mapping mode
-                // TODO: turn this into a command-line argument named `--full-mapping`
-                if cfg!(feature = "full-archive") {
-                    send_object_mapping_notification(
-                        &subspace_link.object_mapping_notification_sender,
-                        block_outcome.object_mapping,
-                    );
-                }
+                send_object_mapping_notification(
+                    &subspace_link.object_mapping_notification_sender,
+                    block_outcome.object_mapping,
+                );
                 let new_segment_headers: Vec<SegmentHeader> = block_outcome
                     .archived_segments
                     .iter()
@@ -770,8 +780,8 @@ fn finalize_block<Block, Backend, Client>(
 /// processing, which is necessary for ensuring that when the next block is imported, inherents will
 /// contain segment header of newly archived block (must happen exactly in the next block).
 ///
-/// When a block with object mappings is produced, notification ([`SubspaceLink::object_mapping_notification_stream`])
-/// will be sent.
+/// If `create_object_mappings` is set, when a block with object mappings is archived, notification
+/// ([`SubspaceLink::object_mapping_notification_stream`]) will be sent.
 ///
 /// Once segment header is archived, notification ([`SubspaceLink::archived_segment_notification_stream`])
 /// will be sent and archiver will be paused until all receivers have provided an acknowledgement
@@ -786,6 +796,7 @@ pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     client: Arc<Client>,
     sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
+    create_object_mappings: bool,
 ) -> sp_blockchain::Result<impl Future<Output = sp_blockchain::Result<()>> + Send + 'static>
 where
     Block: BlockT,
@@ -808,6 +819,7 @@ where
             &segment_headers_store,
             &subspace_link,
             client.as_ref(),
+            create_object_mappings,
         )?)
     } else {
         None
@@ -821,7 +833,12 @@ where
     Ok(async move {
         let archiver = match maybe_archiver {
             Some(archiver) => archiver,
-            None => initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?,
+            None => initialize_archiver(
+                &segment_headers_store,
+                &subspace_link,
+                client.as_ref(),
+                create_object_mappings,
+            )?,
         };
         let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k().into();
 
@@ -859,9 +876,9 @@ where
                 "Checking if block needs to be skipped"
             );
 
-            // TODO: turn this into a command-line argument named `--full-mapping`
-            let skip_last_archived_blocks = last_archived_block_number > block_number_to_archive
-                && !cfg!(feature = "full-archive");
+            // Skip archived blocks, unless we're producing object mappings for the full history
+            let skip_last_archived_blocks =
+                last_archived_block_number > block_number_to_archive && !create_object_mappings;
             if best_archived_block_number >= block_number_to_archive || skip_last_archived_blocks {
                 // This block was already archived, skip
                 debug!(
@@ -882,7 +899,12 @@ where
                 InitializedArchiver {
                     archiver,
                     best_archived_block: (best_archived_block_hash, best_archived_block_number),
-                } = initialize_archiver(&segment_headers_store, &subspace_link, client.as_ref())?;
+                } = initialize_archiver(
+                    &segment_headers_store,
+                    &subspace_link,
+                    client.as_ref(),
+                    create_object_mappings,
+                )?;
 
                 if best_archived_block_number + One::one() == block_number_to_archive {
                     // As expected, can continue now
@@ -923,6 +945,7 @@ where
                 subspace_link.archived_segment_notification_sender.clone(),
                 best_archived_block_hash,
                 block_number_to_archive,
+                create_object_mappings,
             )
             .await?;
         }
@@ -943,6 +966,7 @@ async fn archive_block<Block, Backend, Client, AS, SO>(
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     best_archived_block_hash: Block::Hash,
     block_number_to_archive: NumberFor<Block>,
+    create_object_mappings: bool,
 ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)>
 where
     Block: BlockT,
@@ -987,14 +1011,18 @@ where
         )));
     }
 
-    let block_object_mappings = client
-        .runtime_api()
-        .extract_block_object_mapping(parent_block_hash, block.block.clone())
-        .map_err(|error| {
-            sp_blockchain::Error::Application(
-                format!("Failed to retrieve block object mappings: {error}").into(),
-            )
-        })?;
+    let block_object_mappings = if create_object_mappings {
+        client
+            .runtime_api()
+            .extract_block_object_mapping(parent_block_hash, block.block.clone())
+            .map_err(|error| {
+                sp_blockchain::Error::Application(
+                    format!("Failed to retrieve block object mappings: {error}").into(),
+                )
+            })?
+    } else {
+        BlockObjectMapping::default()
+    };
 
     let encoded_block = encode_block(block);
     debug!(

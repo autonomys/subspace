@@ -302,6 +302,8 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
+    /// Create object mappings for new blocks, and blocks that have already been archived.
+    pub create_object_mappings: bool,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
     /// DSN piece getter
