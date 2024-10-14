@@ -16,7 +16,6 @@
 
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::{DomainBundleProducer, DomainProposal};
-use crate::snap_sync::{snap_sync, SyncParams};
 use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{NewSlotNotification, OperatorStreams};
 use futures::channel::mpsc;
@@ -25,7 +24,6 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
 use sc_consensus::BlockImport;
-use sc_network::NetworkRequest;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -40,7 +38,6 @@ use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::VecDeque;
-use std::future::pending;
 use std::pin::pin;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
@@ -64,8 +61,6 @@ pub(super) async fn start_worker<
     NSNS,
     ASS,
     E,
-    CNR,
-    AS,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
@@ -74,7 +69,7 @@ pub(super) async fn start_worker<
     mut bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
-    sync_params: Option<SyncParams<Client, CClient, Block, CBlock, CNR, AS>>,
+    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
 ) where
     Block: BlockT,
     Block::Hash: Into<H256>,
@@ -116,59 +111,8 @@ pub(super) async fn start_worker<
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     E: CodeExecutor,
-    CNR: NetworkRequest + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
 {
     let span = Span::current();
-    let snap_sync_orchestrator = sync_params.as_ref().map(|params| {
-        params
-            .consensus_chain_sync_params
-            .snap_sync_orchestrator
-            .clone()
-    });
-
-    if let Some(sync_params) = sync_params {
-        let snap_sync_orchestrator = sync_params
-            .consensus_chain_sync_params
-            .snap_sync_orchestrator
-            .clone();
-        let domain_sync_task = {
-            async move {
-                let info = sync_params.domain_client.info();
-                // Only attempt snap sync with genesis state
-                // TODO: Support snap sync from any state once
-                //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
-                if info.best_hash == info.genesis_hash {
-                    info!("Starting domain snap sync...");
-
-                    let result = snap_sync(sync_params).await;
-
-                    match result {
-                        Ok(_) => {
-                            info!("Domain snap sync completed.");
-                        }
-                        Err(err) => {
-                            snap_sync_orchestrator.unblock_all();
-
-                            error!(%err, "Domain snap sync failed.");
-
-                            // essential task failed
-                            return;
-                        }
-                    };
-                } else {
-                    debug!("Snap sync can only work with genesis state, skipping");
-
-                    snap_sync_orchestrator.unblock_all();
-                }
-
-                // Don't exit essential task.
-                pending().await
-            }
-        };
-
-        spawn_essential.spawn_essential("domain-sync", None, Box::pin(domain_sync_task));
-    }
 
     let mut block_queue = VecDeque::<BlockInfo<CBlock>>::new();
     let mut target_block_number = None;
@@ -308,8 +252,6 @@ pub(super) async fn start_worker<
             throttled_block_import_notification_stream.next().await
         {
             if let Some(block_info) = maybe_block_info {
-                println!("Inside operator processing: {block_info:?}");
-
                 let cache_result = maybe_cache_block_info(
                     block_info.clone(),
                     target_block_number,

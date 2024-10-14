@@ -197,6 +197,7 @@ where
         return Err(sp_blockchain::Error::RemoteFetchFailed);
     };
 
+    // TODO: Handle the special case when we just added the domain
     if last_confirmed_block_receipt.domain_block_number == 0u32.into() {
         return Err(sp_blockchain::Error::Application(
             "Can't snap sync from genesis.".into(),
