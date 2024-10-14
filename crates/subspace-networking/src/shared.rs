@@ -89,6 +89,7 @@ pub(crate) enum Command {
     },
     GenericRequest {
         peer_id: PeerId,
+        addresses: Vec<Multiaddr>,
         protocol_name: &'static str,
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,

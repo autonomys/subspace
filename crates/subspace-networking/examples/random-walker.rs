@@ -329,6 +329,7 @@ async fn request_sample_piece(
     let request_result = node
         .send_generic_request(
             peer_id,
+            Vec::new(),
             PieceByIndexRequest {
                 piece_index: sample_piece_index,
                 cached_pieces: Arc::default(),

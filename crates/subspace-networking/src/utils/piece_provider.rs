@@ -83,6 +83,7 @@ where
                     let request_result = request_batch
                         .send_generic_request(
                             provider_id,
+                            Vec::new(),
                             PieceByIndexRequest {
                                 piece_index,
                                 cached_pieces: Arc::default(),
@@ -149,6 +150,7 @@ where
             .node
             .send_generic_request(
                 peer_id,
+                Vec::new(),
                 PieceByIndexRequest {
                     piece_index,
                     cached_pieces: Arc::default(),
@@ -285,6 +287,7 @@ where
                     let request_result = request_batch
                         .send_generic_request(
                             peer_id,
+                            Vec::new(),
                             PieceByIndexRequest {
                                 piece_index,
                                 cached_pieces: Arc::default(),
