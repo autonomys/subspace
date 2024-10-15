@@ -212,6 +212,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
+        // TODO: Early exit if position already exists and doesn't need reconstruction
         let (reconstructed_records, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
         let mut piece = Piece::from(&reconstructed_records[piece_position]);
