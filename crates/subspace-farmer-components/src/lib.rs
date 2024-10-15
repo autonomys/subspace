@@ -25,6 +25,8 @@ mod segment_reconstruction;
 
 use crate::file_ext::FileExt;
 use async_trait::async_trait;
+use futures::stream::FuturesUnordered;
+use futures::Stream;
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
@@ -40,6 +42,28 @@ use subspace_core_primitives::segments::{ArchivedHistorySegment, HistorySize};
 pub trait PieceGetter {
     /// Get piece by index
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
+
+    /// Get pieces with provided indices
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        // TODO: Remove default impl here
+        Ok(Box::new(
+            piece_indices
+                .into_iter()
+                .map(|piece_index| async move {
+                    let result = self.get_piece(piece_index).await;
+                    (piece_index, result)
+                })
+                .collect::<FuturesUnordered<_>>(),
+        ) as Box<_>)
+    }
 }
 
 #[async_trait]
@@ -50,6 +74,18 @@ where
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
     }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        self.as_ref().get_pieces(piece_indices).await
+    }
 }
 
 #[async_trait]
@@ -58,6 +94,26 @@ impl PieceGetter for ArchivedHistorySegment {
         let position = usize::try_from(u64::from(piece_index))?;
 
         Ok(self.pieces().nth(position))
+    }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        Ok(Box::new(
+            piece_indices
+                .into_iter()
+                .map(|piece_index| async move {
+                    let result = self.get_piece(piece_index).await;
+                    (piece_index, result)
+                })
+                .collect::<FuturesUnordered<_>>(),
+        ) as Box<_>)
     }
 }
 
