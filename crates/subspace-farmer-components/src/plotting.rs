@@ -12,7 +12,7 @@ use crate::sector::{
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, PieceGetter};
-use async_lock::Mutex as AsyncMutex;
+use async_lock::{Mutex as AsyncMutex, Semaphore};
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
@@ -34,7 +34,6 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_kzg::{Kzg, Scalar};
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::{AcquireError, Semaphore};
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
@@ -98,13 +97,6 @@ pub enum PlottingError {
         piece_index: PieceIndex,
         /// Lower-level error
         error: anyhow::Error,
-    },
-    /// Failed to acquire permit
-    #[error("Failed to acquire permit: {error}")]
-    FailedToAcquirePermit {
-        /// Lower-level error
-        #[from]
-        error: AcquireError,
     },
     /// Abort early
     #[error("Abort early")]
@@ -176,7 +168,7 @@ where
     } = options;
 
     let _downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_owned().await?),
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_arc().await),
         None => None,
     };
 
@@ -191,7 +183,7 @@ where
     });
 
     let _encoding_permit = match encoding_semaphore {
-        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
+        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await),
         None => None,
     };
 
@@ -747,13 +739,7 @@ async fn download_sector_internal<PG: PieceGetter>(
 
             // All retries failed
             if !succeeded {
-                let _permit = match recovery_semaphore.acquire().await {
-                    Ok(permit) => permit,
-                    Err(error) => {
-                        let error = anyhow::anyhow!("Recovery semaphore was closed: {error}");
-                        return Err(PlottingError::FailedToRetrievePiece { piece_index, error });
-                    }
-                };
+                let _permit = recovery_semaphore.acquire().await;
                 let recovered_piece = recover_missing_piece(
                     piece_getter,
                     kzg.clone(),
