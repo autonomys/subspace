@@ -6,6 +6,7 @@
     array_chunks,
     const_option,
     const_trait_impl,
+    exact_size_is_empty,
     int_roundings,
     iter_collect_into,
     never_type,

@@ -16,7 +16,7 @@ use async_lock::{Mutex as AsyncMutex, Semaphore};
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{select, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::hashes::{blake3_hash, blake3_hash_parallel, Blake3Hash};
-use subspace_core_primitives::pieces::{PieceIndex, PieceOffset, Record};
+use subspace_core_primitives::pieces::{Piece, PieceIndex, PieceOffset, Record};
 use subspace_core_primitives::pos::PosSeed;
 use subspace_core_primitives::sectors::{SBucket, SectorId, SectorIndex};
 use subspace_core_primitives::segments::HistorySize;
@@ -79,23 +79,17 @@ pub enum PlottingError {
         /// Expected size
         expected: usize,
     },
-    /// Piece not found, can't create sector, this should never happen
-    #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
-    PieceNotFound {
-        /// Piece index
-        piece_index: PieceIndex,
-    },
     /// Can't recover missing piece
-    #[error("Can't recover missing piece")]
+    #[error("Can't recover missing piece {piece_index}: {error}")]
     PieceRecoveryFailed {
         /// Piece index
         piece_index: PieceIndex,
+        /// Lower-level error
+        error: anyhow::Error,
     },
     /// Failed to retrieve piece
-    #[error("Failed to retrieve piece {piece_index}: {error}")]
-    FailedToRetrievePiece {
-        /// Piece index
-        piece_index: PieceIndex,
+    #[error("Failed to retrieve pieces: {error}")]
+    FailedToRetrievePieces {
         /// Lower-level error
         error: anyhow::Error,
     },
@@ -151,7 +145,7 @@ pub async fn plot_sector<RE, PG>(
 ) -> Result<PlottedSector, PlottingError>
 where
     RE: RecordsEncoder,
-    PG: PieceGetter,
+    PG: PieceGetter + Send + Sync,
 {
     let PlotSectorOptions {
         public_key,
@@ -242,7 +236,7 @@ pub async fn download_sector<PG>(
     options: DownloadSectorOptions<'_, PG>,
 ) -> Result<DownloadedSector, PlottingError>
 where
-    PG: PieceGetter,
+    PG: PieceGetter + Send + Sync,
 {
     let DownloadSectorOptions {
         public_key,
@@ -713,81 +707,135 @@ fn record_encoding<PosTable>(
         });
 }
 
-async fn download_sector_internal<PG: PieceGetter>(
+async fn download_sector_internal<PG>(
     pieces_to_download: &mut HashMap<PieceIndex, Vec<(&mut Record, &mut RecordMetadata)>>,
     piece_getter: &PG,
     kzg: &Kzg,
     erasure_coding: &ErasureCoding,
-) -> Result<(), PlottingError> {
+) -> Result<(), PlottingError>
+where
+    PG: PieceGetter + Send + Sync,
+{
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
     //  concurrency from there
     let recovery_semaphore = &Semaphore::new(RECONSTRUCTION_CONCURRENCY_LIMIT);
 
     // Allocate to decouple lifetime from `pieces_to_download` that will be modified below
     let piece_indices = pieces_to_download.keys().copied().collect::<Vec<_>>();
-    let mut downloaded_pieces = piece_indices
-        .into_iter()
-        .map(|piece_index| async move {
-            let result = try {
-                let mut piece_result = piece_getter.get_piece(piece_index).await;
-
-                let succeeded = piece_result
-                    .as_ref()
-                    .map(|piece| piece.is_some())
-                    .unwrap_or_default();
-
-                if !succeeded {
-                    let _permit = recovery_semaphore.acquire().await;
-                    let recovered_piece = recover_missing_piece(
-                        piece_getter,
-                        kzg.clone(),
-                        erasure_coding.clone(),
-                        piece_index,
-                    )
-                    .await;
-
-                    piece_result = recovered_piece.map(Some).map_err(Into::into);
-                }
-
-                piece_result
-                    .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-                    .ok_or(PlottingError::PieceNotFound { piece_index })?
-            };
-
-            (piece_index, result)
-        })
-        .collect::<FuturesUnordered<_>>();
+    let mut downloaded_pieces = piece_getter
+        .get_pieces(piece_indices)
+        .await
+        .map_err(|error| PlottingError::FailedToRetrievePieces { error })?
+        .fuse();
+    let mut reconstructed_pieces = FuturesUnordered::new();
 
     let mut final_result = Ok(());
 
-    while let Some((piece_index, result)) = downloaded_pieces.next().await {
-        let piece = match result {
-            Ok(piece) => piece,
+    loop {
+        let (piece_index, result) = select! {
+            (piece_index, result) = downloaded_pieces.select_next_some() => {
+                match result {
+                    Ok(Some(piece)) => (piece_index, Ok(piece)),
+                    Ok(None) => {
+                        trace!(%piece_index, "Piece was not found, trying reconstruction");
+
+                        reconstructed_pieces.push(reconstruct_piece(
+                            piece_index,
+                            recovery_semaphore,
+                            piece_getter,
+                            kzg,
+                            erasure_coding,
+                        ));
+                        continue;
+                    }
+                    Err(error) => {
+                        trace!(
+                            %error,
+                            %piece_index,
+                            "Failed to download piece, trying reconstruction"
+                        );
+
+                        reconstructed_pieces.push(reconstruct_piece(
+                            piece_index,
+                            recovery_semaphore,
+                            piece_getter,
+                            kzg,
+                            erasure_coding,
+                        ));
+                        continue;
+                    }
+                }
+            },
+            (piece_index, result) = reconstructed_pieces.select_next_some() => {
+                (piece_index, result)
+            },
+            complete => {
+                break;
+            }
+        };
+
+        match result {
+            Ok(piece) => {
+                process_piece(piece_index, piece, pieces_to_download);
+            }
             Err(error) => {
                 trace!(%error, %piece_index, "Failed to download piece");
 
                 if final_result.is_ok() {
                     final_result = Err(error);
                 }
-
-                continue;
             }
-        };
-
-        for (record, metadata) in pieces_to_download.remove(&piece_index).unwrap_or_default() {
-            // Fancy way to insert value in order to avoid going through stack (if naive
-            // de-referencing is used) and potentially causing stack overflow as the
-            // result
-            record
-                .as_flattened_mut()
-                .copy_from_slice(piece.record().as_flattened());
-            *metadata = RecordMetadata {
-                commitment: *piece.commitment(),
-                witness: *piece.witness(),
-                piece_checksum: blake3_hash(piece.as_ref()),
-            };
         }
     }
 
     final_result
+}
+
+async fn reconstruct_piece<PG>(
+    piece_index: PieceIndex,
+    recovery_semaphore: &Semaphore,
+    piece_getter: &PG,
+    kzg: &Kzg,
+    erasure_coding: &ErasureCoding,
+) -> (PieceIndex, Result<Piece, PlottingError>)
+where
+    PG: PieceGetter + Send + Sync,
+{
+    let _permit = recovery_semaphore.acquire().await;
+    let recovered_piece_fut = recover_missing_piece(
+        piece_getter,
+        kzg.clone(),
+        erasure_coding.clone(),
+        piece_index,
+    );
+
+    (
+        piece_index,
+        recovered_piece_fut
+            .await
+            .map_err(|error| PlottingError::PieceRecoveryFailed {
+                piece_index,
+                error: error.into(),
+            }),
+    )
+}
+
+fn process_piece(
+    piece_index: PieceIndex,
+    piece: Piece,
+    pieces_to_download: &mut HashMap<PieceIndex, Vec<(&mut Record, &mut RecordMetadata)>>,
+) {
+    for (record, metadata) in pieces_to_download.remove(&piece_index).unwrap_or_default() {
+        // Fancy way to insert value in order to avoid going through stack (if naive
+        // de-referencing is used) and potentially causing stack overflow as the
+        // result
+        record
+            .as_flattened_mut()
+            .copy_from_slice(piece.record().as_flattened());
+        *metadata = RecordMetadata {
+            commitment: *piece.commitment(),
+            witness: *piece.witness(),
+            piece_checksum: blake3_hash(piece.as_ref()),
+        };
+    }
 }
