@@ -8,11 +8,11 @@ Follow these steps to get started with the Subspace Node :hammer_and_wrench:
 
 ## Running
 
-It is recommended to follow general farming instructions that explain how to run both farmer and node together.
+We recommend following the general farming instructions that explain how to run both the farmer and node together.
 
 ## Build from source
 
-Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
+A Rust toolchain is required to compile this repository, but there are some extra dependencies for the node.
 
 `protoc` is required for `libp2p`.
 
@@ -71,7 +71,7 @@ By default, node data are written to `subspace-node` subdirectory of the OS-spec
 ```
 Linux
 $XDG_DATA_HOME or                   /home/alice/.local/share
-$HOME/.local/share 
+$HOME/.local/share
 
 macOS
 $HOME/Library/Application Support   /Users/Alice/Library/Application Support

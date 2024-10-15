@@ -4,11 +4,11 @@ Reference implementation of Subspace Farmer for Subspace Network Blockchain.
 
 ## Running
 
-It is recommended to follow general farming instructions that explain how to run both farmer and node together.
+We recommend following the general farming instructions that explain how to run both the farmer and node together.
 
 ## Build from source
 
-Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
+A Rust toolchain is required to compile this repository, but there are some extra dependencies for the farmer.
 
 `protoc` is required for `libp2p`.
 `automake`,`libtool` and `pkg-config` on Linux/macOS or CMake on Windows for `hwlocality-sys` (if `numa` features is
@@ -65,7 +65,9 @@ target/production/subspace-farmer --help
 
 ### Start the farmer
 ```
-target/production/subspace-farmer farm --reward-address st... path=/path/to/farm,size=100G
+target/production/subspace-farmer farm \
+    --reward-address st... \
+    path=/path/to/farm,size=100G
 ```
 
 `st...` should be replaced with the reward address taken from [Polkadot.js wallet](https://polkadot.js.org/extension/) (or similar), `/path/to/farm` with location where you want to store plot and `100G` replaced with desired plot size.
