@@ -1,6 +1,6 @@
 //! Node client implementation that connects to node via RPC (WebSockets)
 
-use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
+use crate::node_client::{NodeClient, NodeClientExt};
 use async_lock::Semaphore;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
@@ -51,7 +51,7 @@ impl RpcNodeClient {
 
 #[async_trait]
 impl NodeClient for RpcNodeClient {
-    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
+    async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo> {
         Ok(self
             .client
             .request("subspace_getFarmerAppInfo", rpc_params![])
@@ -60,7 +60,7 @@ impl NodeClient for RpcNodeClient {
 
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>> {
         let subscription = self
             .client
             .subscribe(
@@ -78,7 +78,7 @@ impl NodeClient for RpcNodeClient {
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,
-    ) -> Result<(), RpcError> {
+    ) -> anyhow::Result<()> {
         Ok(self
             .client
             .request(
@@ -90,7 +90,7 @@ impl NodeClient for RpcNodeClient {
 
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>> {
         let subscription = self
             .client
             .subscribe(
@@ -109,7 +109,7 @@ impl NodeClient for RpcNodeClient {
     async fn submit_reward_signature(
         &self,
         reward_signature: RewardSignatureResponse,
-    ) -> Result<(), RpcError> {
+    ) -> anyhow::Result<()> {
         Ok(self
             .client
             .request(
@@ -121,7 +121,7 @@ impl NodeClient for RpcNodeClient {
 
     async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>> {
         let subscription = self
             .client
             .subscribe(
@@ -139,14 +139,14 @@ impl NodeClient for RpcNodeClient {
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         Ok(self
             .client
             .request("subspace_segmentHeaders", rpc_params![&segment_indices])
             .await?)
     }
 
-    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
+    async fn piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let _permit = self.piece_request_semaphore.acquire().await;
         let client = Arc::clone(&self.client);
         // Spawn a separate task to improve concurrency due to slow-ish JSON decoding that causes
@@ -162,7 +162,7 @@ impl NodeClient for RpcNodeClient {
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         Ok(self
             .client
             .request(
@@ -175,10 +175,7 @@ impl NodeClient for RpcNodeClient {
 
 #[async_trait]
 impl NodeClientExt for RpcNodeClient {
-    async fn last_segment_headers(
-        &self,
-        limit: u32,
-    ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
+    async fn last_segment_headers(&self, limit: u32) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         Ok(self
             .client
             .request("subspace_lastSegmentHeaders", rpc_params![limit])

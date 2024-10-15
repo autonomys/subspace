@@ -12,7 +12,6 @@ use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
@@ -383,10 +382,7 @@ where
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let _guard = self.inner.request_semaphore.acquire().await;
 
         match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
@@ -453,10 +449,7 @@ where
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let Some(piece_getter) = self.upgrade() else {
             debug!("Farmer piece getter upgrade didn't succeed");
             return Ok(None);

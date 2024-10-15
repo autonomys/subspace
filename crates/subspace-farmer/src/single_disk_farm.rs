@@ -55,7 +55,6 @@ use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::collections::HashSet;
-use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::Write;
@@ -550,7 +549,7 @@ pub enum BackgroundTaskError {
     Farming(#[from] FarmingError),
     /// Reward signing
     #[error(transparent)]
-    RewardSigning(#[from] Box<dyn Error + Send + Sync + 'static>),
+    RewardSigning(#[from] anyhow::Error),
     /// Background task panicked
     #[error("Background task {task} panicked")]
     BackgroundTaskPanicked {
@@ -1227,10 +1226,9 @@ impl SingleDiskFarm {
                     reward_signing_fut.await;
                 }
                 Err(error) => {
-                    return Err(BackgroundTaskError::RewardSigning(
-                        format!("Failed to subscribe to reward signing notifications: {error}")
-                            .into(),
-                    ));
+                    return Err(BackgroundTaskError::RewardSigning(anyhow::anyhow!(
+                        "Failed to subscribe to reward signing notifications: {error}"
+                    )));
                 }
             }
 

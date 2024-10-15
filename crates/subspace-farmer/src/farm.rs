@@ -7,7 +7,6 @@
 //! way). This crate provides a few of such implementations, but more can be created externally as
 //! well if needed without modifying the library itself.
 
-use crate::node_client;
 use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::Stream;
@@ -278,13 +277,13 @@ pub enum FarmingError {
     #[error("Failed to subscribe to slot info notifications: {error}")]
     FailedToSubscribeSlotInfo {
         /// Lower-level error
-        error: node_client::Error,
+        error: anyhow::Error,
     },
     /// Failed to retrieve farmer info
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: node_client::Error,
+        error: anyhow::Error,
     },
     /// Slot info notification stream ended
     #[error("Slot info notification stream ended")]
