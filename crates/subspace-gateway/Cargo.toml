@@ -1,0 +1,29 @@
+[package]
+name = "subspace-gateway"
+version = "0.1.0"
+authors = ["Teor <teor@riseup.net>"]
+description = "A Subspace Network data gateway."
+edition = "2021"
+license = "MIT OR Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/autonomys/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/README.md"
+]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+anyhow = "1.0.89"
+clap = { version = "4.5.18", features = ["derive"] }
+fdlimit = "0.3.0"
+futures = "0.3.30"
+mimalloc = "0.1.43"
+supports-color = "3.0.1"
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["macros"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
