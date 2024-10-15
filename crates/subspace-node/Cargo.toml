@@ -9,7 +9,6 @@ build = "build.rs"
 homepage = "https://subspace.network"
 repository = "https://github.com/autonomys/subspace"
 include = [
-    "/res",
     "/src",
     "/build.rs",
     "/Cargo.toml",
