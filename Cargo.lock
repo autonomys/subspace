@@ -12575,6 +12575,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-gateway"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fdlimit",
+ "futures",
+ "mimalloc",
+ "supports-color",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "subspace-kzg"
 version = "0.1.0"
 dependencies = [
