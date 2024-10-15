@@ -20,6 +20,7 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::simd::Simd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -272,36 +273,36 @@ where
         })
         .collect::<Vec<_>>();
 
-    let raw_sector = AsyncMutex::new(RawSector::new(pieces_in_sector));
-
-    {
-        // This list will be mutated, replacing pieces we have already processed with `None`
-        let incremental_piece_indices =
-            AsyncMutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
+    let raw_sector = {
+        let mut raw_sector = RawSector::new(pieces_in_sector);
+        let mut pieces_to_download =
+            HashMap::<PieceIndex, Vec<_>>::with_capacity(usize::from(pieces_in_sector));
+        for (piece_index, (record, metadata)) in piece_indices
+            .iter()
+            .copied()
+            .zip(raw_sector.records.iter_mut().zip(&mut raw_sector.metadata))
+        {
+            pieces_to_download
+                .entry(piece_index)
+                .or_default()
+                .push((record, metadata))
+        }
+        // This map will be mutated, removing piece indices we have already processed
+        let pieces_to_download = AsyncMutex::new(pieces_to_download);
 
         retry(default_backoff(), || async {
-            let mut raw_sector = raw_sector.lock().await;
-            let mut incremental_piece_indices = incremental_piece_indices.lock().await;
+            let mut pieces_to_download = pieces_to_download.lock().await;
 
-            if let Err(error) = download_sector_internal(
-                &mut raw_sector,
-                piece_getter,
-                kzg,
-                erasure_coding,
-                &mut incremental_piece_indices,
-            )
-            .await
+            if let Err(error) =
+                download_sector_internal(&mut pieces_to_download, piece_getter, kzg, erasure_coding)
+                    .await
             {
-                let retrieved_pieces = incremental_piece_indices
-                    .iter()
-                    .filter(|maybe_piece_index| maybe_piece_index.is_none())
-                    .count();
                 warn!(
                     %sector_index,
                     %error,
                     %pieces_in_sector,
-                    %retrieved_pieces,
-                    "Sector plotting attempt failed, will retry later"
+                    remaining_pieces = %pieces_to_download.len(),
+                    "Sector downloading attempt failed, will retry later"
                 );
 
                 return Err(BackoffError::transient(error));
@@ -312,12 +313,14 @@ where
             Ok(())
         })
         .await?;
-    }
+
+        raw_sector
+    };
 
     Ok(DownloadedSector {
         sector_id,
         piece_indices,
-        raw_sector: raw_sector.into_inner(),
+        raw_sector,
         history_size: farmer_protocol_info.history_size,
     })
 }
@@ -711,52 +714,70 @@ fn record_encoding<PosTable>(
 }
 
 async fn download_sector_internal<PG: PieceGetter>(
-    raw_sector: &mut RawSector,
+    pieces_to_download: &mut HashMap<PieceIndex, Vec<(&mut Record, &mut RecordMetadata)>>,
     piece_getter: &PG,
     kzg: &Kzg,
     erasure_coding: &ErasureCoding,
-    piece_indexes: &mut [Option<PieceIndex>],
 ) -> Result<(), PlottingError> {
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
     //  concurrency from there
-    let recovery_semaphore = Semaphore::new(RECONSTRUCTION_CONCURRENCY_LIMIT);
+    let recovery_semaphore = &Semaphore::new(RECONSTRUCTION_CONCURRENCY_LIMIT);
 
-    let mut pieces_receiving_futures = piece_indexes
-        .iter_mut()
-        .zip(raw_sector.records.iter_mut().zip(&mut raw_sector.metadata))
-        .map(|(maybe_piece_index, (record, metadata))| async {
-            // We skip pieces that we have already processed previously
-            let Some(piece_index) = *maybe_piece_index else {
-                return Ok(());
+    // Allocate to decouple lifetime from `pieces_to_download` that will be modified below
+    let piece_indices = pieces_to_download.keys().copied().collect::<Vec<_>>();
+    let mut downloaded_pieces = piece_indices
+        .into_iter()
+        .map(|piece_index| async move {
+            let result = try {
+                let mut piece_result = piece_getter.get_piece(piece_index).await;
+
+                let succeeded = piece_result
+                    .as_ref()
+                    .map(|piece| piece.is_some())
+                    .unwrap_or_default();
+
+                if !succeeded {
+                    let _permit = recovery_semaphore.acquire().await;
+                    let recovered_piece = recover_missing_piece(
+                        piece_getter,
+                        kzg.clone(),
+                        erasure_coding.clone(),
+                        piece_index,
+                    )
+                    .await;
+
+                    piece_result = recovered_piece.map(Some).map_err(Into::into);
+                }
+
+                piece_result
+                    .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
+                    .ok_or(PlottingError::PieceNotFound { piece_index })?
             };
 
-            let mut piece_result = piece_getter.get_piece(piece_index).await;
+            (piece_index, result)
+        })
+        .collect::<FuturesUnordered<_>>();
 
-            let succeeded = piece_result
-                .as_ref()
-                .map(|piece| piece.is_some())
-                .unwrap_or_default();
+    let mut final_result = Ok(());
 
-            // All retries failed
-            if !succeeded {
-                let _permit = recovery_semaphore.acquire().await;
-                let recovered_piece = recover_missing_piece(
-                    piece_getter,
-                    kzg.clone(),
-                    erasure_coding.clone(),
-                    piece_index,
-                )
-                .await;
+    while let Some((piece_index, result)) = downloaded_pieces.next().await {
+        let piece = match result {
+            Ok(piece) => piece,
+            Err(error) => {
+                trace!(%error, %piece_index, "Failed to download piece");
 
-                piece_result = recovered_piece.map(Some).map_err(Into::into);
+                if final_result.is_ok() {
+                    final_result = Err(error);
+                }
+
+                continue;
             }
+        };
 
-            let piece = piece_result
-                .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-                .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-            // Fancy way to insert value in order to avoid going through stack (if naive de-referencing
-            // is used) and potentially causing stack overflow as the result
+        for (record, metadata) in pieces_to_download.remove(&piece_index).unwrap_or_default() {
+            // Fancy way to insert value in order to avoid going through stack (if naive
+            // de-referencing is used) and potentially causing stack overflow as the
+            // result
             record
                 .as_flattened_mut()
                 .copy_from_slice(piece.record().as_flattened());
@@ -765,23 +786,6 @@ async fn download_sector_internal<PG: PieceGetter>(
                 witness: *piece.witness(),
                 piece_checksum: blake3_hash(piece.as_ref()),
             };
-
-            // We have processed this piece index, clear it
-            maybe_piece_index.take();
-
-            Ok(())
-        })
-        .collect::<FuturesUnordered<_>>();
-
-    let mut final_result = Ok(());
-
-    while let Some(result) = pieces_receiving_futures.next().await {
-        if let Err(error) = result {
-            trace!(%error, "Failed to download piece");
-
-            if final_result.is_ok() {
-                final_result = Err(error);
-            }
         }
     }
 
