@@ -12546,6 +12546,7 @@ dependencies = [
 name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-lock 3.4.0",
  "async-trait",
  "backoff",

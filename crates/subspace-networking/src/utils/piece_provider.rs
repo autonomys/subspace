@@ -78,7 +78,7 @@ where
         }
     }
 
-    /// Get a pieces with provided indices from cache
+    /// Get pieces with provided indices from cache
     pub async fn get_from_cache<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,

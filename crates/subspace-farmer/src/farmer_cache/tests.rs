@@ -6,7 +6,7 @@
 
 use crate::disk_piece_cache::DiskPieceCache;
 use crate::farmer_cache::{decode_piece_index_from_record_key, FarmerCache};
-use crate::node_client::{Error, NodeClient};
+use crate::node_client::NodeClient;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
@@ -44,7 +44,7 @@ struct MockNodeClient {
 
 #[async_trait]
 impl NodeClient for MockNodeClient {
-    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
+    async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo> {
         // Most of these values make no sense, but they are not used by piece cache anyway
         Ok(FarmerAppInfo {
             genesis_hash: [0; 32],
@@ -68,33 +68,33 @@ impl NodeClient for MockNodeClient {
 
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, Error> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>> {
         unimplemented!()
     }
 
     async fn submit_solution_response(
         &self,
         _solution_response: SolutionResponse,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
 
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, Error> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>> {
         unimplemented!()
     }
 
     async fn submit_reward_signature(
         &self,
         _reward_signature: RewardSignatureResponse,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
 
     async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, Error> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>> {
         let (tx, rx) = oneshot::channel();
         self.archived_segment_headers_stream_request_sender
             .clone()
@@ -109,11 +109,11 @@ impl NodeClient for MockNodeClient {
     async fn segment_headers(
         &self,
         _segment_indexes: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentHeader>>, Error> {
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         unimplemented!()
     }
 
-    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
+    async fn piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         Ok(Some(
             self.pieces
                 .lock()
@@ -130,7 +130,7 @@ impl NodeClient for MockNodeClient {
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         self.acknowledge_archived_segment_header_sender
             .clone()
             .send(segment_index)
@@ -147,10 +147,7 @@ struct MockPieceGetter {
 
 #[async_trait]
 impl PieceGetter for MockPieceGetter {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         Ok(Some(
             self.pieces
                 .lock()

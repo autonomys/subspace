@@ -28,7 +28,6 @@ use async_trait::async_trait;
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
-use std::error::Error;
 use std::fs::File;
 use std::future::Future;
 use std::io;
@@ -40,10 +39,7 @@ use subspace_core_primitives::segments::{ArchivedHistorySegment, HistorySize};
 #[async_trait]
 pub trait PieceGetter {
     /// Get piece by index
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
 }
 
 #[async_trait]
@@ -51,20 +47,14 @@ impl<T> PieceGetter for Arc<T>
 where
     T: PieceGetter + Send + Sync,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
     }
 }
 
 #[async_trait]
 impl PieceGetter for ArchivedHistorySegment {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let position = usize::try_from(u64::from(piece_index))?;
 
         Ok(self.pieces().nth(position))
