@@ -30,11 +30,11 @@ impl RecordsEncoder for RocmRecordsEncoder {
         sector_id: &SectorId,
         records: &mut [Record],
         abort_early: &AtomicBool,
-    ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    ) -> anyhow::Result<SectorContentsMap> {
         let pieces_in_sector = records
             .len()
             .try_into()
-            .map_err(|error| format!("Failed to convert pieces in sector: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("Failed to convert pieces in sector: {error}"))?;
         let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 
         self.thread_pool.install(|| {
@@ -76,7 +76,7 @@ impl RecordsEncoder for RocmRecordsEncoder {
 
             let plotting_error = plotting_error.lock().take();
             if let Some(error) = plotting_error {
-                return Err(error);
+                return Err(anyhow::Error::msg(error));
             }
 
             Ok(())

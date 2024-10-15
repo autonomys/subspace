@@ -21,61 +21,58 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
-/// Erased error type
-pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
-
 /// Abstraction of the Node Client
 #[async_trait]
 pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
     /// Get farmer app info
-    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
+    async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo>;
 
     /// Subscribe to slot
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, Error>;
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>>;
 
     /// Submit a slot solution
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,
-    ) -> Result<(), Error>;
+    ) -> anyhow::Result<()>;
 
     /// Subscribe to block signing request
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, Error>;
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>>;
 
     /// Submit a block signature
     async fn submit_reward_signature(
         &self,
         reward_signature: RewardSignatureResponse,
-    ) -> Result<(), Error>;
+    ) -> anyhow::Result<()>;
 
     /// Subscribe to archived segment headers
     async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, Error>;
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>>;
 
     /// Get segment headers for the segments
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentHeader>>, Error>;
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>>;
 
     /// Get piece by index.
-    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
+    async fn piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
 
     /// Acknowledge segment header.
     async fn acknowledge_archived_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> Result<(), Error>;
+    ) -> anyhow::Result<()>;
 }
 
 /// Node Client extension methods that are not necessary for farmer as a library, but might be useful for an app
 #[async_trait]
 pub trait NodeClientExt: NodeClient {
     /// Get the last segment headers.
-    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
+    async fn last_segment_headers(&self, limit: u32) -> anyhow::Result<Vec<Option<SegmentHeader>>>;
 }

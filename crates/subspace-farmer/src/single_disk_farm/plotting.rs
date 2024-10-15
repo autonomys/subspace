@@ -1,5 +1,5 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
-use crate::node_client::{Error as NodeClientError, NodeClient};
+use crate::node_client::NodeClient;
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::single_disk_farm::direct_io_file::DirectIoFile;
 use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
@@ -50,13 +50,13 @@ pub enum PlottingError {
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Failed to get segment header
     #[error("Failed to get segment header: {error}")]
     FailedToGetSegmentHeader {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Missing archived segment header
     #[error("Missing archived segment header: {segment_index}")]
@@ -68,7 +68,7 @@ pub enum PlottingError {
     #[error("Failed to subscribe to archived segments: {error}")]
     FailedToSubscribeArchivedSegments {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]

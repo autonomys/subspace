@@ -1,7 +1,7 @@
 //! Node client wrapper around another node client that caches some data for better performance and
 //! proxies other requests through
 
-use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
+use crate::node_client::{NodeClient, NodeClientExt};
 use crate::utils::AsyncJoinOnDrop;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use async_trait::async_trait;
@@ -58,7 +58,7 @@ impl SegmentHeaders {
             .collect()
     }
 
-    async fn sync<NC>(&mut self, client: &NC) -> Result<(), Error>
+    async fn sync<NC>(&mut self, client: &NC) -> anyhow::Result<()>
     where
         NC: NodeClient,
     {
@@ -81,7 +81,9 @@ impl SegmentHeaders {
                 .segment_headers((from..to).collect::<Vec<_>>())
                 .await
                 .map_err(|error| {
-                    format!("Failed to download segment headers {from}..{to} from node: {error}")
+                    anyhow::anyhow!(
+                        "Failed to download segment headers {from}..{to} from node: {error}"
+                    )
                 })?
             {
                 let Some(segment_header) = maybe_segment_header else {
@@ -122,7 +124,7 @@ where
     NC: NodeClient + Clone,
 {
     /// Create a new instance
-    pub async fn new(client: NC) -> Result<Self, Error> {
+    pub async fn new(client: NC) -> anyhow::Result<Self> {
         let mut segment_headers = SegmentHeaders::default();
         let mut archived_segments_notifications =
             client.subscribe_archived_segment_headers().await?;
@@ -219,7 +221,7 @@ where
         let farmer_app_info = client
             .farmer_app_info()
             .await
-            .map_err(|error| format!("Failed to get farmer app info: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("Failed to get farmer app info: {error}"))?;
         let last_farmer_app_info = Arc::new(AsyncMutex::new((farmer_app_info, Instant::now())));
 
         let background_task = tokio::spawn(async move {
@@ -249,7 +251,7 @@ impl<NC> NodeClient for CachingProxyNodeClient<NC>
 where
     NC: NodeClient,
 {
-    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
+    async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo> {
         let (last_farmer_app_info, last_farmer_app_info_request) =
             &mut *self.last_farmer_app_info.lock().await;
 
@@ -265,7 +267,7 @@ where
 
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>> {
         Ok(Box::pin(
             WatchStream::new(self.slot_info_receiver.clone())
                 .filter_map(|maybe_slot_info| async move { maybe_slot_info }),
@@ -275,13 +277,13 @@ where
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,
-    ) -> Result<(), RpcError> {
+    ) -> anyhow::Result<()> {
         self.inner.submit_solution_response(solution_response).await
     }
 
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>> {
         Ok(Box::pin(
             WatchStream::new(self.reward_signing_receiver.clone())
                 .filter_map(|maybe_reward_signing_info| async move { maybe_reward_signing_info }),
@@ -292,13 +294,13 @@ where
     async fn submit_reward_signature(
         &self,
         reward_signature: RewardSignatureResponse,
-    ) -> Result<(), RpcError> {
+    ) -> anyhow::Result<()> {
         self.inner.submit_reward_signature(reward_signature).await
     }
 
     async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, RpcError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>> {
         Ok(Box::pin(
             WatchStream::new(self.archived_segment_headers_receiver.clone())
                 .filter_map(|maybe_segment_header| async move { maybe_segment_header }),
@@ -308,7 +310,7 @@ where
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         let retrieved_segment_headers = self
             .segment_headers
             .read()
@@ -326,14 +328,14 @@ where
         }
     }
 
-    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
+    async fn piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.inner.piece(piece_index).await
     }
 
     async fn acknowledge_archived_segment_header(
         &self,
         _segment_index: SegmentIndex,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         // Not supported
         Ok(())
     }
@@ -344,7 +346,7 @@ impl<NC> NodeClientExt for CachingProxyNodeClient<NC>
 where
     NC: NodeClientExt,
 {
-    async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error> {
+    async fn last_segment_headers(&self, limit: u32) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         Ok(self
             .segment_headers
             .read()

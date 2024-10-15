@@ -69,7 +69,7 @@ pub enum PlottingError {
     #[error("Records encoder error: {error}")]
     RecordsEncoderError {
         /// Lower-level error
-        error: Box<dyn std::error::Error + Send + Sync + 'static>,
+        error: anyhow::Error,
     },
     /// Bad sector output size
     #[error("Bad sector output size: provided {provided}, expected {expected}")]
@@ -97,7 +97,7 @@ pub enum PlottingError {
         /// Piece index
         piece_index: PieceIndex,
         /// Lower-level error
-        error: Box<dyn std::error::Error + Send + Sync + 'static>,
+        error: anyhow::Error,
     },
     /// Failed to acquire permit
     #[error("Failed to acquire permit: {error}")]
@@ -338,7 +338,7 @@ pub trait RecordsEncoder {
         sector_id: &SectorId,
         records: &mut [Record],
         abort_early: &AtomicBool,
-    ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>>;
+    ) -> anyhow::Result<SectorContentsMap>;
 }
 
 /// CPU implementation of [`RecordsEncoder`]
@@ -361,24 +361,23 @@ where
         sector_id: &SectorId,
         records: &mut [Record],
         abort_early: &AtomicBool,
-    ) -> Result<SectorContentsMap, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    ) -> anyhow::Result<SectorContentsMap> {
         if self.erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
-            return Err(format!(
+            return Err(anyhow::anyhow!(
                 "Invalid erasure coding instance: {} shards needed, {} supported",
                 Record::NUM_S_BUCKETS,
                 self.erasure_coding.max_shards()
-            )
-            .into());
+            ));
         }
 
         if self.table_generators.is_empty() {
-            return Err("No table generators".into());
+            return Err(anyhow::anyhow!("No table generators"));
         }
 
         let pieces_in_sector = records
             .len()
             .try_into()
-            .map_err(|error| format!("Failed to convert pieces in sector: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("Failed to convert pieces in sector: {error}"))?;
         let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 
         {
@@ -751,7 +750,7 @@ async fn download_sector_internal<PG: PieceGetter>(
                 let _permit = match recovery_semaphore.acquire().await {
                     Ok(permit) => permit,
                     Err(error) => {
-                        let error = format!("Recovery semaphore was closed: {error}").into();
+                        let error = anyhow::anyhow!("Recovery semaphore was closed: {error}");
                         return Err(PlottingError::FailedToRetrievePiece { piece_index, error });
                     }
                 };
