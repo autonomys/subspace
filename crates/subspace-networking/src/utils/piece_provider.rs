@@ -78,11 +78,13 @@ where
         }
     }
 
-    /// Get pieces with provided indices from cache
+    /// Get pieces with provided indices from cache.
+    ///
+    /// Number of elements in returned stream is the same as in `piece_indices`.
     pub async fn get_from_cache<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,
-    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + 'a
+    ) -> impl Stream<Item = (PieceIndex, Option<Piece>)> + Unpin + 'a
     where
         PieceIndices: IntoIterator<Item = PieceIndex> + 'a,
     {
