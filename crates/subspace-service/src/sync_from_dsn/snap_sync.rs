@@ -2,8 +2,8 @@ use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
+use crate::utils::wait_for_block_import;
 use async_trait::async_trait;
-use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
@@ -20,7 +20,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::SubspaceApi;
 use sp_objects::ObjectsApi;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -31,7 +31,7 @@ use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
 use tokio::time::sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 /// Provides target block number for snap-sync (blocking operation).
 #[async_trait]
@@ -415,35 +415,6 @@ where
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
     Ok(true)
-}
-
-pub async fn wait_for_block_import<Block, Client>(
-    client: &Client,
-    waiting_block_number: NumberFor<Block>,
-) where
-    Block: BlockT,
-    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
-{
-    let mut blocks_stream = client.every_import_notification_stream();
-
-    let info = client.info();
-    debug!(
-        %waiting_block_number,
-        "Waiting client info: {:?}", info
-    );
-
-    if info.best_number >= waiting_block_number {
-        return;
-    }
-
-    while let Some(block) = blocks_stream.next().await {
-        let current_block_number = *block.header.number();
-        trace!(%current_block_number, %waiting_block_number, "Waiting for the target block");
-
-        if current_block_number >= waiting_block_number {
-            return;
-        }
-    }
 }
 
 async fn sync_segment_headers<AS>(

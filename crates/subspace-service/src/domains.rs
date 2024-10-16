@@ -30,6 +30,8 @@ use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
 const REQUEST_PAUSE: Duration = Duration::from_secs(5);
+const ATTEMPTS_NUMBER: u32 = 10;
+const PEERS_THRESHOLD: usize = 20;
 
 /// Provides parameters for domain snap sync synchronization with the consensus chain snap sync.
 pub struct ConsensusChainSyncParams<Block, CBlock, CNR, AS>
@@ -155,9 +157,6 @@ where
         &self,
         block_hash: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
-        const ATTEMPTS_NUMBER: u32 = 5;
-        const PEERS_THRESHOLD: usize = 5;
-
         let info = self.client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
 

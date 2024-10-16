@@ -20,9 +20,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_service::domains::ConsensusChainSyncParams;
-use subspace_service::mmr_sync;
 use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
-use subspace_service::sync_from_dsn::wait_for_block_import;
+use subspace_service::{mmr_sync, wait_for_block_import};
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
 

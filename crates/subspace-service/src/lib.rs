@@ -35,6 +35,7 @@ pub mod rpc;
 pub mod sync_from_dsn;
 mod task_spawner;
 pub mod transaction_pool;
+mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::domains::request_handler::LastDomainBlockERRequestHandler;
@@ -139,6 +140,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, Instrument};
+pub use utils::wait_for_block_import;
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
 // compile otherwise
