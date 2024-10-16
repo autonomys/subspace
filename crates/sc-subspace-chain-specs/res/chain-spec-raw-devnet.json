@@ -5,7 +5,7 @@
     "Custom": "Testnet"
   },
   "bootNodes": [
-    "/dns/bootstrap-0.devnet.subspace.network/tcp/30333/p2p/12D3KooWLdPnDksKX43hEgV4N9EeJzm6x8wPWkHCvRaFBZvj4GBg"
+    "/dns/bootstrap-0.devnet.subspace.foundation/tcp/30333/p2p/12D3KooWKd4qisMjuBXU4YvpbJgepiX278iumqMjCC3GiUjjZEZS"
   ],
   "telemetryEndpoints": [
     [
@@ -17,7 +17,7 @@
   "properties": {
     "domainsBootstrapNodes": {},
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.devnet.subspace.network/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
+      "/dns/bootstrap-0.devnet.subspace.foundation/udp/30533/quic-v1/p2p/12D3KooWSKAQm66N7jQme72obbPPquBSZuSqMyx5mH5ki1aZ4pGv"
     ],
     "potExternalEntropy": null,
     "ss58Format": 6094,
