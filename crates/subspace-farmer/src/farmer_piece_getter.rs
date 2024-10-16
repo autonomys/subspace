@@ -203,7 +203,29 @@ where
         None
     }
 
-    async fn get_piece_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
+    /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
+    /// used [`Arc`]
+    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+        WeakFarmerPieceGetter {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+}
+
+#[async_trait]
+impl<FarmIndex, CacheIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
+where
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
+    usize: From<FarmIndex>,
+    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
+    usize: From<CacheIndex>,
+    CacheIndex: TryFrom<usize>,
+    PV: PieceValidator + Send + 'static,
+    NC: NodeClient,
+{
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        let _guard = self.inner.request_semaphore.acquire().await;
+
         {
             let retries = AtomicU32::new(0);
             let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
@@ -236,45 +258,19 @@ where
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
                 trace!(%piece_index, "Got piece from cache successfully");
-                return Some(piece);
+                return Ok(Some(piece));
             }
         };
 
         if let Some(piece) = self.get_piece_slow_internal(piece_index).await {
-            return Some(piece);
+            return Ok(Some(piece));
         }
 
         debug!(
             %piece_index,
             "Cannot acquire piece: all methods yielded empty result"
         );
-        None
-    }
-
-    /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
-    /// used [`Arc`]
-    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
-        WeakFarmerPieceGetter {
-            inner: Arc::downgrade(&self.inner),
-        }
-    }
-}
-
-#[async_trait]
-impl<FarmIndex, CacheIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
-where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
-    usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-    PV: PieceValidator + Send + 'static,
-    NC: NodeClient,
-{
-    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
-        let _guard = self.inner.request_semaphore.acquire().await;
-
-        Ok(self.get_piece_internal(piece_index).await)
+        Ok(None)
     }
 }
 
