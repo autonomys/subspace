@@ -318,7 +318,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 
 /// Details of the confirmed domain block such as operators, rewards they would receive.
 #[derive(Debug, PartialEq)]
-pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
+pub(crate) struct ConfirmedDomainBlockInfo<ConsensusNumber, DomainNumber, Balance> {
+    pub consensus_block_number: ConsensusNumber,
     pub domain_block_number: DomainNumber,
     pub operator_ids: Vec<OperatorId>,
     pub rewards: Balance,
@@ -327,8 +328,10 @@ pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub paid_bundle_storage_fees: BTreeMap<OperatorId, u32>,
 }
 
-pub(crate) type ProcessExecutionReceiptResult<T> =
-    Result<Option<ConfirmedDomainBlockInfo<DomainBlockNumberFor<T>, BalanceOf<T>>>, Error>;
+pub(crate) type ProcessExecutionReceiptResult<T> = Result<
+    Option<ConfirmedDomainBlockInfo<BlockNumberFor<T>, DomainBlockNumberFor<T>, BalanceOf<T>>>,
+    Error,
+>;
 
 /// Process the execution receipt to add it to the block tree
 /// Returns the domain block number that was pruned, if any
@@ -429,6 +432,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     });
 
                 return Ok(Some(ConfirmedDomainBlockInfo {
+                    consensus_block_number: execution_receipt.consensus_block_number,
                     domain_block_number: to_prune,
                     operator_ids,
                     rewards: execution_receipt.block_fees.domain_execution_fee,

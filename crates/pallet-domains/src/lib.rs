@@ -65,8 +65,8 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainBundleLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, OperatorSignature, ProofOfElection, RuntimeId, SealedSingletonReceipt,
-    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, OperatorRewardSource, OperatorSignature, ProofOfElection, RuntimeId,
+    SealedSingletonReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     DomainRuntimeCodeAt, FraudProof, FraudProofVariant, InvalidBlockFeesProof,
@@ -231,7 +231,8 @@ mod pallet {
     use sp_domains::{
         BundleDigest, DomainBundleSubmitted, DomainId, DomainSudoCall, DomainsTransfersTracker,
         EpochIndex, GenesisDomain, OnChainRewards, OnDomainInstantiated, OperatorAllowList,
-        OperatorId, OperatorPublicKey, OperatorSignature, RuntimeId, RuntimeObject, RuntimeType,
+        OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature, RuntimeId,
+        RuntimeObject, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof_runtime_interface::domain_runtime_call;
     use sp_domains_fraud_proof::storage_proof::{self, FraudProofStorageKeyProvider};
@@ -976,6 +977,7 @@ mod pallet {
             nominator_id: NominatorId<T>,
         },
         OperatorRewarded {
+            source: OperatorRewardSource<BlockNumberFor<T>>,
             operator_id: OperatorId,
             reward: BalanceOf<T>,
         },
@@ -1134,6 +1136,9 @@ mod pallet {
 
                         do_reward_operators::<T>(
                             domain_id,
+                            OperatorRewardSource::Bundle {
+                                at_block_number: confirmed_block_info.consensus_block_number,
+                            },
                             confirmed_block_info.operator_ids.into_iter(),
                             confirmed_block_info.rewards,
                         )
@@ -1749,6 +1754,9 @@ mod pallet {
 
                         do_reward_operators::<T>(
                             domain_id,
+                            OperatorRewardSource::Bundle {
+                                at_block_number: confirmed_block_info.consensus_block_number,
+                            },
                             confirmed_block_info.operator_ids.into_iter(),
                             confirmed_block_info.rewards,
                         )
@@ -2833,14 +2841,18 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Reward the active operators of this domain epoch.
-    pub fn reward_domain_operators(domain_id: DomainId, rewards: BalanceOf<T>) {
+    pub fn reward_domain_operators(
+        domain_id: DomainId,
+        source: OperatorRewardSource<BlockNumberFor<T>>,
+        rewards: BalanceOf<T>,
+    ) {
         // If domain is not instantiated, then we don't care at the moment.
         if let Some(domain_stake_summary) = DomainStakingSummary::<T>::get(domain_id) {
             let operators = domain_stake_summary
                 .current_epoch_rewards
                 .into_keys()
                 .collect::<Vec<OperatorId>>();
-            let _ = do_reward_operators::<T>(domain_id, operators.into_iter(), rewards);
+            let _ = do_reward_operators::<T>(domain_id, source, operators.into_iter(), rewards);
         }
     }
 

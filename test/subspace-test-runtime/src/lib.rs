@@ -61,8 +61,8 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
-    INITIAL_DOMAIN_TX_RANGE,
+    OpaqueBundles, OperatorId, OperatorPublicKey, OperatorRewardSource,
+    DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -719,7 +719,11 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                reward,
+            ),
         }
     }
 }
