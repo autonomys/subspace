@@ -255,17 +255,23 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
             AccountId::from_ss58check("5H6ai5VAt6Sw2qZGkEVGvLvNqTCPv6fZRN2KN2kp5qMQKBUD")
                 .expect("Wrong root account address");
 
-        let balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
+        let history_seeder = AccountId::from_ss58check("5EXKjeN6GXua85mHygsS95UwwrnNwTTEbzeAj9nqkXrgqQp6")
+            .expect("Wrong history seeder account address");
+
+        let balances = vec![
+            (sudo_account.clone(), Balance::MAX / 2),
+            (history_seeder.clone(), 1 * SSC)
+            ];
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
             GenesisParams {
                 enable_rewards_at: EnableRewardsAt::Manually,
                 allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
-                enable_domains: true,
+                pot_slot_iterations: NonZeroU32::new(206_429_072).expect("Not zero; qed"),
+                enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
-                enable_balance_transfers: true,
+                enable_balance_transfers: false,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 // TODO: Proper value here
@@ -285,7 +291,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 )?],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
-            sudo_account.clone(),
+            history_seeder.clone()
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
