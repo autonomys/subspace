@@ -28,8 +28,8 @@ use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_core::ByteArray;
 use sp_domains::{
     dummy_opaque_bundle, BlockFees, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
-    OperatorPublicKey, OperatorSignature, PermissionedActionAllowedBy, ProofOfElection,
-    RuntimeType, SealedSingletonReceipt, SingletonReceipt, Transfers,
+    OperatorPublicKey, OperatorRewardSource, OperatorSignature, PermissionedActionAllowedBy,
+    ProofOfElection, RuntimeType, SealedSingletonReceipt, SingletonReceipt, Transfers,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{CheckedAdd, One, Zero};
@@ -286,6 +286,7 @@ mod benchmarks {
 
             do_reward_operators::<T>(
                 domain_id,
+                OperatorRewardSource::Dummy,
                 operator_ids[..n as usize].to_vec().into_iter(),
                 operator_rewards,
             )
@@ -337,6 +338,7 @@ mod benchmarks {
 
         do_reward_operators::<T>(
             domain_id,
+            OperatorRewardSource::Dummy,
             operator_ids.clone().into_iter(),
             operator_rewards,
         )
@@ -449,8 +451,13 @@ mod benchmarks {
         }
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), p);
 
-        do_reward_operators::<T>(domain_id, operator_ids.into_iter(), operator_rewards)
-            .expect("reward operator should success");
+        do_reward_operators::<T>(
+            domain_id,
+            OperatorRewardSource::Dummy,
+            operator_ids.into_iter(),
+            operator_rewards,
+        )
+        .expect("reward operator should success");
 
         let epoch_index = DomainStakingSummary::<T>::get(domain_id)
             .expect("staking summary must exist")
