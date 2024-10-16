@@ -15,8 +15,6 @@ use async_trait::async_trait;
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::AuxStore;
-use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
@@ -34,12 +32,11 @@ const ATTEMPTS_NUMBER: u32 = 10;
 const PEERS_THRESHOLD: usize = 20;
 
 /// Provides parameters for domain snap sync synchronization with the consensus chain snap sync.
-pub struct ConsensusChainSyncParams<Block, CBlock, CNR, AS>
+pub struct ConsensusChainSyncParams<Block, CBlock, CNR>
 where
     Block: BlockT,
     CBlock: BlockT,
     CNR: NetworkRequest + Sync + Send,
-    AS: AuxStore,
 {
     /// Synchronizes consensus snap sync stages.
     pub snap_sync_orchestrator: Arc<SnapSyncOrchestrator>,
@@ -53,8 +50,6 @@ where
     pub sync_service: Arc<SyncingService<CBlock>>,
     /// Consensus chain backend (for obtaining offchain storage)
     pub backend: Arc<FullBackend>,
-    /// Provides segment headers.
-    pub segment_headers_store: SegmentHeadersStore<AS>,
 }
 
 /// Last confirmed domain block info error.

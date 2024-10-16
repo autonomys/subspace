@@ -110,7 +110,7 @@ where
 {
     /// Create a new instance.
     #[allow(clippy::type_complexity)]
-    pub async fn new<IBNS, CIBNS, NSNS, ASS, NR, CNR, AS>(
+    pub async fn new<IBNS, CIBNS, NSNS, ASS, NR, CNR>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         params: OperatorParams<
             Block,
@@ -126,7 +126,6 @@ where
             ASS,
             NR,
             CNR,
-            AS,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -136,7 +135,6 @@ where
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
         NR: NetworkRequest + Send + Sync + 'static,
         CNR: NetworkRequest + Send + Sync + 'static,
-        AS: AuxStore + Send + Sync + 'static,
     {
         let domain_bundle_proposer = DomainBundleProposer::<Block, _, CBlock, _, _>::new(
             params.domain_id,

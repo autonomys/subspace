@@ -17,7 +17,6 @@ use sc_chain_spec::{ChainType, GenericChainSpec, NoExtension, Properties};
 use sc_cli::{
     Cors, KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT,
 };
-use sc_client_api::AuxStore;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
@@ -390,15 +389,14 @@ pub(super) struct DomainStartOptions {
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
 }
 
-pub(super) async fn run_domain<CNR, AS>(
+pub(super) async fn run_domain<CNR>(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-    consensus_chain_sync_params: Option<ConsensusChainSyncParams<DomainBlock, CBlock, CNR, AS>>,
+    consensus_chain_sync_params: Option<ConsensusChainSyncParams<DomainBlock, CBlock, CNR>>,
 ) -> Result<(), Error>
 where
     CNR: NetworkRequest + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
 {
     let BootstrapResult {
         domain_instance_data,
@@ -518,7 +516,6 @@ where
                 AccountId20,
                 _,
                 _,
-                _,
             >(domain_params)
             .await?;
 
@@ -557,7 +554,6 @@ where
                 _,
                 auto_id_domain_runtime::RuntimeApi,
                 AccountId32,
-                _,
                 _,
                 _,
             >(domain_params)

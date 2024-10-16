@@ -260,11 +260,10 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR, AS>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>
 where
     CBlock: BlockT,
     CNR: NetworkRequest + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
 {
     pub domain_id: DomainId,
     pub domain_config: ServiceConfiguration,
@@ -281,7 +280,7 @@ where
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<Block, CBlock, CNR, AS>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<Block, CBlock, CNR>>,
 }
 
 /// Builds service for a domain full node.
@@ -296,9 +295,8 @@ pub async fn new_full<
     AccountId,
     Provider,
     CNR,
-    AS,
 >(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR, AS>,
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNR>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi>>,
@@ -366,7 +364,6 @@ where
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
     CNR: NetworkRequest + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,

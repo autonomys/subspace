@@ -162,7 +162,6 @@ pub struct OperatorParams<
     ASS,
     NR,
     CNR,
-    AS,
 > where
     Block: BlockT,
     CBlock: BlockT,
@@ -172,7 +171,6 @@ pub struct OperatorParams<
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     NR: NetworkRequest + Send + Sync,
     CNR: NetworkRequest + Send + Sync + 'static,
-    AS: AuxStore,
 {
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
@@ -194,7 +192,7 @@ pub struct OperatorParams<
     pub sync_service: Arc<SyncingService<Block>>,
     pub network_request: NR,
     pub block_downloader: Arc<dyn BlockDownloader<Block>>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<Block, CBlock, CNR, AS>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<Block, CBlock, CNR>>,
     pub domain_fork_id: Option<String>,
     pub domain_network_service_handle: NetworkServiceHandle,
 }

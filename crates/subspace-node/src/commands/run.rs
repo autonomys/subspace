@@ -330,9 +330,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                     network_service: consensus_chain_network_service,
                                     sync_service: consensus_chain_sync_service,
                                     backend: consensus_chain_node.backend.clone(),
-                                    segment_headers_store: segment_headers_store.expect(
-                                        "Segment headers must be initialized at this point",
-                                    ),
                                 }
                             });
 

@@ -12658,7 +12658,6 @@ dependencies = [
  "subspace-runtime",
  "subspace-runtime-primitives",
  "subspace-service",
- "subspace-test-client",
  "substrate-build-script-utils",
  "thiserror",
  "tokio",

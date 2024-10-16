@@ -25,14 +25,13 @@ use subspace_service::{mmr_sync, wait_for_block_import};
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
 
-pub struct SyncParams<DomainClient, CClient, Block, CBlock, CNR, AS>
+pub struct SyncParams<DomainClient, CClient, Block, CBlock, CNR>
 where
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
     CNR: NetworkRequest + Send + Sync + 'static,
     Block: BlockT,
     CBlock: BlockT,
-    AS: AuxStore,
 {
     pub domain_client: Arc<DomainClient>,
     pub sync_service: Arc<SyncingService<Block>>,
@@ -40,7 +39,7 @@ where
     pub domain_network_service_handle: NetworkServiceHandle,
     pub consensus_client: Arc<CClient>,
     pub domain_block_downloader: Arc<dyn BlockDownloader<Block>>,
-    pub consensus_chain_sync_params: ConsensusChainSyncParams<Block, CBlock, CNR, AS>,
+    pub consensus_chain_sync_params: ConsensusChainSyncParams<Block, CBlock, CNR>,
 }
 
 async fn get_last_confirmed_block<Block: BlockT>(
@@ -156,8 +155,8 @@ fn convert_block_number<Block: BlockT>(block_number: NumberFor<Block>) -> u32 {
     block_number
 }
 
-pub(crate) async fn snap_sync<Block, Client, CBlock, CClient, CNR, AS>(
-    sync_params: SyncParams<Client, CClient, Block, CBlock, CNR, AS>,
+pub(crate) async fn snap_sync<Block, Client, CBlock, CClient, CNR>(
+    sync_params: SyncParams<Client, CClient, Block, CBlock, CNR>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Block: BlockT,
@@ -180,7 +179,6 @@ where
         + Sync
         + 'static,
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    AS: AuxStore,
 {
     let execution_receipt_result = sync_params
         .consensus_chain_sync_params

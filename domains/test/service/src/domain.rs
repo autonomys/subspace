@@ -217,12 +217,7 @@ where
             maybe_operator_id,
             confirmation_depth_k: chain_constants.confirmation_depth_k(),
             consensus_chain_sync_params: None::<
-                ConsensusChainSyncParams<
-                    _,
-                    _,
-                    Arc<dyn NetworkRequest + Sync + Send>,
-                    subspace_test_client::Client,
-                >,
+                ConsensusChainSyncParams<_, _, Arc<dyn NetworkRequest + Sync + Send>>,
             >,
         };
 
@@ -235,7 +230,6 @@ where
             _,
             RuntimeApi,
             <Runtime as DomainRuntime>::AccountId,
-            _,
             _,
             _,
         >(domain_params)
