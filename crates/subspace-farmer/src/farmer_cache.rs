@@ -15,8 +15,9 @@ use crate::node_client::NodeClient;
 use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
+use futures::channel::mpsc;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, SinkExt, StreamExt};
 use prometheus_client::registry::Registry;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -33,7 +34,6 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
 use tokio::task::{block_in_place, yield_now};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
@@ -170,7 +170,7 @@ where
             .expect("Always set during worker instantiation");
 
         if let Some(WorkerCommand::ReplaceBackingCaches { new_piece_caches }) =
-            worker_receiver.recv().await
+            worker_receiver.next().await
         {
             self.initialize(
                 &piece_getter,
@@ -200,7 +200,7 @@ where
 
         loop {
             select! {
-                maybe_command = worker_receiver.recv().fuse() => {
+                maybe_command = worker_receiver.next() => {
                     let Some(command) = maybe_command else {
                         // Nothing else left to do
                         return;
@@ -995,7 +995,7 @@ pub struct FarmerCache<CacheIndex> {
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
-    worker_sender: Arc<mpsc::Sender<WorkerCommand>>,
+    worker_sender: mpsc::Sender<WorkerCommand>,
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
@@ -1032,7 +1032,7 @@ where
             piece_caches: Arc::clone(&caches),
             plot_caches: Arc::clone(&plot_caches),
             handlers: Arc::clone(&handlers),
-            worker_sender: Arc::new(worker_sender),
+            worker_sender,
             metrics: metrics.clone(),
         };
         let worker = FarmerCacheWorker {
@@ -1098,6 +1098,7 @@ where
 
                     if let Err(error) = self
                         .worker_sender
+                        .clone()
                         .send(WorkerCommand::ForgetKey { key })
                         .await
                     {
@@ -1236,6 +1237,7 @@ where
     ) {
         if let Err(error) = self
             .worker_sender
+            .clone()
             .send(WorkerCommand::ReplaceBackingCaches { new_piece_caches })
             .await
         {
