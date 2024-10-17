@@ -57,7 +57,8 @@ pub trait GenericRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
-/// Generic stream request where response is streamed using [`NatsClient::stream_response`].
+/// Generic stream request where response is streamed using
+/// [`NatsClient::stream_request_responder`].
 ///
 /// Used for cases where a large payload that doesn't fit into NATS message needs to be sent or
 /// there is a very large number of messages to send. For simple request/response patten
@@ -66,7 +67,7 @@ pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'st
     /// Request subject with optional `*` in place of application instance to receive the request
     const SUBJECT: &'static str;
     /// Response type that corresponds to this stream request. These responses are send as a stream
-    /// of [`GenericStreamResponses`] messages.
+    /// of messages.
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
@@ -143,8 +144,8 @@ pub enum StreamRequestError {
     Publish(#[from] PublishError),
 }
 
-/// Wrapper around subscription that transforms [`GenericStreamResponses<Response>`] messages into a
-/// normal `Response` stream.
+/// Wrapper around subscription that transforms stream of wrapped response messages into a normal
+/// `Response` stream.
 #[derive(Debug, Deref, DerefMut)]
 #[pin_project::pin_project]
 pub struct StreamResponseSubscriber<Response> {
