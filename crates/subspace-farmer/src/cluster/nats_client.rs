@@ -28,7 +28,7 @@ use futures::{select, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
-use std::future::{pending, Future};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -550,9 +550,7 @@ impl NatsClient {
         OP: Fn(Request) -> F + Send + Sync,
     {
         // Initialize with pending future so it never ends
-        let mut processing = FuturesUnordered::from_iter([
-            Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
-        ]);
+        let mut processing = FuturesUnordered::new();
 
         let subject = subject_with_instance(Request::SUBJECT, instance);
         let subscription = if let Some(queue_group) = queue_group {
@@ -579,19 +577,18 @@ impl NatsClient {
 
         loop {
             select! {
-                maybe_message = subscription.next() => {
-                    let Some(message) = maybe_message else {
-                        break;
-                    };
-
+                message = subscription.select_next_some() => {
                     // Create background task for concurrent processing
-                    processing.push(Box::pin(self.process_request(
+                    processing.push(self.process_request(
                         message,
                         &process,
-                    )));
-                }
+                    ));
+                },
                 _ = processing.next() => {
                     // Nothing to do here
+                },
+                complete => {
+                    break;
                 }
             }
         }
