@@ -12629,6 +12629,8 @@ dependencies = [
  "fdlimit",
  "futures",
  "mimalloc",
+ "parking_lot 0.12.3",
+ "subspace-networking",
  "supports-color",
  "thiserror",
  "tokio",

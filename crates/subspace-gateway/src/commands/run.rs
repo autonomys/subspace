@@ -1,6 +1,9 @@
 //! Gateway run command.
 //! This is the primary command for the gateway.
 
+mod dsn;
+
+use crate::commands::run::dsn::NetworkArgs;
 use crate::commands::shutdown_signal;
 use clap::Parser;
 use futures::{select, FutureExt};
@@ -19,8 +22,14 @@ pub struct RunOptions {
 #[derive(Debug, Parser)]
 pub(super) struct GatewayOptions {
     /// Enable development mode.
-    #[arg(long)]
+    ///
+    /// Implies following flags (unless customized):
+    /// * `--allow-private-ips`
+    #[arg(long, verbatim_doc_comment)]
     dev: bool,
+
+    #[clap(flatten)]
+    dsn: NetworkArgs,
 }
 
 /// Default run command for gateway
@@ -29,14 +38,23 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
     let RunOptions {
-        gateway: GatewayOptions { dev: _ },
+        gateway: GatewayOptions { dev, mut dsn },
     } = run_options;
+
+    // Development mode handling is limited to this section
+    {
+        if dev {
+            dsn.allow_private_ips = true;
+        }
+    }
 
     info!("Subspace Gateway");
     info!("✌️  version {}", env!("CARGO_PKG_VERSION"));
     info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
 
-    let dsn_fut = future::pending::<()>();
+    let (_dsn_node, mut dsn_node_runner) = dsn::configure_network(dsn)?;
+    let dsn_fut = dsn_node_runner.run();
+
     let rpc_fut = future::pending::<()>();
 
     // This defines order in which things are dropped
