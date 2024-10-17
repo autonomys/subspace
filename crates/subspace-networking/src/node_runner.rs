@@ -1490,7 +1490,11 @@ where
                             .condition(PeerCondition::DisconnectedAndNotDialing)
                             .build(),
                     ) {
-                        warn!(%error, "Failed to dial disconnected peer on generic request");
+                        warn!(
+                            %error,
+                            %peer_id,
+                            "Failed to dial disconnected peer on generic request"
+                        );
                     }
                 } else {
                     self.swarm.behaviour_mut().request_response.send_request(

@@ -279,7 +279,7 @@ where
             pieces_to_download
                 .entry(piece_index)
                 .or_default()
-                .push((record, metadata))
+                .push((record, metadata));
         }
         // This map will be mutated, removing piece indices we have already processed
         let pieces_to_download = AsyncMutex::new(pieces_to_download);
@@ -786,6 +786,15 @@ where
                 }
             }
         }
+    }
+
+    if final_result.is_ok() && !pieces_to_download.is_empty() {
+        return Err(PlottingError::FailedToRetrievePieces {
+            error: anyhow::anyhow!(
+                "Successful result, but not all pieces were downloaded, this is likely a piece \
+                getter implementation bug"
+            ),
+        });
     }
 
     final_result

@@ -9,6 +9,7 @@ use backoff::backoff::Backoff;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::channel::mpsc;
+use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::{stream, FutureExt, Stream, StreamExt};
 use std::fmt;
@@ -288,7 +289,7 @@ where
     {
         let (tx, mut rx) = mpsc::unbounded();
 
-        let mut fut = Box::pin(async move {
+        let fut = async move {
             let tx = &tx;
 
             debug!("Getting pieces from farmer cache");
@@ -373,6 +374,10 @@ where
                 .collect::<Vec<_>>()
                 .await;
 
+            if pieces_not_found_on_node.is_empty() {
+                return;
+            }
+
             debug!(
                 remaining_piece_count = %pieces_not_found_on_node.len(),
                 "Some pieces were not easily reachable"
@@ -389,15 +394,22 @@ where
                 // Simply drain everything
                 .for_each(|()| async {})
                 .await;
-        });
+        };
+        let mut fut = Box::pin(fut.fuse());
 
         // Drive above future and stream back any pieces that were downloaded so far
         Ok(Box::new(stream::poll_fn(move |cx| {
+            if !fut.is_terminated() {
+                // Result doesn't matter, we'll need to poll stream below anyway
+                let _ = fut.poll_unpin(cx);
+            }
+
             if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
                 return Poll::Ready(maybe_result);
             }
 
-            fut.poll_unpin(cx).map(|()| None)
+            // Exit will be done by the stream above
+            Poll::Pending
         })))
     }
 }
