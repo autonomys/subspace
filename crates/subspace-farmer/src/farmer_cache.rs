@@ -1304,13 +1304,11 @@ where
 
         // Drive above future and stream back any pieces that were downloaded so far
         stream::poll_fn(move |cx| {
-            let end_result = fut.poll_unpin(cx);
-
-            if let Ok(maybe_result) = rx.try_next() {
+            if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
                 return Poll::Ready(maybe_result);
             }
 
-            end_result.map(|((), ())| None)
+            fut.poll_unpin(cx).map(|((), ())| None)
         })
     }
 
