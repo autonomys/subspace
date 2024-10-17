@@ -573,10 +573,14 @@ impl NatsClient {
             select! {
                 message = subscription.select_next_some() => {
                     // Create background task for concurrent processing
-                    processing.push(self.process_request(
-                        message,
-                        &process,
-                    ));
+                    processing.push(
+                        self
+                            .process_request(
+                                message,
+                                &process,
+                            )
+                            .in_current_span(),
+                    );
                 },
                 _ = processing.next() => {
                     // Nothing to do here
@@ -682,8 +686,134 @@ impl NatsClient {
         ))
     }
 
+    /// Responds to stream requests from the given subject using the provided processing function.
+    ///
+    /// This will create a subscription on the subject for the given instance (if provided) and
+    /// queue group. Incoming messages will be deserialized as the request type `Request` and passed
+    /// to the `process` function to produce a stream response of type `Request::Response`. The
+    /// stream response will then be sent back on the reply subject from the original request.
+    ///
+    /// Each request is processed in a newly created async tokio task.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance` - Optional instance name to use in place of the `*` in the subject
+    /// * `group` - The queue group name for the subscription
+    /// * `process` - The function to call with the decoded request to produce a response
+    pub async fn stream_request_responder<Request, F, S, OP>(
+        &self,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+        process: OP,
+    ) -> anyhow::Result<()>
+    where
+        Request: GenericStreamRequest,
+        F: Future<Output = Option<S>> + Send,
+        S: Stream<Item = Request::Response> + Unpin,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        // Initialize with pending future so it never ends
+        let mut processing = FuturesUnordered::new();
+
+        let subscription = self
+            .common_subscribe(Request::SUBJECT, instance, queue_group)
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Failed to subscribe to {} stream requests for {instance:?}: {error}",
+                    type_name::<Request>(),
+                )
+            })?;
+
+        debug!(
+            request_type = %type_name::<Request>(),
+            ?subscription,
+            "Stream requests subscription"
+        );
+        let mut subscription = subscription.fuse();
+
+        loop {
+            select! {
+                message = subscription.select_next_some() => {
+                    // Create background task for concurrent processing
+                    processing.push(
+                        self
+                        .process_stream_request(
+                            message,
+                            &process,
+                        )
+                        .in_current_span(),
+                    );
+                },
+                _ = processing.next() => {
+                    // Nothing to do here
+                },
+                complete => {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_stream_request<Request, F, S, OP>(&self, message: Message, process: OP)
+    where
+        Request: GenericStreamRequest,
+        F: Future<Output = Option<S>> + Send,
+        S: Stream<Item = Request::Response> + Unpin,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        // TODO: Un-comment once there is no `StreamRequest`
+        // let Some(reply_subject) = message.reply else {
+        //     return;
+        // };
+
+        let message_payload_size = message.payload.len();
+        let request = match StreamRequest::<Request>::decode(&mut message.payload.as_ref()) {
+            Ok(request) => {
+                // Free allocation early
+                drop(message.payload);
+                request
+            }
+            Err(error) => {
+                warn!(
+                    request_type = %type_name::<Request>(),
+                    %error,
+                    message = %hex::encode(message.payload),
+                    "Failed to decode request"
+                );
+                return;
+            }
+        };
+        // TODO: Remove two lines once there is no `StreamRequest`
+        let reply_subject = request.response_subject;
+        let request = request.request;
+
+        // Avoid printing large messages in logs
+        if message_payload_size > 1024 {
+            trace!(
+                request_type = %type_name::<Request>(),
+                %reply_subject,
+                "Processing request"
+            );
+        } else {
+            trace!(
+                request_type = %type_name::<Request>(),
+                ?request,
+                %reply_subject,
+                "Processing request"
+            );
+        }
+
+        if let Some(stream) = process(request).await {
+            self.stream_response::<Request, _>(reply_subject, stream)
+                .await;
+        }
+    }
+
     /// Helper method to send responses to requests initiated with [`Self::stream_request`]
-    pub async fn stream_response<Request, S>(&self, response_subject: String, response_stream: S)
+    async fn stream_response<Request, S>(&self, response_subject: String, response_stream: S)
     where
         Request: GenericStreamRequest,
         S: Stream<Item = Request::Response> + Unpin,
