@@ -17,6 +17,7 @@ use bytes::Bytes;
 use derive_more::Display;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
+use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
@@ -760,23 +761,24 @@ where
             |request| async move {
                 let (progress_sender, mut progress_receiver) = mpsc::channel(10);
 
-                let mut fut = Box::pin(process_plot_sector_request(
-                    nats_client,
-                    plotter,
-                    request,
-                    progress_sender,
-                ));
+                let fut =
+                    process_plot_sector_request(nats_client, plotter, request, progress_sender);
+                let mut fut = Box::pin(fut.fuse());
 
                 Some(
                     // Drive above future and stream back any pieces that were downloaded so far
                     stream::poll_fn(move |cx| {
-                        let end_result = fut.poll_unpin(cx);
+                        if !fut.is_terminated() {
+                            // Result doesn't matter, we'll need to poll stream below anyway
+                            let _ = fut.poll_unpin(cx);
+                        }
 
-                        if let Ok(maybe_result) = progress_receiver.try_next() {
+                        if let Poll::Ready(maybe_result) = progress_receiver.poll_next_unpin(cx) {
                             return Poll::Ready(maybe_result);
                         }
 
-                        end_result.map(|()| None)
+                        // Exit will be done by the stream above
+                        Poll::Pending
                     }),
                 )
             },
