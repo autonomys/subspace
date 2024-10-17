@@ -81,6 +81,27 @@ impl farm::PieceCache for SingleDiskPieceCache {
             Ok(None)
         }
     }
+
+    async fn read_pieces(
+        &self,
+        offsets: Box<dyn Iterator<Item = PieceCacheOffset> + Send>,
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), FarmError>>
+                + Send
+                + Unpin
+                + '_,
+        >,
+        FarmError,
+    > {
+        if let Some(piece_cache) = &self.maybe_piece_cache {
+            farm::PieceCache::read_pieces(piece_cache, offsets).await
+        } else {
+            Ok(Box::new(stream::iter(
+                offsets.map(|offset| Ok((offset, None))),
+            )))
+        }
+    }
 }
 
 impl SingleDiskPieceCache {

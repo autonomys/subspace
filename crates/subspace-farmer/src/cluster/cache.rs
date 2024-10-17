@@ -17,7 +17,9 @@ use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
+use std::collections::BTreeSet;
 use std::pin::Pin;
+use std::task::Poll;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio::time::MissedTickBehavior;
@@ -75,6 +77,17 @@ pub(super) struct ClusterCacheReadPieceRequest {
 impl GenericRequest for ClusterCacheReadPieceRequest {
     const SUBJECT: &'static str = "subspace.cache.*.read-piece";
     type Response = Result<Option<(PieceIndex, Piece)>, String>;
+}
+
+/// Read piece from cache
+#[derive(Debug, Clone, Encode, Decode)]
+pub(super) struct ClusterCacheReadPiecesRequest {
+    pub(super) offsets: Vec<PieceCacheOffset>,
+}
+
+impl GenericStreamRequest for ClusterCacheReadPiecesRequest {
+    const SUBJECT: &'static str = "subspace.cache.*.read-pieces";
+    type Response = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), String>;
 }
 
 /// Request plotted from farmer, request
@@ -169,6 +182,55 @@ impl PieceCache for ClusterPieceCache {
             )
             .await??)
     }
+
+    async fn read_pieces(
+        &self,
+        offsets: Box<dyn Iterator<Item = PieceCacheOffset> + Send>,
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), FarmError>>
+                + Send
+                + Unpin
+                + '_,
+        >,
+        FarmError,
+    > {
+        let offsets = offsets.collect::<Vec<_>>();
+        let mut offsets_set = BTreeSet::from_iter(offsets.iter().copied());
+        let mut stream = self
+            .nats_client
+            .stream_request(
+                ClusterCacheReadPiecesRequest { offsets },
+                Some(&self.cache_id_string),
+            )
+            .await?
+            .map(|response| response.map_err(FarmError::from))
+            .fuse();
+        Ok(Box::new(stream::poll_fn(move |cx| {
+            if !stream.is_done() {
+                match stream.poll_next_unpin(cx) {
+                    Poll::Ready(Some(response)) => {
+                        return Poll::Ready(Some(response.inspect(|(offset, _)| {
+                            offsets_set.remove(offset);
+                        })));
+                    }
+                    Poll::Ready(None) => {
+                        // Handled as a general case below
+                    }
+                    Poll::Pending => {
+                        return Poll::Pending;
+                    }
+                }
+            }
+
+            // Uphold invariant of the trait that some result should be returned for every unique
+            // provided offset
+            match offsets_set.pop_first() {
+                Some(offset) => Poll::Ready(Some(Ok((offset, None)))),
+                None => Poll::Ready(None),
+            }
+        })))
+    }
 }
 
 impl ClusterPieceCache {
@@ -239,6 +301,9 @@ where
             result = read_piece_responder(&nats_client, &caches_details).fuse() => {
                 result
             },
+            result = read_pieces_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
             result = contents_responder(&nats_client, &caches_details).fuse() => {
                 result
             },
@@ -252,6 +317,9 @@ where
                 result
             },
             result = read_piece_responder(&nats_client, &caches_details).fuse() => {
+                result
+            },
+            result = read_pieces_responder(&nats_client, &caches_details).fuse() => {
                 result
             },
             result = contents_responder(&nats_client, &caches_details).fuse() => {
@@ -439,6 +507,50 @@ where
                                 .read_piece(request.offset)
                                 .await
                                 .map_err(|error| error.to_string()),
+                        )
+                    },
+                )
+                .instrument(info_span!("", cache_id = %cache_details.cache_id))
+                .await
+        })
+        .collect::<FuturesUnordered<_>>()
+        .next()
+        .await
+        .ok_or_else(|| anyhow!("No caches"))?
+}
+
+async fn read_pieces_responder<C>(
+    nats_client: &NatsClient,
+    caches_details: &[CacheDetails<'_, C>],
+) -> anyhow::Result<()>
+where
+    C: PieceCache,
+{
+    caches_details
+        .iter()
+        .map(|cache_details| async move {
+            nats_client
+                .stream_request_responder::<_, _, Pin<Box<dyn Stream<Item = _> + Send>>, _>(
+                    Some(cache_details.cache_id_string.as_str()),
+                    Some(cache_details.cache_id_string.clone()),
+                    |ClusterCacheReadPiecesRequest { offsets }| async move {
+                        Some(
+                            match cache_details
+                                .cache
+                                .read_pieces(Box::new(offsets.into_iter()))
+                                .await
+                            {
+                                Ok(contents) => Box::pin(contents.map(|maybe_cache_element| {
+                                    maybe_cache_element.map_err(|error| error.to_string())
+                                })) as _,
+                                Err(error) => {
+                                    error!(%error, "Failed to read pieces");
+
+                                    Box::pin(stream::once(async move {
+                                        Err(format!("Failed to read pieces: {error}"))
+                                    })) as _
+                                }
+                            },
                         )
                     },
                 )

@@ -44,7 +44,9 @@ pub trait PieceGetter {
     /// Get piece by index
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
 
-    /// Get pieces with provided indices
+    /// Get pieces with provided indices.
+    ///
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
     async fn get_pieces<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,

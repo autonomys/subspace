@@ -273,7 +273,7 @@ where
                             %cache_index,
                             ?key,
                             %piece_offset,
-                            "Error while reading piece from cache, might be a disk corruption"
+                            "Error while reading piece from cache"
                         );
                     }
                 }
@@ -1084,8 +1084,14 @@ where
                             Some(piece)
                         }
                         None => {
+                            error!(
+                                %cache_index,
+                                %piece_offset,
+                                ?key,
+                                "Piece was expected to be in cache, but wasn't found there"
+                            );
                             if let Some(metrics) = &self.metrics {
-                                metrics.cache_get_miss.inc();
+                                metrics.cache_get_error.inc();
                             }
                             None
                         }
@@ -1097,7 +1103,7 @@ where
                         %cache_index,
                         ?key,
                         %piece_offset,
-                        "Error while reading piece from cache, might be a disk corruption"
+                        "Error while reading piece from cache"
                     );
 
                     if let Err(error) = self
@@ -1134,7 +1140,7 @@ where
 
     /// Get pieces from cache.
     ///
-    /// Number of elements in returned stream is the same as in `piece_indices`.
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
     pub async fn get_pieces<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,
@@ -1144,10 +1150,11 @@ where
     {
         let mut pieces_to_get_from_plot_cache = Vec::new();
 
-        let reading_from_piece_cache = {
+        let pieces_to_read_from_piece_cache = {
             let caches = self.piece_caches.read().await;
             // Pieces to read from piece cache grouped by backend for efficiency reasons
-            let mut reading_from_piece_cache = HashMap::<CacheIndex, (CacheBackend, Vec<_>)>::new();
+            let mut reading_from_piece_cache =
+                HashMap::<CacheIndex, (CacheBackend, HashMap<_, _>)>::new();
 
             for piece_index in piece_indices {
                 let key = RecordKey::from(piece_index.to_multihash());
@@ -1169,7 +1176,7 @@ where
                 match reading_from_piece_cache.entry(cache_index) {
                     Entry::Occupied(mut entry) => {
                         let (_backend, pieces) = entry.get_mut();
-                        pieces.push((piece_index, piece_offset, key));
+                        pieces.insert(piece_offset, (piece_index, key));
                     }
                     Entry::Vacant(entry) => {
                         let backend = match caches.get_backend(cache_index) {
@@ -1179,7 +1186,8 @@ where
                                 continue;
                             }
                         };
-                        entry.insert((backend, vec![(piece_index, piece_offset, key)]));
+                        entry
+                            .insert((backend, HashMap::from([(piece_offset, (piece_index, key))])));
                     }
                 }
             }
@@ -1192,58 +1200,109 @@ where
         let fut = async move {
             let tx = &tx;
 
-            let mut reading_from_piece_cache = reading_from_piece_cache
+            let mut reading_from_piece_cache = pieces_to_read_from_piece_cache
                 .into_iter()
-                .map(|(cache_index, (backend, pieces))| async move {
-                    // TODO: Read a stream of pieces from each backend rather than read
-                    //  individual pieces sequentially, but `PieceCache` API ideally needs to be
-                    //  extended first to support this more efficiently, especially over the
-                    //  network
-                    for (piece_index, piece_offset, key) in pieces {
-                        let maybe_piece = match backend.read_piece(piece_offset).await {
-                            Ok(Some((_piece_index, piece))) => {
+                .map(|(cache_index, (backend, mut pieces_to_get))| async move {
+                    let mut pieces_stream = match backend
+                        .read_pieces(Box::new(
+                            pieces_to_get
+                                .keys()
+                                .copied()
+                                .collect::<Vec<_>>()
+                                .into_iter(),
+                        ))
+                        .await
+                    {
+                        Ok(pieces_stream) => pieces_stream,
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %cache_index,
+                                "Error while reading pieces from cache"
+                            );
+
+                            if let Some(metrics) = &self.metrics {
+                                metrics.cache_get_error.inc_by(pieces_to_get.len() as u64);
+                            }
+                            for (piece_index, _key) in pieces_to_get.into_values() {
+                                tx.unbounded_send((piece_index, None)).expect(
+                                    "This future isn't polled after receiver is dropped; qed",
+                                );
+                            }
+                            return;
+                        }
+                    };
+
+                    while let Some(maybe_piece) = pieces_stream.next().await {
+                        let result = match maybe_piece {
+                            Ok((piece_offset, Some((piece_index, piece)))) => {
+                                pieces_to_get.remove(&piece_offset);
+
                                 if let Some(metrics) = &self.metrics {
                                     metrics.cache_get_hit.inc();
                                 }
-                                Some(piece)
+                                (piece_index, Some(piece))
                             }
-                            Ok(None) => {
+                            Ok((piece_offset, None)) => {
+                                let Some((piece_index, key)) = pieces_to_get.remove(&piece_offset)
+                                else {
+                                    debug!(
+                                        %cache_index,
+                                        %piece_offset,
+                                        "Received piece offset that was not expected"
+                                    );
+                                    continue;
+                                };
+
+                                error!(
+                                    %cache_index,
+                                    %piece_index,
+                                    %piece_offset,
+                                    ?key,
+                                    "Piece was expected to be in cache, but wasn't found there"
+                                );
                                 if let Some(metrics) = &self.metrics {
-                                    metrics.cache_get_miss.inc();
+                                    metrics.cache_get_error.inc();
                                 }
-                                None
+                                (piece_index, None)
                             }
                             Err(error) => {
                                 error!(
                                     %error,
                                     %cache_index,
-                                    %piece_index,
-                                    %piece_offset,
-                                    ?key,
-                                    "Error while reading piece from cache, might be a disk \
-                                    corruption"
+                                    "Error while reading piece from cache"
                                 );
-
-                                if let Err(error) = self
-                                    .worker_sender
-                                    .clone()
-                                    .send(WorkerCommand::ForgetKey { key })
-                                    .await
-                                {
-                                    trace!(
-                                        %error,
-                                        "Failed to send ForgetKey command to worker"
-                                    );
-                                }
 
                                 if let Some(metrics) = &self.metrics {
                                     metrics.cache_get_error.inc();
                                 }
-                                None
+                                continue;
                             }
                         };
 
-                        tx.unbounded_send((piece_index, maybe_piece))
+                        tx.unbounded_send(result)
+                            .expect("This future isn't polled after receiver is dropped; qed");
+                    }
+
+                    if pieces_to_get.is_empty() {
+                        return;
+                    }
+
+                    if let Some(metrics) = &self.metrics {
+                        metrics.cache_get_error.inc_by(pieces_to_get.len() as u64);
+                    }
+                    for (piece_offset, (piece_index, key)) in pieces_to_get {
+                        error!(
+                            %cache_index,
+                            %piece_index,
+                            %piece_offset,
+                            ?key,
+                            "Piece cache didn't return an entry for offset"
+                        );
+
+                        // Uphold invariant of the method that some result should be returned
+                        // for every unique piece index
+                        tx.unbounded_send((piece_index, None))
                             .expect("This future isn't polled after receiver is dropped; qed");
                     }
                 })
