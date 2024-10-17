@@ -35,7 +35,7 @@ fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier",
 frame-benchmarking = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", default-features = false }
 frame-benchmarking-cli = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", default-features = false }
 frame-support = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-futures = "0.3.30"
+futures = "0.3.31"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 mimalloc = "0.1.43"
