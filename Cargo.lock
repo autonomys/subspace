@@ -12576,6 +12576,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-gateway-rpc"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "jsonrpsee",
+ "serde",
+ "subspace-core-primitives",
+ "subspace-data-retrieval",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-kzg"
 version = "0.1.0"
 dependencies = [
