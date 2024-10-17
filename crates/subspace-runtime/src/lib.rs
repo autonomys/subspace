@@ -72,7 +72,8 @@ use sp_core::{ConstBool, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     ChannelId, DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor,
-    OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
+    OperatorId, OperatorPublicKey, OperatorRewardSource, DOMAIN_STORAGE_FEE_MULTIPLIER,
+    INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -590,7 +591,7 @@ impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
         // on consensus chain, reward the domain operators
         // balance is already on this consensus runtime
         if let ChainId::Domain(domain_id) = chain_id {
-            Domains::reward_domain_operators(domain_id, fees)
+            Domains::reward_domain_operators(domain_id, OperatorRewardSource::XDMProtocolFees, fees)
         }
     }
 }
@@ -793,7 +794,11 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                reward,
+            ),
         }
     }
 }

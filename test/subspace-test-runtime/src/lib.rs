@@ -61,8 +61,8 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainAllowlistUpdates, DomainId, DomainInstanceData, ExecutionReceiptFor, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, DOMAIN_STORAGE_FEE_MULTIPLIER,
-    INITIAL_DOMAIN_TX_RANGE,
+    OpaqueBundles, OperatorId, OperatorPublicKey, OperatorRewardSource,
+    DOMAIN_STORAGE_FEE_MULTIPLIER, INITIAL_DOMAIN_TX_RANGE,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::storage_proof::{
@@ -603,6 +603,24 @@ parameter_types! {
     pub const ChannelFeeModel: FeeModel<Balance> = FeeModel{relay_fee: SSC};
 }
 
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(reward: Balance) {
+        if let Some(block_author) = Subspace::find_block_reward_address() {
+            let _ = Balances::deposit_creating(&block_author, reward);
+        }
+    }
+
+    fn on_chain_protocol_fees(chain_id: ChainId, fees: Balance) {
+        // on consensus chain, reward the domain operators
+        // balance is already on this consensus runtime
+        if let ChainId::Domain(domain_id) = chain_id {
+            Domains::reward_domain_operators(domain_id, OperatorRewardSource::XDMProtocolFees, fees)
+        }
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -618,7 +636,7 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = ConstantMultiplier<Balance, TransactionWeightFee>;
-    type OnXDMRewards = ();
+    type OnXDMRewards = OnXDMRewards;
     type MmrHash = mmr::Hash;
     type MmrProofVerifier = MmrProofVerifier;
     type StorageKeys = StorageKeys;
@@ -719,7 +737,11 @@ impl sp_domains::OnChainRewards<Balance> for OnChainRewards {
                     let _ = Balances::deposit_creating(&block_author, reward);
                 }
             }
-            ChainId::Domain(domain_id) => Domains::reward_domain_operators(domain_id, reward),
+            ChainId::Domain(domain_id) => Domains::reward_domain_operators(
+                domain_id,
+                OperatorRewardSource::XDMProtocolFees,
+                reward,
+            ),
         }
     }
 }

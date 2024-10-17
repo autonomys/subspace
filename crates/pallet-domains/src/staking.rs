@@ -18,10 +18,11 @@ use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{ensure, PalletError};
+use frame_system::pallet_prelude::BlockNumberFor;
 use scale_info::TypeInfo;
 use sp_core::{sr25519, Get};
 use sp_domains::{
-    DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorSignature,
+    DomainId, EpochIndex, OperatorId, OperatorPublicKey, OperatorRewardSource, OperatorSignature,
     OperatorSigningKeyProofOfOwnershipData,
 };
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
@@ -1327,6 +1328,7 @@ pub(crate) fn do_cleanup_operator<T: Config>(
 /// Distribute the reward to the operators equally and drop any dust to treasury.
 pub(crate) fn do_reward_operators<T: Config>(
     domain_id: DomainId,
+    source: OperatorRewardSource<BlockNumberFor<T>>,
     operators: IntoIter<OperatorId>,
     rewards: BalanceOf<T>,
 ) -> Result<(), Error> {
@@ -1374,6 +1376,7 @@ pub(crate) fn do_reward_operators<T: Config>(
                 .insert(operator_id, total_reward);
 
             Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                source: source.clone(),
                 operator_id,
                 reward: operator_reward,
             });
@@ -1470,7 +1473,7 @@ pub(crate) mod tests {
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
         BlockFees, DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
-        OperatorSignature, Transfers,
+        OperatorRewardSource, OperatorSignature, Transfers,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -2018,6 +2021,7 @@ pub(crate) mod tests {
             if !operator_reward.is_zero() {
                 do_reward_operators::<Test>(
                     domain_id,
+                    OperatorRewardSource::Dummy,
                     vec![operator_id].into_iter(),
                     operator_reward,
                 )
@@ -2865,8 +2869,13 @@ pub(crate) mod tests {
                     .unwrap();
             }
 
-            do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)
-                .unwrap();
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::Dummy,
+                vec![operator_id].into_iter(),
+                20 * SSC,
+            )
+            .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // Manually convert previous withdrawal in share to balance
@@ -3024,8 +3033,13 @@ pub(crate) mod tests {
                     .unwrap();
             }
 
-            do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)
-                .unwrap();
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::Dummy,
+                vec![operator_id].into_iter(),
+                20 * SSC,
+            )
+            .unwrap();
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // Manually convert previous withdrawal in share to balance

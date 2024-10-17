@@ -536,7 +536,8 @@ mod tests {
     use frame_support::traits::fungible::InspectHold;
     use sp_core::{Pair, U256};
     use sp_domains::{
-        BlockFees, DomainId, OperatorPair, OperatorSigningKeyProofOfOwnershipData, Transfers,
+        BlockFees, DomainId, OperatorPair, OperatorRewardSource,
+        OperatorSigningKeyProofOfOwnershipData, Transfers,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
@@ -605,8 +606,13 @@ mod tests {
             }
 
             if !rewards.is_zero() {
-                do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), rewards)
-                    .unwrap()
+                do_reward_operators::<Test>(
+                    domain_id,
+                    OperatorRewardSource::Dummy,
+                    vec![operator_id].into_iter(),
+                    rewards,
+                )
+                .unwrap()
             }
 
             // de-register operator
@@ -770,8 +776,13 @@ mod tests {
             }
 
             if !rewards.is_zero() {
-                do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), rewards)
-                    .unwrap();
+                do_reward_operators::<Test>(
+                    domain_id,
+                    OperatorRewardSource::Dummy,
+                    vec![operator_id].into_iter(),
+                    rewards,
+                )
+                .unwrap();
             }
 
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
@@ -864,8 +875,13 @@ mod tests {
             Operators::<Test>::insert(operator_id, operator);
             let expected_operator_tax = nomination_tax.mul_ceil(operator_rewards);
 
-            do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), operator_rewards)
-                .unwrap();
+            do_reward_operators::<Test>(
+                domain_id,
+                OperatorRewardSource::Dummy,
+                vec![operator_id].into_iter(),
+                operator_rewards,
+            )
+            .unwrap();
 
             operator_take_reward_tax_and_stake::<Test>(domain_id).unwrap();
             let operator = Operators::<Test>::get(operator_id).unwrap();
