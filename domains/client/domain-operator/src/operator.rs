@@ -3,12 +3,16 @@ use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
+use crate::snap_sync::{snap_sync, SyncParams};
 use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
 use futures::channel::mpsc;
+use futures::future::pending;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
+use sc_consensus::BlockImport;
+use sc_network::NetworkRequest;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -24,6 +28,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
+use tracing::{debug, error, info};
 
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
@@ -75,7 +80,10 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + Finalizer<Block, Backend>
+        + BlockImport<Block>
+        + BlockchainEvents<Block>
         + 'static,
+    for<'a> &'a Client: BlockImport<Block>,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<CBlock>, CBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
@@ -101,7 +109,8 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<IBNS, CIBNS, NSNS, ASS>(
+    #[allow(clippy::type_complexity)]
+    pub async fn new<IBNS, CIBNS, NSNS, ASS, NR, CNR, AS>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         params: OperatorParams<
             Block,
@@ -115,6 +124,9 @@ where
             CIBNS,
             NSNS,
             ASS,
+            NR,
+            CNR,
+            AS,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -122,6 +134,9 @@ where
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
+        NR: NetworkRequest + Send + Sync + 'static,
+        CNR: NetworkRequest + Send + Sync + 'static,
+        AS: AuxStore + Send + Sync + 'static,
     {
         let domain_bundle_proposer = DomainBundleProposer::<Block, _, CBlock, _, _>::new(
             params.domain_id,
@@ -177,6 +192,65 @@ where
             receipts_checker,
             domain_block_processor.clone(),
         );
+        let snap_sync_orchestrator = params
+            .consensus_chain_sync_params
+            .as_ref()
+            .map(|p| p.snap_sync_orchestrator.clone());
+
+        let sync_params = params
+            .consensus_chain_sync_params
+            .map(|consensus_sync_params| SyncParams {
+                domain_client: params.client.clone(),
+                domain_network_service_handle: params.domain_network_service_handle,
+                sync_service: params.sync_service,
+                consensus_client: params.consensus_client.clone(),
+                domain_block_downloader: params.block_downloader.clone(),
+                consensus_chain_sync_params: consensus_sync_params,
+                domain_fork_id: params.domain_fork_id,
+            });
+
+        if let Some(sync_params) = sync_params {
+            let snap_sync_orchestrator = sync_params
+                .consensus_chain_sync_params
+                .snap_sync_orchestrator
+                .clone();
+            let domain_sync_task = {
+                async move {
+                    let info = sync_params.domain_client.info();
+                    // Only attempt snap sync with genesis state
+                    // TODO: Support snap sync from any state once
+                    //  https://github.com/paritytech/polkadot-sdk/issues/5366 is resolved
+                    if info.best_hash == info.genesis_hash {
+                        info!("Starting domain snap sync...");
+
+                        let result = snap_sync(sync_params).await;
+
+                        match result {
+                            Ok(_) => {
+                                info!("Domain snap sync completed.");
+                            }
+                            Err(err) => {
+                                snap_sync_orchestrator.unblock_all();
+
+                                error!(%err, "Domain snap sync failed.");
+
+                                // essential task failed
+                                return;
+                            }
+                        };
+                    } else {
+                        debug!("Snap sync can only work with genesis state, skipping");
+
+                        snap_sync_orchestrator.unblock_all();
+                    }
+
+                    // Don't exit essential task.
+                    pending().await
+                }
+            };
+
+            spawn_essential.spawn_essential("domain-sync", None, Box::pin(domain_sync_task));
+        }
 
         spawn_essential.spawn_essential_blocking(
             "domain-operator-worker",
@@ -189,6 +263,7 @@ where
                 bundle_producer,
                 bundle_processor.clone(),
                 params.operator_streams,
+                snap_sync_orchestrator,
             )
             .boxed(),
         );
