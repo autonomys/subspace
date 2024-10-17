@@ -20,16 +20,16 @@ use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::domain::auto_id_chain_spec;
 use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
-use crate::genesis_allocations::{GENESIS_ALLOCATIONS, get_genesis_allocations};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
 use sc_telemetry::TelemetryEndpoints;
+use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroU128};
 use subspace_core_primitives::pot::PotKey;
 use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
@@ -58,6 +58,23 @@ struct GenesisParams {
 struct GenesisDomainParams {
     permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
     genesis_domains: Vec<GenesisDomain>,
+}
+/// Genesis token balances allocations
+pub const GENESIS_ALLOCATIONS: &str = include_str!("genesis_allocations.json");
+
+#[derive(Deserialize)]
+struct GenesisAllocation(
+    AccountId,
+    NonZeroU128
+);
+
+pub fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
+    let allocations: Vec<GenesisAllocation> = serde_json::from_str(contents)
+        .expect("Failed to parse genesis allocations JSON");
+    
+    allocations.into_iter()
+        .map(|GenesisAllocation(account, balance)| (account, balance.get() * SSC))
+        .collect()
 }
 
 pub fn gemini_3h_compiled() -> Result<GenericChainSpec, String> {

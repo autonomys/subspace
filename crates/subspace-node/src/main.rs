@@ -24,7 +24,6 @@ mod chain_spec;
 mod chain_spec_utils;
 mod cli;
 mod domain;
-mod genesis_allocations;
 
 use crate::cli::{Cli, SubspaceCliPlaceholder};
 use crate::domain::cli::DomainKey;
