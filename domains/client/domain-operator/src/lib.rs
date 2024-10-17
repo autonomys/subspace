@@ -59,6 +59,7 @@
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(array_windows)]
+#![feature(box_into_inner)]
 #![feature(const_option)]
 #![feature(duration_constructors)]
 #![feature(extract_if)]

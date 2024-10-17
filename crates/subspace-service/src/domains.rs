@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
 use parity_scale_codec::{Decode, Encode};
+use sc_consensus_subspace::SubspaceLink;
 use sc_network::{IfDisconnected, NetworkRequest, PeerId, RequestFailure};
 use sc_network_sync::SyncingService;
 use sp_blockchain::HeaderBackend;
@@ -50,6 +51,8 @@ where
     pub sync_service: Arc<SyncingService<CBlock>>,
     /// Consensus chain backend (for obtaining offchain storage)
     pub backend: Arc<FullBackend>,
+    /// Consensus chain shared state container to access block importing
+    pub subspace_link: SubspaceLink<CBlock>,
 }
 
 /// Last confirmed domain block info error.

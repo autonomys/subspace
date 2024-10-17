@@ -1,4 +1,5 @@
 use domain_runtime_primitives::BlockNumber;
+use futures::{SinkExt, StreamExt};
 use sc_client_api::{AuxStore, Backend, BlockchainEvents, ProofProvider};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction, StorageChanges,
@@ -210,14 +211,35 @@ where
         .snap_sync_orchestrator
         .unblock_consensus_snap_sync(consensus_block_number);
 
-    wait_for_block_import(
-        sync_params.consensus_client.as_ref(),
-        consensus_block_number.into(),
-    )
-    .instrument(info_span!(
-        "consensus chain block import from domain chain snap sync"
-    ))
-    .await;
+    let mut block_importing_notification_stream = sync_params
+        .consensus_chain_sync_params
+        .subspace_link
+        .block_importing_notification_stream()
+        .subscribe();
+
+    let mut consensus_target_block_acknowledgement_sender = None;
+    while let Some(mut block_notification) = block_importing_notification_stream.next().await {
+        if block_notification.block_number <= consensus_block_number.into() {
+            if block_notification
+                .acknowledgement_sender
+                .send(())
+                .await
+                .is_err()
+            {
+                return Err(sp_blockchain::Error::Application(
+                    format!(
+                        "Can't acknowledge block import #{}",
+                        block_notification.block_number
+                    )
+                    .into(),
+                ));
+            };
+        } else {
+            consensus_target_block_acknowledgement_sender
+                .replace(block_notification.acknowledgement_sender);
+            break;
+        }
+    }
 
     let domain_block_number =
         convert_block_number::<Block>(last_confirmed_block_receipt.domain_block_number);
@@ -337,6 +359,10 @@ where
         .mark_domain_snap_sync_finished();
 
     debug!(info = ?sync_params.domain_client.info(), "Client info after successful domain snap sync.");
+
+    // Unblock consensus block importing
+    drop(consensus_target_block_acknowledgement_sender);
+    drop(block_importing_notification_stream);
 
     Ok(())
 }

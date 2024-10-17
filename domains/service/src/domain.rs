@@ -113,6 +113,7 @@ where
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi>,
     /// Transaction pool
     pub transaction_pool: Arc<FullPool<RuntimeApi>>,
+
     _phantom_data: PhantomData<AccountId>,
 }
 

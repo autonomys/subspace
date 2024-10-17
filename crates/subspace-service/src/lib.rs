@@ -46,6 +46,7 @@ use crate::mmr::request_handler::MmrRequestHandler;
 pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
+pub use crate::sync_from_dsn::snap_sync::SnapSyncTargetBlockProvider;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;

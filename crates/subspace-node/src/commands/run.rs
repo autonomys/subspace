@@ -135,6 +135,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     let mut task_manager = {
         let mut segment_headers_store = None;
+        let subspace_link;
         let consensus_chain_node = {
             let span = info_span!("Consensus");
             let _enter = span.enter();
@@ -152,6 +153,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     "Failed to build a full subspace node 1: {error:?}"
                 ))
             })?;
+
+            subspace_link = partial_components.other.subspace_link.clone();
 
             segment_headers_store.replace(partial_components.other.segment_headers_store.clone());
 
@@ -330,6 +333,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                     network_service: consensus_chain_network_service,
                                     sync_service: consensus_chain_sync_service,
                                     backend: consensus_chain_node.backend.clone(),
+                                    subspace_link,
                                 }
                             });
 
