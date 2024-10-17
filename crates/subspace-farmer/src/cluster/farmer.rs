@@ -9,7 +9,7 @@
 
 use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
 use crate::cluster::nats_client::{
-    GenericBroadcast, GenericRequest, GenericStreamRequest, NatsClient, StreamRequest,
+    GenericBroadcast, GenericRequest, GenericStreamRequest, NatsClient,
 };
 use crate::farm::{
     Farm, FarmError, FarmId, FarmingNotification, HandlerFn, HandlerId, PieceReader,
@@ -23,7 +23,7 @@ use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
-use std::future::{pending, Future};
+use std::future::Future;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -33,7 +33,7 @@ use subspace_core_primitives::sectors::SectorIndex;
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_rpc_primitives::SolutionResponse;
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info_span, trace, warn, Instrument};
 
 const BROADCAST_NOTIFICATIONS_BUFFER: usize = 1000;
 const MIN_FARMER_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
@@ -591,88 +591,38 @@ async fn plotted_sectors_responder(
     farms_details
         .iter()
         .map(|farm_details| async move {
-            // Initialize with pending future so it never ends
-            let mut processing = FuturesUnordered::from_iter([
-                Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
-            ]);
-            let mut subscription = nats_client
-                .subscribe_to_stream_requests(
+            nats_client
+                .stream_request_responder::<_, _, Pin<Box<dyn Stream<Item = _> + Send>>, _>(
                     Some(&farm_details.farm_id_string),
                     Some(farm_details.farm_id_string.clone()),
+                    |_request: ClusterFarmerPlottedSectorsRequest| async move {
+                        Some(match farm_details.plotted_sectors.get().await {
+                            Ok(plotted_sectors) => {
+                                Box::pin(plotted_sectors.map(|maybe_plotted_sector| {
+                                    maybe_plotted_sector.map_err(|error| error.to_string())
+                                })) as _
+                            }
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    farm_id = %farm_details.farm_id,
+                                    "Failed to get plotted sectors"
+                                );
+
+                                Box::pin(stream::once(async move {
+                                    Err(format!("Failed to get plotted sectors: {error}"))
+                                })) as _
+                            }
+                        })
+                    },
                 )
+                .instrument(info_span!("", cache_id = %farm_details.farm_id))
                 .await
-                .map_err(|error| {
-                    anyhow!(
-                        "Failed to subscribe to plotted sectors requests for farm {}: {}",
-                        farm_details.farm_id,
-                        error
-                    )
-                })?
-                .fuse();
-
-            loop {
-                select! {
-                    maybe_message = subscription.next() => {
-                        let Some(message) = maybe_message else {
-                            break;
-                        };
-
-                        // Create background task for concurrent processing
-                        processing.push(Box::pin(process_plotted_sectors_request(
-                            nats_client,
-                            farm_details,
-                            message,
-                        )));
-                    }
-                    _ = processing.next() => {
-                        // Nothing to do here
-                    }
-                }
-            }
-
-            Ok(())
         })
         .collect::<FuturesUnordered<_>>()
         .next()
         .await
         .ok_or_else(|| anyhow!("No farms"))?
-}
-
-async fn process_plotted_sectors_request(
-    nats_client: &NatsClient,
-    farm_details: &FarmDetails,
-    request: StreamRequest<ClusterFarmerPlottedSectorsRequest>,
-) {
-    trace!(?request, "Plotted sectors request");
-
-    match farm_details.plotted_sectors.get().await {
-        Ok(plotted_sectors) => {
-            nats_client
-                .stream_response::<ClusterFarmerPlottedSectorsRequest, _>(
-                    request.response_subject,
-                    plotted_sectors.map(|maybe_plotted_sector| {
-                        maybe_plotted_sector.map_err(|error| error.to_string())
-                    }),
-                )
-                .await;
-        }
-        Err(error) => {
-            error!(
-                %error,
-                farm_id = %farm_details.farm_id,
-                "Failed to get plotted sectors"
-            );
-
-            nats_client
-                .stream_response::<ClusterFarmerPlottedSectorsRequest, _>(
-                    request.response_subject,
-                    pin!(stream::once(async move {
-                        Err(format!("Failed to get plotted sectors: {error}"))
-                    })),
-                )
-                .await;
-        }
-    }
 }
 
 async fn read_piece_responder(
@@ -696,6 +646,7 @@ async fn read_piece_responder(
                         )
                     },
                 )
+                .instrument(info_span!("", cache_id = %farm_details.farm_id))
                 .await
         })
         .collect::<FuturesUnordered<_>>()
