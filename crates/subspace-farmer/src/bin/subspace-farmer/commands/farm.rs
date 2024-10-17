@@ -73,14 +73,14 @@ type CacheIndex = u8;
 
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
+    /// How many sectors a farmer will download concurrently. Limits memory usage of
+    /// the plotting process. Defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     cpu_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
+    /// How many sectors a farmer will encode concurrently. Defaults to 1 on UMA system and
     /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
     /// restricted by
     /// `--cpu-sector-downloading-concurrency` and setting this option higher than
@@ -88,15 +88,15 @@ struct CpuPlottingOptions {
     ///
     /// CPU plotting is disabled by default if GPU plotting is detected.
     ///
-    /// Increase will result in higher memory usage, setting to 0 will disable CPU plotting.
+    /// Increasing this value will cause higher memory usage. Set to 0 to disable CPU plotting.
     #[arg(long)]
     cpu_sector_encoding_concurrency: Option<usize>,
-    /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
+    /// How many records a farmer will encode in a single sector concurrently. Defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
     /// usage and typically more efficient CPU utilization.
     #[arg(long)]
     cpu_record_encoding_concurrency: Option<NonZeroUsize>,
-    /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
+    /// Size of one thread pool used for plotting. Defaults to the number of logical CPUs available
     /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
     /// groups on large CPUs.
     ///
@@ -106,9 +106,9 @@ struct CpuPlottingOptions {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     cpu_plotting_thread_pool_size: Option<NonZeroUsize>,
-    /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
-    /// otherwise. It replaces both `--cpu-sector-encoding-concurrency` and
-    /// `--cpu-plotting-thread-pool-size` options if specified. Requires `--cpu-replotting-cores` to
+    /// Set the exact CPU cores to be used for plotting bypassing any custom farmer logic.
+    /// Replaces both `--cpu-sector-encoding-concurrency` and
+    /// `--cpu-plotting-thread-pool-size` options. Requires `--cpu-replotting-cores` to
     /// be specified with the same number of CPU cores groups (or not specified at all, in which
     /// case it'll use the same thread pool as plotting).
     ///
@@ -118,9 +118,9 @@ struct CpuPlottingOptions {
     #[arg(long, conflicts_with_all = & ["cpu_sector_encoding_concurrency", "cpu_plotting_thread_pool_size"])]
     cpu_plotting_cores: Option<String>,
     /// Size of one thread pool used for replotting, typically smaller pool than for plotting
-    /// to not affect farming as much, defaults to half of the number of logical CPUs available on
-    /// UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
-    /// groups on large CPUs.
+    /// to not affect farming as much. Defaults to half the number of logical CPUs on UMA systems,
+    /// half the number of logical CPUs in the local NUMA node on NUMA systems, or half the L3
+    /// cache group on large CPUs.
     ///
     /// Number of thread pools is defined by `--cpu-sector-encoding-concurrency` option, different
     /// thread pools might have different number of threads if NUMA nodes do not have the same size.
@@ -128,8 +128,8 @@ struct CpuPlottingOptions {
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     cpu_replotting_thread_pool_size: Option<NonZeroUsize>,
-    /// Specify exact CPU cores to be used for replotting bypassing any custom logic farmer might
-    /// use otherwise. It replaces `--cpu-replotting-thread-pool-size` options if specified.
+    /// Set the exact CPU cores to be used for replotting, bypassing any custom farmer logic.
+    /// Replaces `--cpu-replotting-thread-pool-size` option if specified.
     /// Requires `--cpu-plotting-cores` to be specified with the same number of CPU cores groups.
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
@@ -147,17 +147,17 @@ struct CpuPlottingOptions {
 #[cfg(feature = "cuda")]
 #[derive(Debug, Parser)]
 struct CudaPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently during plotting with CUDA GPU,
-    /// allows to limit memory usage of the plotting process, defaults to number of CUDA GPUs found
+    /// How many sectors a farmer will download concurrently during plotting with a CUDA GPU.
+    /// Limits memory usage of the plotting process. Defaults to the number of CUDA GPUs found
     /// + 1 to download future sector ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     cuda_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    /// Set the exact GPUs to be used for plotting instead of using all GPUs (default behavior).
     ///
-    /// GPUs are coma-separated: `--cuda-gpus 0,1,3`. Empty string can be specified to disable CUDA
-    /// GPU usage.
+    /// GPUs are coma-separated: `--cuda-gpus 0,1,3`. Use an empty string to disable CUDA
+    /// GPUs.
     #[arg(long)]
     cuda_gpus: Option<String>,
 }
@@ -165,17 +165,17 @@ struct CudaPlottingOptions {
 #[cfg(feature = "rocm")]
 #[derive(Debug, Parser)]
 struct RocmPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently during plotting with ROCm GPU,
-    /// allows to limit memory usage of the plotting process, defaults to number of ROCm GPUs found
+    /// How many sectors a farmer will download concurrently during plotting with a ROCm GPU.
+    /// Limits memory usage of the plotting process. Defaults to the number of ROCm GPUs found
     /// + 1 to download future sector ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     rocm_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    /// Set the exact GPUs to be used for plotting instead of using all GPUs (default behavior).
     ///
-    /// GPUs are coma-separated: `--rocm-gpus 0,1,3`. Empty string can be specified to disable ROCm
-    /// GPU usage.
+    /// GPUs are coma-separated: `--rocm-gpus 0,1,3`. Use an empty string to disable ROCm
+    /// GPUs.
     #[arg(long)]
     rocm_gpus: Option<String>,
 }
@@ -183,13 +183,13 @@ struct RocmPlottingOptions {
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 pub(crate) struct FarmingArgs {
-    /// One or more farm located at specified path, each with its own allocated space.
+    /// One or more farms located at specified paths, each with its own allocated space.
     ///
     /// In case of multiple disks, it is recommended to specify them individually rather than using
     /// RAID 0, that way farmer will be able to better take advantage of concurrency of individual
     /// drives.
     ///
-    /// Format for each farm is coma-separated list of strings like this:
+    /// The format for each farm is coma-separated list of strings like this:
     ///
     ///   path=/path/to/directory,size=5T
     ///
@@ -211,18 +211,18 @@ pub(crate) struct FarmingArgs {
     /// Sets some flags that are convenient during development, currently `--allow-private-ips`
     #[arg(long)]
     dev: bool,
-    /// Run temporary farmer with specified plot size in human-readable format (e.g. 10GB, 2TiB) or
-    /// just bytes (e.g. 4096), this will create a temporary directory that will be deleted at the
+    /// Run a temporary farmer with a plot size in human-readable format (e.g. 10GB, 2TiB) or
+    /// just bytes (e.g. 4096). This will create a temporary directory that will be deleted at the
     /// end of the process.
     #[arg(long, conflicts_with = "disk_farms")]
     tmp: Option<ByteSize>,
-    /// Maximum number of pieces in sector (can override protocol value to something lower).
+    /// Maximum number of pieces in a sector (can override protocol value to something lower).
     ///
     /// This will make plotting of individual sectors faster, decrease load on CPU proving, but also
     /// proportionally increase amount of disk reads during audits since every sector needs to be
     /// audited and there will be more of them.
     ///
-    /// This is primarily for development and not recommended to use by regular users.
+    /// This is primarily for development and not recommended for regular users.
     #[arg(long)]
     max_pieces_in_sector: Option<u16>,
     /// Network parameters
@@ -231,19 +231,19 @@ pub(crate) struct FarmingArgs {
     /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
-    /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+    /// Endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
     prometheus_listen_on: Vec<SocketAddr>,
     /// Piece getter concurrency.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long, default_value = "128")]
     piece_getter_concurrency: NonZeroUsize,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
-    /// compute-intensive operations during proving), defaults to number of logical CPUs
-    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system, but
-    /// not more than 32 threads
+    /// compute-intensive operations during proving). Defaults to the number of logical CPUs
+    /// on UMA systems, or the number of logical CPUs in first NUMA node on NUMA systems, but
+    /// limited to 32 threads.
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// Plotting options only used by CPU plotter

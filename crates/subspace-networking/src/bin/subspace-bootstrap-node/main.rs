@@ -52,19 +52,20 @@ enum Command {
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
-        /// Defines max established incoming connections limit for the peer.
+        /// Maximum established incoming connections limit for the peer.
         #[arg(long, default_value_t = 300)]
         in_peers: u32,
-        /// Defines max established outgoing connections limit for the peer.
+        /// Maximum established outgoing connections limit for the peer.
         #[arg(long, default_value_t = 300)]
         out_peers: u32,
-        /// Defines max pending incoming connections limit for the peer.
+        /// Maximum pending incoming connections limit for the peer.
         #[arg(long, default_value_t = 300)]
         pending_in_peers: u32,
-        /// Defines max pending outgoing connections limit for the peer.
+        /// Maximum pending outgoing connections limit for the peer.
         #[arg(long, default_value_t = 300)]
         pending_out_peers: u32,
-        /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
+        /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
+        /// By default these addresses are excluded from the DHT.
         #[arg(long, default_value_t = false)]
         allow_private_ips: bool,
         /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
@@ -74,14 +75,14 @@ enum Command {
         /// Known external addresses
         #[arg(long = "external-address")]
         external_addresses: Vec<Multiaddr>,
-        /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
-        /// one specified endpoint. Format: 127.0.0.1:8080
+        /// Endpoints for the prometheus metrics server. It doesn't start without at least one
+        /// specified endpoint. Format: 127.0.0.1:8080
         #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
         prometheus_listen_on: Vec<SocketAddr>,
     },
     /// Generate a new keypair
     GenerateKeypair {
-        /// Produce an output in JSON format when enabled.
+        /// Produce output in JSON format.
         #[arg(long, default_value_t = false)]
         json: bool,
     },
