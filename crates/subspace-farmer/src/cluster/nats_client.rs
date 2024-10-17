@@ -70,11 +70,11 @@ pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'st
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
-/// Messages sent in response to [`StreamRequest`].
+/// Messages sent in response to [`GenericStreamRequest`].
 ///
 /// Empty list of responses means the end of the stream.
 #[derive(Debug, Encode, Decode)]
-pub enum GenericStreamResponses<Response> {
+enum GenericStreamResponses<Response> {
     /// Some responses, but the stream didn't end yet
     Continue {
         /// Monotonically increasing index of responses in a stream
@@ -129,35 +129,6 @@ impl<Response> GenericStreamResponses<Response> {
 
     fn is_last(&self) -> bool {
         matches!(self, Self::Last { .. })
-    }
-}
-
-/// Generic stream request that expects a stream of responses.
-///
-/// Internally it is expected that [`GenericStreamResponses<Request::Response>`] messages will be
-/// sent to auto-generated subject specified in `response_subject` field.
-#[derive(Debug, Encode, Decode)]
-#[non_exhaustive]
-pub struct StreamRequest<Request>
-where
-    Request: GenericStreamRequest,
-{
-    /// Request
-    pub request: Request,
-    /// Topic to send a stream of [`GenericStreamResponses<Request::Response>`]s to
-    pub response_subject: String,
-}
-
-impl<Request> StreamRequest<Request>
-where
-    Request: GenericStreamRequest,
-{
-    /// Create new stream request
-    pub fn new(request: Request) -> Self {
-        Self {
-            request,
-            response_subject: format!("stream-response.{}", Ulid::new()),
-        }
     }
 }
 
@@ -658,30 +629,35 @@ impl NatsClient {
     where
         Request: GenericStreamRequest,
     {
-        let stream_request = StreamRequest::new(request);
+        let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
+        let stream_response_subject = format!("stream-response.{}", Ulid::new());
 
         let subscriber = self
             .inner
             .client
-            .subscribe(stream_request.response_subject.clone())
+            .subscribe(stream_response_subject.clone())
             .await?;
 
-        let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
         debug!(
             request_type = %type_name::<Request>(),
             %stream_request_subject,
+            %stream_response_subject,
             ?subscriber,
             "Stream request subscription"
         );
 
         self.inner
             .client
-            .publish(stream_request_subject, stream_request.encode().into())
+            .publish_with_reply(
+                stream_request_subject,
+                stream_response_subject.clone(),
+                request.encode().into(),
+            )
             .await?;
 
         Ok(StreamResponseSubscriber::new(
             subscriber,
-            stream_request.response_subject,
+            stream_response_subject,
             self.clone(),
         ))
     }
@@ -764,13 +740,12 @@ impl NatsClient {
         S: Stream<Item = Request::Response> + Unpin,
         OP: Fn(Request) -> F + Send + Sync,
     {
-        // TODO: Un-comment once there is no `StreamRequest`
-        // let Some(reply_subject) = message.reply else {
-        //     return;
-        // };
+        let Some(reply_subject) = message.reply else {
+            return;
+        };
 
         let message_payload_size = message.payload.len();
-        let request = match StreamRequest::<Request>::decode(&mut message.payload.as_ref()) {
+        let request = match Request::decode(&mut message.payload.as_ref()) {
             Ok(request) => {
                 // Free allocation early
                 drop(message.payload);
@@ -786,9 +761,6 @@ impl NatsClient {
                 return;
             }
         };
-        // TODO: Remove two lines once there is no `StreamRequest`
-        let reply_subject = request.response_subject;
-        let request = request.request;
 
         // Avoid printing large messages in logs
         if message_payload_size > 1024 {
@@ -813,7 +785,7 @@ impl NatsClient {
     }
 
     /// Helper method to send responses to requests initiated with [`Self::stream_request`]
-    async fn stream_response<Request, S>(&self, response_subject: String, response_stream: S)
+    async fn stream_response<Request, S>(&self, response_subject: Subject, response_stream: S)
     where
         Request: GenericStreamRequest,
         S: Stream<Item = Request::Response> + Unpin,
@@ -1093,20 +1065,6 @@ impl NatsClient {
                 },
                 message.encode().into(),
             )
-            .await
-    }
-
-    /// Simple subscription that will produce decoded stream requests, while skipping messages that
-    /// fail to decode
-    pub async fn subscribe_to_stream_requests<Request>(
-        &self,
-        instance: Option<&str>,
-        queue_group: Option<String>,
-    ) -> Result<SubscriberWrapper<StreamRequest<Request>>, SubscribeError>
-    where
-        Request: GenericStreamRequest,
-    {
-        self.simple_subscribe(Request::SUBJECT, instance, queue_group)
             .await
     }
 
