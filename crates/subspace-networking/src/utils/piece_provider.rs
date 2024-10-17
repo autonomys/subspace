@@ -527,6 +527,10 @@ where
             break;
         };
 
+        if connected_peers.is_empty() || pieces_to_download.is_empty() {
+            break;
+        }
+
         let num_pieces = pieces_to_download.len();
         let step = num_pieces / connected_peers.len().min(num_pieces);
 
