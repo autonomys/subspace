@@ -1,6 +1,6 @@
 # Subspace Gateway
 
-Data Gateway implementation for Subspace Network Blockchain using [Substrate](https://docs.substrate.io/) framework.
+Data Gateway implementation for the Subspace Network Blockchain.
 
 ## Getting Started
 
