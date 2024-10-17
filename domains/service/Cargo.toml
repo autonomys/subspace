@@ -21,7 +21,7 @@ domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" 
 domain-client-operator = { version = "0.1.0", path = "../client/domain-operator" }
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
 frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", optional = true }
-futures = "0.3.30"
+futures = "0.3.31"
 jsonrpsee = { version = "0.24.5", features = ["server"] }
 log = "0.4.22"
 pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }

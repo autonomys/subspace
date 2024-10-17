@@ -45,7 +45,7 @@ pub(in super::super) struct NetworkArgs {
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
     #[arg(long)]
     pub(in super::super) bootstrap_nodes: Vec<Multiaddr>,
-    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
+    /// Multiaddrs to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
         Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
@@ -54,26 +54,26 @@ pub(in super::super) struct NetworkArgs {
             .with(Protocol::Tcp(30533))
     ])]
     pub(in super::super) listen_on: Vec<Multiaddr>,
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
-    /// Kademlia DHT.
+    /// Enable non-global (private, shared, loopback..) addresses in Kademlia DHT.
+    /// By default, these addresses are excluded from the DHT.
     #[arg(long, default_value_t = false)]
     pub(in super::super) allow_private_ips: bool,
     /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
     #[arg(long)]
     pub(in super::super) reserved_peers: Vec<Multiaddr>,
-    /// Defines max established incoming connection limit.
+    /// Maximum established incoming connection limit.
     #[arg(long, default_value_t = 300)]
     pub(in super::super) in_connections: u32,
-    /// Defines max established outgoing swarm connection limit.
+    /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
     pub(in super::super) out_connections: u32,
-    /// Defines max pending incoming connection limit.
+    /// Maximum pending incoming connection limit.
     #[arg(long, default_value_t = 100)]
     pub(in super::super) pending_in_connections: u32,
-    /// Defines max pending outgoing swarm connection limit.
+    /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
     pub(in super::super) pending_out_connections: u32,
-    /// Known external addresses
+    /// Known external addresses.
     #[arg(long = "external-address")]
     pub(in super::super) external_addresses: Vec<Multiaddr>,
 }

@@ -6,9 +6,7 @@
 //! implementation designed to work with cluster plotter and a service function to drive the backend
 //! part of the plotter.
 
-use crate::cluster::nats_client::{
-    GenericRequest, GenericStreamRequest, NatsClient, StreamRequest,
-};
+use crate::cluster::nats_client::{GenericRequest, GenericStreamRequest, NatsClient};
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::utils::AsyncJoinOnDrop;
 use anyhow::anyhow;
@@ -23,10 +21,11 @@ use futures::stream::FuturesUnordered;
 use futures::{select, stream, FutureExt, Sink, SinkExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::error::Error;
-use std::future::{pending, Future};
+use std::future::pending;
 use std::num::NonZeroUsize;
-use std::pin::{pin, Pin};
+use std::pin::pin;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::sectors::SectorIndex;
 use subspace_core_primitives::PublicKey;
@@ -754,56 +753,50 @@ where
 {
     let plotter_id_string = plotter_id.to_string();
 
-    // Initialize with pending future so it never ends
-    let mut processing = FuturesUnordered::from_iter([
-        Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
-    ]);
-    let subscription = nats_client
-        .subscribe_to_stream_requests(Some(&plotter_id_string), Some(plotter_id_string.clone()))
-        .await
-        .map_err(|error| anyhow!("Failed to subscribe to plot sector requests: {}", error))?;
-    debug!(?subscription, "Plot sector subscription");
-    let mut subscription = subscription.fuse();
+    nats_client
+        .stream_request_responder(
+            Some(&plotter_id_string),
+            Some(plotter_id_string.clone()),
+            |request| async move {
+                let (progress_sender, mut progress_receiver) = mpsc::channel(10);
 
-    loop {
-        select! {
-            maybe_message = subscription.next() => {
-                let Some(message) = maybe_message else {
-                    break;
-                };
-
-                // Create background task for concurrent processing
-                processing.push(Box::pin(process_plot_sector_request(
+                let mut fut = Box::pin(process_plot_sector_request(
                     nats_client,
                     plotter,
-                    message,
-                )));
-            }
-            _ = processing.next() => {
-                // Nothing to do here
-            }
-        }
-    }
+                    request,
+                    progress_sender,
+                ));
 
-    Ok(())
+                Some(
+                    // Drive above future and stream back any pieces that were downloaded so far
+                    stream::poll_fn(move |cx| {
+                        let end_result = fut.poll_unpin(cx);
+
+                        if let Ok(maybe_result) = progress_receiver.try_next() {
+                            return Poll::Ready(maybe_result);
+                        }
+
+                        end_result.map(|()| None)
+                    }),
+                )
+            },
+        )
+        .await
 }
 
 async fn process_plot_sector_request<P>(
     nats_client: &NatsClient,
     plotter: &P,
-    request: StreamRequest<ClusterPlotterPlotSectorRequest>,
+    request: ClusterPlotterPlotSectorRequest,
+    mut response_proxy_sender: mpsc::Sender<ClusterSectorPlottingProgress>,
 ) where
     P: Plotter,
 {
-    let StreamRequest {
-        request:
-            ClusterPlotterPlotSectorRequest {
-                public_key,
-                sector_index,
-                farmer_protocol_info,
-                pieces_in_sector,
-            },
-        response_subject,
+    let ClusterPlotterPlotSectorRequest {
+        public_key,
+        sector_index,
+        farmer_protocol_info,
+        pieces_in_sector,
     } = request;
 
     // Wrapper future just for instrumentation below
@@ -825,26 +818,16 @@ async fn process_plot_sector_request<P>(
         {
             debug!("Plotter is currently occupied and can't plot more sectors");
 
-            nats_client
-                .stream_response::<ClusterPlotterPlotSectorRequest, _>(
-                    response_subject,
-                    pin!(stream::once(async move {
-                        ClusterSectorPlottingProgress::Occupied
-                    })),
-                )
-                .await;
+            if let Err(error) = response_proxy_sender
+                .send(ClusterSectorPlottingProgress::Occupied)
+                .await
+            {
+                warn!(%error, "Failed to send plotting progress");
+                return;
+            }
             return;
         }
 
-        let (mut response_proxy_sender, response_proxy_receiver) = mpsc::channel(10);
-
-        let response_streaming_fut = nats_client
-            .stream_response::<ClusterPlotterPlotSectorRequest, _>(
-                response_subject,
-                response_proxy_receiver,
-            )
-            .fuse();
-        let mut response_streaming_fut = pin!(response_streaming_fut);
         let progress_proxy_fut = {
             let mut response_proxy_sender = response_proxy_sender.clone();
             let approximate_max_message_size = nats_client.approximate_max_message_size();
@@ -877,11 +860,6 @@ async fn process_plot_sector_request<P>(
         };
 
         select! {
-            _ = response_streaming_fut => {
-                warn!("Response sending ended early");
-
-                return;
-            }
             _ = progress_proxy_fut.fuse() => {
                 // Done
             }
@@ -889,9 +867,6 @@ async fn process_plot_sector_request<P>(
                 unreachable!("Ping loop never ends");
             }
         }
-
-        // Drain remaining progress messages
-        response_streaming_fut.await;
 
         info!("Finished plotting sector successfully");
     };
