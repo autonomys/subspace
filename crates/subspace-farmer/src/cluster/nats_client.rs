@@ -552,21 +552,15 @@ impl NatsClient {
         // Initialize with pending future so it never ends
         let mut processing = FuturesUnordered::new();
 
-        let subject = subject_with_instance(Request::SUBJECT, instance);
-        let subscription = if let Some(queue_group) = queue_group {
-            self.inner
-                .client
-                .queue_subscribe(subject, queue_group)
-                .await
-        } else {
-            self.inner.client.subscribe(subject).await
-        }
-        .map_err(|error| {
-            anyhow!(
-                "Failed to subscribe to {} requests for {instance:?}: {error}",
-                type_name::<Request>(),
-            )
-        })?;
+        let subscription = self
+            .common_subscribe(Request::SUBJECT, instance, queue_group)
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Failed to subscribe to {} requests for {instance:?}: {error}",
+                    type_name::<Request>(),
+                )
+            })?;
 
         debug!(
             request_type = %type_name::<Request>(),
@@ -1025,17 +1019,9 @@ impl NatsClient {
     where
         Message: Decode,
     {
-        let subscriber = if let Some(queue_group) = queue_group {
-            self.inner
-                .client
-                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
-                .await?
-        } else {
-            self.inner
-                .client
-                .subscribe(subject_with_instance(subject, instance))
-                .await?
-        };
+        let subscriber = self
+            .common_subscribe(subject, instance, queue_group)
+            .await?;
         debug!(
             %subject,
             message_type = %type_name::<Message>(),
@@ -1047,6 +1033,29 @@ impl NatsClient {
             subscriber,
             _phantom: PhantomData,
         })
+    }
+
+    /// Simple subscription that will produce decoded messages, while skipping messages that fail to
+    /// decode
+    async fn common_subscribe(
+        &self,
+        subject: &'static str,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+    ) -> Result<Subscriber, SubscribeError> {
+        let subscriber = if let Some(queue_group) = queue_group {
+            self.inner
+                .client
+                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
+                .await?
+        } else {
+            self.inner
+                .client
+                .subscribe(subject_with_instance(subject, instance))
+                .await?
+        };
+
+        Ok(subscriber)
     }
 }
 
