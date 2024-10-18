@@ -172,7 +172,7 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_lastSegmentHeaders")]
     async fn last_segment_headers(&self, limit: u32) -> Result<Vec<Option<SegmentHeader>>, Error>;
 
-    /// Block/transaction object mappings subscription
+    /// DSN object mappings subscription
     #[subscription(
         name = "subspace_subscribeObjectMappings" => "subspace_object_mappings",
         unsubscribe = "subspace_unsubscribeObjectMappings",
@@ -181,7 +181,7 @@ pub trait SubspaceRpcApi {
     )]
     fn subscribe_object_mappings(&self);
 
-    /// Filtered block/transaction object mappings subscription
+    /// Filtered DSN object mappings subscription
     #[subscription(
         name = "subspace_subscribeFilteredObjectMappings" => "subspace_filtered_object_mappings",
         unsubscribe = "subspace_unsubscribeFilteredObjectMappings",
