@@ -123,12 +123,6 @@ struct RocmPlottingOptions {
 /// Arguments for plotter
 #[derive(Debug, Parser)]
 pub(super) struct PlotterArgs {
-    /// Piece getter concurrency.
-    ///
-    /// Increasing this value can cause NATS communication issues if too many messages arrive via
-    /// NATS, but are not processed quickly enough.
-    #[arg(long, default_value = "32")]
-    piece_getter_concurrency: NonZeroUsize,
     /// Plotting options only used by CPU plotter
     #[clap(flatten)]
     cpu_plotting_options: CpuPlottingOptions,
@@ -154,7 +148,6 @@ where
     PosTable: Table,
 {
     let PlotterArgs {
-        piece_getter_concurrency,
         cpu_plotting_options,
         #[cfg(feature = "cuda")]
         cuda_plotting_options,
@@ -169,7 +162,7 @@ where
             .expect("Not zero; qed"),
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
-    let piece_getter = ClusterPieceGetter::new(nats_client.clone(), piece_getter_concurrency);
+    let piece_getter = ClusterPieceGetter::new(nats_client.clone());
 
     let global_mutex = Arc::default();
 

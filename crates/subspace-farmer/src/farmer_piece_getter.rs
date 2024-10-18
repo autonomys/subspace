@@ -3,7 +3,7 @@
 use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use async_lock::{RwLock as AsyncRwLock, Semaphore};
+use async_lock::RwLock as AsyncRwLock;
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
@@ -14,7 +14,6 @@ use futures::stream::FuturesUnordered;
 use futures::{stream, FutureExt, Stream, StreamExt};
 use std::fmt;
 use std::hash::Hash;
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
@@ -44,7 +43,6 @@ struct Inner<FarmIndex, CacheIndex, PV, NC> {
     node_client: NC,
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
-    request_semaphore: Arc<Semaphore>,
 }
 
 /// Farmer-specific piece getter.
@@ -89,9 +87,7 @@ where
         node_client: NC,
         plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
         dsn_cache_retry_policy: DsnCacheRetryPolicy,
-        request_concurrency: NonZeroUsize,
     ) -> Self {
-        let request_semaphore = Arc::new(Semaphore::new(request_concurrency.get()));
         Self {
             inner: Arc::new(Inner {
                 piece_provider,
@@ -99,15 +95,12 @@ where
                 node_client,
                 plotted_pieces,
                 dsn_cache_retry_policy,
-                request_semaphore,
             }),
         }
     }
 
     /// Fast way to get piece using various caches
     pub async fn get_piece_fast(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let _guard = self.inner.request_semaphore.acquire().await;
-
         self.get_piece_fast_internal(piece_index).await
     }
 
@@ -163,8 +156,6 @@ where
 
     /// Slow way to get piece using archival storage
     pub async fn get_piece_slow(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let _guard = self.inner.request_semaphore.acquire().await;
-
         self.get_piece_slow_internal(piece_index).await
     }
 
@@ -230,8 +221,6 @@ where
     NC: NodeClient,
 {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
-        let _guard = self.inner.request_semaphore.acquire().await;
-
         {
             let retries = AtomicU32::new(0);
             let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);

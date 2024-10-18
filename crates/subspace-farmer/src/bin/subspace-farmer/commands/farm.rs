@@ -235,11 +235,6 @@ pub(crate) struct FarmingArgs {
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
     prometheus_listen_on: Vec<SocketAddr>,
-    /// Piece getter concurrency.
-    ///
-    /// Increasing this value will cause higher memory usage.
-    #[arg(long, default_value = "128")]
-    piece_getter_concurrency: NonZeroUsize,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving). Defaults to the number of logical CPUs
     /// on UMA systems, or the number of logical CPUs in first NUMA node on NUMA systems, but
@@ -310,7 +305,6 @@ where
         tmp,
         mut disk_farms,
         prometheus_listen_on,
-        piece_getter_concurrency,
         farming_thread_pool_size,
         cpu_plotting_options,
         #[cfg(feature = "cuda")]
@@ -457,7 +451,6 @@ where
                 ..ExponentialBackoff::default()
             },
         },
-        piece_getter_concurrency,
     );
 
     let farmer_cache_worker_fut = run_future_in_dedicated_thread(
