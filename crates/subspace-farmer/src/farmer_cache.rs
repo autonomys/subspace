@@ -1388,7 +1388,8 @@ where
         );
 
         // Quick check in piece caches
-        if let Some(piece_caches) = self.piece_caches.try_read() {
+        {
+            let piece_caches = self.piece_caches.read().await;
             pieces_to_find.retain(|_piece_index, key| {
                 let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
                 !piece_caches.contains_stored_piece(&distance_key)
@@ -1436,13 +1437,41 @@ where
     }
 
     /// Find piece in cache and return its retrieval details
-    pub(crate) async fn find_piece(
+    pub async fn find_piece(
         &self,
+        piece_index: PieceIndex,
+    ) -> Option<(PieceCacheId, PieceCacheOffset)> {
+        let caches = self.piece_caches.read().await;
+
+        self.find_piece_internal(&caches, piece_index)
+    }
+
+    /// Find pieces in cache and return their retrieval details
+    pub async fn find_pieces<PieceIndices>(
+        &self,
+        piece_indices: PieceIndices,
+    ) -> Vec<(PieceIndex, PieceCacheId, PieceCacheOffset)>
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex>,
+    {
+        let caches = self.piece_caches.read().await;
+
+        piece_indices
+            .into_iter()
+            .filter_map(|piece_index| {
+                self.find_piece_internal(&caches, piece_index)
+                    .map(|(cache_id, piece_offset)| (piece_index, cache_id, piece_offset))
+            })
+            .collect()
+    }
+
+    fn find_piece_internal(
+        &self,
+        caches: &PieceCachesState<CacheIndex>,
         piece_index: PieceIndex,
     ) -> Option<(PieceCacheId, PieceCacheOffset)> {
         let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
 
-        let caches = self.piece_caches.read().await;
         let Some(offset) = caches.get_stored_piece(&key) else {
             if let Some(metrics) = &self.metrics {
                 metrics.cache_find_miss.inc();
