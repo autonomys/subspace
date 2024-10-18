@@ -4,6 +4,7 @@ use clap::Parser;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcApiServer};
+use tracing::info;
 
 /// The default gateway RPC port.
 pub const RPC_DEFAULT_PORT: u16 = 9955;
@@ -42,7 +43,10 @@ pub async fn launch_rpc_server<const P: u16>(
     let server = ServerBuilder::default()
         .build(rpc_options.rpc_listen_on)
         .await?;
+    let addr = server.local_addr()?;
     let server_handle = server.start(rpc_api.into_rpc());
+
+    info!(?addr, "Running JSON-RPC server");
 
     Ok(server_handle)
 }
