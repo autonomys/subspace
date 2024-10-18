@@ -7,6 +7,7 @@ mod rpc;
 use crate::commands::run::dsn::NetworkArgs;
 use crate::commands::run::rpc::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
 use crate::commands::shutdown_signal;
+use crate::piece_getter::DsnPieceGetter;
 use anyhow::anyhow;
 use clap::Parser;
 use futures::{select, FutureExt};
@@ -17,7 +18,7 @@ use subspace_core_primitives::pieces::Record;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_networking::utils::piece_provider::NoPieceValidator;
 use tracing::info;
 
 /// Options for running a node
@@ -47,7 +48,6 @@ pub(crate) struct GatewayOptions {
 }
 
 /// Default run command for gateway
-#[expect(clippy::redundant_locals, reason = "code is incomplete")]
 pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
@@ -83,8 +83,8 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let dsn_fut = dsn_node_runner.run();
 
     // TODO: implement piece validation
-    let piece_provider = PieceProvider::new(dsn_node, NoPieceValidator);
-    let object_fetcher = ObjectFetcher::new(piece_provider, erasure_coding, None);
+    let piece_getter = DsnPieceGetter::new(dsn_node, NoPieceValidator);
+    let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, None);
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });
     let rpc_handle = launch_rpc_server(rpc_api, rpc_options).await?;
