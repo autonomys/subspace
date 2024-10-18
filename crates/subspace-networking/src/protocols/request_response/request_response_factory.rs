@@ -379,10 +379,11 @@ impl RequestResponseFactoryBehaviour {
         request: Vec<u8>,
         pending_response: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
         connect: IfDisconnected,
+        addresses: Vec<Multiaddr>,
     ) {
         if let Some((protocol, _)) = self.protocols.get_mut(protocol_name) {
             if protocol.is_connected(target) || connect.should_connect() {
-                let request_id = protocol.send_request(target, request);
+                let request_id = protocol.send_request(target, request, addresses);
                 let prev_req_id = self.pending_requests.insert(
                     (protocol_name.to_string().into(), request_id).into(),
                     (Instant::now(), pending_response),
