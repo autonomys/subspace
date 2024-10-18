@@ -90,7 +90,7 @@ impl GenericStreamRequest for ClusterCacheReadPiecesRequest {
     type Response = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), String>;
 }
 
-/// Request plotted from farmer, request
+/// Collect plotted pieces from farmer
 #[derive(Debug, Clone, Encode, Decode)]
 struct ClusterCacheContentsRequest;
 

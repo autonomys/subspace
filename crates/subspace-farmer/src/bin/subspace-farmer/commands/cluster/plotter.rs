@@ -125,8 +125,8 @@ struct RocmPlottingOptions {
 pub(super) struct PlotterArgs {
     /// Piece getter concurrency.
     ///
-    /// Increasing this value can cause NATS communication issues if too many messages arrive via NATS, but
-    /// are not processed quickly enough.
+    /// Increasing this value can cause NATS communication issues if too many messages arrive via
+    /// NATS, but are not processed quickly enough.
     #[arg(long, default_value = "32")]
     piece_getter_concurrency: NonZeroUsize,
     /// Plotting options only used by CPU plotter

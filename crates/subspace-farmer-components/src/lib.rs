@@ -54,19 +54,7 @@ pub trait PieceGetter {
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
     >
     where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
-        // TODO: Remove default impl here
-        Ok(Box::new(
-            piece_indices
-                .into_iter()
-                .map(|piece_index| async move {
-                    let result = self.get_piece(piece_index).await;
-                    (piece_index, result)
-                })
-                .collect::<FuturesUnordered<_>>(),
-        ) as Box<_>)
-    }
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a;
 }
 
 #[async_trait]
