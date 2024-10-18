@@ -16,7 +16,6 @@ use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
 use anyhow::anyhow;
-use async_lock::Semaphore;
 use async_nats::HeaderValue;
 use async_trait::async_trait;
 use futures::channel::mpsc;
@@ -26,7 +25,6 @@ use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
@@ -196,14 +194,11 @@ impl GenericStreamRequest for ClusterControllerPiecesRequest {
 #[derive(Debug, Clone)]
 pub struct ClusterPieceGetter {
     nats_client: NatsClient,
-    request_semaphore: Arc<Semaphore>,
 }
 
 #[async_trait]
 impl PieceGetter for ClusterPieceGetter {
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
-        let _guard = self.request_semaphore.acquire().await;
-
         if let Some((piece_cache_id, piece_cache_offset)) = self
             .nats_client
             .request(
@@ -296,8 +291,6 @@ impl PieceGetter for ClusterPieceGetter {
         let mut cached_pieces_by_cache_id = HashMap::<PieceCacheId, Vec<PieceCacheOffset>>::new();
 
         {
-            let _guard = self.request_semaphore.acquire().await;
-
             let mut cached_pieces = self
                 .nats_client
                 .stream_request(
@@ -325,8 +318,6 @@ impl PieceGetter for ClusterPieceGetter {
                     let piece_indices_to_download = &piece_indices_to_get;
 
                     async move {
-                        let _guard = self.request_semaphore.acquire().await;
-
                         let mut pieces_stream = match self
                             .nats_client
                             .stream_request(
@@ -388,8 +379,6 @@ impl PieceGetter for ClusterPieceGetter {
                 return;
             }
 
-            let _guard = self.request_semaphore.acquire().await;
-
             let mut pieces_from_controller = match self
                 .nats_client
                 .stream_request(
@@ -448,12 +437,8 @@ impl PieceGetter for ClusterPieceGetter {
 impl ClusterPieceGetter {
     /// Create new instance
     #[inline]
-    pub fn new(nats_client: NatsClient, request_concurrency: NonZeroUsize) -> Self {
-        let request_semaphore = Arc::new(Semaphore::new(request_concurrency.get()));
-        Self {
-            nats_client,
-            request_semaphore,
-        }
+    pub fn new(nats_client: NatsClient) -> Self {
+        Self { nats_client }
     }
 }
 
