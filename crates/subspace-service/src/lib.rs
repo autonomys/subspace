@@ -1038,6 +1038,9 @@ where
         config.base.force_authoring,
         Arc::clone(&pause_sync),
         sync_service.clone(),
+        snap_sync_orchestrator
+            .as_ref()
+            .map(|orchestrator| orchestrator.domain_snap_sync_finished()),
     );
 
     let subspace_archiver = tokio::task::block_in_place(|| {

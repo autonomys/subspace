@@ -506,10 +506,6 @@ where
     // TODO: Implement when block tree is ready.
     let domain_confirmation_depth = 256u32;
 
-    let snap_sync_orchestrator = consensus_chain_sync_params
-        .as_ref()
-        .map(|params| params.snap_sync_orchestrator.clone());
-
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
         OperatorParams {
@@ -550,7 +546,6 @@ where
             // since domain sync oracle will always return `synced` due to force sync being set.
             consensus_network_sync_oracle.clone(),
             gossip_message_sink.clone(),
-            snap_sync_orchestrator,
         );
 
         spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));

@@ -11,7 +11,6 @@ use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{CheckedSub, NumberFor, One};
 use sp_runtime::SaturatedConversion;
 use std::sync::Arc;
-use subspace_service::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
 
 pub async fn gossip_channel_updates<Client, Block, CBlock, SO>(
     chain_id: ChainId,
@@ -137,7 +136,6 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
     confirmation_depth_k: NumberFor<CBlock>,
     sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
-    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
 ) where
     Block: BlockT,
     CBlock: BlockT,
@@ -175,16 +173,6 @@ pub async fn start_relaying_messages<CClient, Client, CBlock, Block, SO>(
         if !imported_block.is_new_best {
             tracing::debug!(target: LOG_TARGET, "Imported non-best block. Skipping...");
             continue;
-        }
-
-        if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
-            if !snap_sync_orchestrator.domain_snap_sync_finished() {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Domain snap sync: skipping message processing..."
-                );
-                continue;
-            }
         }
 
         let Some(confirmed_block_number) = imported_block
