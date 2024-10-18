@@ -34,7 +34,7 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
 use subspace_service::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
-use subspace_service::domains::{ConsensusChainSyncParams, LastDomainBlockInfoReceiver};
+use subspace_service::domains::ConsensusChainSyncParams;
 use tracing::{debug, error, info, info_span, warn};
 
 /// Options for running a node
@@ -295,7 +295,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 .task_manager
                 .spawn_essential_handle()
                 .spawn_essential_blocking("domain", Some("domains"), {
-                    let consensus_chain_client = consensus_chain_node.client.clone();
                     let consensus_chain_network_service =
                         consensus_chain_node.network_service.clone();
                     let consensus_chain_sync_service = consensus_chain_node.sync_service.clone();
@@ -318,18 +317,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
                         let consensus_chain_sync_params =
                             snap_sync_orchestrator.map(|snap_sync_orchestrator| {
-                                let receipt_provider = LastDomainBlockInfoReceiver::new(
-                                    domain_configuration.domain_id,
-                                    fork_id.clone(),
-                                    consensus_chain_client,
-                                    consensus_chain_network_service.clone(),
-                                    consensus_chain_sync_service.clone(),
-                                );
-
                                 ConsensusChainSyncParams {
                                     snap_sync_orchestrator,
                                     fork_id,
-                                    execution_receipt_provider: Box::new(receipt_provider),
                                     network_service: consensus_chain_network_service,
                                     sync_service: consensus_chain_sync_service,
                                     backend: consensus_chain_node.backend.clone(),

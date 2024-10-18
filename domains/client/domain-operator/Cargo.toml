@@ -5,6 +5,7 @@ authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.83"
 codec = { package = "parity-scale-codec", version = "3.6.12", features = ["derive"] }
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }

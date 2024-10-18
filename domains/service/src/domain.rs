@@ -1,4 +1,5 @@
 use crate::network::build_network;
+use crate::network::receipt_receiver::LastDomainBlockInfoReceiver;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
@@ -281,7 +282,7 @@ where
     pub skip_empty_bundle_production: bool,
     pub skip_out_of_order_slot: bool,
     pub confirmation_depth_k: NumberFor<CBlock>,
-    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<Block, CBlock, CNR>>,
+    pub consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
 }
 
 /// Builds service for a domain full node.
@@ -419,24 +420,27 @@ where
         sync_service,
         network_service_handle,
         block_downloader,
-    ) = build_network(BuildNetworkParams {
-        config: &domain_config,
-        net_config,
-        client: client.clone(),
-        transaction_pool: transaction_pool.clone(),
-        spawn_handle: task_manager.spawn_handle(),
-        import_queue: params.import_queue,
-        // TODO: we might want to re-enable this some day.
-        block_announce_validator_builder: None,
-        warp_sync_config: None,
-        block_relay: None,
-        metrics: NotificationMetrics::new(
-            domain_config
-                .prometheus_config
-                .as_ref()
-                .map(|cfg| &cfg.registry),
-        ),
-    })?;
+    ) = build_network(
+        BuildNetworkParams {
+            config: &domain_config,
+            net_config,
+            client: client.clone(),
+            transaction_pool: transaction_pool.clone(),
+            spawn_handle: task_manager.spawn_handle(),
+            import_queue: params.import_queue,
+            // TODO: we might want to re-enable this some day.
+            block_announce_validator_builder: None,
+            warp_sync_config: None,
+            block_relay: None,
+            metrics: NotificationMetrics::new(
+                domain_config
+                    .prometheus_config
+                    .as_ref()
+                    .map(|cfg| &cfg.registry),
+            ),
+        },
+        consensus_client.clone(),
+    )?;
 
     let fork_id = domain_config.chain_spec.fork_id().map(String::from);
 
@@ -506,6 +510,14 @@ where
     // TODO: Implement when block tree is ready.
     let domain_confirmation_depth = 256u32;
 
+    let execution_receipt_provider = LastDomainBlockInfoReceiver::new(
+        domain_id,
+        fork_id.clone(),
+        consensus_client.clone(),
+        network_service.clone(),
+        sync_service.clone(),
+    );
+
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
         OperatorParams {
@@ -527,11 +539,12 @@ where
             skip_empty_bundle_production,
             skip_out_of_order_slot,
             sync_service: sync_service.clone(),
-            network_request: Arc::clone(&network_service),
+            network_service: Arc::clone(&network_service),
             block_downloader,
             consensus_chain_sync_params,
             domain_fork_id: fork_id,
             domain_network_service_handle: network_service_handle,
+            domain_execution_receipt_provider: Arc::new(execution_receipt_provider),
         },
     )
     .await?;

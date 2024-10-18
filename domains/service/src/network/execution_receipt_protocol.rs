@@ -18,13 +18,12 @@ use domain_runtime_primitives::Balance;
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::{BlockBackend, ProofProvider};
+use sc_client_api::BlockBackend;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceiptFor};
-use sp_domains_fraud_proof::FraudProofApi;
 use sp_runtime::codec;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::marker::PhantomData;
@@ -82,25 +81,30 @@ pub struct LastConfirmedBlockResponse<Block: BlockT, DomainHeader: Header> {
 }
 
 /// Handler for incoming block requests from a remote peer.
-pub struct LastDomainBlockERRequestHandler<Block: BlockT, Client, DomainHeader> {
+pub struct LastDomainBlockERRequestHandler<CBlock, Block, Client, DomainHeader>
+where
+    CBlock: BlockT,
+    Block: BlockT,
+{
     request_receiver: async_channel::Receiver<IncomingRequest>,
 
-    _phantom: PhantomData<(Block, DomainHeader)>,
+    _phantom: PhantomData<(CBlock, Block, DomainHeader)>,
 
     client: Arc<Client>,
 }
 
-impl<Block, Client, DomainHeader> LastDomainBlockERRequestHandler<Block, Client, DomainHeader>
+impl<CBlock, Block, Client, DomainHeader>
+    LastDomainBlockERRequestHandler<CBlock, Block, Client, DomainHeader>
 where
+    CBlock: BlockT,
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block>
-        + BlockBackend<Block>
-        + ProofProvider<Block>
-        + HeaderBackend<Block>
+    Client: ProvideRuntimeApi<CBlock>
+        + BlockBackend<CBlock>
+        + HeaderBackend<CBlock>
         + Send
         + Sync
         + 'static,
-    Client::Api: DomainsApi<Block, DomainHeader> + FraudProofApi<Block, DomainHeader>,
+    Client::Api: DomainsApi<CBlock, DomainHeader>,
     DomainHeader: Header,
 {
     /// Create a new [`LastDomainBlockERRequestHandler`].
@@ -137,7 +141,7 @@ where
         )
     }
 
-    /// Run [`StateRequestHandler`].
+    /// Run [`LastDomainBlockERRequestHandler`].
     pub async fn run(mut self) {
         while let Some(request) = self.request_receiver.next().await {
             let IncomingRequest {
@@ -162,7 +166,7 @@ where
         pending_response: oneshot::Sender<OutgoingResponse>,
         peer: &PeerId,
     ) -> Result<(), HandleRequestError> {
-        let request = LastConfirmedBlockRequest::<Block>::decode(&mut payload.as_slice())?;
+        let request = LastConfirmedBlockRequest::<CBlock>::decode(&mut payload.as_slice())?;
 
         trace!("Handle last confirmed domain block info request: {peer}, request: {request:?}",);
 
@@ -186,7 +190,7 @@ where
 
             let response = match last_confirmed_block_receipt {
                 Ok(Some(last_confirmed_block_receipt)) => {
-                    LastConfirmedBlockResponse::<Block, DomainHeader> {
+                    LastConfirmedBlockResponse::<CBlock, DomainHeader> {
                         last_confirmed_block_receipt,
                     }
                 }

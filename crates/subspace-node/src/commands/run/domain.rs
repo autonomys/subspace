@@ -393,7 +393,7 @@ pub(super) async fn run_domain<CNR>(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-    consensus_chain_sync_params: Option<ConsensusChainSyncParams<DomainBlock, CBlock, CNR>>,
+    consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
 ) -> Result<(), Error>
 where
     CNR: NetworkRequest + Send + Sync + 'static,

@@ -1,4 +1,5 @@
-use domain_runtime_primitives::BlockNumber;
+use async_trait::async_trait;
+use domain_runtime_primitives::{Balance, BlockNumber};
 use futures::{SinkExt, StreamExt};
 use sc_client_api::{AuxStore, Backend, BlockchainEvents, ProofProvider};
 use sc_consensus::{
@@ -15,6 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_core::H256;
+use sp_domains::ExecutionReceiptFor;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
@@ -25,6 +27,26 @@ use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use subspace_service::{mmr_sync, wait_for_block_import};
 use tokio::time::sleep;
 use tracing::{debug, error, info_span, trace, Instrument};
+
+#[async_trait]
+/// Provides execution receipts for the last confirmed domain block.
+pub trait LastDomainBlockReceiptProvider<Block: BlockT, CBlock: BlockT>: Sync + Send {
+    /// Returns execution receipts for the last confirmed domain block.
+    async fn get_execution_receipt(
+        &self,
+        block_hash: Option<CBlock::Hash>,
+    ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>>;
+}
+
+#[async_trait]
+impl<Block: BlockT, CBlock: BlockT> LastDomainBlockReceiptProvider<Block, CBlock> for () {
+    async fn get_execution_receipt(
+        &self,
+        _: Option<CBlock::Hash>,
+    ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
+        None
+    }
+}
 
 pub struct SyncParams<DomainClient, CClient, Block, CBlock, CNR>
 where
@@ -40,7 +62,8 @@ where
     pub domain_network_service_handle: NetworkServiceHandle,
     pub consensus_client: Arc<CClient>,
     pub domain_block_downloader: Arc<dyn BlockDownloader<Block>>,
-    pub consensus_chain_sync_params: ConsensusChainSyncParams<Block, CBlock, CNR>,
+    pub receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
+    pub consensus_chain_sync_params: ConsensusChainSyncParams<CBlock, CNR>,
 }
 
 async fn get_last_confirmed_block<Block: BlockT>(
@@ -182,8 +205,7 @@ where
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
 {
     let execution_receipt_result = sync_params
-        .consensus_chain_sync_params
-        .execution_receipt_provider
+        .receipt_provider
         .get_execution_receipt(None)
         .await;
     debug!(

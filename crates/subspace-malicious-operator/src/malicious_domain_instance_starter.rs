@@ -163,7 +163,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, _, Arc<dyn NetworkRequest + Sync + Send>>,
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                 };
 
@@ -225,7 +225,7 @@ impl DomainInstanceStarter {
                     maybe_operator_id: None,
                     confirmation_depth_k: chain_constants.confirmation_depth_k(),
                     consensus_chain_sync_params: None::<
-                        ConsensusChainSyncParams<_, _, Arc<dyn NetworkRequest + Sync + Send>>,
+                        ConsensusChainSyncParams<_, Arc<dyn NetworkRequest + Sync + Send>>,
                     >,
                 };
 

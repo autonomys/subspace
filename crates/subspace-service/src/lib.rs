@@ -38,7 +38,6 @@ pub mod transaction_pool;
 mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
-use crate::domains::request_handler::LastDomainBlockERRequestHandler;
 use crate::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
@@ -919,22 +918,6 @@ where
         task_manager
             .spawn_handle()
             .spawn("mmr-request-handler", Some("networking"), handler.run());
-
-        net_config.add_request_response_protocol(protocol_config);
-    }
-
-    // "Last confirmed domain block execution receipt" request handler
-    {
-        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<NetworkWorker<_, _>>(
-            fork_id,
-            client.clone(),
-            num_peer_hint,
-        );
-        task_manager.spawn_handle().spawn(
-            "last-domain-execution-receipt-request-handler",
-            Some("networking"),
-            handler.run(),
-        );
 
         net_config.add_request_response_protocol(protocol_config);
     }
