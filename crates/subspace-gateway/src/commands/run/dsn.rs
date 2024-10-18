@@ -8,18 +8,18 @@ use subspace_networking::{construct, Config, KademliaMode, Node, NodeRunner};
 /// Configuration for network stack
 #[derive(Debug, Parser)]
 pub(crate) struct NetworkArgs {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
+    /// Multiaddrs of DSN bootstrap nodes to connect to on startup, multiple are supported
     #[arg(long)]
-    pub(crate) bootstrap_nodes: Vec<Multiaddr>,
+    pub(crate) dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
     /// By default these addresses are excluded from the DHT.
     #[arg(long, default_value_t = false)]
     pub(crate) allow_private_ips: bool,
 
-    /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
+    /// Multiaddrs of DSN reserved nodes to maintain a connection to, multiple are supported
     #[arg(long)]
-    pub(crate) reserved_peers: Vec<Multiaddr>,
+    pub(crate) dsn_reserved_peers: Vec<Multiaddr>,
 
     /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
@@ -33,9 +33,9 @@ pub(crate) struct NetworkArgs {
 /// Create a DSN network client with the supplied configuration.
 pub(crate) fn configure_network(
     NetworkArgs {
-        bootstrap_nodes,
+        dsn_bootstrap_nodes,
         allow_private_ips,
-        reserved_peers,
+        dsn_reserved_peers,
         out_connections,
         pending_out_connections,
     }: NetworkArgs,
@@ -47,11 +47,11 @@ pub(crate) fn configure_network(
     // - prometheus telemetry
     let default_config = Config::<()>::default();
     let config = Config {
-        reserved_peers,
+        reserved_peers: dsn_reserved_peers,
         allow_non_global_addresses_in_dht: allow_private_ips,
         max_established_outgoing_connections: out_connections,
         max_pending_outgoing_connections: pending_out_connections,
-        bootstrap_addresses: bootstrap_nodes,
+        bootstrap_addresses: dsn_bootstrap_nodes,
         kademlia_mode: KademliaMode::Static(Mode::Client),
         ..default_config
     };
