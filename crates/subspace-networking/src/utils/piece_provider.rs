@@ -81,7 +81,7 @@ where
 
     /// Get pieces with provided indices from cache.
     ///
-    /// Number of elements in returned stream is the same as in `piece_indices`.
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
     pub async fn get_from_cache<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,

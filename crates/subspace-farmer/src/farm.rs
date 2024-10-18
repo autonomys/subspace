@@ -104,7 +104,7 @@ impl PieceCacheId {
 }
 
 /// Offset wrapper for pieces in [`PieceCache`]
-#[derive(Debug, Display, Copy, Clone, Encode, Decode)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
 #[repr(transparent)]
 pub struct PieceCacheOffset(pub(crate) u32);
 
@@ -169,6 +169,26 @@ pub trait PieceCache: Send + Sync + fmt::Debug {
         &self,
         offset: PieceCacheOffset,
     ) -> Result<Option<(PieceIndex, Piece)>, FarmError>;
+
+    /// Read pieces from cache at specified offsets.
+    ///
+    /// Number of elements in returned stream is the same as number of unique `offsets`.
+    /// Returns `None` for offsets that are out of range.
+    ///
+    /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
+    /// doesn't happen for the same pieces being accessed!
+    async fn read_pieces(
+        &self,
+        offsets: Box<dyn Iterator<Item = PieceCacheOffset> + Send>,
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), FarmError>>
+                + Send
+                + Unpin
+                + '_,
+        >,
+        FarmError,
+    >;
 }
 
 /// Result of piece storing check
