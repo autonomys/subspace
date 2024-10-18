@@ -10,7 +10,7 @@ use subspace_networking::{construct, Config, KademliaMode, Node, NodeRunner};
 pub(crate) struct NetworkArgs {
     /// Multiaddrs of DSN bootstrap nodes to connect to on startup, multiple are supported
     #[arg(long)]
-    pub(crate) dsn_bootstrap_nodes: Vec<Multiaddr>,
+    dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
     /// By default these addresses are excluded from the DHT.
@@ -19,19 +19,22 @@ pub(crate) struct NetworkArgs {
 
     /// Multiaddrs of DSN reserved nodes to maintain a connection to, multiple are supported
     #[arg(long)]
-    pub(crate) dsn_reserved_peers: Vec<Multiaddr>,
+    dsn_reserved_peers: Vec<Multiaddr>,
 
     /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) out_connections: u32,
+    out_connections: u32,
 
     /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) pending_out_connections: u32,
+    pending_out_connections: u32,
 }
 
 /// Create a DSN network client with the supplied configuration.
-pub(crate) fn configure_network(
+// TODO:
+// - move this DSN code into a new library part of this crate
+// - change NetworkArgs to subspace_networking::Config to be independent of clap
+pub async fn configure_network(
     NetworkArgs {
         dsn_bootstrap_nodes,
         allow_private_ips,

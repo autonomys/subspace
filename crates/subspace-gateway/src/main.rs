@@ -7,6 +7,7 @@
 )]
 
 mod commands;
+mod piece_getter;
 
 use crate::commands::{init_logger, raise_fd_limit, Command};
 use clap::Parser;

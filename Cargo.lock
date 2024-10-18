@@ -12580,11 +12580,17 @@ name = "subspace-gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "fdlimit",
  "futures",
+ "jsonrpsee",
  "mimalloc",
  "parking_lot 0.12.3",
+ "subspace-core-primitives",
+ "subspace-data-retrieval",
+ "subspace-erasure-coding",
+ "subspace-gateway-rpc",
  "subspace-networking",
  "supports-color",
  "thiserror",

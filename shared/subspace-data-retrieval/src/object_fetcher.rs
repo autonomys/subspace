@@ -128,7 +128,7 @@ pub enum Error {
 
     /// Piece getter couldn't find the piece
     #[error("Piece {piece_index:?} was not found by piece getter")]
-    PieceGetterNotFound { piece_index: PieceIndex },
+    PieceNotFound { piece_index: PieceIndex },
 }
 
 /// Object fetcher for the Subspace DSN.
@@ -596,7 +596,7 @@ impl ObjectFetcher {
                 "Piece not found during object assembling"
             );
 
-            Err(Error::PieceGetterNotFound {
+            Err(Error::PieceNotFound {
                 piece_index: mapping_piece_index,
             })?
         }
