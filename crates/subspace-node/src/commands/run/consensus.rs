@@ -492,8 +492,10 @@ pub(super) fn create_consensus_chain_configuration(
                 Cors::List(vec![
                     "http://localhost:*".into(),
                     "http://127.0.0.1:*".into(),
+                    "http://[::1]:*".into(),
                     "https://localhost:*".into(),
                     "https://127.0.0.1:*".into(),
+                    "https://[::1]:*".into(),
                     "https://polkadot.js.org".into(),
                 ])
             }

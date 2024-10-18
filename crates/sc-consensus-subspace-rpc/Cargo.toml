@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-oneshot = "0.5.9"
 futures = "0.3.31"
 futures-timer = "3.0.3"
-jsonrpsee = { version = "0.24.5", features = ["server", "macros"] }
+jsonrpsee = { version = "0.24.5", features = ["server-core", "macros"] }
 parking_lot = "0.12.2"
 schnellru = "0.2.3"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
