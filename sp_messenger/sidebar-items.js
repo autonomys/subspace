@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["INHERENT_IDENTIFIER"],"enum":["InherentError"],"mod":["endpoint","messages"],"struct":["InherentDataProvider","InherentType"],"trait":["DomainRegistration","MessengerApi","OnXDMRewards","RelayerApi","StorageKeys"]};
