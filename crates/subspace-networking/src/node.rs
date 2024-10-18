@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
 use crate::protocols::request_response::request_response_factory;
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
@@ -428,7 +431,7 @@ impl Node {
     /// Get closest peers by multihash key using Kademlia DHT's local view without any network
     /// requests.
     ///
-    /// Optional `source` is peer for which results will be sent as a response, defaults to local
+    /// Optional `source` is peer for which results will be sent as a response. Defaults to local
     /// peer ID.
     pub async fn get_closest_local_peers(
         &self,

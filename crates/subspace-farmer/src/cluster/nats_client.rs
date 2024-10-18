@@ -28,7 +28,7 @@ use futures::{select, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use std::any::type_name;
 use std::collections::VecDeque;
-use std::future::{pending, Future};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -57,7 +57,8 @@ pub trait GenericRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
-/// Generic stream request where response is streamed using [`NatsClient::stream_response`].
+/// Generic stream request where response is streamed using
+/// [`NatsClient::stream_request_responder`].
 ///
 /// Used for cases where a large payload that doesn't fit into NATS message needs to be sent or
 /// there is a very large number of messages to send. For simple request/response patten
@@ -66,15 +67,15 @@ pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'st
     /// Request subject with optional `*` in place of application instance to receive the request
     const SUBJECT: &'static str;
     /// Response type that corresponds to this stream request. These responses are send as a stream
-    /// of [`GenericStreamResponses`] messages.
+    /// of messages.
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
-/// Messages sent in response to [`StreamRequest`].
+/// Messages sent in response to [`GenericStreamRequest`].
 ///
 /// Empty list of responses means the end of the stream.
 #[derive(Debug, Encode, Decode)]
-pub enum GenericStreamResponses<Response> {
+enum GenericStreamResponses<Response> {
     /// Some responses, but the stream didn't end yet
     Continue {
         /// Monotonically increasing index of responses in a stream
@@ -132,35 +133,6 @@ impl<Response> GenericStreamResponses<Response> {
     }
 }
 
-/// Generic stream request that expects a stream of responses.
-///
-/// Internally it is expected that [`GenericStreamResponses<Request::Response>`] messages will be
-/// sent to auto-generated subject specified in `response_subject` field.
-#[derive(Debug, Encode, Decode)]
-#[non_exhaustive]
-pub struct StreamRequest<Request>
-where
-    Request: GenericStreamRequest,
-{
-    /// Request
-    pub request: Request,
-    /// Topic to send a stream of [`GenericStreamResponses<Request::Response>`]s to
-    pub response_subject: String,
-}
-
-impl<Request> StreamRequest<Request>
-where
-    Request: GenericStreamRequest,
-{
-    /// Create new stream request
-    pub fn new(request: Request) -> Self {
-        Self {
-            request,
-            response_subject: format!("stream-response.{}", Ulid::new()),
-        }
-    }
-}
-
 /// Stream request error
 #[derive(Debug, Error)]
 pub enum StreamRequestError {
@@ -172,8 +144,8 @@ pub enum StreamRequestError {
     Publish(#[from] PublishError),
 }
 
-/// Wrapper around subscription that transforms [`GenericStreamResponses<Response>`] messages into a
-/// normal `Response` stream.
+/// Wrapper around subscription that transforms stream of wrapped response messages into a normal
+/// `Response` stream.
 #[derive(Debug, Deref, DerefMut)]
 #[pin_project::pin_project]
 pub struct StreamResponseSubscriber<Response> {
@@ -550,25 +522,17 @@ impl NatsClient {
         OP: Fn(Request) -> F + Send + Sync,
     {
         // Initialize with pending future so it never ends
-        let mut processing = FuturesUnordered::from_iter([
-            Box::pin(pending()) as Pin<Box<dyn Future<Output = ()> + Send>>
-        ]);
+        let mut processing = FuturesUnordered::new();
 
-        let subject = subject_with_instance(Request::SUBJECT, instance);
-        let subscription = if let Some(queue_group) = queue_group {
-            self.inner
-                .client
-                .queue_subscribe(subject, queue_group)
-                .await
-        } else {
-            self.inner.client.subscribe(subject).await
-        }
-        .map_err(|error| {
-            anyhow!(
-                "Failed to subscribe to {} requests for {instance:?}: {error}",
-                type_name::<Request>(),
-            )
-        })?;
+        let subscription = self
+            .common_subscribe(Request::SUBJECT, instance, queue_group)
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Failed to subscribe to {} requests for {instance:?}: {error}",
+                    type_name::<Request>(),
+                )
+            })?;
 
         debug!(
             request_type = %type_name::<Request>(),
@@ -579,19 +543,22 @@ impl NatsClient {
 
         loop {
             select! {
-                maybe_message = subscription.next() => {
-                    let Some(message) = maybe_message else {
-                        break;
-                    };
-
+                message = subscription.select_next_some() => {
                     // Create background task for concurrent processing
-                    processing.push(Box::pin(self.process_request(
-                        message,
-                        &process,
-                    )));
-                }
+                    processing.push(
+                        self
+                            .process_request(
+                                message,
+                                &process,
+                            )
+                            .in_current_span(),
+                    );
+                },
                 _ = processing.next() => {
                     // Nothing to do here
+                },
+                complete => {
+                    break;
                 }
             }
         }
@@ -663,36 +630,163 @@ impl NatsClient {
     where
         Request: GenericStreamRequest,
     {
-        let stream_request = StreamRequest::new(request);
+        let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
+        let stream_response_subject = format!("stream-response.{}", Ulid::new());
 
         let subscriber = self
             .inner
             .client
-            .subscribe(stream_request.response_subject.clone())
+            .subscribe(stream_response_subject.clone())
             .await?;
 
-        let stream_request_subject = subject_with_instance(Request::SUBJECT, instance);
         debug!(
             request_type = %type_name::<Request>(),
             %stream_request_subject,
+            %stream_response_subject,
             ?subscriber,
             "Stream request subscription"
         );
 
         self.inner
             .client
-            .publish(stream_request_subject, stream_request.encode().into())
+            .publish_with_reply(
+                stream_request_subject,
+                stream_response_subject.clone(),
+                request.encode().into(),
+            )
             .await?;
 
         Ok(StreamResponseSubscriber::new(
             subscriber,
-            stream_request.response_subject,
+            stream_response_subject,
             self.clone(),
         ))
     }
 
+    /// Responds to stream requests from the given subject using the provided processing function.
+    ///
+    /// This will create a subscription on the subject for the given instance (if provided) and
+    /// queue group. Incoming messages will be deserialized as the request type `Request` and passed
+    /// to the `process` function to produce a stream response of type `Request::Response`. The
+    /// stream response will then be sent back on the reply subject from the original request.
+    ///
+    /// Each request is processed in a newly created async tokio task.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance` - Optional instance name to use in place of the `*` in the subject
+    /// * `group` - The queue group name for the subscription
+    /// * `process` - The function to call with the decoded request to produce a response
+    pub async fn stream_request_responder<Request, F, S, OP>(
+        &self,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+        process: OP,
+    ) -> anyhow::Result<()>
+    where
+        Request: GenericStreamRequest,
+        F: Future<Output = Option<S>> + Send,
+        S: Stream<Item = Request::Response> + Unpin,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        // Initialize with pending future so it never ends
+        let mut processing = FuturesUnordered::new();
+
+        let subscription = self
+            .common_subscribe(Request::SUBJECT, instance, queue_group)
+            .await
+            .map_err(|error| {
+                anyhow!(
+                    "Failed to subscribe to {} stream requests for {instance:?}: {error}",
+                    type_name::<Request>(),
+                )
+            })?;
+
+        debug!(
+            request_type = %type_name::<Request>(),
+            ?subscription,
+            "Stream requests subscription"
+        );
+        let mut subscription = subscription.fuse();
+
+        loop {
+            select! {
+                message = subscription.select_next_some() => {
+                    // Create background task for concurrent processing
+                    processing.push(
+                        self
+                        .process_stream_request(
+                            message,
+                            &process,
+                        )
+                        .in_current_span(),
+                    );
+                },
+                _ = processing.next() => {
+                    // Nothing to do here
+                },
+                complete => {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_stream_request<Request, F, S, OP>(&self, message: Message, process: OP)
+    where
+        Request: GenericStreamRequest,
+        F: Future<Output = Option<S>> + Send,
+        S: Stream<Item = Request::Response> + Unpin,
+        OP: Fn(Request) -> F + Send + Sync,
+    {
+        let Some(reply_subject) = message.reply else {
+            return;
+        };
+
+        let message_payload_size = message.payload.len();
+        let request = match Request::decode(&mut message.payload.as_ref()) {
+            Ok(request) => {
+                // Free allocation early
+                drop(message.payload);
+                request
+            }
+            Err(error) => {
+                warn!(
+                    request_type = %type_name::<Request>(),
+                    %error,
+                    message = %hex::encode(message.payload),
+                    "Failed to decode request"
+                );
+                return;
+            }
+        };
+
+        // Avoid printing large messages in logs
+        if message_payload_size > 1024 {
+            trace!(
+                request_type = %type_name::<Request>(),
+                %reply_subject,
+                "Processing request"
+            );
+        } else {
+            trace!(
+                request_type = %type_name::<Request>(),
+                ?request,
+                %reply_subject,
+                "Processing request"
+            );
+        }
+
+        if let Some(stream) = process(request).await {
+            self.stream_response::<Request, _>(reply_subject, stream)
+                .await;
+        }
+    }
+
     /// Helper method to send responses to requests initiated with [`Self::stream_request`]
-    pub async fn stream_response<Request, S>(&self, response_subject: String, response_stream: S)
+    async fn stream_response<Request, S>(&self, response_subject: Subject, response_stream: S)
     where
         Request: GenericStreamRequest,
         S: Stream<Item = Request::Response> + Unpin,
@@ -975,20 +1069,6 @@ impl NatsClient {
             .await
     }
 
-    /// Simple subscription that will produce decoded stream requests, while skipping messages that
-    /// fail to decode
-    pub async fn subscribe_to_stream_requests<Request>(
-        &self,
-        instance: Option<&str>,
-        queue_group: Option<String>,
-    ) -> Result<SubscriberWrapper<StreamRequest<Request>>, SubscribeError>
-    where
-        Request: GenericStreamRequest,
-    {
-        self.simple_subscribe(Request::SUBJECT, instance, queue_group)
-            .await
-    }
-
     /// Simple subscription that will produce decoded notifications, while skipping messages that
     /// fail to decode
     pub async fn subscribe_to_notifications<Notification>(
@@ -1028,17 +1108,9 @@ impl NatsClient {
     where
         Message: Decode,
     {
-        let subscriber = if let Some(queue_group) = queue_group {
-            self.inner
-                .client
-                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
-                .await?
-        } else {
-            self.inner
-                .client
-                .subscribe(subject_with_instance(subject, instance))
-                .await?
-        };
+        let subscriber = self
+            .common_subscribe(subject, instance, queue_group)
+            .await?;
         debug!(
             %subject,
             message_type = %type_name::<Message>(),
@@ -1050,6 +1122,29 @@ impl NatsClient {
             subscriber,
             _phantom: PhantomData,
         })
+    }
+
+    /// Simple subscription that will produce decoded messages, while skipping messages that fail to
+    /// decode
+    async fn common_subscribe(
+        &self,
+        subject: &'static str,
+        instance: Option<&str>,
+        queue_group: Option<String>,
+    ) -> Result<Subscriber, SubscribeError> {
+        let subscriber = if let Some(queue_group) = queue_group {
+            self.inner
+                .client
+                .queue_subscribe(subject_with_instance(subject, instance), queue_group)
+                .await?
+        } else {
+            self.inner
+                .client
+                .subscribe(subject_with_instance(subject, instance))
+                .await?
+        };
+
+        Ok(subscriber)
     }
 }
 

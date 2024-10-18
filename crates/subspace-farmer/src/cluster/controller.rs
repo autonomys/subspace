@@ -12,7 +12,7 @@ use crate::cluster::nats_client::{
 };
 use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
-use crate::node_client::{Error as NodeClientError, NodeClient};
+use crate::node_client::NodeClient;
 use anyhow::anyhow;
 use async_lock::Semaphore;
 use async_nats::HeaderValue;
@@ -20,7 +20,6 @@ use async_trait::async_trait;
 use futures::{select, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use std::error::Error;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -171,10 +170,7 @@ pub struct ClusterPieceGetter {
 
 #[async_trait]
 impl PieceGetter for ClusterPieceGetter {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let _guard = self.request_semaphore.acquire().await;
 
         if let Some((piece_cache_id, piece_cache_offset)) = self
@@ -286,16 +282,17 @@ impl ClusterNodeClient {
 
 #[async_trait]
 impl NodeClient for ClusterNodeClient {
-    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, NodeClientError> {
+    async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo> {
         Ok(self
             .nats_client
             .request(&ClusterControllerFarmerAppInfoRequest, None)
-            .await??)
+            .await?
+            .map_err(anyhow::Error::msg)?)
     }
 
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, NodeClientError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>> {
         let subscription = self
             .nats_client
             .subscribe_to_broadcasts::<ClusterControllerSlotInfoBroadcast>(None, None)
@@ -328,7 +325,7 @@ impl NodeClient for ClusterNodeClient {
     async fn submit_solution_response(
         &self,
         solution_response: SolutionResponse,
-    ) -> Result<(), NodeClientError> {
+    ) -> anyhow::Result<()> {
         let last_slot_info_instance = self.last_slot_info_instance.lock().clone();
         Ok(self
             .nats_client
@@ -341,8 +338,7 @@ impl NodeClient for ClusterNodeClient {
 
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, NodeClientError>
-    {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>> {
         let subscription = self
             .nats_client
             .subscribe_to_broadcasts::<ClusterControllerRewardSigningBroadcast>(None, None)
@@ -356,7 +352,7 @@ impl NodeClient for ClusterNodeClient {
     async fn submit_reward_signature(
         &self,
         reward_signature: RewardSignatureResponse,
-    ) -> Result<(), NodeClientError> {
+    ) -> anyhow::Result<()> {
         Ok(self
             .nats_client
             .notification(
@@ -368,7 +364,7 @@ impl NodeClient for ClusterNodeClient {
 
     async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, NodeClientError> {
+    ) -> anyhow::Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>> {
         let subscription = self
             .nats_client
             .subscribe_to_broadcasts::<ClusterControllerArchivedSegmentHeaderBroadcast>(None, None)
@@ -401,7 +397,7 @@ impl NodeClient for ClusterNodeClient {
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentHeader>>, NodeClientError> {
+    ) -> anyhow::Result<Vec<Option<SegmentHeader>>> {
         Ok(self
             .nats_client
             .request(
@@ -411,7 +407,7 @@ impl NodeClient for ClusterNodeClient {
             .await?)
     }
 
-    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, NodeClientError> {
+    async fn piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         Ok(self
             .nats_client
             .request(&ClusterControllerPieceRequest { piece_index }, None)
@@ -421,7 +417,7 @@ impl NodeClient for ClusterNodeClient {
     async fn acknowledge_archived_segment_header(
         &self,
         _segment_index: SegmentIndex,
-    ) -> Result<(), NodeClientError> {
+    ) -> anyhow::Result<()> {
         // Acknowledgement is unnecessary/unsupported
         Ok(())
     }

@@ -8,7 +8,7 @@ use tracing::{info, warn};
 pub(super) async fn reward_signing<NC>(
     node_client: NC,
     identity: Identity,
-) -> Result<impl Future<Output = ()>, Box<dyn std::error::Error + Send + Sync>>
+) -> anyhow::Result<impl Future<Output = ()>>
 where
     NC: NodeClient,
 {

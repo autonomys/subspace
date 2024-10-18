@@ -26,7 +26,7 @@ either = "1.13.0"
 event-listener-primitives = "2.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
-futures = "0.3.30"
+futures = "0.3.31"
 futures-timer = "3.0.3"
 hex = "0.4.3"
 memmap2 = "0.9.5"

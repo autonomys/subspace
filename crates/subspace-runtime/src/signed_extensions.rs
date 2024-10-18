@@ -31,15 +31,7 @@ impl SignedExtension for DisablePallets {
         _len: usize,
     ) -> TransactionValidity {
         // Disable normal balance transfers.
-        if matches!(
-            call,
-            RuntimeCall::Balances(
-                pallet_balances::Call::transfer_allow_death { .. }
-                    | pallet_balances::Call::transfer_keep_alive { .. }
-                    | pallet_balances::Call::transfer_all { .. }
-            )
-        ) && !RuntimeConfigs::enable_balance_transfers()
-        {
+        if !RuntimeConfigs::enable_balance_transfers() && contains_balance_transfer(call) {
             InvalidTransaction::Call.into()
         } else {
             Ok(ValidTransaction::default())
@@ -67,6 +59,28 @@ impl SignedExtension for DisablePallets {
         } else {
             Ok(ValidTransaction::default())
         }
+    }
+}
+
+fn contains_balance_transfer(call: &RuntimeCall) -> bool {
+    match call {
+        RuntimeCall::Balances(
+            pallet_balances::Call::transfer_allow_death { .. }
+            | pallet_balances::Call::transfer_keep_alive { .. }
+            | pallet_balances::Call::transfer_all { .. },
+        ) => true,
+        RuntimeCall::Utility(utility_call) => match utility_call {
+            pallet_utility::Call::batch { calls }
+            | pallet_utility::Call::batch_all { calls }
+            | pallet_utility::Call::force_batch { calls } => {
+                calls.iter().any(contains_balance_transfer)
+            }
+            pallet_utility::Call::as_derivative { call, .. }
+            | pallet_utility::Call::dispatch_as { call, .. }
+            | pallet_utility::Call::with_weight { call, .. } => contains_balance_transfer(call),
+            pallet_utility::Call::__Ignore(..) => false,
+        },
+        _ => false,
     }
 }
 

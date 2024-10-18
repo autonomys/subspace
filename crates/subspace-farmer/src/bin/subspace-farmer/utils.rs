@@ -11,7 +11,7 @@ pub(crate) fn raise_fd_limit() {
             );
         }
         Ok(fdlimit::Outcome::Unsupported) => {
-            // Unsupported platform (non-Linux)
+            // Unsupported platform (a platform other than Linux or macOS)
         }
         Err(error) => {
             tracing::warn!(

@@ -6,14 +6,14 @@ use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::LocalOnlyRecordStore;
 use crate::protocols::request_response::request_response_factory::{
-    Event as RequestResponseEvent, IfDisconnected,
+    Event as RequestResponseEvent, IfDisconnected, OutboundFailure, RequestFailure,
 };
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::{is_global_address_or_dns, strip_peer_id, SubspaceMetrics};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::autonat::{Event as AutonatEvent, NatStatus, OutboundProbeEvent};
@@ -81,6 +81,13 @@ enum BootstrapCommandState {
     Finished,
 }
 
+#[derive(Debug)]
+struct PendingGenericRequest {
+    protocol_name: &'static str,
+    request: Vec<u8>,
+    result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
+}
+
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<LocalRecordProvider>
@@ -126,6 +133,7 @@ where
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
     /// Receives an event on peer address removal from the persistent storage.
     removed_addresses_rx: mpsc::UnboundedReceiver<PeerAddressRemovedEvent>,
+    requests_pending_connections: HashMap<PeerId, Vec<PendingGenericRequest>>,
     /// Optional storage for the [`HandlerId`] of the address removal task.
     /// We keep to stop the task along with the rest of the networking.
     _address_removal_task_handler_id: Option<HandlerId>,
@@ -220,6 +228,7 @@ where
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             removed_addresses_rx,
+            requests_pending_connections: HashMap::new(),
             _address_removal_task_handler_id: address_removal_task_handler_id,
         }
     }
@@ -484,6 +493,18 @@ where
                 num_established,
                 ..
             } => {
+                if let Some(generic_requests) = self.requests_pending_connections.remove(&peer_id) {
+                    let request_response = &mut self.swarm.behaviour_mut().request_response;
+                    for request in generic_requests {
+                        request_response.send_request(
+                            &peer_id,
+                            request.protocol_name,
+                            request.request,
+                            request.result_sender,
+                            IfDisconnected::ImmediateError,
+                        );
+                    }
+                }
                 // Save known addresses that were successfully dialed.
                 if let ConnectedPoint::Dialer { address, .. } = &endpoint {
                     // filter non-global addresses when non-globals addresses are disabled
@@ -590,6 +611,19 @@ where
                 };
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                if let Some(peer_id) = &peer_id {
+                    if let Some(generic_requests) =
+                        self.requests_pending_connections.remove(peer_id)
+                    {
+                        for request in generic_requests {
+                            // Do not care if receiver is gone
+                            let _: Result<(), _> = request
+                                .result_sender
+                                .send(Err(RequestFailure::Network(OutboundFailure::DialFailure)));
+                        }
+                    }
+                }
+
                 if let Some(peer_id) = &peer_id {
                     let should_ban_temporarily =
                         self.should_temporary_ban_on_dial_error(peer_id, &error);
@@ -1435,28 +1469,42 @@ where
                 request,
                 result_sender,
             } => {
+                // TODO: Ideally it'd be much simpler with https://github.com/libp2p/rust-libp2p/issues/5634
                 if !addresses.is_empty()
                     && !self
                         .swarm
                         .connected_peers()
                         .any(|candidate| candidate == &peer_id)
                 {
+                    self.requests_pending_connections
+                        .entry(peer_id)
+                        .or_default()
+                        .push(PendingGenericRequest {
+                            protocol_name,
+                            request,
+                            result_sender,
+                        });
                     if let Err(error) = self.swarm.dial(
                         DialOpts::peer_id(peer_id)
                             .addresses(addresses)
                             .condition(PeerCondition::DisconnectedAndNotDialing)
                             .build(),
                     ) {
-                        warn!(%error, "Failed to dial disconnected peer on generic request");
+                        warn!(
+                            %error,
+                            %peer_id,
+                            "Failed to dial disconnected peer on generic request"
+                        );
                     }
+                } else {
+                    self.swarm.behaviour_mut().request_response.send_request(
+                        &peer_id,
+                        protocol_name,
+                        request,
+                        result_sender,
+                        IfDisconnected::TryConnect,
+                    );
                 }
-                self.swarm.behaviour_mut().request_response.send_request(
-                    &peer_id,
-                    protocol_name,
-                    request,
-                    result_sender,
-                    IfDisconnected::TryConnect,
-                );
             }
             Command::GetProviders {
                 key,

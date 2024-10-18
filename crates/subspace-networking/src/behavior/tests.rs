@@ -25,7 +25,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::sleep;
 
-#[tokio::test()]
+#[tokio::test]
 async fn test_address_timed_removal_from_known_peers_cache() {
     // Cache initialization
     let peer_id = PeerId::random();
@@ -92,7 +92,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     assert_eq!(removed_addresses.len(), 2);
 }
 
-#[tokio::test()]
+#[tokio::test]
 async fn test_different_removal_timing_from_known_peers_cache() {
     // Cache initialization
     let peer_id = PeerId::random();
@@ -282,7 +282,7 @@ async fn test_address_p2p_prefix_addition() {
     assert_eq!(append_p2p_suffix(peer_id, short_addr.clone()), long_addr);
 }
 
-#[tokio::test()]
+#[tokio::test]
 async fn test_known_peers_removal_address_after_specified_interval() {
     let config = KnownPeersManagerConfig {
         enable_known_peers_source: false,

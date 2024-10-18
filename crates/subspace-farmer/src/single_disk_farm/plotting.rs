@@ -1,5 +1,5 @@
 use crate::farm::{SectorExpirationDetails, SectorPlottingDetails, SectorUpdate};
-use crate::node_client::{Error as NodeClientError, NodeClient};
+use crate::node_client::NodeClient;
 use crate::plotter::{Plotter, SectorPlottingProgress};
 use crate::single_disk_farm::direct_io_file::DirectIoFile;
 use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
@@ -50,13 +50,13 @@ pub enum PlottingError {
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Failed to get segment header
     #[error("Failed to get segment header: {error}")]
     FailedToGetSegmentHeader {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Missing archived segment header
     #[error("Missing archived segment header: {segment_index}")]
@@ -68,7 +68,7 @@ pub enum PlottingError {
     #[error("Failed to subscribe to archived segments: {error}")]
     FailedToSubscribeArchivedSegments {
         /// Lower-level error
-        error: NodeClientError,
+        error: anyhow::Error,
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
@@ -165,6 +165,8 @@ where
                         maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
                             process_plotting_result(
                                 maybe_sector_plotting_result?,
+                                sectors_metadata,
+                                sectors_being_modified,
                                 &mut metadata_header,
                                 Arc::clone(&sector_plotting_options.metadata_file)
                             ).await?;
@@ -175,6 +177,8 @@ where
             maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
                 process_plotting_result(
                     maybe_sector_plotting_result?,
+                    sectors_metadata,
+                    sectors_being_modified,
                     &mut metadata_header,
                     Arc::clone(&sector_plotting_options.metadata_file)
                 ).await?;
@@ -187,14 +191,31 @@ where
 
 async fn process_plotting_result(
     sector_plotting_result: SectorPlottingResult,
+    sectors_metadata: &AsyncRwLock<Vec<SectorMetadataChecksummed>>,
+    sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     metadata_header: &mut PlotMetadataHeader,
     metadata_file: Arc<DirectIoFile>,
 ) -> Result<(), PlottingError> {
     let SectorPlottingResult {
-        sector_index,
+        sector_metadata,
         replotting,
         last_queued,
     } = sector_plotting_result;
+
+    let sector_index = sector_metadata.sector_index;
+
+    {
+        let mut sectors_metadata = sectors_metadata.write().await;
+        // If exists then we're replotting, otherwise we create sector for the first time
+        if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize) {
+            *existing_sector_metadata = sector_metadata;
+        } else {
+            sectors_metadata.push(sector_metadata);
+        }
+    }
+
+    // Inform others that this sector is no longer being modified
+    sectors_being_modified.write().await.remove(&sector_index);
 
     if sector_index + 1 > metadata_header.plotted_sector_count {
         metadata_header.plotted_sector_count = sector_index + 1;
@@ -238,7 +259,7 @@ enum PlotSingleSectorResult<F> {
 }
 
 struct SectorPlottingResult {
-    sector_index: SectorIndex,
+    sector_metadata: SectorMetadataChecksummed,
     replotting: bool,
     last_queued: bool,
 }
@@ -454,22 +475,8 @@ where
             .sector_update
             .call_simple(&(sector_index, sector_state));
 
-        {
-            let mut sectors_metadata = sectors_metadata.write().await;
-            // If exists then we're replotting, otherwise we create sector for the first time
-            if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize)
-            {
-                *existing_sector_metadata = sector_metadata;
-            } else {
-                sectors_metadata.push(sector_metadata);
-            }
-        }
-
-        // Inform others that this sector is no longer being modified
-        sectors_being_modified.write().await.remove(&sector_index);
-
         Ok(SectorPlottingResult {
-            sector_index,
+            sector_metadata,
             replotting,
             last_queued,
         })

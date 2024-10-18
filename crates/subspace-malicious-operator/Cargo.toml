@@ -31,7 +31,7 @@ evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/autonomys/frontier", rev = "f80f9e2bad338f3bf3854b256b3c4edea23e5968" }
 frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-futures = "0.3.30"
+futures = "0.3.31"
 hex-literal = "0.4.1"
 log = "0.4.22"
 mimalloc = "0.1.43"

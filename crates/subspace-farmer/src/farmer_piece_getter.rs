@@ -3,21 +3,21 @@
 use crate::farm::plotted_pieces::PlottedPieces;
 use crate::farmer_cache::FarmerCache;
 use crate::node_client::NodeClient;
-use async_lock::{
-    Mutex as AsyncMutex, MutexGuardArc as AsyncMutexGuardArc, RwLock as AsyncRwLock, Semaphore,
-};
+use async_lock::{RwLock as AsyncRwLock, Semaphore};
 use async_trait::async_trait;
 use backoff::backoff::Backoff;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
-use parking_lot::Mutex;
-use std::collections::HashMap;
-use std::error::Error;
+use futures::channel::mpsc;
+use futures::future::FusedFuture;
+use futures::stream::FuturesUnordered;
+use futures::{stream, FutureExt, Stream, StreamExt};
 use std::fmt;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
+use std::task::Poll;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -27,71 +27,6 @@ use tracing::{debug, error, trace};
 pub mod piece_validator;
 
 const MAX_RANDOM_WALK_ROUNDS: usize = 15;
-
-struct InProgressPieceGetting<'a> {
-    piece_index: PieceIndex,
-    in_progress_piece: AsyncMutexGuardArc<Option<Piece>>,
-    in_progress_pieces: &'a Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
-}
-
-impl<'a> Drop for InProgressPieceGetting<'a> {
-    fn drop(&mut self) {
-        self.in_progress_pieces.lock().remove(&self.piece_index);
-    }
-}
-
-impl<'a> InProgressPieceGetting<'a> {
-    fn store_piece_getting_result(mut self, maybe_piece: &Option<Piece>) {
-        self.in_progress_piece.clone_from(maybe_piece);
-    }
-}
-
-enum InProgressPiece<'a> {
-    Getting(InProgressPieceGetting<'a>),
-    // If piece is already in progress, just wait for it
-    Waiting {
-        in_progress_piece_mutex: Arc<AsyncMutex<Option<Piece>>>,
-    },
-}
-
-impl<'a> InProgressPiece<'a> {
-    fn new(
-        piece_index: PieceIndex,
-        in_progress_pieces: &'a Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
-    ) -> Self {
-        let in_progress_piece_mutex = Arc::new(AsyncMutex::new(None));
-        // Take lock before anything else, set to `None` when another piece getting is already in
-        // progress
-        let mut local_in_progress_piece_guard = Some(
-            in_progress_piece_mutex
-                .try_lock_arc()
-                .expect("Just created; qed"),
-        );
-        let in_progress_piece_mutex = in_progress_pieces
-            .lock()
-            .entry(piece_index)
-            .and_modify(|_mutex| {
-                local_in_progress_piece_guard.take();
-            })
-            .or_insert_with(|| Arc::clone(&in_progress_piece_mutex))
-            .clone();
-
-        if let Some(in_progress_piece) = local_in_progress_piece_guard {
-            // Store guard and details necessary to remove entry from `in_progress_pieces` after
-            // piece getting is complete (in `Drop` impl)
-            Self::Getting(InProgressPieceGetting {
-                piece_index,
-                in_progress_piece,
-                in_progress_pieces,
-            })
-        } else {
-            // Piece getting is already in progress, only mutex is needed to wait for its result
-            Self::Waiting {
-                in_progress_piece_mutex,
-            }
-        }
-    }
-}
 
 /// Retry policy for getting pieces from DSN cache
 #[derive(Debug)]
@@ -108,7 +43,6 @@ struct Inner<FarmIndex, CacheIndex, PV, NC> {
     node_client: NC,
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
-    in_progress_pieces: Mutex<HashMap<PieceIndex, Arc<AsyncMutex<Option<Piece>>>>>,
     request_semaphore: Arc<Semaphore>,
 }
 
@@ -164,7 +98,6 @@ where
                 node_client,
                 plotted_pieces,
                 dsn_cache_retry_policy,
-                in_progress_pieces: Mutex::default(),
                 request_semaphore,
             }),
         }
@@ -174,23 +107,7 @@ where
     pub async fn get_piece_fast(&self, piece_index: PieceIndex) -> Option<Piece> {
         let _guard = self.inner.request_semaphore.acquire().await;
 
-        match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
-            InProgressPiece::Getting(in_progress_piece_getting) => {
-                // Try to get the piece without releasing lock to make sure successfully
-                // downloaded piece gets stored
-                let maybe_piece = self.get_piece_fast_internal(piece_index).await;
-                // Store the result for others to observe
-                in_progress_piece_getting.store_piece_getting_result(&maybe_piece);
-                maybe_piece
-            }
-            InProgressPiece::Waiting {
-                in_progress_piece_mutex,
-            } => {
-                trace!(%piece_index, "Piece is already in progress, waiting for result #1");
-                // Doesn't matter if it was successful or not here
-                in_progress_piece_mutex.lock().await.clone()
-            }
-        }
+        self.get_piece_fast_internal(piece_index).await
     }
 
     async fn get_piece_fast_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
@@ -247,31 +164,7 @@ where
     pub async fn get_piece_slow(&self, piece_index: PieceIndex) -> Option<Piece> {
         let _guard = self.inner.request_semaphore.acquire().await;
 
-        match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
-            InProgressPiece::Getting(in_progress_piece_getting) => {
-                // Try to get the piece without releasing lock to make sure successfully
-                // downloaded piece gets stored
-                let maybe_piece = self.get_piece_slow_internal(piece_index).await;
-                // Store the result for others to observe
-                in_progress_piece_getting.store_piece_getting_result(&maybe_piece);
-                maybe_piece
-            }
-            InProgressPiece::Waiting {
-                in_progress_piece_mutex,
-            } => {
-                trace!(%piece_index, "Piece is already in progress, waiting for result #2");
-                if let Some(piece) = in_progress_piece_mutex.lock().await.clone() {
-                    trace!(
-                        %piece_index,
-                        "Piece was already in progress and downloaded successfully #1"
-                    );
-                    return Some(piece);
-                }
-
-                // Try again just in case
-                self.get_piece_slow_internal(piece_index).await
-            }
-        }
+        self.get_piece_slow_internal(piece_index).await
     }
 
     /// Slow way to get piece using archival storage
@@ -315,7 +208,29 @@ where
         None
     }
 
-    async fn get_piece_internal(&self, piece_index: PieceIndex) -> Option<Piece> {
+    /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
+    /// used [`Arc`]
+    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+        WeakFarmerPieceGetter {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+}
+
+#[async_trait]
+impl<FarmIndex, CacheIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
+where
+    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
+    usize: From<FarmIndex>,
+    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
+    usize: From<CacheIndex>,
+    CacheIndex: TryFrom<usize>,
+    PV: PieceValidator + Send + 'static,
+    NC: NodeClient,
+{
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
+        let _guard = self.inner.request_semaphore.acquire().await;
+
         {
             let retries = AtomicU32::new(0);
             let max_retries = u32::from(self.inner.dsn_cache_retry_policy.max_retries);
@@ -348,72 +263,154 @@ where
 
             if let Ok(Some(piece)) = maybe_piece_fut.await {
                 trace!(%piece_index, "Got piece from cache successfully");
-                return Some(piece);
+                return Ok(Some(piece));
             }
         };
 
         if let Some(piece) = self.get_piece_slow_internal(piece_index).await {
-            return Some(piece);
+            return Ok(Some(piece));
         }
 
         debug!(
             %piece_index,
             "Cannot acquire piece: all methods yielded empty result"
         );
-        None
+        Ok(None)
     }
 
-    /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
-    /// used [`Arc`]
-    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
-        WeakFarmerPieceGetter {
-            inner: Arc::downgrade(&self.inner),
-        }
-    }
-}
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        let (tx, mut rx) = mpsc::unbounded();
 
-#[async_trait]
-impl<FarmIndex, CacheIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
-where
-    FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
-    usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-    PV: PieceValidator + Send + 'static,
-    NC: NodeClient,
-{
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        let _guard = self.inner.request_semaphore.acquire().await;
+        let fut = async move {
+            let tx = &tx;
 
-        match InProgressPiece::new(piece_index, &self.inner.in_progress_pieces) {
-            InProgressPiece::Getting(in_progress_piece_getting) => {
-                // Try to get the piece without releasing lock to make sure successfully
-                // downloaded piece gets stored
-                let maybe_piece = self.get_piece_internal(piece_index).await;
-                // Store the result for others to observe
-                in_progress_piece_getting.store_piece_getting_result(&maybe_piece);
-                Ok(maybe_piece)
+            debug!("Getting pieces from farmer cache");
+            let mut pieces_not_found_in_farmer_cache = Vec::new();
+            let mut pieces_in_farmer_cache =
+                self.inner.farmer_cache.get_pieces(piece_indices).await;
+
+            while let Some((piece_index, maybe_piece)) = pieces_in_farmer_cache.next().await {
+                let Some(piece) = maybe_piece else {
+                    pieces_not_found_in_farmer_cache.push(piece_index);
+                    continue;
+                };
+                tx.unbounded_send((piece_index, Ok(Some(piece))))
+                    .expect("This future isn't polled after receiver is dropped; qed");
             }
-            InProgressPiece::Waiting {
-                in_progress_piece_mutex,
-            } => {
-                trace!(%piece_index, "Piece is already in progress, waiting for result #3");
-                if let Some(piece) = in_progress_piece_mutex.lock().await.clone() {
-                    trace!(
-                        %piece_index,
-                        "Piece was already in progress and downloaded successfully #2"
-                    );
-                    return Ok(Some(piece));
-                }
 
-                // Try again just in case
-                Ok(self.get_piece_internal(piece_index).await)
+            if pieces_not_found_in_farmer_cache.is_empty() {
+                return;
             }
-        }
+
+            debug!(
+                remaining_piece_count = %pieces_not_found_in_farmer_cache.len(),
+                "Getting pieces from DSN cache"
+            );
+            let mut pieces_not_found_in_dsn_cache = Vec::new();
+            let mut pieces_in_dsn_cache = self
+                .inner
+                .piece_provider
+                .get_from_cache(pieces_not_found_in_farmer_cache)
+                .await;
+
+            while let Some((piece_index, maybe_piece)) = pieces_in_dsn_cache.next().await {
+                let Some(piece) = maybe_piece else {
+                    pieces_not_found_in_dsn_cache.push(piece_index);
+                    continue;
+                };
+                // TODO: Would be nice to have concurrency here
+                self.inner
+                    .farmer_cache
+                    .maybe_store_additional_piece(piece_index, &piece)
+                    .await;
+                tx.unbounded_send((piece_index, Ok(Some(piece))))
+                    .expect("This future isn't polled after receiver is dropped; qed");
+            }
+
+            if pieces_not_found_in_dsn_cache.is_empty() {
+                return;
+            }
+
+            debug!(
+                remaining_piece_count = %pieces_not_found_in_dsn_cache.len(),
+                "Getting pieces from node"
+            );
+            let pieces_not_found_on_node = pieces_not_found_in_dsn_cache
+                .into_iter()
+                .map(|piece_index| async move {
+                    match self.inner.node_client.piece(piece_index).await {
+                        Ok(Some(piece)) => {
+                            trace!(%piece_index, "Got piece from node successfully");
+                            self.inner
+                                .farmer_cache
+                                .maybe_store_additional_piece(piece_index, &piece)
+                                .await;
+
+                            tx.unbounded_send((piece_index, Ok(Some(piece))))
+                                .expect("This future isn't polled after receiver is dropped; qed");
+                            None
+                        }
+                        Ok(None) => Some(piece_index),
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %piece_index,
+                                "Failed to retrieve first segment piece from node"
+                            );
+                            Some(piece_index)
+                        }
+                    }
+                })
+                .collect::<FuturesUnordered<_>>()
+                .filter_map(|maybe_piece_index| async move { maybe_piece_index })
+                .collect::<Vec<_>>()
+                .await;
+
+            if pieces_not_found_on_node.is_empty() {
+                return;
+            }
+
+            debug!(
+                remaining_piece_count = %pieces_not_found_on_node.len(),
+                "Some pieces were not easily reachable"
+            );
+            pieces_not_found_on_node
+                .into_iter()
+                .map(|piece_index| async move {
+                    let maybe_piece = self.get_piece_slow_internal(piece_index).await;
+
+                    tx.unbounded_send((piece_index, Ok(maybe_piece)))
+                        .expect("This future isn't polled after receiver is dropped; qed");
+                })
+                .collect::<FuturesUnordered<_>>()
+                // Simply drain everything
+                .for_each(|()| async {})
+                .await;
+        };
+        let mut fut = Box::pin(fut.fuse());
+
+        // Drive above future and stream back any pieces that were downloaded so far
+        Ok(Box::new(stream::poll_fn(move |cx| {
+            if !fut.is_terminated() {
+                // Result doesn't matter, we'll need to poll stream below anyway
+                let _ = fut.poll_unpin(cx);
+            }
+
+            if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
+                return Poll::Ready(maybe_result);
+            }
+
+            // Exit will be done by the stream above
+            Poll::Pending
+        })))
     }
 }
 
@@ -453,10 +450,7 @@ where
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         let Some(piece_getter) = self.upgrade() else {
             debug!("Farmer piece getter upgrade didn't succeed");
             return Ok(None);
