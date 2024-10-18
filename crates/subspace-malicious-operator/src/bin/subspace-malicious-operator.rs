@@ -218,12 +218,14 @@ fn main() -> Result<(), Error> {
 
             let keystore = partial_components.keystore_container.keystore();
 
-            let consensus_chain_node = subspace_service::new_full::<PosTable, _>(
+            let consensus_chain_node =
+                subspace_service::new_full::<PosTable, _>(
                 consensus_chain_config,
                 partial_components,
                 None,
                 true,
                 SlotProportion::new(3f32 / 4f32),
+                None,
             )
             .await
             .map_err(|error| {

@@ -27,7 +27,7 @@
 )]
 
 pub mod config;
-pub(crate) mod domains;
+pub mod domains;
 pub mod dsn;
 mod metrics;
 pub(crate) mod mmr;
@@ -35,12 +35,15 @@ pub mod rpc;
 pub mod sync_from_dsn;
 mod task_spawner;
 pub mod transaction_pool;
+mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::domains::request_handler::LastDomainBlockERRequestHandler;
+use crate::domains::snap_sync_orchestrator::{create_target_block_provider, SnapSyncOrchestrator};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
+pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
 use crate::transaction_pool::FullPool;
@@ -138,6 +141,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, Instrument};
+pub use utils::wait_for_block_import;
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
 // compile otherwise
@@ -734,6 +738,7 @@ pub async fn new_full<PosTable, RuntimeApi>(
     prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
+    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
 ) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
@@ -906,13 +911,14 @@ where
 
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) = MmrRequestHandler::new::<NetworkWorker<_, _>, _>(
-            &protocol_id,
-            fork_id,
-            client.clone(),
-            num_peer_hint,
-            offchain_storage,
-        );
+        let (handler, protocol_config) =
+            MmrRequestHandler::new::<NetworkWorker<Block, <Block as BlockT>::Hash>>(
+                &config.base.protocol_id(),
+                fork_id,
+                client.clone(),
+                num_peer_hint,
+                offchain_storage,
+            );
         task_manager
             .spawn_handle()
             .spawn("mmr-request-handler", Some("networking"), handler.run());
@@ -1089,6 +1095,7 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
+        create_target_block_provider(snap_sync_orchestrator.clone()),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
@@ -1114,7 +1121,7 @@ where
             Box::pin(async move {
                 // Run snap-sync before DSN-sync.
                 if config.sync == ChainSyncMode::Snap {
-                    snap_sync_task.await;
+                    snap_sync_task.in_current_span().await;
                 }
 
                 if let Err(error) = worker.await {
