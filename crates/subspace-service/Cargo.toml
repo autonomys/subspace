@@ -24,7 +24,7 @@ domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitive
 frame-benchmarking = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42", optional = true }
 futures = "0.3.31"
 hex = "0.4.3"
-jsonrpsee = { version = "0.24.5", features = ["server"] }
+jsonrpsee = { version = "0.24.5", features = ["server-core"] }
 mmr-gadget = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 mmr-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 pallet-transaction-payment-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
