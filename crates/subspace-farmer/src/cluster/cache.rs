@@ -90,7 +90,7 @@ impl GenericStreamRequest for ClusterCacheReadPiecesRequest {
     type Response = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), String>;
 }
 
-/// Request plotted from farmer, request
+/// Collect plotted pieces from farmer
 #[derive(Debug, Clone, Encode, Decode)]
 struct ClusterCacheContentsRequest;
 
@@ -132,7 +132,7 @@ impl PieceCache for ClusterPieceCache {
     > {
         Ok(Box::new(
             self.nats_client
-                .stream_request(ClusterCacheContentsRequest, Some(&self.cache_id_string))
+                .stream_request(&ClusterCacheContentsRequest, Some(&self.cache_id_string))
                 .await?
                 .map(|response| response.map_err(FarmError::from)),
         ))
@@ -200,7 +200,7 @@ impl PieceCache for ClusterPieceCache {
         let mut stream = self
             .nats_client
             .stream_request(
-                ClusterCacheReadPiecesRequest { offsets },
+                &ClusterCacheReadPiecesRequest { offsets },
                 Some(&self.cache_id_string),
             )
             .await?

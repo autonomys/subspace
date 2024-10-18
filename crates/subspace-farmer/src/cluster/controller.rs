@@ -6,9 +6,11 @@
 //! client implementations designed to work with cluster controller and a service function to drive
 //! the backend part of the controller.
 
-use crate::cluster::cache::{ClusterCacheIndex, ClusterCacheReadPieceRequest};
+use crate::cluster::cache::{
+    ClusterCacheIndex, ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest,
+};
 use crate::cluster::nats_client::{
-    GenericBroadcast, GenericNotification, GenericRequest, NatsClient,
+    GenericBroadcast, GenericNotification, GenericRequest, GenericStreamRequest, NatsClient,
 };
 use crate::farm::{PieceCacheId, PieceCacheOffset};
 use crate::farmer_cache::FarmerCache;
@@ -17,19 +19,24 @@ use anyhow::anyhow;
 use async_lock::Semaphore;
 use async_nats::HeaderValue;
 use async_trait::async_trait;
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::channel::mpsc;
+use futures::future::FusedFuture;
+use futures::stream::FuturesUnordered;
+use futures::{select, stream, FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{SegmentHeader, SegmentIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Broadcast sent by controllers requesting farmers to identify themselves
 #[derive(Debug, Copy, Clone, Encode, Decode)]
@@ -150,6 +157,18 @@ impl GenericRequest for ClusterControllerFindPieceInCacheRequest {
     type Response = Option<(PieceCacheId, PieceCacheOffset)>;
 }
 
+/// Find pieces with specified indices in cache
+#[derive(Debug, Clone, Encode, Decode)]
+struct ClusterControllerFindPiecesInCacheRequest {
+    piece_indices: Vec<PieceIndex>,
+}
+
+impl GenericStreamRequest for ClusterControllerFindPiecesInCacheRequest {
+    const SUBJECT: &'static str = "subspace.controller.find-pieces-in-cache";
+    /// Only pieces that were found are returned
+    type Response = (PieceIndex, PieceCacheId, PieceCacheOffset);
+}
+
 /// Request piece with specified index
 #[derive(Debug, Clone, Encode, Decode)]
 struct ClusterControllerPieceRequest {
@@ -159,6 +178,18 @@ struct ClusterControllerPieceRequest {
 impl GenericRequest for ClusterControllerPieceRequest {
     const SUBJECT: &'static str = "subspace.controller.piece";
     type Response = Option<Piece>;
+}
+
+/// Request pieces with specified index
+#[derive(Debug, Clone, Encode, Decode)]
+struct ClusterControllerPiecesRequest {
+    piece_indices: Vec<PieceIndex>,
+}
+
+impl GenericStreamRequest for ClusterControllerPiecesRequest {
+    const SUBJECT: &'static str = "subspace.controller.pieces";
+    /// Only pieces that were found are returned
+    type Response = (PieceIndex, Piece);
 }
 
 /// Cluster piece getter
@@ -245,6 +276,172 @@ impl PieceGetter for ClusterPieceGetter {
             .nats_client
             .request(&ClusterControllerPieceRequest { piece_index }, None)
             .await?)
+    }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        let (tx, mut rx) = mpsc::unbounded();
+
+        let piece_indices = piece_indices.into_iter().collect::<Vec<_>>();
+        let piece_indices_to_get =
+            Mutex::new(piece_indices.iter().copied().collect::<HashSet<_>>());
+
+        let mut cached_pieces_by_cache_id = HashMap::<PieceCacheId, Vec<PieceCacheOffset>>::new();
+
+        {
+            let _guard = self.request_semaphore.acquire().await;
+
+            let mut cached_pieces = self
+                .nats_client
+                .stream_request(
+                    &ClusterControllerFindPiecesInCacheRequest { piece_indices },
+                    None,
+                )
+                .await?;
+
+            while let Some((_piece_index, piece_cache_id, piece_cache_offset)) =
+                cached_pieces.next().await
+            {
+                cached_pieces_by_cache_id
+                    .entry(piece_cache_id)
+                    .or_default()
+                    .push(piece_cache_offset);
+            }
+        }
+
+        let fut = async move {
+            let tx = &tx;
+
+            let mut getting_from_piece_cache = cached_pieces_by_cache_id
+                .into_iter()
+                .map(|(piece_cache_id, offsets)| {
+                    let piece_indices_to_download = &piece_indices_to_get;
+
+                    async move {
+                        let _guard = self.request_semaphore.acquire().await;
+
+                        let mut pieces_stream = match self
+                            .nats_client
+                            .stream_request(
+                                &ClusterCacheReadPiecesRequest { offsets },
+                                Some(&piece_cache_id.to_string()),
+                            )
+                            .await
+                        {
+                            Ok(pieces) => pieces,
+                            Err(error) => {
+                                warn!(
+                                    %error,
+                                    %piece_cache_id,
+                                    "Failed to request pieces from cache"
+                                );
+
+                                return;
+                            }
+                        };
+
+                        while let Some(piece_result) = pieces_stream.next().await {
+                            let (piece_offset, maybe_piece) = match piece_result {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    warn!(%error, "Failed to get piece from cache");
+                                    continue;
+                                }
+                            };
+
+                            if let Some((piece_index, piece)) = maybe_piece {
+                                piece_indices_to_download.lock().remove(&piece_index);
+
+                                tx.unbounded_send((piece_index, Ok(Some(piece)))).expect(
+                                    "This future isn't polled after receiver is dropped; qed",
+                                );
+                            } else {
+                                warn!(
+                                    %piece_cache_id,
+                                    %piece_offset,
+                                    "Failed to get piece from cache, it was missing or already gone"
+                                );
+                            }
+                        }
+                    }
+                })
+                .collect::<FuturesUnordered<_>>();
+            // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
+            // Simply drain everything
+            // .for_each(|()| async {})
+
+            // TODO: Remove once https://github.com/rust-lang/rust/issues/64650 is resolved
+            while let Some(()) = getting_from_piece_cache.next().await {
+                // Simply drain everything
+            }
+            drop(getting_from_piece_cache);
+
+            let mut piece_indices_to_get = piece_indices_to_get.into_inner();
+            if piece_indices_to_get.is_empty() {
+                return;
+            }
+
+            let _guard = self.request_semaphore.acquire().await;
+
+            let mut pieces_from_controller = match self
+                .nats_client
+                .stream_request(
+                    &ClusterControllerPiecesRequest {
+                        piece_indices: piece_indices_to_get.iter().copied().collect(),
+                    },
+                    None,
+                )
+                .await
+            {
+                Ok(pieces_from_controller) => pieces_from_controller,
+                Err(error) => {
+                    error!(%error, "Failed to get pieces from controller");
+
+                    for piece_index in piece_indices_to_get {
+                        tx.unbounded_send((
+                            piece_index,
+                            Err(anyhow::anyhow!("Failed to get piece from controller")),
+                        ))
+                        .expect("This future isn't polled after receiver is dropped; qed");
+                    }
+                    return;
+                }
+            };
+
+            while let Some((piece_index, piece)) = pieces_from_controller.next().await {
+                piece_indices_to_get.remove(&piece_index);
+                tx.unbounded_send((piece_index, Ok(Some(piece))))
+                    .expect("This future isn't polled after receiver is dropped; qed");
+            }
+
+            for piece_index in piece_indices_to_get {
+                tx.unbounded_send((piece_index, Err(anyhow::anyhow!("Failed to get piece"))))
+                    .expect("This future isn't polled after receiver is dropped; qed");
+            }
+        };
+        let mut fut = Box::pin(fut.fuse());
+
+        // Drive above future and stream back any pieces that were downloaded so far
+        Ok(Box::new(stream::poll_fn(move |cx| {
+            if !fut.is_terminated() {
+                // Result doesn't matter, we'll need to poll stream below anyway
+                let _ = fut.poll_unpin(cx);
+            }
+
+            if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
+                return Poll::Ready(maybe_result);
+            }
+
+            // Exit will be done by the stream above
+            Poll::Pending
+        })))
     }
 }
 
@@ -466,7 +663,13 @@ where
             result = find_piece_responder(nats_client, farmer_cache).fuse() => {
                 result
             },
+            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+                result
+            },
             result = piece_responder(nats_client, piece_getter).fuse() => {
+                result
+            },
+            result = pieces_responder(nats_client, piece_getter).fuse() => {
                 result
             },
         }
@@ -481,7 +684,13 @@ where
             result = find_piece_responder(nats_client, farmer_cache).fuse() => {
                 result
             },
+            result = find_pieces_responder(nats_client, farmer_cache).fuse() => {
+                result
+            },
             result = piece_responder(nats_client, piece_getter).fuse() => {
+                result
+            },
+            result = pieces_responder(nats_client, piece_getter).fuse() => {
                 result
             },
         }
@@ -703,12 +912,12 @@ where
         .request_responder(
             None,
             Some("subspace.controller".to_string()),
-            |request: ClusterControllerSegmentHeadersRequest| async move {
+            |ClusterControllerSegmentHeadersRequest { segment_indices }| async move {
                 node_client
-                    .segment_headers(request.segment_indices.clone())
+                    .segment_headers(segment_indices.clone())
                     .await
                     .inspect_err(|error| {
-                        warn!(%error, segment_indices = ?request.segment_indices, "Failed to get segment headers");
+                        warn!(%error, ?segment_indices, "Failed to get segment headers");
                     })
                     .ok()
             },
@@ -724,8 +933,23 @@ async fn find_piece_responder(
         .request_responder(
             None,
             Some("subspace.controller".to_string()),
-            |request: ClusterControllerFindPieceInCacheRequest| async move {
-                Some(farmer_cache.find_piece(request.piece_index).await)
+            |ClusterControllerFindPieceInCacheRequest { piece_index }| async move {
+                Some(farmer_cache.find_piece(piece_index).await)
+            },
+        )
+        .await
+}
+
+async fn find_pieces_responder(
+    nats_client: &NatsClient,
+    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+) -> anyhow::Result<()> {
+    nats_client
+        .stream_request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |ClusterControllerFindPiecesInCacheRequest { piece_indices }| async move {
+                Some(stream::iter(farmer_cache.find_pieces(piece_indices).await))
             },
         )
         .await
@@ -739,13 +963,44 @@ where
         .request_responder(
             None,
             Some("subspace.controller".to_string()),
-            |request: ClusterControllerPieceRequest| async move {
+            |ClusterControllerPieceRequest { piece_index }| async move {
                 piece_getter
-                    .get_piece(request.piece_index)
+                    .get_piece(piece_index)
                     .await
-                    .inspect_err(
-                        |error| warn!(%error, piece_index = %request.piece_index, "Failed to get piece"),
-                    )
+                    .inspect_err(|error| warn!(%error, %piece_index, "Failed to get piece"))
+                    .ok()
+            },
+        )
+        .await
+}
+
+async fn pieces_responder<PG>(nats_client: &NatsClient, piece_getter: &PG) -> anyhow::Result<()>
+where
+    PG: PieceGetter + Sync,
+{
+    nats_client
+        .stream_request_responder(
+            None,
+            Some("subspace.controller".to_string()),
+            |ClusterControllerPiecesRequest { piece_indices }| async move {
+                piece_getter
+                    .get_pieces(piece_indices)
+                    .await
+                    .map(|stream| {
+                        Box::pin(stream.filter_map(
+                            |(piece_index, maybe_piece_result)| async move {
+                                match maybe_piece_result {
+                                    Ok(Some(piece)) => Some((piece_index, piece)),
+                                    Ok(None) => None,
+                                    Err(error) => {
+                                        warn!(%error, %piece_index, "Failed to get piece");
+                                        None
+                                    }
+                                }
+                            },
+                        ))
+                    })
+                    .inspect_err(|error| warn!(%error, "Failed to get pieces"))
                     .ok()
             },
         )
