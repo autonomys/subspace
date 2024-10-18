@@ -9,6 +9,7 @@ use crate::farmer_cache::{decode_piece_index_from_record_key, FarmerCache};
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
+use futures::stream::FuturesUnordered;
 use futures::{SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use rand::prelude::*;
@@ -159,6 +160,26 @@ impl PieceGetter for MockPieceGetter {
                 })
                 .clone(),
         ))
+    }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        Ok(Box::new(
+            piece_indices
+                .into_iter()
+                .map(|piece_index| async move {
+                    let result = self.get_piece(piece_index).await;
+                    (piece_index, result)
+                })
+                .collect::<FuturesUnordered<_>>(),
+        ) as Box<_>)
     }
 }
 

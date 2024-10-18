@@ -15,9 +15,10 @@ use futures::{stream, FutureExt, Stream, StreamExt};
 use std::fmt;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
-use std::task::Poll;
+use std::task::{Context, Poll};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_farmer_components::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -438,6 +439,40 @@ impl<FarmIndex, CacheIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, C
     }
 }
 
+/// This wrapper allows us to return the stream, which in turn depends on `piece_getter` that was
+/// previously on the stack of the inner function. What this wrapper does is create a
+/// self-referential data structure, so we can move both together, while still implementing `Stream`
+/// trait as necessary.
+#[ouroboros::self_referencing]
+struct StreamWithPieceGetter<FarmIndex, CacheIndex, PV, NC>
+where
+    FarmIndex: 'static,
+    CacheIndex: 'static,
+    PV: 'static,
+    NC: 'static,
+{
+    piece_getter: FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>,
+    #[borrows(piece_getter)]
+    #[covariant]
+    stream:
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'this>,
+}
+
+impl<FarmIndex, CacheIndex, PV, NC> Stream for StreamWithPieceGetter<FarmIndex, CacheIndex, PV, NC>
+where
+    FarmIndex: 'static,
+    CacheIndex: 'static,
+    PV: 'static,
+    NC: 'static,
+{
+    type Item = (PieceIndex, anyhow::Result<Option<Piece>>);
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut()
+            .with_stream_mut(|stream| stream.poll_next_unpin(cx))
+    }
+}
+
 #[async_trait]
 impl<FarmIndex, CacheIndex, PV, NC> PieceGetter
     for WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
@@ -457,6 +492,36 @@ where
         };
 
         piece_getter.get_piece(piece_index).await
+    }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        let Some(piece_getter) = self.upgrade() else {
+            debug!("Farmer piece getter upgrade didn't succeed");
+            return Ok(Box::new(stream::iter(
+                piece_indices
+                    .into_iter()
+                    .map(|piece_index| (piece_index, Ok(None))),
+            )));
+        };
+
+        // TODO: This is necessary due to more complex lifetimes not yet supported by ouroboros, see
+        //  https://github.com/someguynamedjosh/ouroboros/issues/112
+        let piece_indices = piece_indices.into_iter().collect::<Vec<_>>();
+        let stream_with_piece_getter =
+            StreamWithPieceGetter::try_new_async_send(piece_getter, move |piece_getter| {
+                piece_getter.get_pieces(piece_indices)
+            })
+            .await?;
+
+        Ok(Box::new(stream_with_piece_getter))
     }
 }
 
