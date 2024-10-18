@@ -45,7 +45,7 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 pub(super) struct ControllerArgs {
     /// Piece getter concurrency.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long, default_value = "128")]
     piece_getter_concurrency: NonZeroUsize,
     /// Base path where to store P2P network identity

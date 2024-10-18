@@ -60,15 +60,15 @@ fn parse_timekeeper_cpu_cores(
 /// Options for Substrate networking
 #[derive(Debug, Parser)]
 struct SubstrateNetworkOptions {
-    /// Specify a list of bootstrap nodes for Substrate networking stack.
+    /// A list of bootstrap nodes for the Substrate networking stack.
     #[arg(long)]
     bootstrap_nodes: Vec<MultiaddrWithPeerId>,
 
-    /// Specify a list of reserved node addresses.
+    /// A list of reserved node addresses, which are prioritised for connections.
     #[arg(long)]
     reserved_nodes: Vec<MultiaddrWithPeerId>,
 
-    /// Whether to only synchronize the chain with reserved nodes.
+    /// Only synchronize the chain with reserved nodes.
     ///
     /// TCP connections might still be established with non-reserved nodes.
     /// In particular, if you are a farmer your node might still connect to other farmer nodes
@@ -76,14 +76,14 @@ struct SubstrateNetworkOptions {
     #[arg(long)]
     reserved_only: bool,
 
-    /// The public address that other nodes will use to connect to it.
+    /// The public address that other nodes will use to connect to this node.
     ///
     /// This can be used if there's a proxy in front of this node or if address is known beforehand
     /// and less reliable auto-discovery can be avoided.
     #[arg(long)]
     public_addr: Vec<sc_network::Multiaddr>,
 
-    /// Listen on this multiaddress
+    /// Listen for incoming Substrate connections on these multiaddresses.
     #[arg(long, default_values_t = [
         sc_network::Multiaddr::from(sc_network::multiaddr::Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(sc_network::multiaddr::Protocol::Tcp(30333)),
@@ -92,12 +92,12 @@ struct SubstrateNetworkOptions {
     ])]
     listen_on: Vec<sc_network::Multiaddr>,
 
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
-    /// in Kademlia DHT.
+    /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
+    /// By default these addresses are excluded from the DHT.
     #[arg(long, default_value_t = false)]
     allow_private_ips: bool,
 
-    /// Specify the number of outgoing connections we're trying to maintain.
+    /// The number of outgoing connections we will try to maintain.
     #[arg(long, default_value_t = 8)]
     out_peers: u32,
 
@@ -119,7 +119,7 @@ struct SubstrateNetworkOptions {
 /// Options for DSN
 #[derive(Debug, Parser)]
 struct DsnOptions {
-    /// Where local DSN node will listen for incoming connections.
+    /// Listen for incoming DSN connections on these multiaddresses.
     #[arg(long, default_values_t = [
         Multiaddr::from(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(30433)),
@@ -136,23 +136,23 @@ struct DsnOptions {
     #[arg(long)]
     dsn_reserved_peers: Vec<Multiaddr>,
 
-    /// Defines max established incoming connection limit for DSN.
+    /// Maximum established incoming connection limit for DSN.
     #[arg(long, default_value_t = 50)]
     dsn_in_connections: u32,
 
-    /// Defines max established outgoing swarm connection limit for DSN.
+    /// Maximum established outgoing swarm connection limit for DSN.
     #[arg(long, default_value_t = 150)]
     dsn_out_connections: u32,
 
-    /// Defines max pending incoming connection limit for DSN.
+    /// Maximum pending incoming connection limit for DSN.
     #[arg(long, default_value_t = 100)]
     dsn_pending_in_connections: u32,
 
-    /// Defines max pending outgoing swarm connection limit for DSN.
+    /// Maximum pending outgoing swarm connection limit for DSN.
     #[arg(long, default_value_t = 150)]
     dsn_pending_out_connections: u32,
 
-    /// Known external addresses
+    /// Known external addresses.
     #[arg(long = "dsn-external-address")]
     dsn_external_addresses: Vec<Multiaddr>,
 }
@@ -234,7 +234,7 @@ impl fmt::Display for BlocksPruningMode {
 /// Parameters to define the pruning mode
 #[derive(Debug, Clone, Parser)]
 struct PruningOptions {
-    /// Specify the state pruning mode.
+    /// The state pruning mode.
     ///
     /// This mode specifies when the block's state (ie, storage) should be pruned (ie, removed)
     /// from the database.
@@ -247,7 +247,7 @@ struct PruningOptions {
     #[arg(long, default_value_t = StatePruningMode::Number(MIN_STATE_PRUNING))]
     state_pruning: StatePruningMode,
 
-    /// Specify the blocks pruning mode.
+    /// The blocks pruning mode.
     ///
     /// This mode specifies when the block's body (including justifications)
     /// should be pruned (ie, removed) from the database.
@@ -305,13 +305,13 @@ struct TimekeeperOptions {
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub(super) struct ConsensusChainOptions {
-    /// Base path where to store node files.
+    /// Base path to store node files.
     ///
     /// Required unless --dev mode is used.
     #[arg(long)]
     base_path: Option<PathBuf>,
 
-    /// Specify the chain specification.
+    /// The chain specification.
     ///
     /// It can be one of the predefined ones (dev) or it can be a path to a file with the chainspec
     /// (such as one exported by the `build-spec` subcommand).
@@ -378,9 +378,8 @@ pub(super) struct ConsensusChainOptions {
     #[clap(flatten)]
     pool_config: TransactionPoolParams,
 
-    /// Parameter that allows node to forcefully assume it is synced, needed for network
-    /// bootstrapping only, as long as two synced nodes remain on the network at any time, this
-    /// doesn't need to be used.
+    /// Make the node forcefully assume it is synced, needed for network bootstrapping only. As
+    /// long as two synced nodes remain on the network at any time, this doesn't need to be used.
     ///
     /// --dev mode enables this option automatically.
     #[clap(long)]

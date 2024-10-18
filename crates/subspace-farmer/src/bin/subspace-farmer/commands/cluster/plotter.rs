@@ -35,14 +35,14 @@ const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
+    /// How many sectors the farmer will download concurrently. Limits the memory usage of
+    /// the plotting process. Defaults to `--cpu-sector-encoding-concurrency` + 1 to download future
     /// sector ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     cpu_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
+    /// How many sectors the farmer will encode concurrently. Defaults to 1 on UMA system and the
     /// number of NUMA nodes on NUMA system or L3 cache groups on large CPUs. It is further
     /// restricted by
     /// `--cpu-sector-downloading-concurrency` and setting this option higher than
@@ -50,27 +50,27 @@ struct CpuPlottingOptions {
     ///
     /// CPU plotting is disabled by default if GPU plotting is detected.
     ///
-    /// Increase will result in higher memory usage, setting to 0 will disable CPU plotting.
+    /// Increasing this value will cause higher memory usage. Set to 0 to disable CPU plotting.
     #[arg(long)]
     cpu_sector_encoding_concurrency: Option<usize>,
-    /// Defines how many records farmer will encode in a single sector concurrently, defaults to one
+    /// How many records the farmer will encode in a single sector concurrently. Defaults to one
     /// record per 2 cores, but not more than 8 in total. Higher concurrency means higher memory
-    /// usage and typically more efficient CPU utilization.
+    /// usage, and typically more efficient CPU utilization.
     #[arg(long)]
     cpu_record_encoding_concurrency: Option<NonZeroUsize>,
-    /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
+    /// Size of one thread pool used for plotting. Defaults to number of logical CPUs available
     /// on UMA system and number of logical CPUs available in NUMA node on NUMA system or L3 cache
     /// groups on large CPUs.
     ///
-    /// Number of thread pools is defined by `--cpu-sector-encoding-concurrency` option, different
-    /// thread pools might have different number of threads if NUMA nodes do not have the same size.
+    /// The number of thread pools is defined by `--cpu-sector-encoding-concurrency` option. Different
+    /// thread pools might have different numbers of threads if NUMA nodes do not have the same size.
     ///
     /// Threads will be pinned to corresponding CPU cores at creation.
     #[arg(long)]
     cpu_plotting_thread_pool_size: Option<NonZeroUsize>,
-    /// Specify exact CPU cores to be used for plotting bypassing any custom logic farmer might use
-    /// otherwise. It replaces both `--cpu-sector-encoding-concurrency` and
-    /// `--cpu-plotting-thread-pool-size` options if specified.
+    /// Set the exact CPU cores to be used for plotting, bypassing any custom logic in the farmer.
+    /// Replaces both `--cpu-sector-encoding-concurrency` and
+    /// `--cpu-plotting-thread-pool-size` options.
     ///
     /// Cores are coma-separated, with whitespace separating different thread pools/encoding
     /// instances. For example "0,1 2,3" will result in two sectors being encoded at the same time,
@@ -87,17 +87,17 @@ struct CpuPlottingOptions {
 #[cfg(feature = "cuda")]
 #[derive(Debug, Parser)]
 struct CudaPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently during plotting with CUDA GPU,
-    /// allows to limit memory usage of the plotting process, defaults to number of CUDA GPUs found
-    /// + 1 to download future sector ahead of time.
+    /// How many sectors farmer will download concurrently during plotting with CUDA GPUs.
+    /// Limits memory usage of the plotting process. Defaults to the number of CUDA GPUs + 1,
+    /// to download future sectors ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     cuda_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    /// Set the exact GPUs to be used for plotting, instead of using all GPUs (default behavior).
     ///
-    /// GPUs are coma-separated: `--cuda-gpus 0,1,3`. Empty string can be specified to disable CUDA
-    /// GPU usage.
+    /// GPUs are coma-separated: `--cuda-gpus 0,1,3`. Use an empty string to disable CUDA
+    /// GPUs.
     #[arg(long)]
     cuda_gpus: Option<String>,
 }
@@ -105,17 +105,17 @@ struct CudaPlottingOptions {
 #[cfg(feature = "rocm")]
 #[derive(Debug, Parser)]
 struct RocmPlottingOptions {
-    /// Defines how many sectors farmer will download concurrently during plotting with ROCm GPU,
-    /// allows to limit memory usage of the plotting process, defaults to number of ROCm GPUs found
-    /// + 1 to download future sector ahead of time.
+    /// How many sectors the farmer will download concurrently during plotting with ROCm GPUs.
+    /// Limits memory usage of the plotting process. Defaults to number of ROCm GPUs + 1,
+    /// to download future sectors ahead of time.
     ///
-    /// Increase will result in higher memory usage.
+    /// Increasing this value will cause higher memory usage.
     #[arg(long)]
     rocm_sector_downloading_concurrency: Option<NonZeroUsize>,
-    /// Specify exact GPUs to be used for plotting instead of using all GPUs (default behavior).
+    /// Set the exact GPUs to be used for plotting, instead of using all GPUs (default behavior).
     ///
-    /// GPUs are coma-separated: `--rocm-gpus 0,1,3`. Empty string can be specified to disable ROCm
-    /// GPU usage.
+    /// GPUs are coma-separated: `--rocm-gpus 0,1,3`. Use an empty string to disable ROCm
+    /// GPUs.
     #[arg(long)]
     rocm_gpus: Option<String>,
 }
@@ -125,8 +125,8 @@ struct RocmPlottingOptions {
 pub(super) struct PlotterArgs {
     /// Piece getter concurrency.
     ///
-    /// Increase can result in NATS communication issues if too many messages arrive via NATS, but
-    /// are not processed quickly enough for some reason.
+    /// Increasing this value can cause NATS communication issues if too many messages arrive via NATS, but
+    /// are not processed quickly enough.
     #[arg(long, default_value = "32")]
     piece_getter_concurrency: NonZeroUsize,
     /// Plotting options only used by CPU plotter

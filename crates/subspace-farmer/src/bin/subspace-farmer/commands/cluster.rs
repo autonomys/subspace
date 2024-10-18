@@ -52,7 +52,7 @@ struct SharedArgs {
     /// which can be done by starting NATS server with config file containing `max_payload = 2MB`.
     #[arg(long = "nats-server", required = true)]
     nats_servers: Vec<ServerAddr>,
-    /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+    /// Endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
     prometheus_listen_on: Vec<SocketAddr>,

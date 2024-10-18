@@ -98,10 +98,10 @@ struct Args {
     /// production use.
     #[arg(long, required = true)]
     protocol_version: String,
-    /// Defines max established outgoing connections limit for the peer.
+    /// Maximum established outgoing connections limit for the peer.
     #[arg(long, default_value_t = 100)]
     out_peers: u32,
-    /// Defines max pending outgoing connections limit for the peer.
+    /// Maximum pending outgoing connections limit for the peer.
     #[arg(long, default_value_t = 100)]
     pending_out_peers: u32,
     #[clap(subcommand)]

@@ -50,16 +50,16 @@ pub struct DsnConfig {
     /// System base path.
     pub network_path: PathBuf,
 
-    /// Defines max established incoming swarm connection limit.
+    /// Maximum established incoming swarm connection limit.
     pub max_in_connections: u32,
 
-    /// Defines max established outgoing swarm connection limit.
+    /// Maximum established outgoing swarm connection limit.
     pub max_out_connections: u32,
 
-    /// Defines max pending incoming swarm connection limit.
+    /// Maximum pending incoming swarm connection limit.
     pub max_pending_in_connections: u32,
 
-    /// Defines max pending outgoing swarm connection limit.
+    /// Maximum pending outgoing swarm connection limit.
     pub max_pending_out_connections: u32,
 
     /// Known external addresses
