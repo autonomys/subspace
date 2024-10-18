@@ -27,6 +27,9 @@ jsonrpsee = { version = "0.24.5", features = ["server"] }
 mimalloc = "0.1.43"
 parking_lot = "0.12.2"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
+subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
+subspace-gateway-rpc = { version = "0.1.0", path = "../subspace-gateway-rpc" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 supports-color = "3.0.1"
