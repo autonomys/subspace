@@ -33,6 +33,8 @@ pub(crate) struct RpcOptions<const DEFAULT_PORT: u16> {
 /// Launch the RPC server `api` with the provided `options`.
 // TODO:
 // - add an argument for a custom tokio runtime
+// - move this RPC code into a new library part of this crate
+// - make a RPC config that is independent of clap
 pub async fn launch_rpc_server<const P: u16>(
     rpc_api: SubspaceGatewayRpc,
     rpc_options: RpcOptions<P>,

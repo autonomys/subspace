@@ -77,6 +77,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     )
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
 
+    // TODO: move this service code into its own function, in a new library part of this crate
     let (dsn_node, mut dsn_node_runner) = dsn::configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 

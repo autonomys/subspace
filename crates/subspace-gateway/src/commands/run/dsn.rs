@@ -31,6 +31,9 @@ pub(crate) struct NetworkArgs {
 }
 
 /// Create a DSN network client with the supplied configuration.
+// TODO:
+// - move this DSN code into a new library part of this crate
+// - change NetworkArgs to subspace_networking::Config to be independent of clap
 pub async fn configure_network(
     NetworkArgs {
         dsn_bootstrap_nodes,
