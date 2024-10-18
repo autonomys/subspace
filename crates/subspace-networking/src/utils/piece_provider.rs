@@ -10,6 +10,7 @@ use crate::utils::multihash::ToMultihash;
 use crate::{Multihash, Node};
 use async_trait::async_trait;
 use futures::channel::mpsc;
+use futures::future::FusedFuture;
 use futures::stream::FuturesUnordered;
 use futures::task::noop_waker_ref;
 use futures::{stream, FutureExt, Stream, StreamExt};
@@ -89,22 +90,27 @@ where
         PieceIndices: IntoIterator<Item = PieceIndex> + 'a,
     {
         let (tx, mut rx) = mpsc::unbounded();
-        let mut fut = Box::pin(get_from_cache_inner(
+        let fut = get_from_cache_inner(
             piece_indices.into_iter(),
             &self.node,
             &self.piece_validator,
             tx,
-        ));
+        );
+        let mut fut = Box::pin(fut.fuse());
 
         // Drive above future and stream back any pieces that were downloaded so far
         stream::poll_fn(move |cx| {
-            let end_result = fut.poll_unpin(cx);
+            if !fut.is_terminated() {
+                // Result doesn't matter, we'll need to poll stream below anyway
+                let _ = fut.poll_unpin(cx);
+            }
 
-            if let Ok(maybe_result) = rx.try_next() {
+            if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
                 return Poll::Ready(maybe_result);
             }
 
-            end_result.map(|()| None)
+            // Exit will be done by the stream above
+            Poll::Pending
         })
     }
 
@@ -528,6 +534,10 @@ where
         let Ok(connected_peers) = node.connected_peers().await else {
             break;
         };
+
+        if connected_peers.is_empty() || pieces_to_download.is_empty() {
+            break;
+        }
 
         let num_pieces = pieces_to_download.len();
         let step = num_pieces / connected_peers.len().min(num_pieces);

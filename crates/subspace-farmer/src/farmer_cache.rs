@@ -16,6 +16,7 @@ use crate::utils::run_future_in_dedicated_thread;
 use async_lock::RwLock as AsyncRwLock;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
+use futures::future::FusedFuture;
 use futures::stream::{FuturesOrdered, FuturesUnordered};
 use futures::{select, stream, FutureExt, SinkExt, Stream, StreamExt};
 use prometheus_client::registry::Registry;
@@ -1188,7 +1189,7 @@ where
 
         let (tx, mut rx) = mpsc::unbounded();
 
-        let mut fut = Box::pin(async move {
+        let fut = async move {
             let tx = &tx;
 
             let mut reading_from_piece_cache = reading_from_piece_cache
@@ -1300,17 +1301,22 @@ where
             };
 
             join!(reading_from_piece_cache_fut, reading_from_plot_cache_fut).await
-        });
+        };
+        let mut fut = Box::pin(fut.fuse());
 
         // Drive above future and stream back any pieces that were downloaded so far
         stream::poll_fn(move |cx| {
-            let end_result = fut.poll_unpin(cx);
+            if !fut.is_terminated() {
+                // Result doesn't matter, we'll need to poll stream below anyway
+                let _ = fut.poll_unpin(cx);
+            }
 
-            if let Ok(maybe_result) = rx.try_next() {
+            if let Poll::Ready(maybe_result) = rx.poll_next_unpin(cx) {
                 return Poll::Ready(maybe_result);
             }
 
-            end_result.map(|((), ())| None)
+            // Exit will be done by the stream above
+            Poll::Pending
         })
     }
 

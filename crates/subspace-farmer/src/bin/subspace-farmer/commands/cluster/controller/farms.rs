@@ -14,7 +14,7 @@ use futures::{select, FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
-use std::future::{pending, ready, Future};
+use std::future::{ready, Future};
 use std::mem;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
@@ -139,9 +139,7 @@ pub(super) async fn maintain_farms(
     // Farm that is being added/removed right now (if any)
     let mut farm_add_remove_in_progress = (Box::pin(ready(None)) as AddRemoveFuture).fuse();
     // Initialize with pending future so it never ends
-    let mut farms = FuturesUnordered::from_iter([
-        Box::pin(pending()) as Pin<Box<dyn Future<Output = (FarmIndex, anyhow::Result<()>)>>>
-    ]);
+    let mut farms = FuturesUnordered::new();
 
     let farmer_identify_subscription = pin!(nats_client
         .subscribe_to_broadcasts::<ClusterFarmerIdentifyFarmBroadcast>(None, None)
@@ -253,7 +251,7 @@ pub(super) async fn maintain_farms(
             }
             result = farm_add_remove_in_progress => {
                 if let Some((farm_index, expired_receiver, farm)) = result {
-                    farms.push(Box::pin(async move {
+                    farms.push(async move {
                         select! {
                             result = farm.run().fuse() => {
                                 (farm_index, result)
@@ -263,7 +261,7 @@ pub(super) async fn maintain_farms(
                                 (farm_index, Ok(()))
                             }
                         }
-                    }));
+                    });
                 }
             }
         }

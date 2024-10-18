@@ -132,6 +132,7 @@ async fn basic_request_response_works() {
         b"this is a request".to_vec(),
         sender,
         IfDisconnected::ImmediateError,
+        Vec::new(),
     );
     // Wait for request to finish
     loop {
@@ -209,6 +210,7 @@ async fn max_response_size_exceeded() {
         b"this is a request".to_vec(),
         sender,
         IfDisconnected::ImmediateError,
+        Vec::new(),
     );
     // Wait for request to finish
     loop {
@@ -349,6 +351,7 @@ async fn request_id_collision() {
         b"this is a request 1".to_vec(),
         sender_1,
         IfDisconnected::ImmediateError,
+        Vec::new(),
     );
     swarm_1.behaviour_mut().send_request(
         &peer_id_2,
@@ -356,6 +359,7 @@ async fn request_id_collision() {
         b"this is a request 2".to_vec(),
         sender_2,
         IfDisconnected::ImmediateError,
+        Vec::new(),
     );
     // Expect both to finish
     loop {

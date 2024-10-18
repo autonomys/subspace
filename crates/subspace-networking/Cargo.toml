@@ -26,7 +26,7 @@ either = "1.13.0"
 event-listener-primitives = "2.0.1"
 # TODO: Switch to fs4 once https://github.com/al8n/fs4-rs/issues/15 is resolved
 fs2 = "0.4.3"
-futures = "0.3.30"
+futures = "0.3.31"
 futures-timer = "3.0.3"
 hex = "0.4.3"
 memmap2 = "0.9.5"
@@ -51,9 +51,10 @@ unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_code
 void = "1.0.2"
 
 [dependencies.libp2p]
-# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
+# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 and
+#  https://github.com/libp2p/rust-libp2p/issues/5634 are resolved
 git = "https://github.com/autonomys/rust-libp2p"
-rev = "458d22ef382641a6f42f7baddff99b70f33cdcc0"
+rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8"
 version = "0.54.1"
 default-features = false
 features = [
@@ -77,4 +78,4 @@ features = [
 [dev-dependencies]
 rand = "0.8.5"
 # TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
-libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "458d22ef382641a6f42f7baddff99b70f33cdcc0" }
+libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8" }

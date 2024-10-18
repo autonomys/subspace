@@ -1,0 +1,21 @@
+[package]
+name = "subspace-gateway-rpc"
+version = "0.1.0"
+authors = ["Teor <teor@riseup.net>"]
+description = "A Subspace Network data gateway."
+edition = "2021"
+license = "MIT OR Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/autonomys/subspace"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+hex = "0.4.3"
+jsonrpsee = { version = "0.24.5", features = ["server", "macros"] }
+serde = { version = "1.0.110", default-features = false, features = ["alloc", "derive"] }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
+thiserror = "1.0.64"
+tracing = "0.1.40"

@@ -9,7 +9,7 @@ codec = { package = "parity-scale-codec", version = "3.6.12", features = ["deriv
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-futures = "0.3.30"
+futures = "0.3.31"
 futures-timer = "3.0.3"
 parking_lot = "0.12.2"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }

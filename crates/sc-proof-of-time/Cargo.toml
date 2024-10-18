@@ -13,7 +13,7 @@ include = [
 [dependencies]
 core_affinity = "0.8.1"
 derive_more = { version = "1.0.0", features = ["full"] }
-futures = "0.3.30"
+futures = "0.3.31"
 parity-scale-codec = { version = "3.6.12", features = ["derive"] }
 parking_lot = "0.12.2"
 rayon = "1.10.0"
