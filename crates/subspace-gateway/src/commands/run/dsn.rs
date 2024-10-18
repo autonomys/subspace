@@ -22,7 +22,7 @@ pub(crate) struct NetworkArgs {
     ///
     /// The default bootstrap nodes are fetched from the node RPC connection.
     #[arg(long)]
-    pub(crate) dsn_bootstrap_nodes: Vec<Multiaddr>,
+    dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Multiaddrs of DSN reserved nodes to maintain a connection to, multiple are supported.
     #[arg(long)]
@@ -35,11 +35,11 @@ pub(crate) struct NetworkArgs {
 
     /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) out_connections: u32,
+    out_connections: u32,
 
     /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) pending_out_connections: u32,
+    pending_out_connections: u32,
 }
 
 /// Create a DSN network client with the supplied configuration.
