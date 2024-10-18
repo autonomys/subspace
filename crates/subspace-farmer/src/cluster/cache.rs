@@ -132,7 +132,7 @@ impl PieceCache for ClusterPieceCache {
     > {
         Ok(Box::new(
             self.nats_client
-                .stream_request(ClusterCacheContentsRequest, Some(&self.cache_id_string))
+                .stream_request(&ClusterCacheContentsRequest, Some(&self.cache_id_string))
                 .await?
                 .map(|response| response.map_err(FarmError::from)),
         ))
@@ -200,7 +200,7 @@ impl PieceCache for ClusterPieceCache {
         let mut stream = self
             .nats_client
             .stream_request(
-                ClusterCacheReadPiecesRequest { offsets },
+                &ClusterCacheReadPiecesRequest { offsets },
                 Some(&self.cache_id_string),
             )
             .await?
