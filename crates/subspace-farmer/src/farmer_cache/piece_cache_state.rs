@@ -46,6 +46,8 @@ where
                 Some(free_offset)
             }
             None => {
+                // TODO: Use simple round robin for uniform filling instead of re-sorting all the
+                //  time
                 // Sort piece caches by number of stored pieces to fill those that are less
                 // populated first
                 let mut sorted_backends = self
