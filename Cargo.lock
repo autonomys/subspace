@@ -12586,6 +12586,7 @@ dependencies = [
  "mimalloc",
  "parking_lot 0.12.3",
  "subspace-networking",
+ "subspace-rpc-primitives",
  "supports-color",
  "thiserror",
  "tokio",
