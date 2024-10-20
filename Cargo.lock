@@ -12625,11 +12625,15 @@ name = "subspace-gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "fdlimit",
  "futures",
+ "hex",
+ "jsonrpsee",
  "mimalloc",
  "parking_lot 0.12.3",
+ "subspace-core-primitives",
  "subspace-networking",
  "subspace-rpc-primitives",
  "supports-color",

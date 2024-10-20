@@ -29,7 +29,7 @@ pub(super) struct GatewayOptions {
     dev: bool,
 
     #[clap(flatten)]
-    dsn: NetworkArgs,
+    dsn_options: NetworkArgs,
 }
 
 /// Default run command for gateway
@@ -38,13 +38,16 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
 
     let RunOptions {
-        gateway: GatewayOptions { dev, mut dsn },
+        gateway: GatewayOptions {
+            dev,
+            mut dsn_options,
+        },
     } = run_options;
 
     // Development mode handling is limited to this section
     {
         if dev {
-            dsn.allow_private_ips = true;
+            dsn_options.allow_private_ips = true;
         }
     }
 
@@ -52,7 +55,9 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     info!("✌️  version {}", env!("CARGO_PKG_VERSION"));
     info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
 
-    let (_dsn_node, mut dsn_node_runner) = dsn::configure_network(dsn)?;
+    // TODO: move this service code into its own function, in a new library part of this crate
+    #[expect(unused_variables, reason = "implementation is incomplete")]
+    let (dsn_node, mut dsn_node_runner, node_client) = dsn::configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 
     let rpc_fut = future::pending::<()>();
