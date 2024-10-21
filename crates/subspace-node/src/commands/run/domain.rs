@@ -46,12 +46,12 @@ use tracing::warn;
 #[derive(Debug, Parser)]
 struct SubstrateNetworkOptions {
     /// Specify a list of bootstrap nodes for Substrate networking stack.
-    #[arg(long)]
+    #[arg(long = "bootstrap-node")]
     bootstrap_nodes: Vec<MultiaddrWithPeerId>,
 
     /// Specify a list of reserved node addresses.
-    #[arg(long)]
-    reserved_nodes: Vec<MultiaddrWithPeerId>,
+    #[arg(long = "reserved-peer")]
+    reserved_peers: Vec<MultiaddrWithPeerId>,
 
     /// Whether to only synchronize the chain with reserved nodes.
     ///
@@ -310,7 +310,7 @@ pub(super) fn create_domain_configuration(
             default_peers_set: SetConfig {
                 in_peers: network_options.in_peers,
                 out_peers: network_options.out_peers,
-                reserved_nodes: network_options.reserved_nodes,
+                reserved_nodes: network_options.reserved_peers,
                 non_reserved_mode: if network_options.reserved_only {
                     NonReservedPeerMode::Deny
                 } else {
