@@ -1473,6 +1473,16 @@ impl<Balance> OnChainRewards<Balance> for () {
     fn on_chain_rewards(_chain_id: ChainId, _reward: Balance) {}
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum OperatorRewardSource<Number> {
+    Bundle {
+        at_block_number: Number,
+    },
+    XDMProtocolFees,
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    Dummy,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainHeader: HeaderT> {
