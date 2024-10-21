@@ -15,7 +15,9 @@ use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
+use std::ops::Deref;
 use std::path::Path;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
 use std::{fs, io};
@@ -30,6 +32,8 @@ use tracing::{debug, info, warn};
 /// How many pieces should be skipped before stopping to check the rest of contents, this allows to
 /// not miss most of the pieces after one or two corrupted pieces
 const CONTENTS_READ_SKIP_LIMIT: usize = 3;
+/// How many piece to read from disk at the same time (using tokio thread pool)
+const PIECES_READING_CONCURRENCY: usize = 32;
 
 /// Disk piece cache open error
 #[derive(Debug, Error)]
@@ -57,9 +61,38 @@ pub enum DiskPieceCacheError {
 }
 
 #[derive(Debug)]
+struct FilePool {
+    files: Box<[DirectIoFile; PIECES_READING_CONCURRENCY]>,
+    cursor: AtomicU8,
+}
+
+impl Deref for FilePool {
+    type Target = DirectIoFile;
+
+    fn deref(&self) -> &Self::Target {
+        let position = usize::from(self.cursor.fetch_add(1, Ordering::Relaxed));
+        &self.files[position % PIECES_READING_CONCURRENCY]
+    }
+}
+
+impl FilePool {
+    fn open(path: &Path) -> io::Result<Self> {
+        let files = (0..PIECES_READING_CONCURRENCY)
+            .map(|_| DirectIoFile::open(path))
+            .collect::<Result<Box<_>, _>>()?
+            .try_into()
+            .expect("Statically correct length; qed");
+        Ok(Self {
+            files,
+            cursor: AtomicU8::new(0),
+        })
+    }
+}
+
+#[derive(Debug)]
 struct Inner {
     id: PieceCacheId,
-    file: DirectIoFile,
+    file: FilePool,
     max_num_elements: u32,
     metrics: Option<DiskPieceCacheMetrics>,
 }
@@ -171,6 +204,28 @@ impl farm::PieceCache for DiskPieceCache {
             .await??)
         }
     }
+
+    async fn read_pieces(
+        &self,
+        offsets: Box<dyn Iterator<Item = PieceCacheOffset> + Send>,
+    ) -> Result<
+        Box<
+            dyn Stream<Item = Result<(PieceCacheOffset, Option<(PieceIndex, Piece)>), FarmError>>
+                + Send
+                + Unpin
+                + '_,
+        >,
+        FarmError,
+    > {
+        let iter = offsets.map(move |offset| async move {
+            Ok((offset, farm::PieceCache::read_piece(self, offset).await?))
+        });
+        Ok(Box::new(
+            // Constrain concurrency to avoid excessive memory usage, while still getting
+            // performance of concurrent reads
+            stream::iter(iter).buffer_unordered(PIECES_READING_CONCURRENCY),
+        ))
+    }
 }
 
 impl DiskPieceCache {
@@ -187,7 +242,7 @@ impl DiskPieceCache {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
 
-        let file = DirectIoFile::open(&directory.join(Self::FILE_NAME))?;
+        let file = FilePool::open(&directory.join(Self::FILE_NAME))?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);
         // Align plot file size for disk sector size

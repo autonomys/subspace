@@ -353,7 +353,7 @@ impl ClusterPlotter {
 
                 let response_stream_result = nats_client
                     .stream_request(
-                        ClusterPlotterPlotSectorRequest {
+                        &ClusterPlotterPlotSectorRequest {
                             public_key,
                             sector_index,
                             farmer_protocol_info,

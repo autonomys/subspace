@@ -44,7 +44,9 @@ pub trait PieceGetter {
     /// Get piece by index
     async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
 
-    /// Get pieces with provided indices
+    /// Get pieces with provided indices.
+    ///
+    /// Number of elements in returned stream is the same as number of unique `piece_indices`.
     async fn get_pieces<'a, PieceIndices>(
         &'a self,
         piece_indices: PieceIndices,
@@ -52,19 +54,7 @@ pub trait PieceGetter {
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
     >
     where
-        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
-    {
-        // TODO: Remove default impl here
-        Ok(Box::new(
-            piece_indices
-                .into_iter()
-                .map(|piece_index| async move {
-                    let result = self.get_piece(piece_index).await;
-                    (piece_index, result)
-                })
-                .collect::<FuturesUnordered<_>>(),
-        ) as Box<_>)
-    }
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a;
 }
 
 #[async_trait]

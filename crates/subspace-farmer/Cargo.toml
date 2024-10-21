@@ -39,6 +39,7 @@ hwlocality = { version = "1.0.0-alpha.6", features = ["vendored"], optional = tr
 jsonrpsee = { version = "0.24.5", features = ["ws-client"] }
 mimalloc = { version = "0.1.43", optional = true }
 num_cpus = "1.16.0"
+ouroboros = "0.18.4"
 parity-scale-codec = "3.6.12"
 parking_lot = "0.12.2"
 pin-project = "1.1.5"

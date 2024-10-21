@@ -51,9 +51,10 @@ unsigned-varint = { version = "0.8.0", features = ["futures", "asynchronous_code
 void = "1.0.2"
 
 [dependencies.libp2p]
-# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
+# TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 and
+#  https://github.com/libp2p/rust-libp2p/issues/5634 are resolved
 git = "https://github.com/autonomys/rust-libp2p"
-rev = "458d22ef382641a6f42f7baddff99b70f33cdcc0"
+rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8"
 version = "0.54.1"
 default-features = false
 features = [
@@ -77,4 +78,4 @@ features = [
 [dev-dependencies]
 rand = "0.8.5"
 # TODO: Replace with upstream once https://github.com/libp2p/rust-libp2p/issues/5626 is resolved
-libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "458d22ef382641a6f42f7baddff99b70f33cdcc0" }
+libp2p-swarm-test = { version = "0.4.0", git = "https://github.com/autonomys/rust-libp2p", rev = "ae7527453146df24aff6afed5f5b9efdffbc15b8" }

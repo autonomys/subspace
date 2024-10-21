@@ -134,7 +134,7 @@ impl PlottedSectors for ClusterPlottedSectors {
         Ok(Box::new(
             self.nats_client
                 .stream_request(
-                    ClusterFarmerPlottedSectorsRequest,
+                    &ClusterFarmerPlottedSectorsRequest,
                     Some(&self.farm_id_string),
                 )
                 .await?

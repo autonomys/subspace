@@ -21,7 +21,6 @@ use async_nats::{
 };
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
-use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, Stream, StreamExt};
@@ -30,6 +29,7 @@ use std::any::type_name;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -146,12 +146,10 @@ pub enum StreamRequestError {
 
 /// Wrapper around subscription that transforms stream of wrapped response messages into a normal
 /// `Response` stream.
-#[derive(Debug, Deref, DerefMut)]
+#[derive(Debug)]
 #[pin_project::pin_project]
 pub struct StreamResponseSubscriber<Response> {
     #[pin]
-    #[deref]
-    #[deref_mut]
     subscriber: Subscriber,
     response_subject: String,
     buffered_responses: Option<GenericStreamResponses<Response>>,
@@ -314,12 +312,10 @@ pub trait GenericBroadcast: Encode + Decode + fmt::Debug + Send + Sync + 'static
 }
 
 /// Subscriber wrapper that decodes messages automatically and skips messages that can't be decoded
-#[derive(Debug, Deref, DerefMut)]
+#[derive(Debug)]
 #[pin_project::pin_project]
 pub struct SubscriberWrapper<Message> {
     #[pin]
-    #[deref]
-    #[deref_mut]
     subscriber: Subscriber,
     _phantom: PhantomData<Message>,
 }
@@ -624,7 +620,7 @@ impl NatsClient {
     /// Make request that expects stream response
     pub async fn stream_request<Request>(
         &self,
-        request: Request,
+        request: &Request,
         instance: Option<&str>,
     ) -> Result<StreamResponseSubscriber<Request::Response>, StreamRequestError>
     where
