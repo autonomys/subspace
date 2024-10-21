@@ -12,7 +12,7 @@ pub const RPC_DEFAULT_PORT: u16 = 9955;
 /// Options for the RPC server.
 #[derive(Debug, Parser)]
 pub(crate) struct RpcOptions<const DEFAULT_PORT: u16> {
-    /// IP and port (TCP) on which to listen for RPC requests.
+    /// IP and port (TCP) to listen for RPC requests.
     ///
     /// This RPC method is not safe to be exposed on a public IP address.
     #[arg(long, default_value_t = SocketAddr::new(

@@ -40,6 +40,12 @@ pub(crate) struct NetworkArgs {
     /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
     pending_out_connections: u32,
+
+    /// Multiaddrs to listen on for DSN connections, multiple are supported.
+    ///
+    /// This is mainly for debugging.
+    #[arg(long)]
+    listen_on: Vec<Multiaddr>,
 }
 
 /// Create a DSN network client with the supplied configuration.
@@ -54,6 +60,7 @@ pub async fn configure_network(
         allow_private_ips,
         out_connections,
         pending_out_connections,
+        listen_on,
     }: NetworkArgs,
 ) -> anyhow::Result<(Node, NodeRunner<()>, RpcNodeClient)> {
     // TODO:
@@ -92,6 +99,7 @@ pub async fn configure_network(
         max_established_outgoing_connections: out_connections,
         max_pending_outgoing_connections: pending_out_connections,
         kademlia_mode: KademliaMode::Static(Mode::Client),
+        listen_on,
         ..default_config
     };
 
