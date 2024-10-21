@@ -220,18 +220,18 @@ impl DiskPlotCache {
             return Ok(false);
         };
 
-        let piece_index_bytes = piece_index.to_bytes();
         let write_fut = tokio::task::spawn_blocking({
-            let piece = piece.clone();
+            let piece_index_bytes = piece_index.to_bytes();
+            // File writes are read/write/modify internally, so combine all data here for more
+            // efficient write
+            let mut bytes = Vec::with_capacity(PieceIndex::SIZE + piece.len() + Blake3Hash::SIZE);
+            bytes.extend_from_slice(&piece_index_bytes);
+            bytes.extend_from_slice(piece.as_ref());
+            bytes.extend_from_slice(
+                blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]).as_ref(),
+            );
 
-            move || {
-                file.write_all_at(&piece_index_bytes, element_offset)?;
-                file.write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
-                file.write_all_at(
-                    blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]).as_ref(),
-                    element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
-                )
-            }
+            move || file.write_all_at(&bytes, element_offset)
         });
 
         AsyncJoinOnDrop::new(write_fut, false).await??;
