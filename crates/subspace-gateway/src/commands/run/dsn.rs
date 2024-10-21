@@ -21,7 +21,7 @@ pub(crate) struct NetworkArgs {
     /// Multiaddrs of DSN bootstrap nodes to connect to on startup, multiple are supported.
     ///
     /// The default bootstrap nodes are fetched from the node RPC connection.
-    #[arg(long)]
+    #[arg(long = "bootstrap-node")]
     pub(crate) dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Multiaddrs of DSN reserved nodes to maintain a connection to, multiple are supported.
