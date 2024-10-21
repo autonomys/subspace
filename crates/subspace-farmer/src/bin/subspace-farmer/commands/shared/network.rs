@@ -43,7 +43,7 @@ const SEGMENT_HEADERS_LIMIT: u32 = MAX_SEGMENT_HEADERS_PER_REQUEST as u32;
 #[derive(Debug, Parser)]
 pub(in super::super) struct NetworkArgs {
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long)]
+    #[arg(long = "bootstrap-node")]
     pub(in super::super) bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddrs to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
