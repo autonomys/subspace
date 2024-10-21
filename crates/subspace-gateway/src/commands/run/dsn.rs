@@ -70,12 +70,12 @@ pub async fn configure_network(
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
-        .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
+        .map_err(|error| anyhow!("Failed to get gateway app info: {error}"))?;
 
     // Fall back to the node's bootstrap nodes.
     if bootstrap_nodes.is_empty() {
         debug!(
-            dsn_bootstrap_nodes = ?farmer_app_info.dsn_bootstrap_nodes,
+            bootstrap_nodes = ?farmer_app_info.dsn_bootstrap_nodes,
             "Setting DSN bootstrap nodes..."
         );
         bootstrap_nodes.clone_from(&farmer_app_info.dsn_bootstrap_nodes);
