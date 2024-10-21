@@ -2,7 +2,7 @@ pub(crate) mod import_blocks;
 pub(crate) mod piece_validator;
 pub(crate) mod segment_header_downloader;
 pub(crate) mod snap_sync;
-pub(crate) mod snap_sync_engine;
+pub mod snap_sync_engine;
 
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
