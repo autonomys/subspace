@@ -20,6 +20,7 @@ use libp2p::swarm::NetworkBehaviour;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use rand::prelude::*;
+use std::any::type_name;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::iter::Empty;
@@ -63,7 +64,8 @@ pub struct PieceProvider<PV> {
 impl<PV> fmt::Debug for PieceProvider<PV> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PieceProvider").finish_non_exhaustive()
+        f.debug_struct(&format!("PieceProvider<{}>", type_name::<PV>()))
+            .finish_non_exhaustive()
     }
 }
 
