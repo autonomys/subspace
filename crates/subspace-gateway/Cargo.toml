@@ -30,8 +30,10 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-data-retrieval = { version = "0.1.0", path = "../../shared/subspace-data-retrieval" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-gateway-rpc = { version = "0.1.0", path = "../subspace-gateway-rpc" }
+subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 supports-color = "3.0.1"
 thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["macros"] }
