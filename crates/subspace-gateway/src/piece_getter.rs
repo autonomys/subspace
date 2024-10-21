@@ -5,7 +5,7 @@ use futures::stream::StreamExt;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
-use subspace_data_retrieval::piece_getter::{BoxError, ObjectPieceGetter};
+use subspace_data_retrieval::piece_getter::ObjectPieceGetter;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
 
@@ -51,7 +51,7 @@ impl<PV> ObjectPieceGetter for DsnPieceGetter<PV>
 where
     PV: PieceValidator,
 {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if let Some((got_piece_index, maybe_piece)) =
             self.get_from_cache([piece_index]).await.next().await
         {

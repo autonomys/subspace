@@ -15,6 +15,7 @@ use futures::{select, FutureExt};
 use std::env;
 use std::num::NonZeroUsize;
 use std::pin::pin;
+use std::sync::Arc;
 use subspace_core_primitives::pieces::Record;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
@@ -95,7 +96,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
         dsn_node.clone(),
         SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),
     );
-    let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, Some(max_size));
+    let object_fetcher = ObjectFetcher::new(Arc::new(piece_getter), erasure_coding, Some(max_size));
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });
     let rpc_handle = launch_rpc_server(rpc_api, rpc_options).await?;

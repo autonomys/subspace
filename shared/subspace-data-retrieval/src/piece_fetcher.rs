@@ -16,7 +16,7 @@
 //! Fetching pieces of the archived history of Subspace Network.
 
 use crate::object_fetcher::Error;
-use crate::piece_getter::{BoxError, ObjectPieceGetter};
+use crate::piece_getter::ObjectPieceGetter;
 use futures::stream::FuturesOrdered;
 use futures::TryStreamExt;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
@@ -31,7 +31,7 @@ use tracing::{debug, trace};
 pub async fn download_pieces<PG>(
     piece_indexes: &[PieceIndex],
     piece_getter: &PG,
-) -> Result<Vec<Piece>, BoxError>
+) -> anyhow::Result<Vec<Piece>>
 where
     PG: ObjectPieceGetter,
 {

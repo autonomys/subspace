@@ -21,18 +21,14 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 
-/// A type-erased error
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
 /// Trait representing a way to get pieces from the DSN for object reconstruction
-// TODO: make ObjectPieceGetter impls retry before failing, if that is useful
 #[async_trait]
 pub trait ObjectPieceGetter: fmt::Debug {
     /// Get piece by index.
     ///
     /// Returns `Ok(None)` if the piece is not found.
     /// Returns `Err(_)` if trying to get the piece caused an error.
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError>;
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>>;
 }
 
 #[async_trait]
@@ -40,7 +36,7 @@ impl<T> ObjectPieceGetter for Arc<T>
 where
     T: ObjectPieceGetter + Send + Sync + ?Sized,
 {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         self.as_ref().get_piece(piece_index).await
     }
 }
@@ -48,7 +44,7 @@ where
 // Convenience methods, mainly used in testing
 #[async_trait]
 impl ObjectPieceGetter for NewArchivedSegment {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if piece_index.segment_index() == self.segment_header.segment_index() {
             return Ok(Some(
                 self.pieces
@@ -64,7 +60,7 @@ impl ObjectPieceGetter for NewArchivedSegment {
 
 #[async_trait]
 impl ObjectPieceGetter for (PieceIndex, Piece) {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, BoxError> {
+    async fn get_piece(&self, piece_index: PieceIndex) -> anyhow::Result<Option<Piece>> {
         if self.0 == piece_index {
             return Ok(Some(self.1.clone()));
         }
