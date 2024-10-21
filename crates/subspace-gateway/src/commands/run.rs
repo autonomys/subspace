@@ -8,6 +8,7 @@ use crate::commands::run::dsn::NetworkArgs;
 use crate::commands::run::rpc::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
 use crate::commands::shutdown_signal;
 use crate::piece_getter::DsnPieceGetter;
+use crate::piece_validator::SegmentCommitmentPieceValidator;
 use anyhow::anyhow;
 use clap::Parser;
 use futures::{select, FutureExt};
@@ -18,7 +19,7 @@ use subspace_core_primitives::pieces::Record;
 use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
-use subspace_networking::utils::piece_provider::NoPieceValidator;
+use subspace_kzg::Kzg;
 use tracing::info;
 
 /// Options for running a node
@@ -71,6 +72,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     info!("✌️  version {}", env!("CARGO_PKG_VERSION"));
     info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
 
+    let kzg = Kzg::new();
     let erasure_coding = ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
@@ -78,12 +80,14 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
 
     // TODO: move this service code into its own function, in a new library part of this crate
-    #[expect(unused_variables, reason = "implementation is incomplete")]
     let (dsn_node, mut dsn_node_runner, node_client) = dsn::configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 
     // TODO: implement piece validation
-    let piece_getter = DsnPieceGetter::new(dsn_node, NoPieceValidator);
+    let piece_getter = DsnPieceGetter::new(
+        dsn_node.clone(),
+        SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),
+    );
     let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, None);
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });

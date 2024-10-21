@@ -9,6 +9,7 @@
 mod commands;
 mod node_client;
 mod piece_getter;
+mod piece_validator;
 
 use crate::commands::{init_logger, raise_fd_limit, Command};
 use clap::Parser;

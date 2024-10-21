@@ -33,7 +33,6 @@ pub trait NodeClient: fmt::Debug + Send + Sync + 'static {
     async fn farmer_app_info(&self) -> anyhow::Result<FarmerAppInfo>;
 
     /// Get segment headers for the segments
-    #[expect(dead_code, reason = "implementation is incomplete")]
     async fn segment_headers(
         &self,
         segment_indices: Vec<SegmentIndex>,
