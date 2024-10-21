@@ -61,12 +61,12 @@ fn parse_timekeeper_cpu_cores(
 #[derive(Debug, Parser)]
 struct SubstrateNetworkOptions {
     /// A list of bootstrap nodes for the Substrate networking stack.
-    #[arg(long)]
+    #[arg(long = "bootstrap-node")]
     bootstrap_nodes: Vec<MultiaddrWithPeerId>,
 
     /// A list of reserved node addresses, which are prioritised for connections.
-    #[arg(long)]
-    reserved_nodes: Vec<MultiaddrWithPeerId>,
+    #[arg(long = "reserved-peer")]
+    reserved_peers: Vec<MultiaddrWithPeerId>,
 
     /// Only synchronize the chain with reserved nodes.
     ///
@@ -80,8 +80,8 @@ struct SubstrateNetworkOptions {
     ///
     /// This can be used if there's a proxy in front of this node or if address is known beforehand
     /// and less reliable auto-discovery can be avoided.
-    #[arg(long)]
-    public_addr: Vec<sc_network::Multiaddr>,
+    #[arg(long = "external-address")]
+    external_addresses: Vec<sc_network::Multiaddr>,
 
     /// Listen for incoming Substrate connections on these multiaddresses.
     #[arg(long, default_values_t = [
@@ -93,7 +93,7 @@ struct SubstrateNetworkOptions {
     listen_on: Vec<sc_network::Multiaddr>,
 
     /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
-    /// By default these addresses are excluded from the DHT.
+    /// By default, these addresses are excluded from the DHT.
     #[arg(long, default_value_t = false)]
     allow_private_ips: bool,
 
@@ -129,11 +129,11 @@ struct DsnOptions {
     dsn_listen_on: Vec<Multiaddr>,
 
     /// Bootstrap nodes for DSN.
-    #[arg(long)]
+    #[arg(long = "dsn-bootstrap-node")]
     dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Reserved peers for DSN.
-    #[arg(long)]
+    #[arg(long = "dsn-reserved-peer")]
     dsn_reserved_peers: Vec<Multiaddr>,
 
     /// Maximum established incoming connection limit for DSN.
@@ -561,7 +561,7 @@ pub(super) fn create_consensus_chain_configuration(
         transaction_pool,
         network: SubstrateNetworkConfiguration {
             listen_on: network_options.listen_on,
-            public_addresses: network_options.public_addr,
+            public_addresses: network_options.external_addresses,
             bootstrap_nodes: network_options.bootstrap_nodes,
             node_key: {
                 let node_key_params = NodeKeyParams {
@@ -576,7 +576,7 @@ pub(super) fn create_consensus_chain_configuration(
             default_peers_set: SetConfig {
                 in_peers: network_options.in_peers,
                 out_peers: network_options.out_peers,
-                reserved_nodes: network_options.reserved_nodes,
+                reserved_nodes: network_options.reserved_peers,
                 non_reserved_mode: if network_options.reserved_only {
                     NonReservedPeerMode::Deny
                 } else {
