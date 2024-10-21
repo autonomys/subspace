@@ -143,7 +143,16 @@ impl<'a> SegmentHeaderDownloader<'a> {
 
             // Acquire segment headers from peers.
             let peers = match get_peers_result {
-                Ok(get_peers_stream) => get_peers_stream.collect::<Vec<_>>().await,
+                Ok(get_peers_stream) => {
+                    get_peers_stream
+                        .filter(|peer_id| {
+                            let known_peer = peer_segment_headers.contains_key(peer_id);
+
+                            async move { !known_peer }
+                        })
+                        .collect::<Vec<_>>()
+                        .await
+                }
                 Err(err) => {
                     warn!(?err, "get_closest_peers returned an error");
 
