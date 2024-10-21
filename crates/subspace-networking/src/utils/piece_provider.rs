@@ -674,7 +674,7 @@ where
                 cached_pieces,
                 not_cached_pieces,
             );
-            downloading_stream.insert(piece_index, Box::pin(fut.into_stream()));
+            downloading_stream.insert(piece_index_to_download_next, Box::pin(fut.into_stream()));
         }
 
         if pieces_to_download.len() == num_pieces {
