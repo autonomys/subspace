@@ -636,7 +636,8 @@ where
                     }
                 }
             }));
-        // Download two batches concurrently to make sure slow tail of one is compensated by another
+        // Download several batches concurrently to make sure slow tail of one is compensated by
+        // another
         let mut downloading_pieces_stream =
             downloading_pieces_stream.buffer_unordered(SYNC_CONCURRENT_BATCHES);
         // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
