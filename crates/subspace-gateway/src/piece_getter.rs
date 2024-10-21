@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use futures::stream::StreamExt;
+use futures::Stream;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
@@ -63,6 +64,22 @@ where
         }
 
         Ok(None)
+    }
+
+    async fn get_pieces<'a, PieceIndices>(
+        &'a self,
+        piece_indices: PieceIndices,
+    ) -> anyhow::Result<
+        Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'a>,
+    >
+    where
+        PieceIndices: IntoIterator<Item = PieceIndex, IntoIter: Send> + Send + 'a,
+    {
+        Ok(Box::new(
+            self.get_from_cache(piece_indices)
+                .await
+                .map(|(index, maybe_piece)| (index, Ok(maybe_piece))),
+        ))
     }
 }
 
