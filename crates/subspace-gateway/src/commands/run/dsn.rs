@@ -57,7 +57,6 @@ pub async fn configure_network(
     }: NetworkArgs,
 ) -> anyhow::Result<(Node, NodeRunner<()>, RpcNodeClient)> {
     // TODO:
-    // - store keypair on disk and allow CLI override
     // - cache known peers on disk
     // - prometheus telemetry
     let default_config = Config::<()>::default();
