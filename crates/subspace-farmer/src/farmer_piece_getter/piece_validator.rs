@@ -54,7 +54,7 @@ where
                 error!(
                     %piece_index,
                     ?error,
-                    "Failed tor retrieve segment headers from node"
+                    "Failed to retrieve segment headers from node"
                 );
                 return None;
             }
