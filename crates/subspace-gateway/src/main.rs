@@ -7,6 +7,7 @@
 )]
 
 mod commands;
+mod node_client;
 
 use crate::commands::{init_logger, raise_fd_limit, Command};
 use clap::Parser;
