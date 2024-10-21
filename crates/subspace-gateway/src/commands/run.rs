@@ -83,7 +83,6 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let (dsn_node, mut dsn_node_runner, node_client) = dsn::configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 
-    // TODO: implement piece validation
     let piece_getter = DsnPieceGetter::new(
         dsn_node.clone(),
         SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),

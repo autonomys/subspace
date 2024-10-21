@@ -14,21 +14,12 @@ pub const RPC_DEFAULT_PORT: u16 = 9955;
 pub(crate) struct RpcOptions<const DEFAULT_PORT: u16> {
     /// IP and port (TCP) on which to listen for RPC requests.
     ///
-    /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
-    /// dangerous methods.
-    /// More details: <https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs>.
+    /// This RPC method is not safe to be exposed on a public IP address.
     #[arg(long, default_value_t = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::LOCALHOST),
         DEFAULT_PORT,
     ))]
     rpc_listen_on: SocketAddr,
-    // TODO:
-    // - Disable unsafe methods on public IP addresses
-    // - Maximum number of connections
-    // - RPC rate limiting, IPs/range that get rate-limit exceptions, trust proxy headers
-    // - CORS
-    // - Message buffer capacity
-    // - Batch requests & max batch request length
 }
 
 /// Launch the RPC server `api` with the provided `options`.
