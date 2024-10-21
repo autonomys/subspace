@@ -315,7 +315,7 @@ impl PieceGetter for ClusterPieceGetter {
             let mut getting_from_piece_cache = cached_pieces_by_cache_id
                 .into_iter()
                 .map(|(piece_cache_id, offsets)| {
-                    let piece_indices_to_download = &piece_indices_to_get;
+                    let piece_indices_to_get = &piece_indices_to_get;
 
                     async move {
                         let mut pieces_stream = match self
@@ -348,7 +348,7 @@ impl PieceGetter for ClusterPieceGetter {
                             };
 
                             if let Some((piece_index, piece)) = maybe_piece {
-                                piece_indices_to_download.lock().remove(&piece_index);
+                                piece_indices_to_get.lock().remove(&piece_index);
 
                                 tx.unbounded_send((piece_index, Ok(Some(piece)))).expect(
                                     "This future isn't polled after receiver is dropped; qed",
