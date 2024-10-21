@@ -1187,7 +1187,7 @@ where
         let pieces_to_read_from_piece_cache = {
             let caches = self.piece_caches.read().await;
             // Pieces to read from piece cache grouped by backend for efficiency reasons
-            let mut reading_from_piece_cache =
+            let mut pieces_to_read_from_piece_cache =
                 HashMap::<CacheIndex, (CacheBackend, HashMap<_, _>)>::new();
 
             for piece_index in piece_indices {
@@ -1207,7 +1207,7 @@ where
                 let cache_index = offset.cache_index;
                 let piece_offset = offset.piece_offset;
 
-                match reading_from_piece_cache.entry(cache_index) {
+                match pieces_to_read_from_piece_cache.entry(cache_index) {
                     Entry::Occupied(mut entry) => {
                         let (_backend, pieces) = entry.get_mut();
                         pieces.insert(piece_offset, (piece_index, key));
@@ -1226,7 +1226,7 @@ where
                 }
             }
 
-            reading_from_piece_cache
+            pieces_to_read_from_piece_cache
         };
 
         let (tx, mut rx) = mpsc::unbounded();
