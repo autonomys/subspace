@@ -22,24 +22,24 @@ pub(crate) struct NetworkArgs {
     ///
     /// The default bootstrap nodes are fetched from the node RPC connection.
     #[arg(long = "bootstrap-node")]
-    pub(crate) dsn_bootstrap_nodes: Vec<Multiaddr>,
+    bootstrap_nodes: Vec<Multiaddr>,
 
     /// Multiaddrs of DSN reserved nodes to maintain a connection to, multiple are supported.
-    #[arg(long)]
-    dsn_reserved_peers: Vec<Multiaddr>,
+    #[arg(long = "reserved-peer")]
+    reserved_peers: Vec<Multiaddr>,
 
     /// Enable non-global (private, shared, loopback..) addresses in the Kademlia DHT.
-    /// By default these addresses are excluded from the DHT.
+    /// By default, these addresses are excluded from the DHT.
     #[arg(long, default_value_t = false)]
     pub(crate) allow_private_ips: bool,
 
     /// Maximum established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) out_connections: u32,
+    out_connections: u32,
 
     /// Maximum pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
-    pub(crate) pending_out_connections: u32,
+    pending_out_connections: u32,
 }
 
 /// Create a DSN network client with the supplied configuration.
@@ -49,8 +49,8 @@ pub(crate) struct NetworkArgs {
 pub async fn configure_network(
     NetworkArgs {
         node_rpc_url,
-        mut dsn_bootstrap_nodes,
-        dsn_reserved_peers,
+        mut bootstrap_nodes,
+        reserved_peers,
         allow_private_ips,
         out_connections,
         pending_out_connections,
@@ -74,9 +74,12 @@ pub async fn configure_network(
         .map_err(|error| anyhow!("Failed to get farmer app info: {error}"))?;
 
     // Fall back to the node's bootstrap nodes.
-    if dsn_bootstrap_nodes.is_empty() {
-        debug!(dsn_bootstrap_nodes = ?farmer_app_info.dsn_bootstrap_nodes, "Setting DSN bootstrap nodes...");
-        dsn_bootstrap_nodes.clone_from(&farmer_app_info.dsn_bootstrap_nodes);
+    if bootstrap_nodes.is_empty() {
+        debug!(
+            dsn_bootstrap_nodes = ?farmer_app_info.dsn_bootstrap_nodes,
+            "Setting DSN bootstrap nodes..."
+        );
+        bootstrap_nodes.clone_from(&farmer_app_info.dsn_bootstrap_nodes);
     }
 
     let dsn_protocol_version = hex::encode(farmer_app_info.genesis_hash);
@@ -84,8 +87,8 @@ pub async fn configure_network(
 
     let config = Config {
         protocol_version: dsn_protocol_version,
-        bootstrap_addresses: dsn_bootstrap_nodes,
-        reserved_peers: dsn_reserved_peers,
+        bootstrap_addresses: bootstrap_nodes,
+        reserved_peers,
         allow_non_global_addresses_in_dht: allow_private_ips,
         max_established_outgoing_connections: out_connections,
         max_pending_outgoing_connections: pending_out_connections,
