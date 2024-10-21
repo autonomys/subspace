@@ -1,10 +1,10 @@
 //! Gateway run command.
 //! This is the primary command for the gateway.
 
-mod dsn;
+mod network;
 mod rpc;
 
-use crate::commands::run::dsn::NetworkArgs;
+use crate::commands::run::network::{configure_network, NetworkArgs};
 use crate::commands::run::rpc::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
 use crate::commands::shutdown_signal;
 use crate::piece_getter::DsnPieceGetter;
@@ -80,7 +80,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     .map_err(|error| anyhow!("Failed to instantiate erasure coding: {error}"))?;
 
     // TODO: move this service code into its own function, in a new library part of this crate
-    let (dsn_node, mut dsn_node_runner, node_client) = dsn::configure_network(dsn_options).await?;
+    let (dsn_node, mut dsn_node_runner, node_client) = configure_network(dsn_options).await?;
     let dsn_fut = dsn_node_runner.run();
 
     let piece_getter = DsnPieceGetter::new(
