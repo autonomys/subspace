@@ -638,17 +638,11 @@ where
             }));
         // Download several batches concurrently to make sure slow tail of one is compensated by
         // another
-        let mut downloading_pieces_stream =
-            downloading_pieces_stream.buffer_unordered(SYNC_CONCURRENT_BATCHES);
-        // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
-        // Simply drain everything
-        // .for_each(|()| async {})
-
-        // TODO: Remove once https://github.com/rust-lang/rust/issues/64650 is resolved
-        while let Some(()) = downloading_pieces_stream.next().await {
+        downloading_pieces_stream
+            .buffer_unordered(SYNC_CONCURRENT_BATCHES)
             // Simply drain everything
-        }
-        drop(downloading_pieces_stream);
+            .for_each(|()| async {})
+            .await;
 
         *self.piece_caches.write().await = caches.into_inner();
         self.handlers.progress.call_simple(&100.0);

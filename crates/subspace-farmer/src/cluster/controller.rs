@@ -312,7 +312,7 @@ impl PieceGetter for ClusterPieceGetter {
         let fut = async move {
             let tx = &tx;
 
-            let mut getting_from_piece_cache = cached_pieces_by_cache_id
+            cached_pieces_by_cache_id
                 .into_iter()
                 .map(|(piece_cache_id, offsets)| {
                     let piece_indices_to_get = &piece_indices_to_get;
@@ -363,16 +363,10 @@ impl PieceGetter for ClusterPieceGetter {
                         }
                     }
                 })
-                .collect::<FuturesUnordered<_>>();
-            // TODO: Can't use this due to https://github.com/rust-lang/rust/issues/64650
-            // Simply drain everything
-            // .for_each(|()| async {})
-
-            // TODO: Remove once https://github.com/rust-lang/rust/issues/64650 is resolved
-            while let Some(()) = getting_from_piece_cache.next().await {
+                .collect::<FuturesUnordered<_>>()
                 // Simply drain everything
-            }
-            drop(getting_from_piece_cache);
+                .for_each(|()| async {})
+                .await;
 
             let mut piece_indices_to_get = piece_indices_to_get.into_inner();
             if piece_indices_to_get.is_empty() {
