@@ -294,6 +294,15 @@ where
     } = sector_to_plot;
     trace!("Preparing to plot sector");
 
+    // Inform others that this sector is being modified
+    {
+        let mut sectors_being_modified = sectors_being_modified.write().await;
+        if !sectors_being_modified.insert(sector_index) {
+            debug!("Skipped sector plotting, it is already in progress");
+            return PlotSingleSectorResult::Skipped;
+        }
+    }
+
     let maybe_old_sector_metadata = sectors_metadata
         .read()
         .await
@@ -384,7 +393,6 @@ where
                 plot_file,
                 metadata_file,
                 handlers,
-                sectors_being_modified,
                 global_mutex,
                 progress_receiver,
                 metrics,
@@ -492,7 +500,6 @@ async fn plot_single_sector_internal(
     plot_file: &Arc<DirectIoFile>,
     metadata_file: &Arc<DirectIoFile>,
     handlers: &Handlers,
-    sectors_being_modified: &AsyncRwLock<HashSet<SectorIndex>>,
     global_mutex: &AsyncMutex<()>,
     mut progress_receiver: mpsc::Receiver<SectorPlottingProgress>,
     metrics: &Option<Arc<SingleDiskFarmMetrics>>,
@@ -568,9 +575,6 @@ async fn plot_single_sector_internal(
             return Ok(Err(PlottingError::LowLevel(error)));
         }
     };
-
-    // Inform others that this sector is being modified
-    sectors_being_modified.write().await.insert(sector_index);
 
     {
         // Take mutex briefly to make sure writing is allowed right now
