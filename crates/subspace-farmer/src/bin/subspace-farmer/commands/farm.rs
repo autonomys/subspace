@@ -252,6 +252,15 @@ pub(crate) struct FarmingArgs {
     #[cfg(feature = "rocm")]
     #[clap(flatten)]
     rocm_plotting_options: RocmPlottingOptions,
+    /// How many sectors a will be plotted concurrently per farm.
+    ///
+    /// Defaults to 4, but can be decreased if there is a large number of farms available to
+    /// decrease peak memory usage, especially with slow disks.
+    ///
+    /// Increasing this value is not recommended and can result in excessive RAM usage due to more
+    /// sectors being stuck in-flight if writes to farm disk are too slow.
+    #[arg(long, default_value = "4")]
+    max_plotting_sectors_per_farm: NonZeroUsize,
     /// Enable plot cache.
     ///
     /// Plot cache uses unplotted space as additional cache improving plotting speeds, especially
@@ -311,6 +320,7 @@ where
         cuda_plotting_options,
         #[cfg(feature = "rocm")]
         rocm_plotting_options,
+        max_plotting_sectors_per_farm,
         plot_cache,
         disable_farm_locking,
         create,
@@ -581,6 +591,7 @@ where
                             farming_thread_pool_size,
                             plotting_delay: Some(plotting_delay_receiver),
                             global_mutex,
+                            max_plotting_sectors_per_farm,
                             disable_farm_locking,
                             read_sector_record_chunks_mode: disk_farm
                                 .read_sector_record_chunks_mode,
