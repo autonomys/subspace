@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use crate::protocols::reserved_peers::{Behaviour, Config};
 use futures::{select, FutureExt};
 use libp2p::core::transport::MemoryTransport;
