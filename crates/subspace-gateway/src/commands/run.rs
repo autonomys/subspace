@@ -22,6 +22,9 @@ use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
 use subspace_kzg::Kzg;
 use tracing::info;
 
+/// The default size limit, based on the maximum block size in some domains.
+pub const DEFAULT_MAX_SIZE: usize = 5 * 1024 * 1024;
+
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub(crate) struct RunOptions {
@@ -39,13 +42,17 @@ pub(crate) struct GatewayOptions {
     #[arg(long, verbatim_doc_comment)]
     dev: bool,
 
+    /// The maximum object size to fetch.
+    /// Larger objects will return an error.
+    #[arg(long, default_value_t = DEFAULT_MAX_SIZE)]
+    max_size: usize,
+
     #[clap(flatten)]
     dsn_options: NetworkArgs,
 
     /// Options for RPC
     #[clap(flatten)]
     rpc_options: RpcOptions<RPC_DEFAULT_PORT>,
-    // TODO: maximum object size
 }
 
 /// Default run command for gateway
@@ -56,6 +63,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
         gateway:
             GatewayOptions {
                 dev,
+                max_size,
                 mut dsn_options,
                 rpc_options,
             },
@@ -87,7 +95,7 @@ pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
         dsn_node.clone(),
         SegmentCommitmentPieceValidator::new(dsn_node, node_client, kzg),
     );
-    let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, None);
+    let object_fetcher = ObjectFetcher::new(piece_getter, erasure_coding, Some(max_size));
 
     let rpc_api = SubspaceGatewayRpc::new(SubspaceGatewayRpcConfig { object_fetcher });
     let rpc_handle = launch_rpc_server(rpc_api, rpc_options).await?;
