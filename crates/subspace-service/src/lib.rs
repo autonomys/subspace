@@ -39,14 +39,13 @@ mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
 use crate::domains::request_handler::LastDomainBlockERRequestHandler;
-use crate::domains::snap_sync_orchestrator::{create_target_block_provider, SnapSyncOrchestrator};
+use crate::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
 pub use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::snap_sync::snap_sync;
-pub use crate::sync_from_dsn::snap_sync::SnapSyncTargetBlockProvider;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::xdm_gossip_peers_set_config;
@@ -1095,7 +1094,8 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
-        create_target_block_provider(snap_sync_orchestrator.clone()),
+        snap_sync_orchestrator
+            .map(|orchestrator| orchestrator.consensus_snap_sync_target_block_receiver()),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(

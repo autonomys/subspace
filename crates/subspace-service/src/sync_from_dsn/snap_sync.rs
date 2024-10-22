@@ -3,7 +3,6 @@ use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use crate::utils::wait_for_block_import;
-use async_trait::async_trait;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
@@ -30,23 +29,9 @@ use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
+use tokio::sync::broadcast::Receiver;
 use tokio::time::sleep;
 use tracing::{debug, error, warn};
-
-/// Provides target block number for snap-sync (blocking operation).
-#[async_trait]
-pub trait SnapSyncTargetBlockProvider: Send + Sync {
-    async fn target_block(&self) -> Option<BlockNumber>;
-}
-
-pub(crate) struct DefaultTargetBlockProvider;
-
-#[async_trait]
-impl SnapSyncTargetBlockProvider for DefaultTargetBlockProvider {
-    async fn target_block(&self) -> Option<BlockNumber> {
-        None
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn snap_sync<Block, AS, Client, PG>(
@@ -60,7 +45,7 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     sync_service: Arc<SyncingService<Block>>,
     network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
-    target_block_provider: Arc<dyn SnapSyncTargetBlockProvider>,
+    target_block_receiver: Option<Receiver<BlockNumber>>,
 ) where
     Block: BlockT,
     AS: AuxStore,
@@ -82,7 +67,21 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
-        let target_block = target_block_provider.target_block().await;
+        let target_block = if let Some(mut target_block_receiver) = target_block_receiver {
+            let target_block_result = target_block_receiver.recv().await;
+            if let Ok(target_block) = target_block_result.clone() {
+                Some(target_block)
+            } else {
+                error!(
+                    ?target_block_result,
+                    "Snap sync failed: can't obtain target block."
+                );
+
+                return;
+            }
+        } else {
+            None
+        };
 
         debug!("Snap sync target block: {:?}", target_block);
 
