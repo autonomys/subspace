@@ -22,6 +22,7 @@ use std::num::NonZeroUsize;
 use std::pin::pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
@@ -454,12 +455,19 @@ where
                         SectorPlottingProgress::Finished {
                             plotted_sector,
                             time: start.elapsed(),
-                            sector: Box::pin(stream::once(async move { Ok(sector) })),
+                            sector: Box::pin({
+                                let mut sector = Some(Ok(sector));
+
+                                stream::poll_fn(move |_cx| {
+                                    // Just so that permit is dropped with stream itself
+                                    let _downloading_permit = &downloading_permit;
+
+                                    Poll::Ready(sector.take())
+                                })
+                            }),
                         },
                     )
                     .await;
-
-                drop(downloading_permit);
             }
         };
 
