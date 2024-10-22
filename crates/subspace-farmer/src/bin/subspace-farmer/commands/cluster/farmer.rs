@@ -94,6 +94,15 @@ pub(super) struct FarmerArgs {
     /// limited to 32 threads.
     #[arg(long)]
     farming_thread_pool_size: Option<NonZeroUsize>,
+    /// How many sectors a will be plotted concurrently per farm.
+    ///
+    /// Defaults to 4, but can be decreased if there is a large number of farms available to
+    /// decrease peak memory usage, especially with slow disks.
+    ///
+    /// Increasing this value is not recommended and can result in excessive RAM usage due to more
+    /// sectors being stuck in-flight if writes to farm disk are too slow.
+    #[arg(long, default_value = "4")]
+    max_plotting_sectors_per_farm: NonZeroUsize,
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
     disable_farm_locking: bool,
@@ -134,6 +143,7 @@ where
         no_info,
         sector_encoding_concurrency,
         farming_thread_pool_size,
+        max_plotting_sectors_per_farm,
         disable_farm_locking,
         create,
         exit_on_farm_error,
@@ -262,6 +272,7 @@ where
                             farming_thread_pool_size,
                             plotting_delay: None,
                             global_mutex,
+                            max_plotting_sectors_per_farm,
                             disable_farm_locking,
                             read_sector_record_chunks_mode: disk_farm
                                 .read_sector_record_chunks_mode,

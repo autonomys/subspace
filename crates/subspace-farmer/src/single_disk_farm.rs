@@ -58,6 +58,7 @@ use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr;
@@ -301,6 +302,8 @@ where
     /// that those operations that are very sensitive (like proving) have all the resources
     /// available to them for the highest probability of success
     pub global_mutex: Arc<AsyncMutex<()>>,
+    /// How many sectors a will be plotted concurrently per farm
+    pub max_plotting_sectors_per_farm: NonZeroUsize,
     /// Disable farm locking, for example if file system doesn't support it
     pub disable_farm_locking: bool,
     /// Explicit mode to use for reading of sector record chunks instead of doing internal
@@ -845,6 +848,7 @@ impl SingleDiskFarm {
             farming_thread_pool_size,
             plotting_delay,
             global_mutex,
+            max_plotting_sectors_per_farm,
             disable_farm_locking,
             read_sector_record_chunks_mode,
             faster_read_sector_record_chunks_mode_barrier,
@@ -1031,6 +1035,7 @@ impl SingleDiskFarm {
                         plotter,
                         metrics,
                     },
+                    max_plotting_sectors_per_farm,
                 };
 
                 let plotting_fut = async {
