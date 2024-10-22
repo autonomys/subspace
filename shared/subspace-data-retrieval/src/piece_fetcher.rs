@@ -57,7 +57,7 @@ where
                 }
                 Ok(None) => {
                     trace!(?piece_index, "Piece not found");
-                    Err(Error::PieceGetterNotFound {
+                    Err(Error::PieceNotFound {
                         piece_index: *piece_index,
                     }
                     .into())

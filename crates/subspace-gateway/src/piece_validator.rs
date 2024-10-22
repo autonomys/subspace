@@ -1,4 +1,4 @@
-//! Farmer-specific validator for pieces retrieved from the network
+//! Gateway-specific validator for pieces retrieved from the network.
 
 use crate::node_client::NodeClient;
 use async_trait::async_trait;
@@ -10,7 +10,7 @@ use subspace_networking::Node;
 use subspace_verification::is_piece_valid;
 use tracing::{error, warn};
 
-/// Farmer-specific validator for pieces retrieved from the network.
+/// Gateway-specific validator for pieces retrieved from the network.
 ///
 /// Implements [`PieceValidator`].
 #[derive(Debug, Clone)]
@@ -31,6 +31,7 @@ impl<NC> SegmentCommitmentPieceValidator<NC> {
     }
 }
 
+// TODO: unify with the farmer's SegmentCommitmentPieceValidator, based on a common NodeClient trait.
 #[async_trait]
 impl<NC> PieceValidator for SegmentCommitmentPieceValidator<NC>
 where
@@ -90,7 +91,7 @@ where
                     "Received invalid piece from peer"
                 );
 
-                // We don't care about result here
+                // We don't care about the result here
                 let _ = self.dsn_node.ban_peer(source_peer_id).await;
                 None
             }
