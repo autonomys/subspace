@@ -31,7 +31,7 @@ impl Serialize for PosProof {
             struct SerializeWith<'a> {
                 values: &'a [u8],
             }
-            impl<'a> Serialize for SerializeWith<'a> {
+            impl Serialize for SerializeWith<'_> {
                 fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
                 where
                     S: Serializer,

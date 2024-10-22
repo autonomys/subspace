@@ -15,7 +15,7 @@ where
     hasher: blake3::Hasher,
 }
 
-impl<'a, O> Drop for Blake3ChecksumOutput<'a, O>
+impl<O> Drop for Blake3ChecksumOutput<'_, O>
 where
     O: Output + ?Sized,
 {
@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<'a, O> Output for Blake3ChecksumOutput<'a, O>
+impl<O> Output for Blake3ChecksumOutput<'_, O>
 where
     O: Output + ?Sized,
 {
@@ -59,7 +59,7 @@ where
     hasher: blake3::Hasher,
 }
 
-impl<'a, I> Input for Blake3ChecksumInput<'a, I>
+impl<I> Input for Blake3ChecksumInput<'_, I>
 where
     I: Input,
 {

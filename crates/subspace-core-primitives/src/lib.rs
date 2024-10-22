@@ -20,7 +20,6 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(
     array_chunks,
-    const_option,
     const_trait_impl,
     const_try,
     new_zeroed_alloc,

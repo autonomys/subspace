@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use futures::channel::oneshot;
 use futures::{select, FutureExt, StreamExt};
 use libp2p::metrics::Metrics;

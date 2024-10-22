@@ -1,10 +1,4 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
 #![feature(
-    const_option,
     duration_constructors,
     extract_if,
     hash_extract_if,

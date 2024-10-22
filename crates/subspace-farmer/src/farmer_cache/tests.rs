@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use crate::disk_piece_cache::DiskPieceCache;
 use crate::farmer_cache::{decode_piece_index_from_record_key, FarmerCache};
 use crate::node_client::NodeClient;

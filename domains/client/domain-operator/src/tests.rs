@@ -1,9 +1,3 @@
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
