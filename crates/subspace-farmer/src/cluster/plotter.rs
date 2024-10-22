@@ -934,8 +934,6 @@ async fn send_publish_progress(
                 }
             }
 
-            response_sender.close_channel();
-
             return;
         }
         SectorPlottingProgress::Error { error } => ClusterSectorPlottingProgress::Error { error },
