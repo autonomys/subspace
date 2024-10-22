@@ -70,7 +70,7 @@ pub struct LeafDataV0<BlockNumber, Hash> {
 /// The verifier is not required to contains any the MMR offchain data but this proof
 /// will be expired after `N` blocks where `N` is the number of MMR root stored in the
 // consensus chain runtime.
-#[derive(Debug, Encode, Decode, Eq, PartialEq, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
 pub struct ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash> {
     /// Consensus block info from which this proof was generated.
     pub consensus_block_number: CBlockNumber,
@@ -79,20 +79,6 @@ pub struct ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash> {
     pub opaque_mmr_leaf: EncodableOpaqueLeaf,
     /// MMR proof for the leaf above.
     pub proof: MmrProof<MmrHash>,
-}
-
-// TODO: update upstream `EncodableOpaqueLeaf` to derive clone.
-impl<CBlockNumber: Clone, CBlockHash: Clone, MmrHash: Clone> Clone
-    for ConsensusChainMmrLeafProof<CBlockNumber, CBlockHash, MmrHash>
-{
-    fn clone(&self) -> Self {
-        Self {
-            consensus_block_number: self.consensus_block_number.clone(),
-            consensus_block_hash: self.consensus_block_hash.clone(),
-            opaque_mmr_leaf: EncodableOpaqueLeaf(self.opaque_mmr_leaf.0.clone()),
-            proof: self.proof.clone(),
-        }
-    }
 }
 
 /// Trait to verify MMR proofs
