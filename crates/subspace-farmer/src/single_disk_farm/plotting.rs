@@ -6,7 +6,7 @@ use crate::single_disk_farm::metrics::{SectorState, SingleDiskFarmMetrics};
 use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
-use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock, Semaphore};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -14,6 +14,7 @@ use parity_scale_codec::Encode;
 use std::collections::HashSet;
 use std::future::{pending, Future};
 use std::io;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::pin::pin;
 use std::sync::Arc;
@@ -100,6 +101,7 @@ pub(super) struct PlottingOptions<'a, NC> {
     pub(super) sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
     pub(super) sector_plotting_options: SectorPlottingOptions<'a, NC>,
+    pub(super) max_plotting_sectors_per_farm: NonZeroUsize,
 }
 
 /// Starts plotting process.
@@ -118,8 +120,10 @@ where
         sectors_being_modified,
         mut sectors_to_plot_receiver,
         sector_plotting_options,
+        max_plotting_sectors_per_farm,
     } = plotting_options;
 
+    let plotting_semaphore = Semaphore::new(max_plotting_sectors_per_farm.get());
     let mut sectors_being_plotted = FuturesOrdered::new();
 
     // Wait for new sectors to plot from `sectors_to_plot_receiver` and wait for sectors that
@@ -137,6 +141,7 @@ where
                     &sector_plotting_options,
                     sectors_metadata,
                     sectors_being_modified,
+                    &plotting_semaphore,
                 )
                     .instrument(info_span!("", %sector_index))
                     .fuse();
@@ -269,6 +274,7 @@ async fn plot_single_sector<'a, NC>(
     sector_plotting_options: &'a SectorPlottingOptions<'a, NC>,
     sectors_metadata: &'a AsyncRwLock<Vec<SectorMetadataChecksummed>>,
     sectors_being_modified: &'a AsyncRwLock<HashSet<SectorIndex>>,
+    plotting_semaphore: &'a Semaphore,
 ) -> PlotSingleSectorResult<impl Future<Output = Result<SectorPlottingResult, PlottingError>> + 'a>
 where
     NC: NodeClient,
@@ -302,6 +308,8 @@ where
             return PlotSingleSectorResult::Skipped;
         }
     }
+
+    let plotting_permit = plotting_semaphore.acquire().await;
 
     let maybe_old_sector_metadata = sectors_metadata
         .read()
@@ -482,6 +490,8 @@ where
         handlers
             .sector_update
             .call_simple(&(sector_index, sector_state));
+
+        drop(plotting_permit);
 
         Ok(SectorPlottingResult {
             sector_metadata,
