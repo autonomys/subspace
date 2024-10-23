@@ -515,9 +515,8 @@ pub(crate) fn do_slash_operator<T: Config>(
 mod tests {
     use crate::bundle_storage_fund::STORAGE_FEE_RESERVE;
     use crate::pallet::{
-        Deposits, DomainStakingSummary, LastEpochStakingDistribution,
-        LatestConfirmedDomainExecutionReceipt, NominatorCount, OperatorIdOwner, OperatorSigningKey,
-        Operators, Withdrawals,
+        Deposits, DomainStakingSummary, HeadDomainNumber, LastEpochStakingDistribution,
+        NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
@@ -528,7 +527,7 @@ mod tests {
         do_finalize_domain_current_epoch, operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, Test};
-    use crate::{BalanceOf, Config, ExecutionReceiptOf, HoldIdentifier, NominatorId};
+    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     #[cfg(not(feature = "std"))]
     use alloc::vec;
     use codec::Encode;
@@ -536,8 +535,7 @@ mod tests {
     use frame_support::traits::fungible::InspectHold;
     use sp_core::{Pair, U256};
     use sp_domains::{
-        BlockFees, DomainId, OperatorPair, OperatorRewardSource,
-        OperatorSigningKeyProofOfOwnershipData, Transfers,
+        DomainId, OperatorPair, OperatorRewardSource, OperatorSigningKeyProofOfOwnershipData,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Percent};
@@ -616,48 +614,16 @@ mod tests {
             }
 
             // de-register operator
-            let domain_block_number = 100;
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
-                domain_id,
-                ExecutionReceiptOf::<Test> {
-                    domain_block_number,
-                    domain_block_hash: Default::default(),
-                    domain_block_extrinsic_root: Default::default(),
-                    parent_domain_block_receipt_hash: Default::default(),
-                    consensus_block_number: Default::default(),
-                    consensus_block_hash: Default::default(),
-                    inboxed_bundles: vec![],
-                    final_state_root: Default::default(),
-                    execution_trace: vec![],
-                    execution_trace_root: Default::default(),
-                    block_fees: BlockFees::default(),
-                    transfers: Transfers::default(),
-                },
-            );
+            let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
             // finalize and add to pending operator unlocks
             do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-            // staking withdrawal is 5 blocks,
-            // to unlock funds, confirmed block should be atleast 105
-            let domain_block_number = 105;
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+            // Update `HeadDomainNumber` to ensure unlock success
+            HeadDomainNumber::<Test>::set(
                 domain_id,
-                ExecutionReceiptOf::<Test> {
-                    domain_block_number,
-                    domain_block_hash: Default::default(),
-                    domain_block_extrinsic_root: Default::default(),
-                    parent_domain_block_receipt_hash: Default::default(),
-                    consensus_block_number: Default::default(),
-                    consensus_block_hash: Default::default(),
-                    inboxed_bundles: vec![],
-                    final_state_root: Default::default(),
-                    execution_trace: vec![],
-                    execution_trace_root: Default::default(),
-                    block_fees: BlockFees::default(),
-                    transfers: Transfers::default(),
-                },
+                head_domain_number + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
             );
 
             for (nominator_id, _) in nominators {
