@@ -22,7 +22,7 @@
 //!
 //! All of the modules here are crucial for consensus, open each module for specific details.
 
-#![feature(const_option, let_chains, try_blocks)]
+#![feature(let_chains, try_blocks)]
 #![feature(duration_constructors)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

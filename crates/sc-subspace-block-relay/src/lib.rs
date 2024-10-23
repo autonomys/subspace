@@ -1,7 +1,5 @@
 //! Block relay implementation.
 
-#![feature(const_option)]
-
 mod consensus;
 mod protocol;
 mod types;

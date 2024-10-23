@@ -1,11 +1,5 @@
 //! Subspace gateway implementation.
 
-// TODO: Remove
-#![allow(
-    clippy::needless_return,
-    reason = "https://github.com/rust-lang/rust-clippy/issues/13458"
-)]
-
 mod commands;
 mod node_client;
 mod piece_getter;

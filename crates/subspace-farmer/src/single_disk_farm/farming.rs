@@ -99,7 +99,7 @@ where
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
-impl<'a, 'b, PosTable> Clone for PlotAuditOptions<'a, 'b, PosTable>
+impl<PosTable> Clone for PlotAuditOptions<'_, '_, PosTable>
 where
     PosTable: Table,
 {
@@ -109,7 +109,7 @@ where
     }
 }
 
-impl<'a, 'b, PosTable> Copy for PlotAuditOptions<'a, 'b, PosTable> where PosTable: Table {}
+impl<PosTable> Copy for PlotAuditOptions<'_, '_, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
 #[derive(Debug)]
@@ -127,6 +127,7 @@ where
     }
 
     /// Audit this plot
+    #[allow(clippy::type_complexity)]
     pub fn audit<'b, PosTable>(
         &'a self,
         options: PlotAuditOptions<'a, 'b, PosTable>,

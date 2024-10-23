@@ -399,7 +399,7 @@ impl<'a> From<&'a VerifySolutionParams> for WrappedVerifySolutionParams<'a> {
     }
 }
 
-impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
+impl PassBy for WrappedVerifySolutionParams<'_> {
     type PassBy = pass_by::Codec<Self>;
 }
 

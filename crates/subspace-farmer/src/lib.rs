@@ -3,7 +3,6 @@
     array_windows,
     assert_matches,
     btree_extract_if,
-    const_option,
     duration_constructors,
     exact_size_is_empty,
     fmt_helpers_for_derive,
