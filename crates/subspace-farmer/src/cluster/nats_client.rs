@@ -66,8 +66,11 @@ pub trait GenericRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
 pub trait GenericStreamRequest: Encode + Decode + fmt::Debug + Send + Sync + 'static {
     /// Request subject with optional `*` in place of application instance to receive the request
     const SUBJECT: &'static str;
-    /// Response type that corresponds to this stream request. These responses are send as a stream
-    /// of messages.
+    /// Response type that corresponds to this stream request.
+    ///
+    /// These responses are send as a stream of messages, each message must fit into NATS message,
+    /// [`NatsClient::approximate_max_message_size()`] can be used to estimate appropriate message
+    /// size in case chunking is needed.
     type Response: Encode + Decode + fmt::Debug + Send + Sync + 'static;
 }
 
@@ -821,8 +824,8 @@ impl NatsClient {
             }
         };
         let max_message_size = self.inner.max_message_size;
-        let max_responses_per_message =
-            self.approximate_max_message_size() / first_element.encoded_size();
+        let approximate_max_message_size = self.approximate_max_message_size();
+        let max_responses_per_message = approximate_max_message_size / first_element.encoded_size();
 
         let ack_subject = format!("stream-response-ack.{}", Ulid::new());
         let mut ack_subscription = match self.subscribe(ack_subject.clone()).await {
@@ -853,15 +856,14 @@ impl NatsClient {
 
         loop {
             // Try to fill the buffer
-            let mut local_response_stream = response_stream
-                .by_ref()
-                .take(max_responses_per_message - buffer.len());
             if buffer.is_empty() {
-                if let Some(element) = local_response_stream.next().await {
+                if let Some(element) = response_stream.next().await {
                     buffer.push_back(element);
                 }
             }
-            while let Some(element) = local_response_stream.next().now_or_never().flatten() {
+            while buffer.encoded_size() < approximate_max_message_size
+                && let Some(element) = response_stream.next().now_or_never().flatten()
+            {
                 buffer.push_back(element);
             }
 
