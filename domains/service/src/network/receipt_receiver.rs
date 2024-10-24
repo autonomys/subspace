@@ -59,10 +59,8 @@ where
 {
     async fn get_execution_receipt(
         &self,
-        block_hash: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
-        self.get_last_confirmed_domain_block_receipt(block_hash)
-            .await
+        self.get_last_confirmed_domain_block_receipt().await
     }
 }
 
@@ -110,7 +108,6 @@ where
     /// Returns execution receipts for the last confirmed domain block.
     pub async fn get_last_confirmed_domain_block_receipt(
         &self,
-        block_hash: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
         let info = self.client.info();
         let protocol_name = generate_protocol_name(info.genesis_hash, self.fork_id.as_deref());
@@ -151,9 +148,8 @@ where
                     continue 'peers;
                 }
 
-                let request = LastConfirmedBlockRequest::<CBlock> {
+                let request = LastConfirmedBlockRequest {
                     domain_id: self.domain_id,
-                    block_hash,
                 };
 
                 let response = send_request::<NR, CBlock, Block::Header>(
@@ -166,17 +162,22 @@ where
 
                 match response {
                     Ok(response) => {
-                        trace!(%attempt, "Response from a peer {peer_id},",);
+                        trace!(
+                            %attempt,
+                            receipts=response.last_confirmed_block_receipts.len(),
+                            "Response from a peer {peer_id},"
+                        );
 
-                        let receipt = response.last_confirmed_block_receipt;
-                        let receipt_hash = KeccakHasher::hash(&receipt.encode());
+                        for receipt in response.last_confirmed_block_receipts.into_iter() {
+                            let receipt_hash = KeccakHasher::hash(&receipt.encode());
 
-                        peers_hashes.insert(*peer_id, receipt_hash);
-                        receipts.insert(receipt_hash, receipt);
-                        receipts_hashes
-                            .entry(receipt_hash)
-                            .and_modify(|count: &mut u32| *count += 1)
-                            .or_insert(1u32);
+                            peers_hashes.insert(*peer_id, receipt_hash);
+                            receipts.insert(receipt_hash, receipt);
+                            receipts_hashes
+                                .entry(receipt_hash)
+                                .and_modify(|count: &mut u32| *count += 1)
+                                .or_insert(1u32);
+                        }
                     }
                     Err(error) => {
                         debug!(%attempt, "Domain info request failed. peer = {peer_id}: {error}");
@@ -221,7 +222,7 @@ where
 async fn send_request<NR: NetworkRequest, Block: BlockT, DomainHeader: Header>(
     protocol_name: String,
     peer_id: PeerId,
-    request: LastConfirmedBlockRequest<Block>,
+    request: LastConfirmedBlockRequest,
     network_service: &NR,
 ) -> Result<LastConfirmedBlockResponse<Block, DomainHeader>, LastConfirmedDomainBlockResponseError>
 {

@@ -1,5 +1,5 @@
 use crate::network::execution_receipt_protocol::LastDomainBlockERRequestHandler;
-use sc_client_api::{BlockBackend, BlockchainEvents, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider};
 use sc_consensus::ImportQueue;
 use sc_network::NetworkBackend;
 use sc_network_common::role::Roles;
@@ -42,7 +42,7 @@ pub fn build_network<Block, Net, TxPool, IQ, Client, CBlock, CClient, DomainHead
     Error,
 >
 where
-    Block: BlockT,
+    Block: BlockT<Header = DomainHeader>,
     CBlock: BlockT,
     Client: ProvideRuntimeApi<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
@@ -52,6 +52,7 @@ where
         + ProofProvider<Block>
         + HeaderBackend<Block>
         + BlockchainEvents<Block>
+        + AuxStore
         + 'static,
     TxPool: TransactionPool<Block = Block, Hash = <Block as BlockT>::Hash> + 'static,
     IQ: ImportQueue<Block> + 'static,
@@ -95,8 +96,12 @@ where
                 .reserved_nodes
                 .len();
 
-        let (handler, protocol_config) =
-            LastDomainBlockERRequestHandler::new::<Net>(fork_id, consensus_client, num_peer_hint);
+        let (handler, protocol_config) = LastDomainBlockERRequestHandler::new::<Net>(
+            fork_id,
+            consensus_client,
+            client.clone(),
+            num_peer_hint,
+        );
         spawn_handle.spawn(
             "last-domain-execution-receipt-request-handler",
             Some("networking"),

@@ -34,7 +34,6 @@ pub trait LastDomainBlockReceiptProvider<Block: BlockT, CBlock: BlockT>: Sync + 
     /// Returns execution receipts for the last confirmed domain block.
     async fn get_execution_receipt(
         &self,
-        block_hash: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>>;
 }
 
@@ -42,7 +41,6 @@ pub trait LastDomainBlockReceiptProvider<Block: BlockT, CBlock: BlockT>: Sync + 
 impl<Block: BlockT, CBlock: BlockT> LastDomainBlockReceiptProvider<Block, CBlock> for () {
     async fn get_execution_receipt(
         &self,
-        _: Option<CBlock::Hash>,
     ) -> Option<ExecutionReceiptFor<Block::Header, CBlock, Balance>> {
         None
     }
@@ -204,10 +202,7 @@ where
         + 'static,
     CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
 {
-    let execution_receipt_result = sync_params
-        .receipt_provider
-        .get_execution_receipt(None)
-        .await;
+    let execution_receipt_result = sync_params.receipt_provider.get_execution_receipt().await;
     debug!(
         "Snap-sync: execution receipt result - {:?}",
         execution_receipt_result

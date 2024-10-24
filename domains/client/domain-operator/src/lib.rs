@@ -100,7 +100,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, DomainId, ExecutionReceipt, OperatorId};
+use sp_domains::{Bundle, DomainId, ExecutionReceiptFor as ExecutionReceipt, OperatorId};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
@@ -110,13 +110,8 @@ use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 use subspace_service::domains::ConsensusChainSyncParams;
 
-pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
-    NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
-    Balance,
->;
+pub type ExecutionReceiptFor<Block, CBlock> =
+    ExecutionReceipt<<Block as BlockT>::Header, CBlock, Balance>;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
@@ -199,7 +194,7 @@ pub struct OperatorParams<
     pub domain_execution_receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
 }
 
-pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
+pub fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
     domain_client: &Client,
     domain_hash: Block::Hash,
     domain_number: NumberFor<Block>,
