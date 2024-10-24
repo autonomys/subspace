@@ -10,7 +10,7 @@ on:
   push:
     tags:
       - "snapshot-*"
-      - "gemini-*"
+      - "taurus-*"
 
 # Incremental compilation here isn't helpful
 env:

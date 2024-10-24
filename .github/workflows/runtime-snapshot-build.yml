@@ -9,7 +9,7 @@ on:
   push:
     tags:
       - "runtime-snapshot-*"
-      - "runtime-gemini-*"
+      - "runtime-taurus-*"
 
 jobs:
   runtime:
