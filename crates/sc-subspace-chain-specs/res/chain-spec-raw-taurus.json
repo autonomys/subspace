@@ -19,7 +19,7 @@
     "dsnBootstrapNodes": [
       "/dns/bootstrap-0.devnet.subspace.foundation/tcp/30533/p2p/12D3KooWSKAQm66N7jQme72obbPPquBSZuSqMyx5mH5ki1aZ4pGv"
     ],
-    "potExternalEntropy": null,
+    "potExternalEntropy": "00000000000000000000661e88ab45dc3b61daec5ccf3cc83532153589b133b9",
     "ss58Format": 6094,
     "tokenDecimals": 18,
     "tokenSymbol": "AI3"
