@@ -16,7 +16,7 @@
 //! Fetching objects stored in the archived history of Subspace Network.
 
 use crate::piece_fetcher::download_pieces;
-use crate::piece_getter::{BoxError, ObjectPieceGetter};
+use crate::piece_getter::ObjectPieceGetter;
 use crate::segment_fetcher::{download_segment, SegmentGetterError};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::sync::Arc;
@@ -123,7 +123,7 @@ pub enum Error {
     #[error("Getting piece caused an error: {source:?}")]
     PieceGetterError {
         #[from]
-        source: BoxError,
+        source: anyhow::Error,
     },
 
     /// Piece getter couldn't find the piece
@@ -132,9 +132,12 @@ pub enum Error {
 }
 
 /// Object fetcher for the Subspace DSN.
-pub struct ObjectFetcher {
+pub struct ObjectFetcher<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync,
+{
     /// The piece getter used to fetch pieces.
-    piece_getter: Arc<dyn ObjectPieceGetter + Send + Sync + 'static>,
+    piece_getter: Arc<PG>,
 
     /// The erasure coding configuration of those pieces.
     erasure_coding: ErasureCoding,
@@ -143,21 +146,21 @@ pub struct ObjectFetcher {
     max_object_len: usize,
 }
 
-impl ObjectFetcher {
+impl<PG> ObjectFetcher<PG>
+where
+    PG: ObjectPieceGetter + Send + Sync,
+{
     /// Create a new object fetcher with the given configuration.
     ///
     /// `max_object_len` is the amount of data bytes we'll read for a single object before giving
     /// up and returning an error, or `None` for no limit (`usize::MAX`).
-    pub fn new<PG>(
-        piece_getter: PG,
+    pub fn new(
+        piece_getter: Arc<PG>,
         erasure_coding: ErasureCoding,
         max_object_len: Option<usize>,
-    ) -> Self
-    where
-        PG: ObjectPieceGetter + Send + Sync + 'static,
-    {
+    ) -> Self {
         Self {
-            piece_getter: Arc::new(piece_getter),
+            piece_getter,
             erasure_coding,
             max_object_len: max_object_len.unwrap_or(usize::MAX),
         }
