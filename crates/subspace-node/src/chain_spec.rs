@@ -22,7 +22,7 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::DEVNET_CHAIN_SPEC;
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
@@ -30,7 +30,6 @@ use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::pot::PotKey;
-use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, HistorySeedingConfig, RewardPoint, RewardsConfig, RuntimeConfigsConfig,
@@ -85,28 +84,30 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
         let sudo_account =
             AccountId::from_ss58check("5F1XZHUSixAq58W8fstCUNtP1WDGoRpCEuLzGRDmJo32sbGc")
                 .expect("Wrong root account address");
+        let history_seeder =
+            AccountId::from_ss58check("5EXKjeN6GXua85mHygsS95UwwrnNwTTEbzeAj9nqkXrgqQp6")
+                .expect("Wrong history seeder account address");
 
-        let balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+        let balances = vec![
+            (sudo_account.clone(), 1_000 * SSC),
+            (history_seeder.clone(), SSC),
+        ];
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
             GenesisParams {
                 enable_rewards_at: EnableRewardsAt::Manually,
-                allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
-                    hex_literal::hex!(
-                        "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
-                    ),
-                )),
+                allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                 // TODO: Adjust once we bench PoT on faster hardware
-                // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
-                pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
+                // About 1s on 6.2 GHz Raptor Lake CPU (14900KS)
+                pot_slot_iterations: NonZeroU32::new(206_557_520).expect("Not zero; qed"),
                 enable_domains: false,
                 enable_dynamic_cost_of_storage: false,
                 enable_balance_transfers: false,
                 // TODO: Proper value here
                 confirmation_depth_k: 100,
                 rewards_config: RewardsConfig {
-                    remaining_issuance: 360_000_000 * SSC,
+                    remaining_issuance: 350_000_000 * SSC,
                     proposer_subsidy_points: BoundedVec::try_from(vec![
                         RewardPoint {
                             block: 0,
@@ -213,8 +214,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 ],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
-            // TODO: Proper value here
-            sudo_account.clone(),
+            history_seeder.clone(),
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
@@ -222,7 +222,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
 }
 
 pub fn taurus_config() -> Result<GenericChainSpec, String> {
-    Err("Taurus is not supported".to_string())
+    GenericChainSpec::from_json_bytes(TAURUS_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<GenericChainSpec, String> {
