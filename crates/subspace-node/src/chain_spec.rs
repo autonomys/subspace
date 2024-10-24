@@ -30,7 +30,6 @@ use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::pot::PotKey;
-//use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, HistorySeedingConfig, RewardPoint, RewardsConfig, RuntimeConfigsConfig,
@@ -91,8 +90,8 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
 
         let balances = vec![
             (sudo_account.clone(), 1_000 * SSC),
-            (history_seeder.clone(), 1 * SSC)
-            ];
+            (history_seeder.clone(), SSC),
+        ];
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,
