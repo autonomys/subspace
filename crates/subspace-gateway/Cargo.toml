@@ -39,3 +39,6 @@ thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "signal", "macros"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tokio_unstable)', 'cfg(tokio_taskdump)'] }

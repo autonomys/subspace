@@ -98,3 +98,6 @@ runtime-benchmarks = [
     "subspace-runtime/runtime-benchmarks",
     "subspace-service/runtime-benchmarks",
 ]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tokio_unstable)', 'cfg(tokio_taskdump)'] }

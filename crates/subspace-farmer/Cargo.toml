@@ -100,3 +100,6 @@ binary = [
     "dep:supports-color",
     "dep:tracing-subscriber",
 ]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tokio_unstable)', 'cfg(tokio_taskdump)'] }
