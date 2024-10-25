@@ -9,11 +9,13 @@
 mod commands;
 mod utils;
 
+use crate::utils::spawn_shutdown_watchdog;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_proof_of_space::chia::ChiaTable;
+use tokio::runtime::Handle;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
@@ -97,9 +99,18 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         Command::Farm(farming_args) => {
+            // The async runtime can wait forever for tasks to yield or finish.
+            // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
+            // or when the user sends a second Ctrl-C.
+            scopeguard::defer! {
+                spawn_shutdown_watchdog(Handle::current());
+            };
             commands::farm::farm::<PosTable>(farming_args).await?;
         }
         Command::Cluster(cluster_args) => {
+            scopeguard::defer! {
+                spawn_shutdown_watchdog(Handle::current());
+            };
             commands::cluster::cluster::<PosTable>(cluster_args).await?;
         }
         Command::Benchmark(benchmark_args) => {

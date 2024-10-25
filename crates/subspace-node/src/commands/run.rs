@@ -8,7 +8,7 @@ use crate::commands::run::consensus::{
 use crate::commands::run::domain::{
     create_domain_configuration, run_domain, DomainOptions, DomainStartOptions,
 };
-use crate::commands::shared::init_logger;
+use crate::commands::shared::{init_logger, spawn_shutdown_watchdog};
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
@@ -27,6 +27,7 @@ use std::env;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
+use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, warn};
 
 /// Options for running a node
@@ -74,6 +75,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     raise_fd_limit();
 
     let signals = Signals::capture()?;
+    // The async runtime can wait forever for tasks to yield or finish.
+    // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
+    // or when the user sends a second Ctrl-C.
+    scopeguard::defer! {
+        spawn_shutdown_watchdog(Handle::current());
+    };
 
     let RunOptions {
         consensus,
