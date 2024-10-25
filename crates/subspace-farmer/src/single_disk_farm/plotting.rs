@@ -12,7 +12,7 @@ use futures::stream::FuturesOrdered;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::Encode;
 use std::collections::HashSet;
-use std::future::{pending, Future};
+use std::future::Future;
 use std::io;
 use std::num::NonZeroUsize;
 use std::ops::Range;
@@ -167,7 +167,7 @@ where
                             );
                             break;
                         }
-                        maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+                        maybe_sector_plotting_result = sectors_being_plotted.select_next_some() => {
                             process_plotting_result(
                                 maybe_sector_plotting_result?,
                                 sectors_metadata,
@@ -179,7 +179,7 @@ where
                     }
                 }
             }
-            maybe_sector_plotting_result = maybe_wait_futures_ordered(&mut sectors_being_plotted).fuse() => {
+            maybe_sector_plotting_result = sectors_being_plotted.select_next_some() => {
                 process_plotting_result(
                     maybe_sector_plotting_result?,
                     sectors_metadata,
@@ -242,19 +242,6 @@ async fn process_plotting_result(
     }
 
     Ok(())
-}
-
-/// Wait for next element in `FuturesOrdered`, but only if it is not empty. This avoids calling
-/// `.poll_next()` if `FuturesOrdered` is already empty, so it can be reused indefinitely
-async fn maybe_wait_futures_ordered<F>(stream: &mut FuturesOrdered<F>) -> F::Output
-where
-    F: Future,
-{
-    if stream.is_empty() {
-        pending().await
-    } else {
-        stream.next().await.expect("Not empty; qed")
-    }
 }
 
 enum PlotSingleSectorResult<F> {
