@@ -26,7 +26,6 @@ use sp_messenger::MessengerApi;
 use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::pin::Pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use tracing::{debug, error, info, trace};
@@ -130,8 +129,8 @@ where
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
-        IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
-        CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
+        IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + Unpin + 'static,
+        CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + Unpin + 'static,
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
         CNR: NetworkRequest + Send + Sync + 'static,
@@ -277,8 +276,8 @@ where
                             };
 
                         // Wait for Subspace block importing notifications
-                        let mut block_importing_notification_stream =
-                            Box::pin(params.operator_streams.block_importing_notification_stream);
+                        let block_importing_notification_stream =
+                            &mut params.operator_streams.block_importing_notification_stream;
 
                         while let Some((block_number, mut acknowledgement_sender)) =
                             block_importing_notification_stream.next().await
@@ -297,8 +296,8 @@ where
                         }
 
                         // Drain Substrate block imported notifications
-                        let mut imported_block_notification_stream =
-                            Box::pin(params.operator_streams.imported_block_notification_stream);
+                        let imported_block_notification_stream =
+                            &mut params.operator_streams.imported_block_notification_stream;
 
                         while let Some(import_notification) =
                             imported_block_notification_stream.next().await
@@ -309,18 +308,6 @@ where
                             if block_number >= target_block_number.into() {
                                 break;
                             }
-                        }
-
-                        // Restore parameters
-                        unsafe {
-                            params.operator_streams.block_importing_notification_stream =
-                                Box::<IBNS>::into_inner(Pin::into_inner_unchecked(
-                                    block_importing_notification_stream,
-                                ));
-                            params.operator_streams.imported_block_notification_stream =
-                                Box::<CIBNS>::into_inner(Pin::into_inner_unchecked(
-                                    imported_block_notification_stream,
-                                ));
                         }
                     }
 

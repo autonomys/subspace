@@ -432,14 +432,15 @@ where
         gossip_message_sink,
     } = domain_start_options;
 
-    let block_importing_notification_stream = block_importing_notification_stream.subscribe().then(
-        |block_importing_notification| async move {
+    let block_importing_notification_stream = block_importing_notification_stream
+        .subscribe()
+        .then(|block_importing_notification| async move {
             (
                 block_importing_notification.block_number,
                 block_importing_notification.acknowledgement_sender,
             )
-        },
-    );
+        })
+        .boxed();
 
     let pot_slot_info_stream = tokio_stream::StreamExt::filter_map(
         tokio_stream::wrappers::BroadcastStream::new(pot_slot_info_stream),
