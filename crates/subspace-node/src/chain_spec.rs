@@ -103,7 +103,24 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
         let history_seeder =
             AccountId::from_ss58check("5EXKjeN6GXua85mHygsS95UwwrnNwTTEbzeAj9nqkXrgqQp6")
                 .expect("Wrong history seeder account address");
+        let council_members = [
+            "5EhEcKAfGXzEkEqYdN9Ntc4f2KJrVvabWTUceCVtDPTYxVit",
+            "5G9GUNK2Vp1jgpENPmcy9TLoprkmHBTSg9bgvMa8er5ZLYjb",
+            "5CAtkaN1tDiaiuaYbxeDNNnix2WhAQxu5RobMFaiaStiCcTx",
+            "5CJ8ezmRwcNJmutA92ZmRpaL8e6BCPSdfnt3e6kZZWLAVUZK",
+            "5CiFrTxvxmehJ7okLdEc8z3cxvWfrMpShPJy9GKymRqEgF7T",
+        ]
+        .iter()
+        .map(|address| {
+            AccountId::from_ss58check(address)
+                .map_err(|_| format!("Invalid council SS58 address: {}", address))
+        })
+        .collect::<Result<Vec<AccountId>, String>>()?;
 
+        let council_config = CouncilConfig {
+            phantom: PhantomData,
+            members: council_members,
+        };
         let balances=get_genesis_allocations(GENESIS_ALLOCATIONS);
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
@@ -227,6 +244,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 ],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
+            council_config,
             history_seeder.clone(),
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
@@ -298,6 +316,7 @@ pub fn devnet_config_compiled() -> Result<GenericChainSpec, String> {
                 )?],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
+            CouncilConfig::default(),
             sudo_account.clone(),
         )?)
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
@@ -357,7 +376,8 @@ pub fn dev_config() -> Result<GenericChainSpec, String> {
                     )?],
                 },
                 CouncilDemocracyConfigParams::<BlockNumber>::fast_params(),
-                history_seeder,
+                CouncilConfig::default(),
+                history_seeder.clone(),
             )?)
             .map_err(|error| format!("Failed to serialize genesis config: {error}"))?,
         )
@@ -371,6 +391,7 @@ fn subspace_genesis_config(
     genesis_params: GenesisParams,
     genesis_domain_params: GenesisDomainParams,
     council_democracy_config_params: CouncilDemocracyConfigParams<BlockNumber>,
+    council_config: CouncilConfig,
     history_seeder_account: AccountId,
 ) -> Result<RuntimeGenesisConfig, String> {
     let GenesisParams {
@@ -426,7 +447,7 @@ fn subspace_genesis_config(
             phantom: PhantomData,
         },
         rewards: rewards_config,
-        council: CouncilConfig::default(),
+        council: council_config,
         democracy: DemocracyConfig::default(),
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
