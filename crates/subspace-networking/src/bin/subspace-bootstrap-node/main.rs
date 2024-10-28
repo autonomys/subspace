@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::panic;
+use std::process::exit;
 use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -105,6 +107,16 @@ impl KeypairOutput {
     }
 }
 
+/// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the
+/// tokio runtime waiting for stuck tasks or threads.
+fn set_exit_on_panic() {
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
+}
+
 fn init_logging() {
     // set default log to info if the RUST_LOG is not set.
     let env_filter = EnvFilter::builder()
@@ -118,6 +130,7 @@ fn init_logging() {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    set_exit_on_panic();
     init_logging();
 
     let command: Command = Command::parse();

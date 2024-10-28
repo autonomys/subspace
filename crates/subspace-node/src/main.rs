@@ -26,6 +26,7 @@ mod cli;
 mod domain;
 
 use crate::cli::{Cli, SubspaceCliPlaceholder};
+use crate::commands::set_exit_on_panic;
 use crate::domain::cli::DomainKey;
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
@@ -130,6 +131,8 @@ fn derive_pot_external_entropy(
 }
 
 fn main() -> Result<(), Error> {
+    set_exit_on_panic();
+
     match Cli::parse() {
         Cli::Run(run_options) => {
             commands::run(run_options)?;
