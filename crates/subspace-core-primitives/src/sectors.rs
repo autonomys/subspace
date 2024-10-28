@@ -45,7 +45,7 @@ impl SectorSlotChallenge {
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex"))] Blake3Hash);
+pub struct SectorId(Blake3Hash);
 
 impl AsRef<[u8]> for SectorId {
     #[inline]
