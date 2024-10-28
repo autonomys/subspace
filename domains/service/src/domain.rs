@@ -329,8 +329,8 @@ where
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
         + FraudProofApi<CBlock, Header>
         + MmrApi<CBlock, H256, NumberFor<CBlock>>,
-    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + Unpin + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + Unpin + 'static,
     NSNS: Stream<Item = (Slot, PotOutput)> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,

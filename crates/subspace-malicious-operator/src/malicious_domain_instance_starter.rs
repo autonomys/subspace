@@ -102,7 +102,8 @@ impl DomainInstanceStarter {
                     block_importing_notification.block_number,
                     block_importing_notification.acknowledgement_sender,
                 )
-            });
+            })
+            .boxed();
 
         let new_slot_notification_stream = || {
             new_slot_notification_stream
