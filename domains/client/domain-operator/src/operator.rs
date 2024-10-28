@@ -258,21 +258,16 @@ where
                     if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
                         let mut target_block_receiver =
                             snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();
-                        let target_block_result = target_block_receiver.recv().await;
 
-                        let target_block_number =
-                            if let Ok(target_block) = target_block_result.clone() {
-                                target_block
-                            } else {
-                                error!(
-                                    ?target_block_result,
-                                    "Snap sync failed: can't obtain target block."
-                                );
-
+                        let target_block_number = match target_block_receiver.recv().await {
+                            Ok(target_block) => target_block,
+                            Err(err) => {
+                                error!(?err, "Snap sync failed: can't obtain target block.");
                                 return Err(sp_consensus::Error::Other(
                                     "Snap sync failed: can't obtain target block.".into(),
                                 ));
-                            };
+                            }
+                        };
 
                         // Wait for Subspace block importing notifications
                         let block_importing_notification_stream =
