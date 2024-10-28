@@ -10,8 +10,9 @@ mod commands;
 mod utils;
 
 use clap::Parser;
-use std::fs;
 use std::path::PathBuf;
+use std::process::exit;
+use std::{fs, panic};
 use subspace_farmer::single_disk_farm::{ScrubTarget, SingleDiskFarm};
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::info;
@@ -74,6 +75,14 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Exit on panics, rather than unwinding. Unwinding can hang the tokio runtime waiting for
+    // stuck tasks or threads.
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
