@@ -204,11 +204,12 @@ pub(crate) struct FarmingArgs {
     node_rpc_url: String,
     /// Address for farming rewards
     #[arg(long, value_parser = parse_ss58_reward_address)]
-    reward_address: PublicKey,
+    reward_address: Option<PublicKey>,
     /// Percentage of allocated space dedicated for caching purposes, 99% max
     #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
     cache_percentage: NonZeroU8,
-    /// Sets some flags that are convenient during development, currently `--allow-private-ips`
+    /// Sets some flags that are convenient during development, currently `--allow-private-ips` and
+    /// `--reward-address` (if not specified explicitly)
     #[arg(long)]
     dev: bool,
     /// Run a temporary farmer with a plot size in human-readable format (e.g. 10GB, 2TiB) or
@@ -338,6 +339,21 @@ where
 
     // Override flags with `--dev`
     network_args.allow_private_ips = network_args.allow_private_ips || dev;
+    let reward_address = match reward_address {
+        Some(reward_address) => reward_address,
+        None => {
+            if dev {
+                // `//Alice`
+                PublicKey::from([
+                    0xd4, 0x35, 0x93, 0xc7, 0x15, 0xfd, 0xd3, 0x1c, 0x61, 0x14, 0x1a, 0xbd, 0x04,
+                    0xa9, 0x9f, 0xd6, 0x82, 0x2c, 0x85, 0x58, 0x85, 0x4c, 0xcd, 0xe3, 0x9a, 0x56,
+                    0x84, 0xe7, 0xa5, 0x6d, 0xa2, 0x7d,
+                ])
+            } else {
+                return Err(anyhow!("`--reward-address` is required"));
+            }
+        }
+    };
 
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()
