@@ -842,7 +842,9 @@ where
 
     select! {
         // Signal future
-        _ = signal.fuse() => {},
+        _ = signal.fuse() => {
+            info!("signal select branch")
+        },
 
         // Networking future
         _ = networking_fut.fuse() => {
@@ -859,6 +861,8 @@ where
             info!("Farmer cache worker exited.")
         },
     }
+
+    info!("end of async fn farm()");
 
     anyhow::Ok(())
 }

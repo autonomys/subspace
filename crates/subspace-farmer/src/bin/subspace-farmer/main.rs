@@ -103,9 +103,11 @@ async fn main() -> anyhow::Result<()> {
             // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
             // or when the user sends a second Ctrl-C.
             scopeguard::defer! {
+                info!("spawning watchdog");
                 spawn_shutdown_watchdog(Handle::current());
             };
             commands::farm::farm::<PosTable>(farming_args).await?;
+            info!("end of block with defer!() and farm() calls");
         }
         Command::Cluster(cluster_args) => {
             scopeguard::defer! {
@@ -158,5 +160,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+
+    info!("end of tokio::main()");
     Ok(())
 }
