@@ -301,32 +301,6 @@ where
         >::execute_on_runtime_upgrade()
     }
 
-    /// Wrapped `frame_executive::Executive::execute_block_no_check`.
-    #[cfg(feature = "try-runtime")]
-    pub fn execute_block_no_check(block: BlockOf<ExecutiveConfig>) -> Weight {
-        frame_executive::Executive::<
-            ExecutiveConfig,
-            BlockOf<ExecutiveConfig>,
-            Context,
-            UnsignedValidator,
-            AllPalletsWithSystem,
-            COnRuntimeUpgrade,
-        >::execute_block_no_check(block)
-    }
-
-    /// Wrapped `frame_executive::Executive::try_runtime_upgrade`.
-    #[cfg(feature = "try-runtime")]
-    pub fn try_runtime_upgrade() -> Result<Weight, &'static str> {
-        frame_executive::Executive::<
-            ExecutiveConfig,
-            BlockOf<ExecutiveConfig>,
-            Context,
-            UnsignedValidator,
-            AllPalletsWithSystem,
-            COnRuntimeUpgrade,
-        >::try_runtime_upgrade()
-    }
-
     /// Wrapped `frame_executive::Executive::initialize_block`.
     ///
     /// Note the storage root in the end.
