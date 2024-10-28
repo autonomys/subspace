@@ -55,9 +55,6 @@ const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 /// Signing context used for creating reward signatures by farmers.
 pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 
-/// Byte length of a randomness type.
-pub const RANDOMNESS_LENGTH: usize = 32;
-
 /// Type of randomness.
 #[derive(
     Debug,
@@ -75,7 +72,7 @@ pub const RANDOMNESS_LENGTH: usize = 32;
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Randomness(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RANDOMNESS_LENGTH]);
+pub struct Randomness(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Randomness::SIZE]);
 
 impl AsRef<[u8]> for Randomness {
     #[inline]
@@ -92,6 +89,9 @@ impl AsMut<[u8]> for Randomness {
 }
 
 impl Randomness {
+    /// Size of randomness (in bytes).
+    pub const SIZE: usize = 32;
+
     /// Derive global slot challenge from global randomness.
     // TODO: Separate type for global challenge
     pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake3Hash {
@@ -129,20 +129,14 @@ pub type BlockWeight = u128;
     TypeInfo,
     Deref,
     From,
+    Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; PublicKey::SIZE]);
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl From<PublicKey> for [u8; PublicKey::SIZE] {
-    #[inline]
-    fn from(value: PublicKey) -> Self {
-        value.0
     }
 }
 
