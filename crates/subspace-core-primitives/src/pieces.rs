@@ -1,8 +1,5 @@
 //! Pieces-related data structures.
 
-#[cfg(feature = "serde")]
-mod serde;
-
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
@@ -10,6 +7,8 @@ use crate::segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentInd
 use crate::ScalarBytes;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use ::serde::{Deserializer, Serializer};
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
@@ -30,6 +29,8 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen, Outpu
 use rayon::prelude::*;
 use scale_info::build::Fields;
 use scale_info::{Path, Type, TypeInfo};
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
 
 /// Piece index in consensus
 #[derive(
@@ -607,11 +608,47 @@ impl Record {
     TypeInfo,
     MaxEncodedLen,
 )]
-#[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RecordCommitment(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RecordCommitment::SIZE],
-);
+pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RecordCommitmentBinary(#[serde(with = "BigArray")] [u8; RecordCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RecordCommitmentHex(#[serde(with = "hex")] [u8; RecordCommitment::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for RecordCommitment {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            RecordCommitmentHex(self.0).serialize(serializer)
+        } else {
+            RecordCommitmentBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for RecordCommitment {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            RecordCommitmentHex::deserialize(deserializer)?.0
+        } else {
+            RecordCommitmentBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl Default for RecordCommitment {
     #[inline]
@@ -701,11 +738,47 @@ impl RecordCommitment {
     TypeInfo,
     MaxEncodedLen,
 )]
-#[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RecordWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RecordWitness::SIZE],
-);
+pub struct RecordWitness([u8; RecordWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RecordWitnessBinary(#[serde(with = "BigArray")] [u8; RecordWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RecordWitnessHex(#[serde(with = "hex")] [u8; RecordWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for RecordWitness {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            RecordWitnessHex(self.0).serialize(serializer)
+        } else {
+            RecordWitnessBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for RecordWitness {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            RecordWitnessHex::deserialize(deserializer)?.0
+        } else {
+            RecordWitnessBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl Default for RecordWitness {
     #[inline]
@@ -898,6 +971,52 @@ impl TypeInfo for Piece {
             .composite(
                 Fields::unnamed().field(|f| f.ty::<[u8; Piece::SIZE]>().type_name("PieceArray")),
             )
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for Piece {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = match &self.0 {
+            CowBytes::Shared(bytes) => bytes.as_ref(),
+            CowBytes::Owned(bytes) => bytes.as_ref(),
+        };
+
+        if serializer.is_human_readable() {
+            hex::serde::serialize(bytes, serializer)
+        } else {
+            bytes.serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Piece {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes = if deserializer.is_human_readable() {
+            hex::serde::deserialize::<_, Vec<u8>>(deserializer).and_then(|bytes| {
+                if bytes.len() == Piece::SIZE {
+                    Ok(Bytes::from(bytes))
+                } else {
+                    Err(serde::de::Error::invalid_length(
+                        bytes.len(),
+                        &format!("Expected {} bytes", Piece::SIZE).as_str(),
+                    ))
+                }
+            })?
+        } else {
+            Bytes::deserialize(deserializer)?
+        };
+
+        Ok(Piece(CowBytes::Shared(bytes)))
     }
 }
 
