@@ -11041,6 +11041,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_bytes"
 version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12461,6 +12470,7 @@ dependencies = [
  "rayon",
  "scale-info",
  "serde",
+ "serde-big-array",
  "static_assertions",
  "uint 0.10.0",
 ]

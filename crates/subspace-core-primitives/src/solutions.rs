@@ -12,6 +12,10 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
 use static_assertions::const_assert;
 
 // TODO: Add related methods to `SolutionRange`.
@@ -75,10 +79,47 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
     From,
     Into,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RewardSignature(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RewardSignature::SIZE],
-);
+pub struct RewardSignature([u8; RewardSignature::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RewardSignatureBinary(#[serde(with = "BigArray")] [u8; RewardSignature::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RewardSignatureHex(#[serde(with = "hex")] [u8; RewardSignature::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for RewardSignature {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            RewardSignatureHex(self.0).serialize(serializer)
+        } else {
+            RewardSignatureBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for RewardSignature {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            RewardSignatureHex::deserialize(deserializer)?.0
+        } else {
+            RewardSignatureBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl AsRef<[u8]> for RewardSignature {
     #[inline]
@@ -110,10 +151,47 @@ impl RewardSignature {
     MaxEncodedLen,
 )]
 #[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ChunkWitness(
-    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; ChunkWitness::SIZE],
-);
+pub struct ChunkWitness([u8; ChunkWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct ChunkWitnessBinary(#[serde(with = "BigArray")] [u8; ChunkWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct ChunkWitnessHex(#[serde(with = "hex")] [u8; ChunkWitness::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for ChunkWitness {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            ChunkWitnessHex(self.0).serialize(serializer)
+        } else {
+            ChunkWitnessBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for ChunkWitness {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            ChunkWitnessHex::deserialize(deserializer)?.0
+        } else {
+            ChunkWitnessBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl Default for ChunkWitness {
     #[inline]

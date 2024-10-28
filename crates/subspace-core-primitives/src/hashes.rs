@@ -19,11 +19,12 @@ use crate::ScalarBytes;
 use core::array::TryFromSliceError;
 use core::fmt;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
-use hex::FromHex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
 
 /// BLAKE3 hash output transparent wrapper
 #[derive(
@@ -46,9 +47,47 @@ use serde::{Deserialize, Serialize};
     TypeInfo,
     MaxEncodedLen,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Blake3Hash::SIZE]);
+pub struct Blake3Hash([u8; Blake3Hash::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct Blake3HashBinary([u8; Blake3Hash::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct Blake3HashHex(#[serde(with = "hex")] [u8; Blake3Hash::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for Blake3Hash {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            Blake3HashHex(self.0).serialize(serializer)
+        } else {
+            Blake3HashBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Blake3Hash {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            Blake3HashHex::deserialize(deserializer)?.0
+        } else {
+            Blake3HashBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl fmt::Debug for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -67,18 +106,6 @@ impl AsMut<[u8]> for Blake3Hash {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
-    }
-}
-
-impl FromHex for Blake3Hash {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        let data = hex::decode(hex)?
-            .try_into()
-            .map_err(|_| hex::FromHexError::InvalidStringLength)?;
-
-        Ok(Self(data))
     }
 }
 

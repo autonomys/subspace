@@ -1,12 +1,15 @@
 //! Proof of space-related data structures.
 
-#[cfg(feature = "serde")]
-mod serde;
-
 use crate::hashes::{blake3_hash, Blake3Hash};
 use derive_more::{Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
 
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, From, Into)]
@@ -34,6 +37,46 @@ impl PosSeed {
     MaxEncodedLen,
 )]
 pub struct PosProof([u8; PosProof::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PosProofBinary(#[serde(with = "BigArray")] [u8; PosProof::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PosProofHex(#[serde(with = "hex")] [u8; PosProof::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PosProof {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PosProofHex(self.0).serialize(serializer)
+        } else {
+            PosProofBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PosProof {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PosProofHex::deserialize(deserializer)?.0
+        } else {
+            PosProofBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl Default for PosProof {
     #[inline]
