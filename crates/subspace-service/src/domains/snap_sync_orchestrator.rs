@@ -43,12 +43,12 @@ impl SnapSyncOrchestrator {
         );
     }
 
-    /// Returns true if domain snap sync finished.
+    /// Returns shared variable signaling domain snap sync finished.
     pub fn domain_snap_sync_finished(&self) -> Arc<AtomicBool> {
         self.domain_snap_sync_finished.clone()
     }
 
-    /// Returns true if domain snap sync finished.
+    /// Subscribes to a channel to receive target block numbers for consensus chain snap sync.
     pub fn consensus_snap_sync_target_block_receiver(&self) -> Receiver<BlockNumber> {
         self.consensus_snap_sync_target_block_tx.subscribe()
     }
@@ -56,6 +56,7 @@ impl SnapSyncOrchestrator {
     /// Signal that domain snap sync finished.
     pub fn mark_domain_snap_sync_finished(&self) {
         debug!("Signal that domain snap sync finished.");
-        self.domain_snap_sync_finished.store(true, Ordering::SeqCst);
+        self.domain_snap_sync_finished
+            .store(true, Ordering::Release);
     }
 }

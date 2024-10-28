@@ -1,5 +1,4 @@
-//! This module provides features for domains integration: snap sync syncrhonization primitives,
-//! custom protocols for last confirmed block execution receipts, etc..
+//! This module provides features for domains integration: snap sync synchronization primitives.
 
 #![warn(missing_docs)]
 

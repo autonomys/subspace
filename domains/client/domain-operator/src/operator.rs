@@ -110,7 +110,6 @@ where
 {
     /// Create a new instance.
     #[allow(clippy::type_complexity)]
-    #[allow(clippy::almost_swapped)]
     pub async fn new<IBNS, CIBNS, NSNS, ASS, CNR>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         mut params: OperatorParams<
@@ -255,7 +254,7 @@ where
 
             async move {
                 let start_worker_task = {
-                    // Wait for the target block importing if we snap syncing
+                    // Wait for the target block to import if we are snap syncing
                     if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
                         let mut target_block_receiver =
                             snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();

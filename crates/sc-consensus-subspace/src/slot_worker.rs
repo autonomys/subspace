@@ -93,7 +93,7 @@ where
 {
     force_authoring: bool,
     pause_sync: Arc<AtomicBool>,
-    domain_sync_finished: Option<Arc<AtomicBool>>,
+    domain_snap_sync_finished: Option<Arc<AtomicBool>>,
     inner: SO,
 }
 
@@ -108,9 +108,9 @@ where
         (!self.force_authoring && self.inner.is_major_syncing())
             || self.pause_sync.load(Ordering::Acquire)
             || self
-                .domain_sync_finished
+                .domain_snap_sync_finished
                 .as_ref()
-                .map(|sync_finished| !sync_finished.load(Ordering::SeqCst))
+                .map(|sync_finished| !sync_finished.load(Ordering::Acquire))
                 .unwrap_or_default()
     }
 
@@ -128,12 +128,12 @@ where
         force_authoring: bool,
         pause_sync: Arc<AtomicBool>,
         substrate_sync_oracle: SO,
-        domain_sync_finished: Option<Arc<AtomicBool>>,
+        domain_snap_sync_finished: Option<Arc<AtomicBool>>,
     ) -> Self {
         Self {
             force_authoring,
             pause_sync,
-            domain_sync_finished,
+            domain_snap_sync_finished,
             inner: substrate_sync_oracle,
         }
     }
