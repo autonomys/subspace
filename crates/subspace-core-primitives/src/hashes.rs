@@ -18,7 +18,7 @@
 use crate::ScalarBytes;
 use core::array::TryFromSliceError;
 use core::fmt;
-use derive_more::{AsMut, AsRef, Deref, DerefMut, From};
+use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use hex::FromHex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
     PartialOrd,
     Hash,
     From,
+    Into,
     AsRef,
     AsMut,
     Deref,
@@ -47,7 +48,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct Blake3Hash(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Blake3Hash::SIZE]);
 
 impl fmt::Debug for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -94,13 +95,6 @@ impl TryFrom<&[u8]> for Blake3Hash {
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(value.try_into()?))
-    }
-}
-
-impl From<Blake3Hash> for [u8; Blake3Hash::SIZE] {
-    #[inline]
-    fn from(value: Blake3Hash) -> Self {
-        value.0
     }
 }
 

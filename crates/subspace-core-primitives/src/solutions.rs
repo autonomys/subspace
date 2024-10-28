@@ -60,17 +60,25 @@ const_assert!(solution_range_to_pieces(pieces_to_solution_range(5, (1, 6)), (1, 
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo, Deref, From,
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RewardSignature(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
-
-impl From<RewardSignature> for [u8; RewardSignature::SIZE] {
-    #[inline]
-    fn from(value: RewardSignature) -> Self {
-        value.0
-    }
-}
+pub struct RewardSignature(
+    #[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RewardSignature::SIZE],
+);
 
 impl AsRef<[u8]> for RewardSignature {
     #[inline]
