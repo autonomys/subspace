@@ -32,8 +32,3 @@ std = [
     "sp-runtime/std",
     "sp-domain-sudo/std"
 ]
-try-runtime = [
-    "frame-support/try-runtime",
-    "frame-system/try-runtime",
-    "sp-runtime/try-runtime",
-]
