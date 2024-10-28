@@ -166,10 +166,11 @@ where
 
     // We don't have the genesis state when we choose to snap sync.
     if target_segment_index <= SegmentIndex::ONE {
-        panic!(
+        error!(
             "Snap sync is impossible - not enough archived history: \
             wipe the DB folder and rerun with --sync=full"
         );
+        return Err("Snap sync is impossible - not enough archived history".into());
     }
 
     // Identify all segment headers that would need to be reconstructed in order to get first
