@@ -40,7 +40,7 @@ use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, CouncilDemocracyConfigParams, SSC,
 };
 
-const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
+const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.foundation/submit/";
 
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
