@@ -190,27 +190,22 @@ impl DirectIoFile {
         bytes_to_read: usize,
         offset: u64,
     ) -> io::Result<&'a [u8]> {
+        let aligned_offset = offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64;
+        let padding = (offset - aligned_offset) as usize;
+
         // Make scratch buffer of a size that is necessary to read aligned memory, accounting
         // for extra bytes at the beginning and the end that will be thrown away
-        let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
-        let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
+        let desired_buffer_size = (padding + bytes_to_read).div_ceil(DISK_SECTOR_SIZE);
         if scratch_buffer.len() < desired_buffer_size {
             scratch_buffer.resize_with(desired_buffer_size, AlignedSectorSize::default);
         }
+        let scratch_buffer = AlignedSectorSize::slice_mut_to_repr(scratch_buffer)
+            [..desired_buffer_size]
+            .as_flattened_mut();
 
-        let scratch_buffer =
-            AlignedSectorSize::slice_mut_to_repr(scratch_buffer).as_flattened_mut();
+        self.file.read_exact_at(scratch_buffer, aligned_offset)?;
 
-        // While buffer above is allocated with granularity of `DISK_SECTOR_SIZE`, reads are
-        // done with granularity of physical sector size
-        let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
-        self.file.read_exact_at(
-            &mut scratch_buffer[..(bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE)
-                * DISK_SECTOR_SIZE],
-            offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64,
-        )?;
-
-        Ok(&scratch_buffer[offset_in_buffer..][..bytes_to_read])
+        Ok(&scratch_buffer[padding..][..bytes_to_read])
     }
 
     /// Panics on writes over `MAX_READ_SIZE` (including padding on both ends)
@@ -223,13 +218,14 @@ impl DirectIoFile {
         // This is guaranteed by constructor
         assert!(
             AlignedSectorSize::slice_mut_to_repr(scratch_buffer)
-                .as_flattened_mut()
+                .as_flattened()
                 .len()
-                >= MAX_READ_SIZE
+                <= MAX_READ_SIZE
         );
 
         let aligned_offset = offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64;
         let padding = (offset - aligned_offset) as usize;
+
         // Calculate the size of the read including padding on both ends
         let bytes_to_read =
             (padding + bytes_to_write.len()).div_ceil(DISK_SECTOR_SIZE) * DISK_SECTOR_SIZE;
