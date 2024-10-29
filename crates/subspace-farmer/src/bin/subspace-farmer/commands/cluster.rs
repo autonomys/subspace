@@ -7,7 +7,7 @@ use crate::commands::cluster::cache::{cache, CacheArgs};
 use crate::commands::cluster::controller::{controller, ControllerArgs};
 use crate::commands::cluster::farmer::{farmer, FarmerArgs};
 use crate::commands::cluster::plotter::{plotter, PlotterArgs};
-use crate::utils::shutdown_signal;
+use crate::utils::{shutdown_signal, spawn_shutdown_watchdog};
 use anyhow::anyhow;
 use async_nats::ServerAddr;
 use backoff::ExponentialBackoff;
@@ -22,6 +22,7 @@ use subspace_farmer::cluster::nats_client::NatsClient;
 use subspace_farmer::utils::AsyncJoinOnDrop;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_proof_of_space::Table;
+use tokio::runtime::Handle;
 
 /// Arguments for cluster
 #[derive(Debug, Parser)]
@@ -87,6 +88,13 @@ where
     PosTable: Table,
 {
     let signal = shutdown_signal();
+    // The async runtime can wait forever for tasks to yield or finish.
+    // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
+    // or when the user sends a second Ctrl-C.
+    // TODO: make sure this runs before anything else is dropped, because drops can hang.
+    scopeguard::defer! {
+        spawn_shutdown_watchdog(Handle::current());
+    };
 
     let ClusterArgs {
         shared_args,

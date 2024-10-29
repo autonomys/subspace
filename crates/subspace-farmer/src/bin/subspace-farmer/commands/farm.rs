@@ -1,6 +1,6 @@
 use crate::commands::shared::network::{configure_network, NetworkArgs};
 use crate::commands::shared::{derive_libp2p_keypair, DiskFarm, PlottingThreadPriority};
-use crate::utils::shutdown_signal;
+use crate::utils::{shutdown_signal, spawn_shutdown_watchdog};
 use anyhow::anyhow;
 use async_lock::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use backoff::ExponentialBackoff;
@@ -54,6 +54,7 @@ use subspace_kzg::Kzg;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
+use tokio::runtime::Handle;
 use tokio::sync::{Barrier, Semaphore};
 use tracing::{error, info, info_span, warn, Instrument};
 
@@ -303,6 +304,13 @@ where
     PosTable: Table,
 {
     let signal = shutdown_signal();
+    // The async runtime can wait forever for tasks to yield or finish.
+    // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
+    // or when the user sends a second Ctrl-C.
+    // TODO: make sure this runs before anything else is dropped, because drops can hang.
+    scopeguard::defer! {
+        spawn_shutdown_watchdog(Handle::current());
+    };
 
     let FarmingArgs {
         node_rpc_url,

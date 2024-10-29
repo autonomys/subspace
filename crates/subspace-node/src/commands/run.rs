@@ -78,6 +78,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     // The async runtime can wait forever for tasks to yield or finish.
     // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
     // or when the user sends a second Ctrl-C.
+    // TODO: make sure this runs before anything else is dropped, because drops can hang.
     scopeguard::defer! {
         spawn_shutdown_watchdog(Handle::current());
     };

@@ -6,7 +6,7 @@ mod rpc;
 
 use crate::commands::run::network::{configure_network, NetworkArgs};
 use crate::commands::run::rpc::{launch_rpc_server, RpcOptions, RPC_DEFAULT_PORT};
-use crate::commands::shutdown_signal;
+use crate::commands::{shutdown_signal, spawn_shutdown_watchdog};
 use crate::piece_getter::DsnPieceGetter;
 use crate::piece_validator::SegmentCommitmentPieceValidator;
 use anyhow::anyhow;
@@ -20,6 +20,7 @@ use subspace_data_retrieval::object_fetcher::ObjectFetcher;
 use subspace_erasure_coding::ErasureCoding;
 use subspace_gateway_rpc::{SubspaceGatewayRpc, SubspaceGatewayRpcConfig};
 use subspace_kzg::Kzg;
+use tokio::runtime::Handle;
 use tracing::info;
 
 /// The default size limit, based on the maximum block size in some domains.
@@ -58,6 +59,13 @@ pub(crate) struct GatewayOptions {
 /// Default run command for gateway
 pub async fn run(run_options: RunOptions) -> anyhow::Result<()> {
     let signal = shutdown_signal();
+    // The async runtime can wait forever for tasks to yield or finish.
+    // This watchdog runs on shutdown, and makes sure the process exits within a timeout,
+    // or when the user sends a second Ctrl-C.
+    // TODO: make sure this runs before anything else is dropped, because drops can hang.
+    scopeguard::defer! {
+        spawn_shutdown_watchdog(Handle::current());
+    };
 
     let RunOptions {
         gateway:
