@@ -1316,9 +1316,7 @@ fn enabling_block_rewards_works() {
         // Enable since next block only rewards
         assert_ok!(Subspace::enable_rewards_at(
             RuntimeOrigin::root(),
-            EnableRewardsAt::Height(Some(
-                frame_system::Pallet::<Test>::current_block_number() + 1,
-            )),
+            EnableRewardsAt::Height(frame_system::Pallet::<Test>::current_block_number() + 1,),
         ));
         // No rewards yet
         assert_matches!(Subspace::find_block_reward_address(), None);
