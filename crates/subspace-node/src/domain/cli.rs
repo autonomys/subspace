@@ -338,13 +338,13 @@ impl BuildGenesisStorageCmd {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
         let domain_chain_spec = match chain_id.as_str() {
-            "gemini-3h" | "devnet" | "dev" => match self.runtime_type {
+            "taurus" | "devnet" | "dev" => match self.runtime_type {
                 DomainRuntimeType::Evm => evm_chain_spec::load_chain_spec(&chain_id)?,
                 DomainRuntimeType::AutoId => auto_id_chain_spec::load_chain_spec(&chain_id)?,
             },
             unknown_id => {
                 eprintln!(
-                    "unknown chain {unknown_id:?}, expected gemini-3h, devnet, dev, or local",
+                    "unknown chain {unknown_id:?}, expected taurus, devnet, dev, or local",
                 );
                 return Ok(());
             }
