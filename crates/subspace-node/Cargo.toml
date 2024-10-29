@@ -15,6 +15,11 @@ include = [
     "/README.md"
 ]
 
+# TODO: remove when cargo-audit supports v4 lock files
+# https://github.com/rustsec/rustsec/issues/1249
+# This setting applies to the workspace lockfile, even though it's in a crate.
+rust-version = "1.81" # ensure we stay at lockfile v3
+
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
