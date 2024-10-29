@@ -212,10 +212,9 @@ where
             });
         }
         {
-            let plot = RayonFiles::open_with(
-                &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                DirectIoFile::open,
-            )
+            let plot = RayonFiles::open_with(disk_farm.join(SingleDiskFarm::PLOT_FILE), |path| {
+                DirectIoFile::open(path)
+            })
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
 
@@ -250,7 +249,7 @@ where
             });
         }
         {
-            let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
+            let plot = RayonFiles::open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
 
@@ -429,10 +428,9 @@ where
             });
         }
         {
-            let plot = RayonFiles::open_with(
-                &disk_farm.join(SingleDiskFarm::PLOT_FILE),
-                DirectIoFile::open,
-            )
+            let plot = RayonFiles::open_with(disk_farm.join(SingleDiskFarm::PLOT_FILE), |path| {
+                DirectIoFile::open(path)
+            })
             .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
             let mut options = PlotAuditOptions::<PosTable> {
@@ -504,7 +502,7 @@ where
             });
         }
         {
-            let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
+            let plot = RayonFiles::open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
             let plot_audit = PlotAudit::new(&plot);
             let mut options = PlotAuditOptions::<PosTable> {
