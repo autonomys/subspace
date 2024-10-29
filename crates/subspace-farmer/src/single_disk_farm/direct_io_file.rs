@@ -155,7 +155,10 @@ impl DirectIoFile {
     /// will be created).
     ///
     /// This is especially important on Windows to prevent huge memory usage.
-    pub fn open(path: &Path) -> io::Result<Self> {
+    pub fn open<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let mut open_options = OpenOptions::new();
         open_options.use_direct_io();
         let file = open_options

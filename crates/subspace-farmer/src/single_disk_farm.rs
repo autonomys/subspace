@@ -962,7 +962,9 @@ impl SingleDiskFarm {
         let farming_plot_fut = task::spawn_blocking(|| {
             farming_thread_pool
                 .install(move || {
-                    RayonFiles::open_with(&directory.join(Self::PLOT_FILE), DirectIoFile::open)
+                    RayonFiles::open_with(directory.join(Self::PLOT_FILE), |path| {
+                        DirectIoFile::open(path)
+                    })
                 })
                 .map(|farming_plot| (farming_plot, farming_thread_pool))
         });
@@ -1466,7 +1468,7 @@ impl SingleDiskFarm {
             Arc::new(AsyncRwLock::new(sectors_metadata))
         };
 
-        let plot_file = DirectIoFile::open(&directory.join(Self::PLOT_FILE))?;
+        let plot_file = DirectIoFile::open(directory.join(Self::PLOT_FILE))?;
 
         if plot_file.size()? != allocated_space_distribution.plot_file_size {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -1609,7 +1611,7 @@ impl SingleDiskFarm {
     pub fn read_all_sectors_metadata(
         directory: &Path,
     ) -> io::Result<Vec<SectorMetadataChecksummed>> {
-        let metadata_file = DirectIoFile::open(&directory.join(Self::METADATA_FILE))?;
+        let metadata_file = DirectIoFile::open(directory.join(Self::METADATA_FILE))?;
 
         let metadata_size = metadata_file.size()?;
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
