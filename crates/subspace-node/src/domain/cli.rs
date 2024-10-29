@@ -343,9 +343,7 @@ impl BuildGenesisStorageCmd {
                 DomainRuntimeType::AutoId => auto_id_chain_spec::load_chain_spec(&chain_id)?,
             },
             unknown_id => {
-                eprintln!(
-                    "unknown chain {unknown_id:?}, expected taurus, devnet, dev, or local",
-                );
+                eprintln!("unknown chain {unknown_id:?}, expected taurus, devnet, dev, or local",);
                 return Ok(());
             }
         };
