@@ -245,94 +245,80 @@ where
             spawn_essential.spawn_essential("domain-sync", None, Box::pin(domain_sync_task));
         }
 
-        // Additional task layer to unblock target block reception from consensus snap sync
-        let start_worker_task_starter = {
-            let snap_sync_orchestrator = snap_sync_orchestrator.clone();
+        let start_worker_task = {
+            let consensus_client = params.consensus_client.clone();
             let spawn_essential = spawn_essential.clone();
             let bundle_processor = bundle_processor.clone();
-            let consensus_client = params.consensus_client.clone();
-
             async move {
-                let start_worker_task = {
-                    // Wait for the target block to import if we are snap syncing
-                    if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
-                        let mut target_block_receiver =
-                            snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();
+                // Wait for the target block to import if we are snap syncing
+                if let Some(ref snap_sync_orchestrator) = snap_sync_orchestrator {
+                    let mut target_block_receiver =
+                        snap_sync_orchestrator.consensus_snap_sync_target_block_receiver();
 
-                        let target_block_number = match target_block_receiver.recv().await {
-                            Ok(target_block) => target_block,
-                            Err(err) => {
-                                error!(?err, "Snap sync failed: can't obtain target block.");
-                                return Err(sp_consensus::Error::Other(
-                                    "Snap sync failed: can't obtain target block.".into(),
-                                ));
-                            }
-                        };
+                    let target_block_number = match target_block_receiver.recv().await {
+                        Ok(target_block) => target_block,
+                        Err(err) => {
+                            error!(?err, "Snap sync failed: can't obtain target block.");
+                            return Err(sp_consensus::Error::Other(
+                                "Snap sync failed: can't obtain target block.".into(),
+                            ));
+                        }
+                    };
 
-                        // Wait for Subspace block importing notifications
-                        let block_importing_notification_stream =
-                            &mut params.operator_streams.block_importing_notification_stream;
+                    // Wait for Subspace block importing notifications
+                    let block_importing_notification_stream =
+                        &mut params.operator_streams.block_importing_notification_stream;
 
-                        while let Some((block_number, mut acknowledgement_sender)) =
-                            block_importing_notification_stream.next().await
-                        {
-                            trace!(%block_number, "Acknowledged block import from consensus chain.");
-                            if acknowledgement_sender.send(()).await.is_err() {
-                                return Err(sp_consensus::Error::Other(
-                                    format!("Can't acknowledge block import #{}", block_number)
-                                        .into(),
-                                ));
-                            }
-
-                            if block_number >= target_block_number.into() {
-                                break;
-                            }
+                    while let Some((block_number, mut acknowledgement_sender)) =
+                        block_importing_notification_stream.next().await
+                    {
+                        trace!(%block_number, "Acknowledged block import from consensus chain.");
+                        if acknowledgement_sender.send(()).await.is_err() {
+                            return Err(sp_consensus::Error::Other(
+                                format!("Can't acknowledge block import #{}", block_number).into(),
+                            ));
                         }
 
-                        // Drain Substrate block imported notifications
-                        let imported_block_notification_stream =
-                            &mut params.operator_streams.imported_block_notification_stream;
-
-                        while let Some(import_notification) =
-                            imported_block_notification_stream.next().await
-                        {
-                            let block_number = *import_notification.header.number();
-                            trace!(%block_number, "Block imported from consensus chain.");
-
-                            if block_number >= target_block_number.into() {
-                                break;
-                            }
+                        if block_number >= target_block_number.into() {
+                            break;
                         }
                     }
 
-                    crate::domain_worker::start_worker(
-                        spawn_essential.clone(),
-                        consensus_client.clone(),
-                        params.consensus_offchain_tx_pool_factory.clone(),
-                        params.maybe_operator_id,
-                        bundle_producer,
-                        bundle_processor.clone(),
-                        params.operator_streams,
-                    )
-                    .boxed()
-                };
+                    // Drain Substrate block imported notifications
+                    let imported_block_notification_stream =
+                        &mut params.operator_streams.imported_block_notification_stream;
 
-                spawn_essential.spawn_essential_blocking(
-                    "domain-operator-worker",
-                    None,
-                    Box::pin(start_worker_task),
-                );
+                    while let Some(import_notification) =
+                        imported_block_notification_stream.next().await
+                    {
+                        let block_number = *import_notification.header.number();
+                        trace!(%block_number, "Block imported from consensus chain.");
 
-                // Keep essential task running
-                pending::<()>().await;
+                        if block_number >= target_block_number.into() {
+                            break;
+                        }
+                    }
+                }
+
+                crate::domain_worker::start_worker(
+                    spawn_essential.clone(),
+                    consensus_client,
+                    params.consensus_offchain_tx_pool_factory.clone(),
+                    params.maybe_operator_id,
+                    bundle_producer,
+                    bundle_processor.clone(),
+                    params.operator_streams,
+                )
+                .await;
+
                 Ok(())
             }
         };
 
         spawn_essential.spawn_essential_blocking(
-            "domain-operator-worker-starter",
+            "domain-operator-worker",
             None,
-            Box::pin(start_worker_task_starter.map(|_| ())),
+            Box::pin(start_worker_task.map(|_| ())),
         );
 
         Ok(Self {
