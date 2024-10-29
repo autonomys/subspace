@@ -18,6 +18,7 @@
 //! # Domain Executive Module
 //!
 //! This module is derived from frame_executive with some custom modifications for
+//! including the failed extrinsic during `pre/post_dispatch` in the block and
 //! collecting the intermediate storage roots in the block execution required for
 //! the fraud proof of decoupled execution in Subspace.
 
@@ -35,6 +36,7 @@ pub mod weights;
 extern crate alloc;
 
 use codec::{Codec, Encode};
+use frame_support::defensive_assert;
 use frame_support::dispatch::{
     DispatchClass, DispatchErrorWithPostInfo, DispatchInfo, GetDispatchInfo, Pays, PostDispatchInfo,
 };
@@ -43,7 +45,7 @@ use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::traits::{
     BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
-    OnFinalize, OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade,
+    OnFinalize, OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade, PostTransactions,
 };
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
@@ -301,32 +303,6 @@ where
         >::execute_on_runtime_upgrade()
     }
 
-    /// Wrapped `frame_executive::Executive::execute_block_no_check`.
-    #[cfg(feature = "try-runtime")]
-    pub fn execute_block_no_check(block: BlockOf<ExecutiveConfig>) -> Weight {
-        frame_executive::Executive::<
-            ExecutiveConfig,
-            BlockOf<ExecutiveConfig>,
-            Context,
-            UnsignedValidator,
-            AllPalletsWithSystem,
-            COnRuntimeUpgrade,
-        >::execute_block_no_check(block)
-    }
-
-    /// Wrapped `frame_executive::Executive::try_runtime_upgrade`.
-    #[cfg(feature = "try-runtime")]
-    pub fn try_runtime_upgrade() -> Result<Weight, &'static str> {
-        frame_executive::Executive::<
-            ExecutiveConfig,
-            BlockOf<ExecutiveConfig>,
-            Context,
-            UnsignedValidator,
-            AllPalletsWithSystem,
-            COnRuntimeUpgrade,
-        >::try_runtime_upgrade()
-    }
-
     /// Wrapped `frame_executive::Executive::initialize_block`.
     ///
     /// Note the storage root in the end.
@@ -342,7 +318,7 @@ where
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn initial_checks(block: &BlockOf<ExecutiveConfig>) {
+    fn initial_checks(block: &BlockOf<ExecutiveConfig>) -> u32 {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "initial_checks");
         let header = block.header();
 
@@ -356,37 +332,56 @@ where
             "Parent hash should be valid.",
         );
 
-        if let Err(i) = ExecutiveConfig::ensure_inherents_are_first(block) {
-            panic!("Invalid inherent position for extrinsic at index {i}");
+        match ExecutiveConfig::ensure_inherents_are_first(block) {
+            Ok(num) => num,
+            Err(i) => panic!("Invalid inherent position for extrinsic at index {}", i),
         }
     }
 
     /// Wrapped `frame_executive::Executive::execute_block`.
     ///
-    /// The purpose is to use our custom [`Executive::initialize_block`] and
-    /// [`Executive::apply_extrinsic`].
+    /// The purpose is to use our custom [`Executive::apply_extrinsic`] and
+    /// the [`Executive::finalize_block`] logic.
     pub fn execute_block(block: BlockOf<ExecutiveConfig>) {
         sp_io::init_tracing();
         sp_tracing::within_span! {
             sp_tracing::info_span!("execute_block", ?block);
-
-            Self::initialize_block(block.header());
-
-            Self::initial_checks(&block);
-
-            // execute extrinsics
+            // Execute `on_runtime_upgrade` and `on_initialize`.
+            let mode = Self::initialize_block(block.header());
+            let num_inherents = Self::initial_checks(&block) as usize;
             let (header, extrinsics) = block.deconstruct();
-            Self::execute_extrinsics_with_book_keeping(extrinsics, *header.number());
+            let num_extrinsics = extrinsics.len();
 
+            if mode == ExtrinsicInclusionMode::OnlyInherents && num_extrinsics > num_inherents {
+                // Invalid block
+                panic!("Only inherents are allowed in this block")
+            }
+
+            Self::apply_extrinsics(extrinsics.into_iter());
+
+            // In this case there were no transactions to trigger this state transition:
+            if !<frame_system::Pallet<ExecutiveConfig>>::inherents_applied() {
+                defensive_assert!(num_inherents == num_extrinsics);
+                frame_executive::Executive::<
+                    ExecutiveConfig,
+                    BlockOf<ExecutiveConfig>,
+                    Context,
+                    UnsignedValidator,
+                    AllPalletsWithSystem,
+                    COnRuntimeUpgrade,
+                >::inherents_applied();
+            }
+
+            <frame_system::Pallet<ExecutiveConfig>>::note_finished_extrinsics();
+            <ExecutiveConfig as frame_system::Config>::PostTransactions::post_transactions();
+
+            Self::idle_and_finalize_hook(*header.number());
             Self::final_checks(&header);
         }
     }
 
-    /// Exactly same with `frame_executive::executive::execute_extrinsics_with_book_keeping`.
-    fn execute_extrinsics_with_book_keeping(
-        extrinsics: Vec<ExtrinsicOf<ExecutiveConfig>>,
-        block_number: NumberFor<BlockOf<ExecutiveConfig>>,
-    ) {
+    /// Wrapped `frame_executive::Executive::apply_extrinsics`.
+    fn apply_extrinsics(extrinsics: impl Iterator<Item = ExtrinsicOf<ExecutiveConfig>>) {
         extrinsics.into_iter().for_each(|e| {
             if let Err(e) = Self::apply_extrinsic(e) {
                 let err: &'static str = e.into();
@@ -398,11 +393,6 @@ where
         // syncing process produces the same storage root with the one processed based on
         // the consensus block.
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
-
-        // post-extrinsics book-keeping
-        <frame_system::Pallet<ExecutiveConfig>>::note_finished_extrinsics();
-
-        Self::idle_and_finalize_hook(block_number);
     }
 
     /// Wrapped `frame_executive::Executive::finalize_block`.
@@ -418,7 +408,7 @@ where
         >::finalize_block()
     }
 
-    // TODO: https://github.com/paritytech/substrate/issues/10711
+    /// Wrapped `frame_executive::Executive::on_idle_hook` and `frame_executive::Executive::on_finalize_hook`
     fn idle_and_finalize_hook(block_number: NumberFor<BlockOf<ExecutiveConfig>>) {
         let weight = <frame_system::Pallet<ExecutiveConfig>>::block_weight();
         let max_weight = <<ExecutiveConfig as frame_system::Config>::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
@@ -437,7 +427,7 @@ where
 
     /// Wrapped `frame_executive::Executive::apply_extrinsic`.
     ///
-    /// Note the storage root in the end.
+    /// Note the storage root in the beginning.
     pub fn apply_extrinsic(uxt: ExtrinsicOf<ExecutiveConfig>) -> ApplyExtrinsicResult {
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 

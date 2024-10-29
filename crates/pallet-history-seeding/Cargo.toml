@@ -37,7 +37,6 @@ std = [
     "scale-info/std",
     "sp-std/std",
 ]
-try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [
     "frame-benchmarking",
     "frame-benchmarking/runtime-benchmarks",
