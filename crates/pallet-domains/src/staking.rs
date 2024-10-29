@@ -5,9 +5,9 @@ extern crate alloc;
 
 use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
-    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
-    OperatorIdOwner, OperatorSigningKey, Operators, PendingSlashes, PendingStakingOperationCount,
-    Withdrawals,
+    Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
+    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingSlashes,
+    PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, mint_into_treasury};
 use crate::{
@@ -697,9 +697,8 @@ pub(crate) fn do_deregister_operator<T: Config>(
                     .as_mut()
                     .ok_or(Error::DomainNotInitialized)?;
 
-                let latest_confirmed_domain_block_number =
-                    Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
-                let unlock_operator_at_domain_block_number = latest_confirmed_domain_block_number
+                let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
+                let unlock_operator_at_domain_block_number = head_domain_number
                     .checked_add(&T::StakeWithdrawalLockingPeriod::get())
                     .ok_or(Error::BlockNumberOverflow)?;
                 let operator_deregister_info = (
@@ -927,9 +926,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 }
             }
 
-            let latest_confirmed_domain_block_number =
-                Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
-            let unlock_at_confirmed_domain_block_number = latest_confirmed_domain_block_number
+            let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
+            let unlock_at_confirmed_domain_block_number = head_domain_number
                 .checked_add(&T::StakeWithdrawalLockingPeriod::get())
                 .ok_or(Error::BlockNumberOverflow)?;
 
@@ -990,8 +988,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
 
         ensure!(!withdrawal.withdrawals.is_empty(), Error::MissingWithdrawal);
 
-        let latest_confirmed_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(operator.current_domain_id);
+        let head_domain_number = HeadDomainNumber::<T>::get(operator.current_domain_id);
 
         let mut total_unlocked_amount = BalanceOf::<T>::zero();
         let mut total_storage_fee_refund = BalanceOf::<T>::zero();
@@ -999,7 +996,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             if withdrawal
                 .withdrawals
                 .front()
-                .map(|w| w.unlock_at_confirmed_domain_block_number > latest_confirmed_block_number)
+                .map(|w| w.unlock_at_confirmed_domain_block_number > head_domain_number)
                 .unwrap_or(true)
             {
                 break;
@@ -1128,10 +1125,9 @@ pub(crate) fn do_unlock_nominator<T: Config>(
         };
 
         let (domain_id, _) = domain_epoch.deconstruct();
-        let latest_confirmed_block_number =
-            Pallet::<T>::latest_confirmed_domain_block_number(domain_id);
+        let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
         ensure!(
-            *unlock_at_confirmed_domain_block_number <= latest_confirmed_block_number,
+            *unlock_at_confirmed_domain_block_number <= head_domain_number,
             Error::UnlockPeriodNotComplete
         );
 
@@ -1448,9 +1444,8 @@ pub(crate) fn do_mark_operators_as_slashed<T: Config>(
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary,
-        LatestConfirmedDomainExecutionReceipt, NextOperatorId, NominatorCount, OperatorIdOwner,
-        Operators, PendingSlashes, Withdrawals,
+        Config, Deposits, DomainRegistry, DomainStakingSummary, HeadDomainNumber, NextOperatorId,
+        NominatorCount, OperatorIdOwner, Operators, PendingSlashes, Withdrawals,
     };
     use crate::staking::{
         do_convert_previous_epoch_withdrawal, do_mark_operators_as_slashed, do_nominate_operator,
@@ -1461,8 +1456,7 @@ pub(crate) mod tests {
     use crate::staking_epoch::{do_finalize_domain_current_epoch, do_slash_operator};
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{
-        bundle_storage_fund, BalanceOf, DomainBlockNumberFor, Error, ExecutionReceiptOf,
-        NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
+        bundle_storage_fund, BalanceOf, Error, NominatorId, SlashedReason, MAX_NOMINATORS_TO_SLASH,
     };
     use codec::Encode;
     use frame_support::traits::fungible::Mutate;
@@ -1472,8 +1466,8 @@ pub(crate) mod tests {
     use sp_core::crypto::UncheckedFrom;
     use sp_core::{sr25519, Pair, U256};
     use sp_domains::{
-        BlockFees, DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
-        OperatorRewardSource, OperatorSignature, Transfers,
+        DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
+        OperatorRewardSource, OperatorSignature,
     };
     use sp_runtime::traits::Zero;
     use sp_runtime::{PerThing, Perbill};
@@ -2028,25 +2022,8 @@ pub(crate) mod tests {
                 .unwrap();
             }
 
+            let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
             let nominator_count = NominatorCount::<Test>::get(operator_id);
-            let confirmed_domain_block = 100;
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
-                domain_id,
-                ExecutionReceiptOf::<Test> {
-                    domain_block_number: confirmed_domain_block,
-                    domain_block_hash: Default::default(),
-                    domain_block_extrinsic_root: Default::default(),
-                    parent_domain_block_receipt_hash: Default::default(),
-                    consensus_block_number: Default::default(),
-                    consensus_block_hash: Default::default(),
-                    inboxed_bundles: vec![],
-                    final_state_root: Default::default(),
-                    execution_trace: vec![],
-                    execution_trace_root: Default::default(),
-                    block_fees: BlockFees::default(),
-                    transfers: Transfers::default(),
-                },
-            );
 
             if let Some(deposit_amount) = maybe_deposit {
                 Balances::mint_into(&nominator_id, deposit_amount).unwrap();
@@ -2102,25 +2079,11 @@ pub(crate) mod tests {
             if let Some((withdraw, include_ed)) = expected_withdraw {
                 let previous_usable_balance = Balances::usable_balance(nominator_id);
 
-                // staking withdrawal is 5 blocks
-                // to unlock funds, confirmed block should be atleast 105
-                let confirmed_domain_block = 105;
-                LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+                // Update `HeadDomainNumber` to ensure unlock success
+                HeadDomainNumber::<Test>::set(
                     domain_id,
-                    ExecutionReceiptOf::<Test> {
-                        domain_block_number: confirmed_domain_block,
-                        domain_block_hash: Default::default(),
-                        domain_block_extrinsic_root: Default::default(),
-                        parent_domain_block_receipt_hash: Default::default(),
-                        consensus_block_number: Default::default(),
-                        consensus_block_hash: Default::default(),
-                        inboxed_bundles: vec![],
-                        final_state_root: Default::default(),
-                        execution_trace: vec![],
-                        execution_trace_root: Default::default(),
-                        block_fees: BlockFees::default(),
-                        transfers: Transfers::default(),
-                    },
+                    head_domain_number
+                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
                 );
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));
 
@@ -2651,23 +2614,6 @@ pub(crate) mod tests {
         })
     }
 
-    fn dummy_receipt(domain_block_number: DomainBlockNumberFor<Test>) -> ExecutionReceiptOf<Test> {
-        ExecutionReceiptOf::<Test> {
-            domain_block_number,
-            domain_block_hash: Default::default(),
-            domain_block_extrinsic_root: Default::default(),
-            parent_domain_block_receipt_hash: Default::default(),
-            consensus_block_number: Default::default(),
-            consensus_block_hash: Default::default(),
-            inboxed_bundles: vec![],
-            final_state_root: Default::default(),
-            execution_trace: vec![],
-            execution_trace_root: Default::default(),
-            block_fees: BlockFees::default(),
-            transfers: Transfers::default(),
-        }
-    }
-
     #[test]
     fn unlock_multiple_withdrawals() {
         let domain_id = DomainId::new(0);
@@ -2718,8 +2664,7 @@ pub(crate) mod tests {
             );
 
             let amount_per_withdraw = init_total_stake / 100;
-            let latest_confirmed_block_number =
-                Domains::latest_confirmed_domain_block_number(domain_id);
+            let head_domain_number = HeadDomainNumber::<Test>::get(domain_id);
 
             // Request `WithdrawalLimit - 1` number of withdrawal
             for _ in 1..<Test as crate::Config>::WithdrawalLimit::get() {
@@ -2731,11 +2676,8 @@ pub(crate) mod tests {
                 .unwrap();
                 do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             }
-            // Increase the latest confirmed domain block by 1
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
-                domain_id,
-                dummy_receipt(latest_confirmed_block_number + 1),
-            );
+            // Increase the head domain number by 1
+            HeadDomainNumber::<Test>::set(domain_id, head_domain_number + 1);
 
             // All withdrawals of a given nominator submitted in the same epoch will merge into one,
             // so we submit can submit as many as we want even though the withdrawal limit is met
@@ -2770,12 +2712,9 @@ pub(crate) mod tests {
             .unwrap();
 
             // Make the first set of withdrawals pass the unlock period then unlock fund
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+            HeadDomainNumber::<Test>::set(
                 domain_id,
-                dummy_receipt(
-                    latest_confirmed_block_number
-                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
-                ),
+                head_domain_number + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get(),
             );
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));
@@ -2789,13 +2728,11 @@ pub(crate) mod tests {
             assert_eq!(withdrawal.withdrawals.len(), 1);
 
             // Make the second set of withdrawals pass the unlock period then unlock funds
-            LatestConfirmedDomainExecutionReceipt::<Test>::insert(
+            HeadDomainNumber::<Test>::set(
                 domain_id,
-                dummy_receipt(
-                    latest_confirmed_block_number
-                        + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
-                        + 1,
-                ),
+                head_domain_number
+                    + <Test as crate::Config>::StakeWithdrawalLockingPeriod::get()
+                    + 1,
             );
             let total_balance = Balances::usable_balance(nominator_account);
             assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_account));

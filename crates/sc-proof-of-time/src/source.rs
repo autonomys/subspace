@@ -28,7 +28,7 @@ use subspace_core_primitives::pot::PotCheckpoints;
 use subspace_core_primitives::PublicKey;
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::sync::broadcast;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, trace, warn, Span};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
@@ -137,10 +137,13 @@ where
         if is_timekeeper {
             let state = Arc::clone(&state);
             let pot_verifier = pot_verifier.clone();
+            let span = Span::current();
 
             thread::Builder::new()
                 .name("timekeeper".to_string())
                 .spawn(move || {
+                    let _guard = span.enter();
+
                     if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
                         if !core_affinity::set_for_current(CoreId { id: core }) {
                             warn!(

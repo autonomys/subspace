@@ -47,6 +47,8 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
 use static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
@@ -54,9 +56,6 @@ const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 
 /// Signing context used for creating reward signatures by farmers.
 pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
-
-/// Byte length of a randomness type.
-pub const RANDOMNESS_LENGTH: usize = 32;
 
 /// Type of randomness.
 #[derive(
@@ -74,8 +73,47 @@ pub const RANDOMNESS_LENGTH: usize = 32;
     TypeInfo,
     MaxEncodedLen,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Randomness(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; RANDOMNESS_LENGTH]);
+pub struct Randomness([u8; Randomness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RandomnessBinary([u8; Randomness::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct RandomnessHex(#[serde(with = "hex")] [u8; Randomness::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for Randomness {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            RandomnessHex(self.0).serialize(serializer)
+        } else {
+            RandomnessBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Randomness {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            RandomnessHex::deserialize(deserializer)?.0
+        } else {
+            RandomnessBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl AsRef<[u8]> for Randomness {
     #[inline]
@@ -92,6 +130,9 @@ impl AsMut<[u8]> for Randomness {
 }
 
 impl Randomness {
+    /// Size of randomness (in bytes).
+    pub const SIZE: usize = 32;
+
     /// Derive global slot challenge from global randomness.
     // TODO: Separate type for global challenge
     pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake3Hash {
@@ -129,20 +170,53 @@ pub type BlockWeight = u128;
     TypeInfo,
     Deref,
     From,
+    Into,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct PublicKey([u8; PublicKey::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PublicKeyBinary([u8; PublicKey::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PublicKeyHex(#[serde(with = "hex")] [u8; PublicKey::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PublicKey {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PublicKeyHex(self.0).serialize(serializer)
+        } else {
+            PublicKeyBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PublicKey {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PublicKeyHex::deserialize(deserializer)?.0
+        } else {
+            PublicKeyBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl From<PublicKey> for [u8; PublicKey::SIZE] {
-    #[inline]
-    fn from(value: PublicKey) -> Self {
-        value.0
     }
 }
 

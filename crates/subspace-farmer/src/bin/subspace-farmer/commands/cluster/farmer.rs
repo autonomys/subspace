@@ -64,7 +64,11 @@ pub(super) struct FarmerArgs {
     disk_farms: Vec<DiskFarm>,
     /// Address for farming rewards
     #[arg(long, value_parser = parse_ss58_reward_address)]
-    reward_address: PublicKey,
+    reward_address: Option<PublicKey>,
+    /// Sets some flags that are convenient during development, currently `--reward-address` (if
+    /// not specified explicitly)
+    #[arg(long)]
+    dev: bool,
     /// Run a temporary farmer with a farm size in human-readable format (e.g. 10GB, 2TiB) or
     /// just bytes (e.g. 4096), this will create a temporary directory that will be deleted at the
     /// end of the process.
@@ -82,8 +86,8 @@ pub(super) struct FarmerArgs {
     /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
-    /// The maximum number sectors a farmer will encode concurrently, defaults to 50. Might be limited
-    /// by plotting capacity available in the cluster.
+    /// The maximum number sectors a farmer will encode concurrently, defaults to 50. Might be
+    /// limited by plotting capacity available in the cluster.
     ///
     /// Increasing this value will cause higher memory usage.
     #[arg(long, default_value = "50")]
@@ -138,6 +142,7 @@ where
     let FarmerArgs {
         mut disk_farms,
         reward_address,
+        dev,
         tmp,
         max_pieces_in_sector,
         no_info,
@@ -150,6 +155,22 @@ where
         service_instances,
         additional_components: _,
     } = farmer_args;
+
+    let reward_address = match reward_address {
+        Some(reward_address) => reward_address,
+        None => {
+            if dev {
+                // `//Alice`
+                PublicKey::from([
+                    0xd4, 0x35, 0x93, 0xc7, 0x15, 0xfd, 0xd3, 0x1c, 0x61, 0x14, 0x1a, 0xbd, 0x04,
+                    0xa9, 0x9f, 0xd6, 0x82, 0x2c, 0x85, 0x58, 0x85, 0x4c, 0xcd, 0xe3, 0x9a, 0x56,
+                    0x84, 0xe7, 0xa5, 0x6d, 0xa2, 0x7d,
+                ])
+            } else {
+                return Err(anyhow!("`--reward-address` is required"));
+            }
+        }
+    };
 
     let tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = tempfile::Builder::new()

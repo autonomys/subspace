@@ -1,30 +1,19 @@
 //! Proof of space-related data structures.
 
-#[cfg(feature = "serde")]
-mod serde;
-
 use crate::hashes::{blake3_hash, Blake3Hash};
-use derive_more::{Deref, DerefMut, From};
+use derive_more::{Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
 
 /// Proof of space seed.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosSeed([u8; Self::SIZE]);
-
-impl From<[u8; PosSeed::SIZE]> for PosSeed {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosSeed> for [u8; PosSeed::SIZE] {
-    #[inline]
-    fn from(value: PosSeed) -> Self {
-        value.0
-    }
-}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, From, Into)]
+pub struct PosSeed([u8; PosSeed::SIZE]);
 
 impl PosSeed {
     /// Size of proof of space seed in bytes.
@@ -33,21 +22,59 @@ impl PosSeed {
 
 /// Proof of space proof bytes.
 #[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
-pub struct PosProof([u8; Self::SIZE]);
+pub struct PosProof([u8; PosProof::SIZE]);
 
-impl From<[u8; PosProof::SIZE]> for PosProof {
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PosProofBinary(#[serde(with = "BigArray")] [u8; PosProof::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PosProofHex(#[serde(with = "hex")] [u8; PosProof::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PosProof {
     #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PosProofHex(self.0).serialize(serializer)
+        } else {
+            PosProofBinary(self.0).serialize(serializer)
+        }
     }
 }
 
-impl From<PosProof> for [u8; PosProof::SIZE] {
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PosProof {
     #[inline]
-    fn from(value: PosProof) -> Self {
-        value.0
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PosProofHex::deserialize(deserializer)?.0
+        } else {
+            PosProofBinary::deserialize(deserializer)?.0
+        }))
     }
 }
 

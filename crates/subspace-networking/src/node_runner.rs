@@ -1302,7 +1302,7 @@ where
                 result_sender,
             } => {
                 if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossibsub protocol is disabled.");
+                    panic!("Gossipsub protocol is disabled.");
                 }
 
                 let topic_hash = topic.hash();
@@ -1354,7 +1354,7 @@ where
                 subscription_id,
             } => {
                 if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossibsub protocol is disabled.");
+                    panic!("Gossipsub protocol is disabled.");
                 }
 
                 if let Entry::Occupied(mut entry) =
@@ -1385,7 +1385,7 @@ where
                 result_sender,
             } => {
                 if !self.swarm.behaviour().gossipsub.is_enabled() {
-                    panic!("Gossibsub protocol is disabled.");
+                    panic!("Gossipsub protocol is disabled.");
                 }
 
                 if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {

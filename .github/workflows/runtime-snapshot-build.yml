@@ -9,7 +9,7 @@ on:
   push:
     tags:
       - "runtime-snapshot-*"
-      - "runtime-gemini-*"
+      - "runtime-taurus-*"
 
 jobs:
   runtime:
@@ -26,7 +26,7 @@ jobs:
         id: build
         uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
         with:
-          file: Dockerfile-runtime
+          file: docker/runtime.Dockerfile
           push: false
 
       - name: Extract runtime

@@ -5,7 +5,9 @@ mod node_client;
 mod piece_getter;
 mod piece_validator;
 
-use crate::commands::{init_logger, raise_fd_limit, spawn_shutdown_watchdog, Command};
+use crate::commands::{
+    init_logger, raise_fd_limit, set_exit_on_panic, spawn_shutdown_watchdog, Command,
+};
 use clap::Parser;
 use tokio::runtime::Handle;
 
@@ -14,6 +16,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    set_exit_on_panic();
     init_logger();
     raise_fd_limit();
 

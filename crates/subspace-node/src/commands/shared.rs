@@ -8,8 +8,8 @@ use sp_domains::KEY_TYPE;
 use sp_keystore::Keystore;
 use std::path::PathBuf;
 use std::process::{self, exit};
-use std::thread;
 use std::time::Duration;
+use std::{panic, thread};
 use tokio::runtime::{Handle, Runtime};
 use tracing::{debug, error, info};
 use tracing_subscriber::filter::LevelFilter;
@@ -62,6 +62,16 @@ pub(super) fn store_key_in_keystore(
     LocalKeystore::open(keystore_path, password)?
         .insert(KEY_TYPE, suri.expose_secret(), &keypair.public())
         .map_err(|()| Error::Application("Failed to insert key into keystore".to_string().into()))
+}
+
+/// Install a panic handler which exits on panics, rather than unwinding. Unwinding can hang the
+/// tokio runtime waiting for stuck tasks or threads.
+pub(crate) fn set_exit_on_panic() {
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        exit(1);
+    }));
 }
 
 pub(super) fn init_logger() {

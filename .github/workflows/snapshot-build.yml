@@ -10,7 +10,7 @@ on:
   push:
     tags:
       - "snapshot-*"
-      - "gemini-*"
+      - "taurus-*"
 
 # Incremental compilation here isn't helpful
 env:
@@ -61,7 +61,7 @@ jobs:
       - name: Build and push ${{ matrix.image }} image
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
         with:
-          file: Dockerfile-${{ matrix.image }}
+          file: docker/${{ matrix.image }}.Dockerfile
           # TODO: Add `linux/riscv64` once https://github.com/paritytech/polkadot-sdk/issues/5996 is resolved and ring
           #  0.16.x is no longer in dependencies
           platforms: linux/amd64,linux/arm64
@@ -143,12 +143,6 @@ jobs:
         run: brew install automake
         if: runner.os == 'macOS'
 
-      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
-      - name: Remove msys64
-        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
-        # Doesn't exist on self-hosted runners
-        if: matrix.os == 'windows-2022'
-
       - name: AArch64 cross-compile packages
         run: |
           sudo apt-get update
@@ -182,7 +176,7 @@ jobs:
           sudo mkdir -p --mode=0755 /etc/apt/keyrings
           curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
           echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-          echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
+          echo -e "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
           echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null

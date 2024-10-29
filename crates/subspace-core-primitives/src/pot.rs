@@ -10,6 +10,8 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::{Deserializer, Serializer};
 
 /// Proof of time key(input to the encryption).
 #[derive(
@@ -29,8 +31,47 @@ use serde::{Deserialize, Serialize};
     TypeInfo,
     MaxEncodedLen,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct PotKey([u8; Self::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotKeyBinary([u8; PotKey::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotKeyHex(#[serde(with = "hex")] [u8; PotKey::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PotKey {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PotKeyHex(self.0).serialize(serializer)
+        } else {
+            PotKeyBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PotKey {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PotKeyHex::deserialize(deserializer)?.0
+        } else {
+            PotKeyBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl fmt::Display for PotKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -74,8 +115,47 @@ impl PotKey {
     TypeInfo,
     MaxEncodedLen,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct PotSeed([u8; Self::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotSeedBinary([u8; PotSeed::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotSeedHex(#[serde(with = "hex")] [u8; PotSeed::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PotSeed {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PotSeedHex(self.0).serialize(serializer)
+        } else {
+            PotSeedBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PotSeed {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PotSeedHex::deserialize(deserializer)?.0
+        } else {
+            PotSeedBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl fmt::Display for PotSeed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -124,8 +204,47 @@ impl PotSeed {
     TypeInfo,
     MaxEncodedLen,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex"))] [u8; Self::SIZE]);
+pub struct PotOutput([u8; Self::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotOutputBinary([u8; PotOutput::SIZE]);
+
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct PotOutputHex(#[serde(with = "hex")] [u8; PotOutput::SIZE]);
+
+#[cfg(feature = "serde")]
+impl Serialize for PotOutput {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            PotOutputHex(self.0).serialize(serializer)
+        } else {
+            PotOutputBinary(self.0).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for PotOutput {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(if deserializer.is_human_readable() {
+            PotOutputHex::deserialize(deserializer)?.0
+        } else {
+            PotOutputBinary::deserialize(deserializer)?.0
+        }))
+    }
+}
 
 impl fmt::Display for PotOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

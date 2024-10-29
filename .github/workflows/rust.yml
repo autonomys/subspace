@@ -90,12 +90,6 @@ jobs:
         run: brew install automake
         if: runner.os == 'macOS'
 
-      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
-      - name: Remove msys64
-        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
-        # Doesn't exist on self-hosted runners
-        if: matrix.os == 'windows-2022'
-
       - name: CUDA toolchain
         uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf # v0.2.16
         with:
@@ -118,7 +112,7 @@ jobs:
           sudo mkdir -p --mode=0755 /etc/apt/keyrings
           curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
           echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-          echo "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
+          echo -e "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
           echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null
@@ -232,12 +226,6 @@ jobs:
       - name: Install automake (macOS)
         run: brew install automake
         if: runner.os == 'macOS'
-
-      # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
-      - name: Remove msys64
-        run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
-        # Doesn't exist on self-hosted runners
-        if: matrix.os == 'windows-2022'
 
       - name: Configure cache
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2

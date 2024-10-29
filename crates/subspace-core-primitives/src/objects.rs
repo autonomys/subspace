@@ -38,7 +38,6 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlockObject {
     /// Object hash
-    #[cfg_attr(feature = "serde", serde(with = "hex"))]
     pub hash: Blake3Hash,
     /// Offset of object in the encoded block.
     pub offset: u32,
