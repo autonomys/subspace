@@ -1113,7 +1113,10 @@ where
             Box::pin(async move {
                 // Run snap-sync before DSN-sync.
                 if config.sync == ChainSyncMode::Snap {
-                    snap_sync_task.await;
+                    if let Err(error) = snap_sync_task.await {
+                        error!(%error, "Snap sync exited with a fatal error");
+                        return;
+                    }
                 }
 
                 if let Err(error) = worker.await {
