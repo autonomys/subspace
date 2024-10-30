@@ -39,32 +39,47 @@ jobs:
           echo "::set-output name=available::true"
         shell: bash
 
-  update-trivy-db:
+  check-trivy-db-cache:
     needs: wait-for-image
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache-trivy-db.outputs.cache-hit }}
+      date: ${{ steps.date.outputs.date }}
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Check Trivy DB cache
+        id: cache-trivy-db
+        uses: actions/cache@v4
+        with:
+          path: .cache/trivy
+          key: cache-trivy-${{ steps.date.outputs.date }}
+
+  update-trivy-db:
+    needs: check-trivy-db-cache
+    if: needs.check-trivy-db-cache.outputs.cache-hit != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Setup oras
         uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
 
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
       - name: Download and extract the vulnerability DB
         run: |
-          mkdir -p $GITHUB_WORKSPACE/.cache/trivy/db
+          mkdir -p .cache/trivy/db
           oras pull ghcr.io/aquasecurity/trivy-db:2
-          tar -xzf db.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/db
+          tar -xzf db.tar.gz -C .cache/trivy/db
           rm db.tar.gz
 
       - name: Cache DBs
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
+          path: .cache/trivy
+          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
 
   trivy_scan_image:
-    needs: update-trivy-db
+    needs: [check-trivy-db-cache, wait-for-image]
     if: needs.wait-for-image.outputs.image-available == 'true'
     runs-on: ubuntu-latest
 
@@ -75,8 +90,8 @@ jobs:
       - name: Restore Trivy DB cache
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
+          path: .cache/trivy
+          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
 
       - name: Run Trivy vulnerability scanner on image
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
@@ -99,7 +114,7 @@ jobs:
           sarif_file: "trivy-results.sarif"
 
   trivy_scan_repo:
-    needs: update-trivy-db
+    needs: [check-trivy-db-cache, wait-for-image]
     runs-on: ubuntu-latest
 
     steps:
@@ -109,8 +124,8 @@ jobs:
       - name: Restore Trivy DB cache
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
+          path: .cache/trivy
+          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
 
       - name: Run Trivy vulnerability scanner in repo mode
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
