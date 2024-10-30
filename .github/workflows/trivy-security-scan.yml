@@ -10,29 +10,6 @@ on:
     types: [trivy-scan-dispatch]
 
 jobs:
-  update-trivy-db:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup oras
-        uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
-
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: Download and extract the vulnerability DB
-        run: |
-          mkdir -p $GITHUB_WORKSPACE/.cache/trivy/db
-          oras pull ghcr.io/aquasecurity/trivy-db:2
-          tar -xzf db.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/db
-          rm db.tar.gz
-
-      - name: Cache DBs
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
-
   wait-for-image:
     runs-on: ubuntu-latest
     outputs:
@@ -62,8 +39,32 @@ jobs:
           echo "::set-output name=available::true"
         shell: bash
 
-  trivy_scan_image:
+  update-trivy-db:
     needs: wait-for-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup oras
+        uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Download and extract the vulnerability DB
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/.cache/trivy/db
+          oras pull ghcr.io/aquasecurity/trivy-db:2
+          tar -xzf db.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/db
+          rm db.tar.gz
+
+      - name: Cache DBs
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: cache-trivy-${{ steps.date.outputs.date }}
+
+  trivy_scan_image:
+    needs: update-trivy-db
     if: needs.wait-for-image.outputs.image-available == 'true'
     runs-on: ubuntu-latest
 
