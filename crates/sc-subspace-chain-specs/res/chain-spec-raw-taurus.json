@@ -5,7 +5,8 @@
     "Custom": "Autonomys Taurus Testnet"
   },
   "bootNodes": [
-    "/dns/bootstrap-0.devnet.subspace.foundation/tcp/30333/p2p/12D3KooWKd4qisMjuBXU4YvpbJgepiX278iumqMjCC3GiUjjZEZS"
+    "/dns/bootstrap-0.taurus.subspace.network/tcp/30333/p2p/12D3KooWNaVWM5Q9dduj8MzgMJBTPHJkrcxwRH2pxsFkU7EVtK12",
+    "/dns/bootstrap-1.taurus.subspace.network/tcp/30333/p2p/12D3KooWD7qzgx5ZscoiDteLUKnr9tF8DyfFRMFtbi7iU1eLJgxY"
   ],
   "telemetryEndpoints": [
     [
@@ -17,7 +18,8 @@
   "properties": {
     "domainsBootstrapNodes": {},
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.devnet.subspace.foundation/tcp/30533/p2p/12D3KooWSKAQm66N7jQme72obbPPquBSZuSqMyx5mH5ki1aZ4pGv"
+      "/dns/bootstrap-0.taurus.subspace.network/tcp/30533/p2p/12D3KooWFL8f47BBWcvF7LxNGucJhXoS4j1aSddUNmY7haFR6eUk",
+      "/dns/bootstrap-1.taurus.subspace.network/tcp/30533/p2p/12D3KooWCtNAJ9dB1CpBNN6HrjyhZNY1fXodkXz6qQWCfxaM7w4A"
     ],
     "potExternalEntropy": "00000000000000000000661e88ab45dc3b61daec5ccf3cc83532153589b133b9",
     "ss58Format": 6094,
