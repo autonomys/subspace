@@ -108,6 +108,7 @@ pub mod pallet {
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::SignedVote;
+    use sp_runtime::traits::One;
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::num::NonZeroU32;
@@ -278,7 +279,7 @@ pub mod pallet {
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     pub enum EnableRewardsAt<BlockNumber> {
         /// At specified height or next block if `None`
-        Height(Option<BlockNumber>),
+        Height(BlockNumber),
         /// When solution range is below specified threshold
         SolutionRange(u64),
         /// Manually with an explicit extrinsic
@@ -307,7 +308,7 @@ pub mod pallet {
         #[inline]
         fn default() -> Self {
             Self {
-                enable_rewards_at: EnableRewardsAt::Height(None),
+                enable_rewards_at: EnableRewardsAt::Height(BlockNumberFor::<T>::one()),
                 allow_authoring_by: AllowAuthoringBy::Anyone,
                 pot_slot_iterations: NonZeroU32::MIN,
                 phantom: PhantomData,
@@ -322,10 +323,8 @@ pub mod pallet {
     {
         fn build(&self) {
             match self.enable_rewards_at {
-                EnableRewardsAt::Height(maybe_block_number) => {
-                    EnableRewards::<T>::put(
-                        maybe_block_number.unwrap_or_else(sp_runtime::traits::One::one),
-                    );
+                EnableRewardsAt::Height(block_number) => {
+                    EnableRewards::<T>::put(block_number);
                 }
                 EnableRewardsAt::SolutionRange(solution_range) => {
                     EnableRewardsBelowSolutionRange::<T>::put(solution_range);
@@ -1122,16 +1121,12 @@ impl<T: Config> Pallet<T> {
         }
 
         match enable_rewards_at {
-            EnableRewardsAt::Height(maybe_block_number) => {
+            EnableRewardsAt::Height(block_number) => {
                 // Enable rewards at a particular block height (default to the next block after
                 // this)
                 let next_block_number =
                     frame_system::Pallet::<T>::current_block_number() + One::one();
-                EnableRewards::<T>::put(
-                    maybe_block_number
-                        .unwrap_or(next_block_number)
-                        .max(next_block_number),
-                );
+                EnableRewards::<T>::put(block_number.max(next_block_number));
             }
             EnableRewardsAt::SolutionRange(solution_range) => {
                 EnableRewardsBelowSolutionRange::<T>::put(solution_range);
