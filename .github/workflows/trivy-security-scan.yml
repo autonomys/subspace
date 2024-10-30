@@ -10,137 +10,108 @@ on:
     types: [trivy-scan-dispatch]
 
 jobs:
-  wait-for-image:
+  trivy_scan:
     runs-on: ubuntu-latest
-    outputs:
-      image-available: ${{ steps.check-image.outputs.available }}
-    steps:
-      - name: Check Docker image availability with retry
-        run: |
-          image="${{ github.event.client_payload.image }}"
-          timeout=900 # Timeout in seconds (15 minutes)
-          interval=300 # Interval between retries in seconds (5 minutes)
-          retry_limit=5 # Number of retries
-          attempt=0
+    permissions:
+      contents: read
+      security-events: write
 
-          while ! docker pull $image; do
-            attempt=$((attempt + 1))
-            if [ "$attempt" -gt "$retry_limit" ]; then
-              echo "Image $image is not available after $retry_limit attempts."
-              echo "::set-output name=available::false"
-              exit 1
-            fi
-
-            echo "Attempt $attempt: Waiting for $image to be available. Retrying in $interval seconds..."
-            sleep $interval
-          done
-
-          echo "$image is now available."
-          echo "::set-output name=available::true"
-        shell: bash
-
-  check-trivy-db-cache:
-    needs: wait-for-image
-    runs-on: ubuntu-latest
-    outputs:
-      cache-hit: ${{ steps.cache-trivy-db.outputs.cache-hit }}
-      date: ${{ steps.date.outputs.date }}
     steps:
       - name: Get current date
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Check Trivy DB cache
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      # Cache restore for Trivy DB
+      - name: Check and restore Trivy DB cache
         id: cache-trivy-db
         uses: actions/cache@v4
         with:
           path: .cache/trivy
           key: cache-trivy-${{ steps.date.outputs.date }}
 
-  update-trivy-db:
-    needs: check-trivy-db-cache
-    if: needs.check-trivy-db-cache.outputs.cache-hit != 'true'
-    runs-on: ubuntu-latest
-    steps:
       - name: Setup oras
+        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
         uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
 
-      - name: Download and extract the vulnerability DB
+      - name: Download and extract Trivy DB
+        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
         run: |
           mkdir -p .cache/trivy/db
           oras pull ghcr.io/aquasecurity/trivy-db:2
           tar -xzf db.tar.gz -C .cache/trivy/db
           rm db.tar.gz
 
-      - name: Cache DBs
-        uses: actions/cache@v4
-        with:
-          path: .cache/trivy
-          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
+      # Image availability check with retry logic
+      - name: Check Docker image availability with retry
+        id: check-image
+        if: github.event.client_payload.image != ''
+        run: |
+          image="${{ github.event.client_payload.image }}"
+          timeout=900
+          interval=300
+          retry_limit=5
+          attempt=0
 
-  trivy_scan_image:
-    needs: [check-trivy-db-cache, wait-for-image]
-    if: needs.wait-for-image.outputs.image-available == 'true'
-    runs-on: ubuntu-latest
+          while ! docker pull $image; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -gt "$retry_limit" ]; then
+              echo "::error::Image $image is not available after $retry_limit attempts."
+              exit 1
+            fi
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+            echo "Waiting for $image to be available. Attempt $attempt/$retry_limit. Retrying in $interval seconds..."
+            sleep $interval
+          done
 
-      - name: Restore Trivy DB cache
-        uses: actions/cache@v4
-        with:
-          path: .cache/trivy
-          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
+          echo "Image $image is now available."
 
+      # Image scanning
       - name: Run Trivy vulnerability scanner on image
+        if: github.event.client_payload.image != ''
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
         with:
           image-ref: ${{ github.event.client_payload.image }}
           cache: 'true'
           format: "sarif"
-          output: "trivy-results.sarif"
+          output: "trivy-image-results.sarif"
           exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
         env:
+          TRIVY_CACHE_DIR: .cache/trivy
           TRIVY_SKIP_DB_UPDATE: true
           TRIVY_SKIP_JAVA_DB_UPDATE: true
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@4759df8df70c5ebe7042c3029bbace20eee13edd # v2.23.1
-        with:
-          sarif_file: "trivy-results.sarif"
-
-  trivy_scan_repo:
-    needs: [check-trivy-db-cache, wait-for-image]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      - name: Restore Trivy DB cache
-        uses: actions/cache@v4
-        with:
-          path: .cache/trivy
-          key: cache-trivy-${{ needs.check-trivy-db-cache.outputs.date }}
-
-      - name: Run Trivy vulnerability scanner in repo mode
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
-        with:
-          scan-type: fs
-          cache: 'true'
-          ignore-unfixed: true
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL
-        env:
-          TRIVY_SKIP_DB_UPDATE: true
-          TRIVY_SKIP_JAVA_DB_UPDATE: true
-
-      - name: Upload Trivy scan results to GitHub Security tab
+      # Upload image scan results
+      - name: Upload Trivy image scan results
         uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # v3.24.9
         with:
-          sarif_file: "trivy-results.sarif"
+          sarif_file: "trivy-image-results.sarif"
+          category: trivy-image
+
+      # Filesystem scanning
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        with:
+          scan-type: 'fs'
+          cache: 'true'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+        env:
+          TRIVY_CACHE_DIR: .cache/trivy
+          TRIVY_SKIP_DB_UPDATE: true
+          TRIVY_SKIP_JAVA_DB_UPDATE: true
+
+      # Upload filesystem scan results
+      - name: Upload Trivy filesystem scan results
+        uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # v3.24.9
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: trivy-fs
