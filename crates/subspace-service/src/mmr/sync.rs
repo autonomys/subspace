@@ -201,6 +201,18 @@ where
 
                         // Save the MMR-nodes from response to the local storage
                         'data: for (position, data) in response.mmr_data.iter() {
+                            // Ensure continuous sync
+                            if *position != starting_position {
+                                debug!(
+                                    ?peer_info,
+                                    %starting_position,
+                                    %position,
+                                    "MMR sync error: incorrect starting position."
+                                );
+
+                                continue 'peers;
+                            }
+
                             let node = decode_mmr_data(data);
 
                             let node = match node {

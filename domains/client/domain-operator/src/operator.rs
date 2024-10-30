@@ -259,9 +259,7 @@ where
                         Ok(target_block) => target_block,
                         Err(err) => {
                             error!(?err, "Snap sync failed: can't obtain target block.");
-                            return Err(sp_consensus::Error::Other(
-                                "Snap sync failed: can't obtain target block.".into(),
-                            ));
+                            return Err(());
                         }
                     };
 
@@ -274,9 +272,8 @@ where
                     {
                         trace!(%block_number, "Acknowledged block import from consensus chain.");
                         if acknowledgement_sender.send(()).await.is_err() {
-                            return Err(sp_consensus::Error::Other(
-                                format!("Can't acknowledge block import #{}", block_number).into(),
-                            ));
+                            error!("Can't acknowledge block import #{}", block_number);
+                            return Err(());
                         }
 
                         if block_number >= target_block_number.into() {

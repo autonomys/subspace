@@ -23,10 +23,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_service::domains::ConsensusChainSyncParams;
+use subspace_service::mmr_sync;
 use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
-use subspace_service::{mmr_sync, wait_for_block_import};
 use tokio::time::sleep;
-use tracing::{debug, error, info_span, trace, Instrument};
+use tracing::{debug, error, trace, Instrument};
 
 #[async_trait]
 /// Provides execution receipts for the last confirmed domain block.
@@ -300,13 +300,6 @@ where
             sp_blockchain::Error::Backend(format!("Failed to import state block: {error}"))
         })?;
     }
-
-    wait_for_block_import(
-        sync_params.domain_client.as_ref(),
-        domain_block_number.into(),
-    )
-    .instrument(info_span!("domain chain snap sync"))
-    .await;
 
     trace!(
         "Domain client info after waiting: {:?}",

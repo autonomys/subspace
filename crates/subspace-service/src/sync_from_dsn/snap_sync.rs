@@ -68,16 +68,12 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
         pause_sync.store(true, Ordering::Release);
 
         let target_block = if let Some(mut target_block_receiver) = target_block_receiver {
-            let target_block_result = target_block_receiver.recv().await;
-            if let Ok(target_block) = target_block_result.clone() {
-                Some(target_block)
-            } else {
-                error!(
-                    ?target_block_result,
-                    "Snap sync failed: can't obtain target block."
-                );
-
-                return;
+            match target_block_receiver.recv().await {
+                Ok(target_block) => Some(target_block),
+                Err(err) => {
+                    error!(?err, "Snap sync failed: can't obtain target block.");
+                    return;
+                }
             }
         } else {
             None
