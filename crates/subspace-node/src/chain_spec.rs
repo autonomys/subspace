@@ -60,12 +60,12 @@ struct GenesisDomainParams {
 }
 
 /// Genesis token balances allocations
-pub const GENESIS_ALLOCATIONS: &str = include_str!("genesis_allocations.json");
+const GENESIS_ALLOCATIONS: &str = include_str!("genesis_allocations.json");
 
 #[derive(Deserialize)]
 struct GenesisAllocation(AccountId, NonZeroU128);
 
-pub fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
+fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
     let allocations: Vec<GenesisAllocation> =
         serde_json::from_str(contents).expect("Failed to parse genesis allocations JSON");
 
