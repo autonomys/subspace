@@ -385,6 +385,13 @@ where
         .rev()
         .filter_map(|segment_index| segment_headers_store.get_segment_header(segment_index))
     {
+        // If we're re-creating mappings for existing segments, ignore those segments. This
+        // archives them again, and creates their mappings.
+        // TODO: create historic mappings without doing expensive re-archiving operations
+        if create_object_mappings {
+            continue;
+        }
+
         let last_archived_block_number = segment_header.last_archived_block().number;
         if NumberFor::<Block>::from(last_archived_block_number) > best_block_to_archive {
             // Last archived block in segment header is too high for current state of the chain
