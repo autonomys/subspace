@@ -28,7 +28,7 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
-use tracing::{debug, error, info, trace};
+use tracing::{error, info, trace};
 
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
@@ -225,14 +225,15 @@ where
                             }
                             Err(err) => {
                                 error!(%err, "Domain snap sync failed.");
-
                                 info!("Wipe the DB and restart the application with --sync=full.");
+
                                 // essential task failed
                                 return;
                             }
                         };
                     } else {
-                        debug!("Snap sync can only work with genesis state, skipping");
+                        error!("Snap sync can only work with genesis state.");
+                        info!("Wipe the DB and restart the application with --sync=full.");
 
                         // essential task failed
                         return;
