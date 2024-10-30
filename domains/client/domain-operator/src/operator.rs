@@ -226,6 +226,7 @@ where
                             Err(err) => {
                                 error!(%err, "Domain snap sync failed.");
 
+                                info!("Wipe the DB and restart the application with --sync=full.");
                                 // essential task failed
                                 return;
                             }
