@@ -38,7 +38,6 @@ impl AlignedSectorSize {
 #[derive(Debug)]
 pub struct DirectIoFile {
     file: File,
-    physical_sector_size: usize,
     /// Scratch buffer of aligned memory for reads and writes
     scratch_buffer: Mutex<Vec<AlignedSectorSize>>,
 }
@@ -89,7 +88,7 @@ impl FileExt for DirectIoFile {
         let mut scratch_buffer = self.scratch_buffer.lock();
 
         // First read up to `MAX_READ_SIZE - padding`
-        let padding = (offset % self.physical_sector_size as u64) as usize;
+        let padding = (offset % DISK_SECTOR_SIZE as u64) as usize;
         let first_unaligned_chunk_size = (MAX_READ_SIZE - padding).min(buf.len());
         let (unaligned_start, buf) = buf.split_at_mut(first_unaligned_chunk_size);
         {
@@ -128,7 +127,7 @@ impl FileExt for DirectIoFile {
         let mut scratch_buffer = self.scratch_buffer.lock();
 
         // First write up to `MAX_READ_SIZE - padding`
-        let padding = (offset % self.physical_sector_size as u64) as usize;
+        let padding = (offset % DISK_SECTOR_SIZE as u64) as usize;
         let first_unaligned_chunk_size = (MAX_READ_SIZE - padding).min(buf.len());
         let (unaligned_start, buf) = buf.split_at(first_unaligned_chunk_size);
         {
@@ -155,7 +154,10 @@ impl DirectIoFile {
     /// will be created).
     ///
     /// This is especially important on Windows to prevent huge memory usage.
-    pub fn open(path: &Path) -> io::Result<Self> {
+    pub fn open<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let mut open_options = OpenOptions::new();
         open_options.use_direct_io();
         let file = open_options
@@ -167,16 +169,8 @@ impl DirectIoFile {
 
         file.disable_cache()?;
 
-        // Physical sector size on many SSDs is smaller than 4096 and should improve performance
-        let physical_sector_size = if file.read_at(&mut [0; 512], 512).is_ok() {
-            512
-        } else {
-            DISK_SECTOR_SIZE
-        };
-
         Ok(Self {
             file,
-            physical_sector_size,
             // In many cases we'll want to read this much at once, so pre-allocate it right away
             scratch_buffer: Mutex::new(vec![
                 AlignedSectorSize::default();
@@ -196,28 +190,22 @@ impl DirectIoFile {
         bytes_to_read: usize,
         offset: u64,
     ) -> io::Result<&'a [u8]> {
+        let aligned_offset = offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64;
+        let padding = (offset - aligned_offset) as usize;
+
         // Make scratch buffer of a size that is necessary to read aligned memory, accounting
         // for extra bytes at the beginning and the end that will be thrown away
-        let offset_in_buffer = (offset % DISK_SECTOR_SIZE as u64) as usize;
-        let desired_buffer_size = (bytes_to_read + offset_in_buffer).div_ceil(DISK_SECTOR_SIZE);
+        let desired_buffer_size = (padding + bytes_to_read).div_ceil(DISK_SECTOR_SIZE);
         if scratch_buffer.len() < desired_buffer_size {
             scratch_buffer.resize_with(desired_buffer_size, AlignedSectorSize::default);
         }
+        let scratch_buffer = AlignedSectorSize::slice_mut_to_repr(scratch_buffer)
+            [..desired_buffer_size]
+            .as_flattened_mut();
 
-        let scratch_buffer =
-            AlignedSectorSize::slice_mut_to_repr(scratch_buffer).as_flattened_mut();
+        self.file.read_exact_at(scratch_buffer, aligned_offset)?;
 
-        // While buffer above is allocated with granularity of `MAX_DISK_SECTOR_SIZE`, reads are
-        // done with granularity of physical sector size
-        let offset_in_buffer = (offset % self.physical_sector_size as u64) as usize;
-        self.file.read_exact_at(
-            &mut scratch_buffer[..(bytes_to_read + offset_in_buffer)
-                .div_ceil(self.physical_sector_size)
-                * self.physical_sector_size],
-            offset / self.physical_sector_size as u64 * self.physical_sector_size as u64,
-        )?;
-
-        Ok(&scratch_buffer[offset_in_buffer..][..bytes_to_read])
+        Ok(&scratch_buffer[padding..][..bytes_to_read])
     }
 
     /// Panics on writes over `MAX_READ_SIZE` (including padding on both ends)
@@ -230,17 +218,17 @@ impl DirectIoFile {
         // This is guaranteed by constructor
         assert!(
             AlignedSectorSize::slice_mut_to_repr(scratch_buffer)
-                .as_flattened_mut()
+                .as_flattened()
                 .len()
-                >= MAX_READ_SIZE
+                <= MAX_READ_SIZE
         );
 
-        let aligned_offset =
-            offset / self.physical_sector_size as u64 * self.physical_sector_size as u64;
+        let aligned_offset = offset / DISK_SECTOR_SIZE as u64 * DISK_SECTOR_SIZE as u64;
         let padding = (offset - aligned_offset) as usize;
+
         // Calculate the size of the read including padding on both ends
-        let bytes_to_read = (padding + bytes_to_write.len()).div_ceil(self.physical_sector_size)
-            * self.physical_sector_size;
+        let bytes_to_read =
+            (padding + bytes_to_write.len()).div_ceil(DISK_SECTOR_SIZE) * DISK_SECTOR_SIZE;
 
         if padding == 0 && bytes_to_read == bytes_to_write.len() {
             let scratch_buffer =
@@ -279,83 +267,52 @@ mod tests {
         thread_rng().fill(data.as_mut_slice());
         fs::write(&file_path, &data).unwrap();
 
-        let mut file = DirectIoFile::open(&file_path).unwrap();
+        let file = DirectIoFile::open(&file_path).unwrap();
 
-        for override_physical_sector_size in [None, Some(4096)] {
-            if let Some(physical_sector_size) = override_physical_sector_size {
-                file.physical_sector_size = physical_sector_size;
-            }
+        let mut buffer = Vec::new();
+        for (offset, size) in [
+            (0_usize, 512_usize),
+            (0_usize, 4096_usize),
+            (0, 500),
+            (0, 4000),
+            (5, 50),
+            (12, 500),
+            (96, 4000),
+            (4000, 96),
+            (10000, 5),
+            (0, MAX_READ_SIZE),
+            (0, MAX_READ_SIZE * 2),
+            (5, MAX_READ_SIZE - 5),
+            (5, MAX_READ_SIZE * 2 - 5),
+            (5, MAX_READ_SIZE),
+            (5, MAX_READ_SIZE * 2),
+            (MAX_READ_SIZE, MAX_READ_SIZE),
+            (MAX_READ_SIZE, MAX_READ_SIZE * 2),
+            (MAX_READ_SIZE + 5, MAX_READ_SIZE - 5),
+            (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2 - 5),
+            (MAX_READ_SIZE + 5, MAX_READ_SIZE),
+            (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2),
+        ] {
+            let data = &mut data[offset..][..size];
+            buffer.resize(size, 0);
+            // Read contents
+            file.read_exact_at(buffer.as_mut_slice(), offset as u64)
+                .unwrap_or_else(|error| panic!("Offset {offset}, size {size}: {error}"));
 
-            let mut buffer = Vec::new();
-            for (offset, size) in [
-                (0_usize, 512_usize),
-                (0_usize, 4096_usize),
-                (0, 500),
-                (0, 4000),
-                (5, 50),
-                (12, 500),
-                (96, 4000),
-                (4000, 96),
-                (10000, 5),
-                (0, MAX_READ_SIZE),
-                (0, MAX_READ_SIZE * 2),
-                (5, MAX_READ_SIZE - 5),
-                (5, MAX_READ_SIZE * 2 - 5),
-                (5, MAX_READ_SIZE),
-                (5, MAX_READ_SIZE * 2),
-                (MAX_READ_SIZE, MAX_READ_SIZE),
-                (MAX_READ_SIZE, MAX_READ_SIZE * 2),
-                (MAX_READ_SIZE + 5, MAX_READ_SIZE - 5),
-                (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2 - 5),
-                (MAX_READ_SIZE + 5, MAX_READ_SIZE),
-                (MAX_READ_SIZE + 5, MAX_READ_SIZE * 2),
-            ] {
-                let data = &mut data[offset..][..size];
-                buffer.resize(size, 0);
-                // Read contents
-                file.read_exact_at(buffer.as_mut_slice(), offset as u64)
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "Offset {offset}, size {size}, override physical sector size \
-                            {override_physical_sector_size:?}: {error}"
-                        )
-                    });
+            // Ensure it is correct
+            assert_eq!(data, buffer.as_slice(), "Offset {offset}, size {size}");
 
-                // Ensure it is correct
-                assert_eq!(
-                    data,
-                    buffer.as_slice(),
-                    "Offset {offset}, size {size}, override physical sector size \
-                    {override_physical_sector_size:?}"
-                );
+            // Update data with random contents and write
+            thread_rng().fill(data);
+            file.write_all_at(data, offset as u64)
+                .unwrap_or_else(|error| panic!("Offset {offset}, size {size}: {error}"));
 
-                // Update data with random contents and write
-                thread_rng().fill(data);
-                file.write_all_at(data, offset as u64)
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "Offset {offset}, size {size}, override physical sector size \
-                            {override_physical_sector_size:?}: {error}"
-                        )
-                    });
+            // Read contents again
+            file.read_exact_at(buffer.as_mut_slice(), offset as u64)
+                .unwrap_or_else(|error| panic!("Offset {offset}, size {size}: {error}"));
 
-                // Read contents again
-                file.read_exact_at(buffer.as_mut_slice(), offset as u64)
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "Offset {offset}, size {size}, override physical sector size \
-                            {override_physical_sector_size:?}: {error}"
-                        )
-                    });
-
-                // Ensure it is correct too
-                assert_eq!(
-                    data,
-                    buffer.as_slice(),
-                    "Offset {offset}, size {size}, override physical sector size \
-                    {override_physical_sector_size:?}"
-                );
-            }
+            // Ensure it is correct too
+            assert_eq!(data, buffer.as_slice(), "Offset {offset}, size {size}");
         }
     }
 }
