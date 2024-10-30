@@ -372,6 +372,11 @@ pub enum CreateObjectMappings {
 }
 
 impl CreateObjectMappings {
+    /// Returns true if object mappings will be created from a past or future block.
+    pub fn is_enabled(&self) -> bool {
+        matches!(self, CreateObjectMappings::Block(_))
+    }
+
     /// The block number to start creating object mappings from.
     pub fn block(&self) -> Option<BlockNumber> {
         match self {
@@ -862,6 +867,15 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
+    if create_object_mappings.is_enabled() {
+        info!(
+            ?create_object_mappings,
+            "Creating object mappings from the configured block onwards"
+        );
+    } else {
+        info!("Not creating object mappings");
+    }
+
     let maybe_archiver = if segment_headers_store.max_segment_index().is_none() {
         Some(initialize_archiver(
             &segment_headers_store,
