@@ -8,8 +8,6 @@ name: trivy-security-scan
 on:
   repository_dispatch:
     types: [trivy-scan-dispatch]
-  schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC
 
 jobs:
   update-trivy-db:
