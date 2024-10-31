@@ -506,7 +506,8 @@ pub(super) fn create_consensus_chain_configuration(
     let sync = sync.unwrap_or(ChainSyncMode::Snap);
 
     let chain_spec = match chain.as_deref() {
-        Some("taurus-compiled") => chain_spec::taurus_compiled()?,
+        Some("mainnet-compiled") => chain_spec::mainnet_compiled()?,
+        Some("mainnet") => chain_spec::mainnet_config()?,
         Some("taurus") => chain_spec::taurus_config()?,
         Some("devnet") => chain_spec::devnet_config()?,
         Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
