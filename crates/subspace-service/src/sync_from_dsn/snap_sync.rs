@@ -92,7 +92,7 @@ where
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
-        let snap_sync_fut = sync(
+        sync(
             &segment_headers_store,
             &node,
             &piece_getter,
@@ -103,23 +103,8 @@ where
             &network_service_handle,
             None,
             &erasure_coding,
-        );
-
-        match snap_sync_fut.await {
-            Ok(()) => {
-                debug!("Snap sync finished successfully");
-            }
-            Err(error) => {
-                // A fatal snap sync error requiring user intervention. The caller will log this error,
-                // so just return it to terminate the task.
-                if matches!(error, Error::SnapSyncImpossible(_)) {
-                    return Err(error);
-                }
-
-                // Other errors are non-fatal
-                error!(%error, "Snap sync failed");
-            }
-        }
+        )
+        .await?;
 
         // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue
         // gracefully
@@ -206,9 +191,7 @@ where
     if target_segment_index <= SegmentIndex::ONE {
         // The caller logs this error
         return Err(Error::SnapSyncImpossible(
-            "Snap sync is impossible - not enough archived history: \
-            wipe the DB folder and rerun with --sync=full"
-                .into(),
+            "Snap sync is impossible - not enough archived history".into(),
         ));
     }
 
