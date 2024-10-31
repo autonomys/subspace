@@ -107,10 +107,7 @@ mod benchmarks {
         EnableRewards::<T>::take();
 
         #[extrinsic_call]
-        _(
-            RawOrigin::Root,
-            EnableRewardsAt::Height(Some(100u32.into())),
-        );
+        _(RawOrigin::Root, EnableRewardsAt::Height(100u32.into()));
 
         assert_eq!(EnableRewards::<T>::get(), Some(100u32.into()));
     }

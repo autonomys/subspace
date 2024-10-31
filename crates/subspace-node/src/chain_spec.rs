@@ -24,11 +24,12 @@ use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
+use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::PermissionedActionAllowedBy;
 use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU128, NonZeroU32};
 use subspace_core_primitives::pot::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
@@ -56,6 +57,22 @@ struct GenesisParams {
 struct GenesisDomainParams {
     permissioned_action_allowed_by: PermissionedActionAllowedBy<AccountId>,
     genesis_domains: Vec<GenesisDomain>,
+}
+
+/// Genesis token balances allocations
+const GENESIS_ALLOCATIONS: &str = include_str!("genesis_allocations.json");
+
+#[derive(Deserialize)]
+struct GenesisAllocation(AccountId, NonZeroU128);
+
+fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
+    let allocations: Vec<GenesisAllocation> =
+        serde_json::from_str(contents).expect("Failed to parse genesis allocations JSON");
+
+    allocations
+        .into_iter()
+        .map(|GenesisAllocation(account, balance)| (account, balance.get() * SSC))
+        .collect()
 }
 
 pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
@@ -105,10 +122,8 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
             phantom: PhantomData,
             members: council_members,
         };
-        let balances = vec![
-            (sudo_account.clone(), 1_000 * SSC),
-            (history_seeder.clone(), SSC),
-        ];
+        let balances = get_genesis_allocations(GENESIS_ALLOCATIONS);
+
         serde_json::to_value(subspace_genesis_config(
             sudo_account.clone(),
             balances,

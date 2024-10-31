@@ -250,7 +250,7 @@ pub fn new_test_ext(pot_extension: PotExtension) -> TestExternalities {
         .unwrap();
 
     pallet_subspace::GenesisConfig::<Test> {
-        enable_rewards_at: EnableRewardsAt::Height(Some(1)),
+        enable_rewards_at: EnableRewardsAt::Height(1),
         allow_authoring_by: AllowAuthoringBy::Anyone,
         pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),
         phantom: PhantomData,
