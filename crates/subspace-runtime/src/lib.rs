@@ -317,8 +317,13 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 parameter_types! {
-    // TODO: Correct value
-    pub const ExistentialDeposit: Balance = 500 * SHANNON;
+    // Computed as ED = Account data size * Price per byte, where
+    // Price per byte = Min Number of validators * Storage duration (years) * Storage cost per year
+    // Account data size (80 bytes)
+    // Min Number of redundant validators (100) - For a stable and redundant blockchain we need at least a certain number of full nodes/collators.
+    // Storage duration (20 years) - It is theoretically unlimited, accounts will stay around while the chain is alive.
+    // Storage cost per year of (12 * 1e-9 * 0.1 ) - SSD storage on cloud hosting costs about 0.1 USD per Gb per month
+    pub const ExistentialDeposit: Balance = 200_000_000_000_000 * SHANNON;
 }
 
 #[derive(
