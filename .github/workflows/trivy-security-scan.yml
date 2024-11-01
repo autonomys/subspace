@@ -30,7 +30,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
+          key: trivy-${{ steps.date.outputs.date }}
+          restore-keys: |
+            trivy-
 
       - name: Setup oras
         if: steps.cache-trivy-db.outputs.cache-hit != 'true'
@@ -50,7 +52,6 @@ jobs:
         if: github.event.client_payload.image != ''
         run: |
           image="${{ github.event.client_payload.image }}"
-          timeout=900
           interval=300
           retry_limit=5
           attempt=0
@@ -99,7 +100,6 @@ jobs:
         with:
           scan-type: 'fs'
           cache: 'true'
-          scan-ref: '.'
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH'
