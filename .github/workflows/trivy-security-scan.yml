@@ -17,39 +17,8 @@ jobs:
       security-events: write
 
     steps:
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
       - name: Checkout code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      - name: Setup oras
-        uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
-
-      # Get DB digest for cache key
-      - name: Get Trivy DB digest
-        id: db-digest
-        run: |
-          DIGEST=$(oras manifest fetch ghcr.io/aquasecurity/trivy-db:2 | sha256sum | cut -d' ' -f1)
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-
-      # Cache restore with digest key
-      - name: Check and restore Trivy DB cache
-        id: cache-trivy-db
-        uses: actions/cache@v4
-        with:
-          path: .cache/trivy
-          key: trivy-${{ steps.db-digest.outputs.digest }}
-
-      # Download the DB if cache miss
-      - name: Download and extract Trivy DB
-        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p .cache/trivy/db
-          oras pull ghcr.io/aquasecurity/trivy-db:2
-          tar -xzf db.tar.gz -C .cache/trivy/db
-          rm db.tar.gz
 
       # Image availability check with retry logic
       - name: Check Docker image availability with retry
