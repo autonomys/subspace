@@ -1088,6 +1088,8 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
+        backend.offchain_storage(),
+        network_service.clone(),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(

@@ -1,3 +1,4 @@
+use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
@@ -9,13 +10,15 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_consensus_subspace::archiver::{decode_block, SegmentHeadersStore};
-use sc_network::{NetworkBlock, PeerId};
+use sc_network::service::traits::NetworkService;
+use sc_network::{NetworkBlock, NetworkRequest, PeerId};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_consensus_subspace::SubspaceApi;
+use sp_core::offchain::OffchainStorage;
 use sp_objects::ObjectsApi;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::collections::{HashSet, VecDeque};
@@ -60,7 +63,7 @@ impl From<String> for Error {
 /// Run a snap sync, return an error if snap sync is impossible and user intervention is required.
 /// Otherwise, just log the error and return `Ok(())` so that regular sync continues.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn snap_sync<Block, AS, Client, PG>(
+pub(crate) async fn snap_sync<Block, AS, Client, PG, OS>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: Node,
     fork_id: Option<String>,
@@ -71,6 +74,8 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG>(
     sync_service: Arc<SyncingService<Block>>,
     network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
+    offchain_storage: Option<OS>,
+    network_service: Arc<dyn NetworkService>,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -84,6 +89,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     PG: DsnSyncPieceGetter,
+    OS: OffchainStorage,
 {
     let info = client.info();
     // Only attempt snap sync with genesis state
@@ -99,10 +105,12 @@ where
             fork_id.as_deref(),
             &client,
             import_queue_service.as_mut(),
-            &sync_service,
+            sync_service.clone(),
             &network_service_handle,
             None,
             &erasure_coding,
+            offchain_storage,
+            network_service,
         )
         .await?;
 
@@ -265,17 +273,19 @@ where
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
 /// segment) or to the last archived block.
-async fn sync<PG, AS, Block, Client, IQS>(
+async fn sync<PG, AS, Block, Client, IQS, OS, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     piece_getter: &PG,
     fork_id: Option<&str>,
     client: &Arc<Client>,
     import_queue_service: &mut IQS,
-    sync_service: &SyncingService<Block>,
+    sync_service: Arc<SyncingService<Block>>,
     network_service_handle: &NetworkServiceHandle,
     target_block: Option<BlockNumber>,
     erasure_coding: &ErasureCoding,
+    offchain_storage: Option<OS>,
+    network_request: NR,
 ) -> Result<(), Error>
 where
     PG: DsnSyncPieceGetter,
@@ -290,6 +300,8 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, PublicKey> + ObjectsApi<Block>,
     IQS: ImportQueueService<Block> + ?Sized,
+    OS: OffchainStorage,
+    NR: NetworkRequest + Sync + Send,
 {
     debug!("Starting snap sync...");
 
@@ -344,7 +356,7 @@ where
             &header,
             client,
             fork_id,
-            sync_service,
+            &sync_service,
             network_service_handle,
         )
         .await
@@ -399,6 +411,18 @@ where
     // Wait for blocks to be imported
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
+
+    if let Some(offchain_storage) = offchain_storage {
+        mmr_sync(
+            fork_id.map(|v| v.into()),
+            client.clone(),
+            network_request,
+            sync_service.clone(),
+            offchain_storage,
+            target_block,
+        )
+        .await?;
+    }
 
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
