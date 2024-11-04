@@ -10061,6 +10061,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-utils",
  "schnellru",
+ "serde",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
