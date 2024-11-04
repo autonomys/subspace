@@ -10,6 +10,7 @@ on:
     tags:
       - "runtime-snapshot-*"
       - "runtime-taurus-*"
+      - "runtime-mainnet-*"
 
 jobs:
   runtime:

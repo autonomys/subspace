@@ -11,6 +11,7 @@ on:
     tags:
       - "snapshot-*"
       - "taurus-*"
+      - "mainnet-*"
 
 # Incremental compilation here isn't helpful
 env:
