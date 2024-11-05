@@ -17,32 +17,8 @@ jobs:
       security-events: write
 
     steps:
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
       - name: Checkout code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-
-      # Cache restore for Trivy DB
-      - name: Check and restore Trivy DB cache
-        id: cache-trivy-db
-        uses: actions/cache@v4
-        with:
-          path: .cache/trivy
-          key: cache-trivy-${{ steps.date.outputs.date }}
-
-      - name: Setup oras
-        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
-        uses: oras-project/setup-oras@9c92598691bfef1424de2f8fae81941568f5889c # v1.21
-
-      - name: Download and extract Trivy DB
-        if: steps.cache-trivy-db.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p .cache/trivy/db
-          oras pull ghcr.io/aquasecurity/trivy-db:2
-          tar -xzf db.tar.gz -C .cache/trivy/db
-          rm db.tar.gz
 
       # Image availability check with retry logic
       - name: Check Docker image availability with retry
@@ -50,7 +26,6 @@ jobs:
         if: github.event.client_payload.image != ''
         run: |
           image="${{ github.event.client_payload.image }}"
-          timeout=900
           interval=300
           retry_limit=5
           attempt=0
@@ -99,7 +74,6 @@ jobs:
         with:
           scan-type: 'fs'
           cache: 'true'
-          scan-ref: '.'
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH'
