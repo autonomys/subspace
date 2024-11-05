@@ -113,7 +113,7 @@ pub fn block_weights() -> BlockWeights {
     // If the bundle slot probability is the same as the consensus slot probability then
     // there is one bundle per block, such a bundle is allowed to consume the whole domain
     // block weight
-    let max_extrinsic_weight = maximum_block_weight;
+    let max_extrinsic_weight = maximum_block_weight - ExtrinsicBaseWeight::get();
 
     BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
