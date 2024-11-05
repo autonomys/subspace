@@ -82,7 +82,7 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 /// `RPC_DEFAULT_MAX_RESPONSE_SIZE_MB`. We estimate 500K mappings per segment,
 ///  and the minimum hex-encoded mapping size is 88 bytes.
 // TODO: make this into a CLI option, or calculate this from other CLI options
-const OBJECT_MAPPING_BATCH_SIZE: usize = 10_000;
+const OBJECT_MAPPING_BATCH_SIZE: usize = 1000;
 
 /// The maximum number of object hashes allowed in a subscription filter.
 ///
