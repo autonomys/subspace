@@ -117,7 +117,7 @@ pub async fn mmr_sync<Block, Client, NR, OS>(
     network_service: NR,
     sync_service: Arc<SyncingService<Block>>,
     offchain_storage: OS,
-    target_block: Option<BlockNumber>,
+    target_block: BlockNumber,
 ) -> Result<(), sp_blockchain::Error>
 where
     Block: BlockT,
@@ -158,25 +158,13 @@ where
             // Request MMR until target block reached.
             loop {
                 let target_position = {
-                    let best_block = if let Some(target_block) = target_block {
-                        target_block
-                    } else {
-                        let best_block: u32 = peer_info.best_number.try_into().map_err(|_| {
-                            sp_blockchain::Error::Application(
-                                "Can't convert best block from peer info.".into(),
-                            )
-                        })?;
-
-                        best_block
-                    };
-
-                    let nodes = NodesUtils::new(best_block.into());
+                    let nodes = NodesUtils::new(target_block.into());
 
                     let target_position = nodes.size().saturating_sub(1);
 
                     debug!(
-                        "MMR-sync. Best block={}, Node target position={}",
-                        best_block, target_position
+                        "MMR-sync. Target block={}, Node target position={}",
+                        target_block, target_position
                     );
 
                     target_position
@@ -238,6 +226,7 @@ where
 
                             starting_position += 1;
 
+                            // Did we collect all the necessary data from the last response?
                             if u64::from(*position) >= target_position {
                                 debug!(%target_position, "MMR-sync: target position reached.");
                                 break 'data;
@@ -251,9 +240,10 @@ where
                     }
                 }
 
-                // Actual MMR-nodes may exceed this number, however, we will catch up with the rest
-                // when we sync the remaining data (consensus and domain chains).
+                // Should we request a new portion of the data from the last peer?
                 if target_position <= starting_position.into() {
+                    // Actual MMR-nodes may exceed this number, however, we will catch up with the rest
+                    // when we sync the remaining data (consensus and domain chains).
                     debug!("Target position reached: {target_position}");
 
                     if !verify_mmr_data(client, &mmr, leaves_number) {

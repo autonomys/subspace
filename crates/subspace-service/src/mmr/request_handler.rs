@@ -249,7 +249,10 @@ where
                 if let Some(storage_value) = storage_value {
                     mmr_data.insert(position, storage_value);
                 } else {
-                    if let Ok(Some(hash)) = self.client.hash((block_number as u32).into()) {
+                    if let Ok(Some(hash)) = self
+                        .client
+                        .hash((u32::try_from(block_number).expect("Block number is u32")).into())
+                    {
                         let temp_key = get_temp_key(position.into(), hash);
                         let storage_value = self
                             .offchain_db

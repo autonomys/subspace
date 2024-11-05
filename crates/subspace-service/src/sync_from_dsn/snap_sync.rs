@@ -416,6 +416,12 @@ where
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
 
+    let mmr_target_block = if let Some(target_block) = target_block {
+        target_block
+    } else {
+        last_block_number
+    };
+
     if let Some(offchain_storage) = offchain_storage {
         mmr_sync(
             fork_id.map(|v| v.into()),
@@ -423,7 +429,7 @@ where
             network_request,
             sync_service.clone(),
             offchain_storage,
-            target_block,
+            mmr_target_block,
         )
         .await?;
     }
