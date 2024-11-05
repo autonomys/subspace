@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
+#[cfg(test)]
+mod tests;
+
 use crate::mmr::sync::decode_mmr_data;
 use crate::mmr::{get_offchain_key, get_temp_key};
 use futures::channel::oneshot;
@@ -34,6 +37,7 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::BlockNumber;
 use tracing::{debug, error, trace};
 
 const MAX_NUMBER_OF_SAME_REQUESTS_PER_PEER: usize = 2;
@@ -81,6 +85,12 @@ pub fn generate_protocol_name<Hash: AsRef<[u8]>>(
     } else {
         format!("/{}/mmr/1", array_bytes::bytes2hex("", genesis_hash))
     }
+}
+
+fn leaf_index_that_added_node(position: BlockNumber) -> BlockNumber {
+    NodesUtils::leaf_index_that_added_node(position.into())
+        .try_into()
+        .expect("Always its into a block number; qed")
 }
 
 /// The key of [`BlockRequestHandler::seen_requests`].
@@ -243,16 +253,13 @@ where
                     .offchain_db
                     .local_storage_get(StorageKind::PERSISTENT, &canon_key);
 
-                let block_number = NodesUtils::leaf_index_that_added_node(position.into());
+                let block_number = leaf_index_that_added_node(position);
                 trace!(%position, %block_number, "Storage data present: {}", storage_value.is_some());
 
                 if let Some(storage_value) = storage_value {
                     mmr_data.insert(position, storage_value);
                 } else {
-                    if let Ok(Some(hash)) = self
-                        .client
-                        .hash((u32::try_from(block_number).expect("Block number is u32")).into())
-                    {
+                    if let Ok(Some(hash)) = self.client.hash(block_number.into()) {
                         let temp_key = get_temp_key(position.into(), hash);
                         let storage_value = self
                             .offchain_db
