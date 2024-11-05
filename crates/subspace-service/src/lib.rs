@@ -905,7 +905,7 @@ where
 
     if let Some(offchain_storage) = backend.offchain_storage() {
         // Allow both outgoing and incoming requests.
-        let (handler, protocol_config) = MmrRequestHandler::new::<NetworkWorker<_, _>, _>(
+        let (handler, protocol_config) = MmrRequestHandler::new::<NetworkWorker<_, _>>(
             &protocol_id,
             fork_id,
             client.clone(),
@@ -1088,6 +1088,8 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
+        backend.offchain_storage(),
+        network_service.clone(),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(
