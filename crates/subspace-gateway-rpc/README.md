@@ -6,8 +6,10 @@ RPC API for Subspace Gateway.
 
 The gateway RPCs can fetch data using object mappings supplied by a node.
 
-Launch a node using the instructions in its README, and wait for mappings from the node RPCs:
+Launch a node with `--create-object-mappings`, and wait for mappings from the node RPCs:
+(See the node README for more details.)
 ```bash
+$ subspace-node --create-object-mappings ...
 $ websocat --jsonrpc ws://127.0.0.1:9944
 subspace_subscribeObjectMappings
 ```
@@ -15,13 +17,18 @@ subspace_subscribeObjectMappings
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "subspace_archived_object_mappings",
+  "method": "subspace_object_mappings",
   "params": {
     "subscription": "o7M85uu9ir39R5PJ",
     "result": {
+      "blockNumber": 0,
       "v0": {
         "objects": [
-          ["0000000000000000000000000000000000000000000000000000000000000000", 0, 0]
+          [
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            0,
+            0
+          ]
         ]
       }
     }
