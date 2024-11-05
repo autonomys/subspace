@@ -170,7 +170,7 @@ type SignedExtraFor<Runtime> = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -219,7 +219,7 @@ where
             generic::Era::mortal(period, current_block)
         }),
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
-        frame_system::CheckWeight::<Runtime>::new(),
+        domain_check_weight::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
     );
     (

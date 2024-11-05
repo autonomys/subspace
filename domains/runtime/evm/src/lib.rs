@@ -118,7 +118,7 @@ pub type SignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -131,7 +131,7 @@ type CustomSignedExtra = (
     frame_system::CheckGenesis<Runtime>,
     frame_system::CheckMortality<Runtime>,
     pallet_evm_nonce_tracker::CheckNonce<Runtime>,
-    frame_system::CheckWeight<Runtime>,
+    domain_check_weight::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -215,7 +215,20 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                     Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
                 }
 
-                call.pre_dispatch_self_contained(info, dispatch_info, len)
+                // Copy from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
+                // replaced to `domain_check_weight::CheckWeight`
+                if let pallet_ethereum::Call::transact { transaction } = call {
+                    if let Err(e) = domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(
+                        dispatch_info,
+                        len,
+                    ) {
+                        return Some(Err(e));
+                    }
+
+                    Some(Ethereum::validate_transaction_in_block(*info, transaction))
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -933,7 +946,7 @@ fn pre_dispatch_evm_transaction(
                 let _ = transaction_validity?;
 
                 let Call::transact { transaction } = call;
-                frame_system::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
+                domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(dispatch_info, len)?;
 
                 let transaction_data: TransactionData = (&transaction).into();
                 let transaction_nonce = transaction_data.nonce;
