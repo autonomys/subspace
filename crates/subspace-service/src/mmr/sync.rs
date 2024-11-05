@@ -110,6 +110,7 @@ impl mmr_lib::Merge for MmrHasher {
 
 const SYNC_PAUSE: Duration = Duration::from_secs(5);
 
+// TODO: Add support for MMR-sync reruns from non-zero starting point.
 /// Synchronize MMR-leafs from remote offchain storage of the synced peer.
 pub async fn mmr_sync<Block, Client, NR, OS>(
     fork_id: Option<String>,
@@ -242,6 +243,14 @@ where
 
                 // Should we request a new portion of the data from the last peer?
                 if target_position <= starting_position.into() {
+                    if let Err(err) = mmr.commit() {
+                        error!(?err, "MMR commit failed.");
+
+                        return Err(sp_blockchain::Error::Application(
+                            "Failed to commit MMR data.".into(),
+                        ));
+                    }
+
                     // Actual MMR-nodes may exceed this number, however, we will catch up with the rest
                     // when we sync the remaining data (consensus and domain chains).
                     debug!("Target position reached: {target_position}");
