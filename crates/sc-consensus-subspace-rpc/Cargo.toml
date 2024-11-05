@@ -24,6 +24,7 @@ sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
 sc-rpc = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-rpc-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-utils = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
+serde = { version = "1.0.110", default-features = false, features = ["alloc", "derive"] }
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }

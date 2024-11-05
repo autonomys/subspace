@@ -59,7 +59,7 @@ use subspace_core_primitives::objects::GlobalObjectMapping;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use subspace_core_primitives::segments::{HistorySize, SegmentHeader, SegmentIndex};
 use subspace_core_primitives::solutions::Solution;
-use subspace_core_primitives::{BlockHash, PublicKey, SlotNumber};
+use subspace_core_primitives::{BlockHash, BlockNumber, PublicKey, SlotNumber};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_kzg::Kzg;
@@ -82,7 +82,7 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 /// `RPC_DEFAULT_MAX_RESPONSE_SIZE_MB`. We estimate 500K mappings per segment,
 ///  and the minimum hex-encoded mapping size is 88 bytes.
 // TODO: make this into a CLI option, or calculate this from other CLI options
-const OBJECT_MAPPING_BATCH_SIZE: usize = 10_000;
+const OBJECT_MAPPING_BATCH_SIZE: usize = 1000;
 
 /// The maximum number of object hashes allowed in a subscription filter.
 ///
@@ -176,7 +176,7 @@ pub trait SubspaceRpcApi {
     #[subscription(
         name = "subspace_subscribeObjectMappings" => "subspace_object_mappings",
         unsubscribe = "subspace_unsubscribeObjectMappings",
-        item = GlobalObjectMapping,
+        item = ObjectMappingResponse,
         with_extensions,
     )]
     fn subscribe_object_mappings(&self);
@@ -185,7 +185,7 @@ pub trait SubspaceRpcApi {
     #[subscription(
         name = "subspace_subscribeFilteredObjectMappings" => "subspace_filtered_object_mappings",
         unsubscribe = "subspace_unsubscribeFilteredObjectMappings",
-        item = GlobalObjectMapping,
+        item = ObjectMappingResponse,
         with_extensions,
     )]
     fn subscribe_filtered_object_mappings(&self, hashes: Vec<Blake3Hash>);
@@ -221,6 +221,19 @@ impl CachedArchivedSegment {
             CachedArchivedSegment::Weak(weak_archived_segment) => weak_archived_segment.upgrade(),
         }
     }
+}
+
+/// Response to object mapping subscription, including a block height.
+/// Large responses are batched, so the block height can be repeated in different responses.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectMappingResponse {
+    /// The block number that the object mapping is from.
+    pub block_number: BlockNumber,
+
+    /// The object mappings.
+    #[serde(flatten)]
+    pub objects: GlobalObjectMapping,
 }
 
 /// Subspace RPC configuration
@@ -844,10 +857,6 @@ where
         Ok(last_segment_headers)
     }
 
-    // TODO:
-    // - the number of object mappings in each segment can be very large (hundreds or thousands).
-    //   To avoid RPC connection failures, limit the number of mappings returned in each response,
-    //   or the number of in-flight responses.
     fn subscribe_object_mappings(&self, pending: PendingSubscriptionSink, ext: &Extensions) {
         if check_if_safe(ext).is_err() {
             debug!("Unsafe subscribe_object_mappings ignored");
@@ -859,10 +868,15 @@ where
             .subscribe()
             .flat_map(|object_mapping_notification| {
                 let objects = object_mapping_notification.object_mapping;
+                let block_number = object_mapping_notification.block_number;
+
                 stream::iter(objects)
-            })
-            .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
-            .map(|objects| GlobalObjectMapping::V0 { objects });
+                    .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
+                    .map(move |chunk| ObjectMappingResponse {
+                        block_number,
+                        objects: GlobalObjectMapping::from_objects(chunk.iter().cloned()),
+                    })
+            });
 
         self.subscription_executor.spawn(
             "subspace-archived-object-mappings-subscription",
@@ -908,26 +922,35 @@ where
 
         let mut hashes = HashSet::<Blake3Hash>::from_iter(hashes);
         let hash_count = hashes.len();
+        let mut object_count = 0;
 
         let mapping_stream = self
             .object_mapping_notification_stream
             .subscribe()
             .flat_map(move |object_mapping_notification| {
-                let objects = object_mapping_notification
-                    .object_mapping
+                let objects = object_mapping_notification.object_mapping;
+                let block_number = object_mapping_notification.block_number;
+
+                let filtered_objects = objects
                     .into_iter()
                     .filter(|object| hashes.remove(&object.hash))
                     .collect::<Vec<_>>();
 
-                stream::iter(objects)
+                stream::iter(filtered_objects)
+                    // Typically batches will be larger than the hash limit, but we want to allow
+                    // CLI options to change that in future.
+                    .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
+                    .map(move |chunk| ObjectMappingResponse {
+                        block_number,
+                        objects: GlobalObjectMapping::from_objects(chunk.iter().cloned()),
+                    })
             })
             // Stop when we've returned mappings for all the hashes. Since we only yield each hash
             // once, we don't need to check if hashes is empty here.
-            .take(hash_count)
-            // Typically batches will be larger than the hash limit, but we want to allow CLI
-            // options to change that.
-            .ready_chunks(OBJECT_MAPPING_BATCH_SIZE)
-            .map(|objects| GlobalObjectMapping::V0 { objects });
+            .take_while(move |mappings| {
+                object_count += mappings.objects.objects().len();
+                future::ready(object_count <= hash_count)
+            });
 
         self.subscription_executor.spawn(
             "subspace-filtered-object-mappings-subscription",

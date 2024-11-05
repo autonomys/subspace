@@ -67,7 +67,9 @@ use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
+use sp_runtime::traits::{
+    Block as BlockT, BlockNumber as BlockNumberT, CheckedSub, Header, NumberFor, One, Zero,
+};
 use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
@@ -353,6 +355,8 @@ pub struct ObjectMappingNotification {
     ///
     /// The archived data won't be available in pieces until the entire segment is full and archived.
     pub object_mapping: Vec<GlobalObject>,
+    /// The block that these mappings are from.
+    pub block_number: BlockNumber,
     // TODO: add an acknowledgement_sender for backpressure if needed
 }
 
@@ -548,7 +552,7 @@ where
     let client_info = client.info();
     let best_block_number = TryInto::<BlockNumber>::try_into(client_info.best_number)
         .unwrap_or_else(|_| {
-            unreachable!("Block number fits into block number; qed");
+            unreachable!("sp_runtime::BlockNumber fits into subspace_primitives::BlockNumber; qed");
         });
 
     let confirmation_depth_k = subspace_link.chain_constants.confirmation_depth_k();
@@ -698,6 +702,7 @@ where
                 send_object_mapping_notification(
                     &subspace_link.object_mapping_notification_sender,
                     block_outcome.object_mapping,
+                    block_number_to_archive,
                 );
                 let new_segment_headers: Vec<SegmentHeader> = block_outcome
                     .archived_segments
@@ -1040,6 +1045,7 @@ where
     send_object_mapping_notification(
         &object_mapping_notification_sender,
         block_outcome.object_mapping,
+        block_number_to_archive,
     );
     for archived_segment in block_outcome.archived_segments {
         let segment_header = archived_segment.segment_header;
@@ -1083,15 +1089,25 @@ where
     Ok((block_hash_to_archive, block_number_to_archive))
 }
 
-fn send_object_mapping_notification(
+fn send_object_mapping_notification<BlockNum>(
     object_mapping_notification_sender: &SubspaceNotificationSender<ObjectMappingNotification>,
     object_mapping: Vec<GlobalObject>,
-) {
+    block_number: BlockNum,
+) where
+    BlockNum: BlockNumberT,
+{
     if object_mapping.is_empty() {
         return;
     }
 
-    let object_mapping_notification = ObjectMappingNotification { object_mapping };
+    let block_number = TryInto::<BlockNumber>::try_into(block_number).unwrap_or_else(|_| {
+        unreachable!("sp_runtime::BlockNumber fits into subspace_primitives::BlockNumber; qed");
+    });
+
+    let object_mapping_notification = ObjectMappingNotification {
+        object_mapping,
+        block_number,
+    };
 
     object_mapping_notification_sender.notify(move || object_mapping_notification);
 }
