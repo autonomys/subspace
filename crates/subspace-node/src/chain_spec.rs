@@ -22,7 +22,7 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
@@ -257,7 +257,7 @@ pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
 }
 
 pub fn mainnet_config() -> Result<GenericChainSpec, String> {
-    Err("Mainnet is not supported".to_string())
+    GenericChainSpec::from_json_bytes(MAINNET_CHAIN_SPEC.as_bytes())
 }
 
 pub fn taurus_config() -> Result<GenericChainSpec, String> {
