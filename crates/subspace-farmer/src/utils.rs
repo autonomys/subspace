@@ -8,11 +8,14 @@ use crate::thread_pool_manager::{PlottingThreadPoolManager, PlottingThreadPoolPa
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::Either;
-use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::{
+    current_thread_index, ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder,
+};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::{pin, Pin};
+use std::process::exit;
 use std::task::{Context, Poll};
 use std::{fmt, io, iter, thread};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
@@ -488,11 +491,28 @@ fn create_plotting_thread_pool_manager_thread_pool_pair(
     cpu_core_set: CpuCoreSet,
     thread_priority: Option<ThreadPriority>,
 ) -> Result<ThreadPool, ThreadPoolBuildError> {
+    let thread_name =
+        move |thread_index| format!("{thread_prefix}-{thread_pool_index}.{thread_index}");
+    // TODO: remove this panic handler when rayon logs panic_info
+    // https://github.com/rayon-rs/rayon/issues/1208
+    // (we'll lose the thread name, because it's not stored within rayon's WorkerThread)
+    let panic_handler = move |panic_info| {
+        if let Some(index) = current_thread_index() {
+            eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
+        } else {
+            // We want to guarantee exit, rather than panicking in a panic handler.
+            eprintln!(
+                "rayon panic handler called on non-rayon thread: {:?}",
+                panic_info
+            );
+        }
+        exit(1);
+    };
+
     ThreadPoolBuilder::new()
-        .thread_name(move |thread_index| {
-            format!("{thread_prefix}-{thread_pool_index}.{thread_index}")
-        })
+        .thread_name(thread_name)
         .num_threads(cpu_core_set.cpu_cores().len())
+        .panic_handler(panic_handler)
         .spawn_handler({
             let handle = Handle::current();
 
