@@ -74,7 +74,7 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = "1.40.0"
 rand = "0.8.5"
 tracing = "0.1.40"

@@ -375,37 +375,24 @@ impl fmt::Display for ErrorDigestType {
 }
 
 /// Digest error
-#[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// Subspace digest missing
-    #[cfg_attr(feature = "thiserror", error("Subspace {0} digest not found"))]
+    #[error("Subspace {0} digest not found")]
     Missing(ErrorDigestType),
     /// Failed to decode Subspace digest
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to decode Subspace {0} digest: {1}")
-    )]
+    #[error("Failed to decode Subspace {0} digest: {1}")]
     FailedToDecode(ErrorDigestType, codec::Error),
     /// Duplicate Subspace digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Duplicate Subspace {0} digests, rejecting!")
-    )]
+    #[error("Duplicate Subspace {0} digests, rejecting!")]
     Duplicate(ErrorDigestType),
 
     /// Error when deriving next digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive next {0} digest, rejecting!")
-    )]
+    #[error("Failed to derive next {0} digest, rejecting!")]
     NextDigestDerivationError(ErrorDigestType),
 
     /// Error when verifying next digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to verify next {0} digest, rejecting!")
-    )]
+    #[error("Failed to verify next {0} digest, rejecting!")]
     NextDigestVerificationError(ErrorDigestType),
 }
 

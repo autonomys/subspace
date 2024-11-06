@@ -39,5 +39,5 @@ subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-com
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tracing = "0.1.40"

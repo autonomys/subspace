@@ -23,7 +23,7 @@ serde = { version = "1.0.110", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding", default-features = false }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg", default-features = false }
-thiserror = { version = "1.0.64", optional = true }
+thiserror = { version = "2.0.0", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5.1"
@@ -48,7 +48,7 @@ std = [
     "subspace-core-primitives/std",
     "subspace-erasure-coding/std",
     "subspace-kzg/std",
-    "thiserror",
+    "thiserror/std",
 ]
 
 [[bench]]
