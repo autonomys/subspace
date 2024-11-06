@@ -476,6 +476,13 @@ where
         .chain_constants(consensus_best_hash)
         .map_err(|err| Error::Other(err.to_string()))?;
 
+    let consensus_network_sync_oracle_wrapper = Arc::new(ConsensusChainSyncOracleWrapper::new(
+        consensus_network_sync_oracle,
+        consensus_chain_sync_params
+            .as_ref()
+            .map(|params| params.snap_sync_orchestrator.domain_snap_sync_finished()),
+    ));
+
     match runtime_type {
         RuntimeType::Evm => {
             let eth_provider = EthProvider::<
@@ -496,7 +503,7 @@ where
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle,
+                consensus_network_sync_oracle: consensus_network_sync_oracle_wrapper,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,
@@ -536,7 +543,7 @@ where
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle,
+                consensus_network_sync_oracle: consensus_network_sync_oracle_wrapper,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,

@@ -104,10 +104,55 @@ use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 use subspace_service::domains::ConsensusChainSyncParams;
+
+/// Sync oracle wrapper.
+///
+/// Sync oracle wrapper checks whether domain snap sync is finished in addition to the underlying
+/// sync oracle.
+#[derive(Debug, Clone)]
+pub struct ConsensusChainSyncOracleWrapper<SO>
+where
+    SO: SyncOracle + Send + Sync,
+{
+    domain_snap_sync_finished: Option<Arc<AtomicBool>>,
+    inner: SO,
+}
+
+impl<SO> SyncOracle for ConsensusChainSyncOracleWrapper<SO>
+where
+    SO: SyncOracle + Send + Sync,
+{
+    fn is_major_syncing(&self) -> bool {
+        self.inner.is_major_syncing()
+            || self
+                .domain_snap_sync_finished
+                .as_ref()
+                .map(|sync_finished| !sync_finished.load(Ordering::Acquire))
+                .unwrap_or_default()
+    }
+
+    fn is_offline(&self) -> bool {
+        self.inner.is_offline()
+    }
+}
+
+impl<SO> ConsensusChainSyncOracleWrapper<SO>
+where
+    SO: SyncOracle + Send + Sync,
+{
+    /// Create new instance
+    pub fn new(sync_oracle: SO, domain_snap_sync_finished: Option<Arc<AtomicBool>>) -> Self {
+        Self {
+            domain_snap_sync_finished,
+            inner: sync_oracle,
+        }
+    }
+}
 
 pub type ExecutionReceiptFor<Block, CBlock> =
     ExecutionReceipt<<Block as BlockT>::Header, CBlock, Balance>;
