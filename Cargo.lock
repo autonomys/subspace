@@ -2635,7 +2635,7 @@ dependencies = [
  "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-service",
+ "subspace-sync",
  "subspace-test-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -13099,11 +13099,26 @@ dependencies = [
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
+ "subspace-sync",
  "subspace-verification",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "subspace-sync"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-network",
+ "sc-network-sync",
+ "sp-blockchain",
+ "sp-runtime",
  "tracing",
 ]
 

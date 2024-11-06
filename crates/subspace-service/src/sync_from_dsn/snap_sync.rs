@@ -1,6 +1,5 @@
 use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use crate::utils::wait_for_block_import;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
@@ -28,6 +27,7 @@ use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
+use subspace_sync::snap_sync_engine::SnapSyncingEngine;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::sleep;
 use tracing::{debug, error, warn};

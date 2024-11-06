@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_service::mmr_sync;
-use subspace_service::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
+use subspace_sync::snap_sync_engine::SnapSyncingEngine;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
 
