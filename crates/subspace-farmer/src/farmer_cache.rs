@@ -25,7 +25,6 @@ use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::future::join;
-use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
@@ -55,6 +54,7 @@ const IS_PIECE_MAYBE_STORED_TIMEOUT: Duration = Duration::from_millis(100);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
+type CacheIndex = u8;
 
 #[derive(Default, Debug)]
 struct Handlers {
@@ -62,16 +62,12 @@ struct Handlers {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FarmerCacheOffset<CacheIndex> {
+struct FarmerCacheOffset {
     cache_index: CacheIndex,
     piece_offset: PieceCacheOffset,
 }
 
-impl<CacheIndex> FarmerCacheOffset<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCacheOffset {
     fn new(cache_index: CacheIndex, piece_offset: PieceCacheOffset) -> Self {
         Self {
             cache_index,
@@ -121,9 +117,9 @@ impl CacheBackend {
 }
 
 #[derive(Debug)]
-struct CacheState<CacheIndex> {
-    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-    cache_free_offsets: Vec<FarmerCacheOffset<CacheIndex>>,
+struct CacheState {
+    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset>,
+    cache_free_offsets: Vec<FarmerCacheOffset>,
     backend: CacheBackend,
 }
 
@@ -140,25 +136,22 @@ enum WorkerCommand {
 /// Farmer cache worker used to drive the farmer cache backend
 #[derive(Debug)]
 #[must_use = "Farmer cache will not work unless its worker is running"]
-pub struct FarmerCacheWorker<NC, CacheIndex>
+pub struct FarmerCacheWorker<NC>
 where
     NC: fmt::Debug,
 {
     peer_id: PeerId,
     node_client: NC,
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<NC, CacheIndex> FarmerCacheWorker<NC, CacheIndex>
+impl<NC> FarmerCacheWorker<NC>
 where
     NC: NodeClient,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
 {
     /// Run the cache worker with provided piece getter.
     ///
@@ -1020,10 +1013,10 @@ impl PlotCaches {
 /// where piece cache is not enough to store all the pieces on the network, while there is a lot of
 /// space in the plot that is not used by sectors yet and can be leverage as extra caching space.
 #[derive(Debug, Clone)]
-pub struct FarmerCache<CacheIndex> {
+pub struct FarmerCache {
     peer_id: PeerId,
     /// Individual dedicated piece caches
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     /// Additional piece caches
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
@@ -1032,12 +1025,7 @@ pub struct FarmerCache<CacheIndex> {
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<CacheIndex> FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCache {
     /// Create new piece cache instance and corresponding worker.
     ///
     /// NOTE: Returned future is async, but does blocking operations and should be running in
@@ -1046,7 +1034,7 @@ where
         node_client: NC,
         peer_id: PeerId,
         registry: Option<&mut Registry>,
-    ) -> (Self, FarmerCacheWorker<NC, CacheIndex>)
+    ) -> (Self, FarmerCacheWorker<NC>)
     where
         NC: NodeClient,
     {
@@ -1496,7 +1484,7 @@ where
 
     fn find_piece_internal(
         &self,
-        caches: &PieceCachesState<CacheIndex>,
+        caches: &PieceCachesState,
         piece_index: PieceIndex,
     ) -> Option<(PieceCacheId, PieceCacheOffset)> {
         let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
@@ -1562,12 +1550,7 @@ where
     }
 }
 
-impl<CacheIndex> LocalRecordProvider for FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl LocalRecordProvider for FarmerCache {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
         let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
         if self

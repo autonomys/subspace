@@ -37,9 +37,9 @@ pub struct DsnCacheRetryPolicy {
     pub backoff: ExponentialBackoff,
 }
 
-struct Inner<FarmIndex, CacheIndex, PV, NC> {
+struct Inner<FarmIndex, PV, NC> {
     piece_provider: PieceProvider<PV>,
-    farmer_cache: FarmerCache<CacheIndex>,
+    farmer_cache: FarmerCache,
     node_client: NC,
     plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     dsn_cache_retry_policy: DsnCacheRetryPolicy,
@@ -48,20 +48,18 @@ struct Inner<FarmIndex, CacheIndex, PV, NC> {
 /// Farmer-specific piece getter.
 ///
 /// Implements [`PieceGetter`] for plotting purposes, but useful outside of that as well.
-pub struct FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
-    inner: Arc<Inner<FarmIndex, CacheIndex, PV, NC>>,
+pub struct FarmerPieceGetter<FarmIndex, PV, NC> {
+    inner: Arc<Inner<FarmIndex, PV, NC>>,
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> fmt::Debug
-    for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
-{
+impl<FarmIndex, PV, NC> fmt::Debug for FarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FarmerPieceGetter").finish_non_exhaustive()
     }
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> Clone for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+impl<FarmIndex, PV, NC> Clone for FarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -70,20 +68,17 @@ impl<FarmIndex, CacheIndex, PV, NC> Clone for FarmerPieceGetter<FarmIndex, Cache
     }
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
+impl<FarmIndex, PV, NC> FarmerPieceGetter<FarmIndex, PV, NC>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
     /// Create new instance
     pub fn new(
         piece_provider: PieceProvider<PV>,
-        farmer_cache: FarmerCache<CacheIndex>,
+        farmer_cache: FarmerCache,
         node_client: NC,
         plotted_pieces: Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
         dsn_cache_retry_policy: DsnCacheRetryPolicy,
@@ -202,7 +197,7 @@ where
 
     /// Downgrade to [`WeakFarmerPieceGetter`] in order to break reference cycles with internally
     /// used [`Arc`]
-    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+    pub fn downgrade(&self) -> WeakFarmerPieceGetter<FarmIndex, PV, NC> {
         WeakFarmerPieceGetter {
             inner: Arc::downgrade(&self.inner),
         }
@@ -210,13 +205,10 @@ where
 }
 
 #[async_trait]
-impl<FarmIndex, CacheIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
+impl<FarmIndex, PV, NC> PieceGetter for FarmerPieceGetter<FarmIndex, PV, NC>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
@@ -405,13 +397,11 @@ where
 }
 
 /// Weak farmer piece getter, can be upgraded to [`FarmerPieceGetter`]
-pub struct WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
-    inner: Weak<Inner<FarmIndex, CacheIndex, PV, NC>>,
+pub struct WeakFarmerPieceGetter<FarmIndex, PV, NC> {
+    inner: Weak<Inner<FarmIndex, PV, NC>>,
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> fmt::Debug
-    for WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
-{
+impl<FarmIndex, PV, NC> fmt::Debug for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WeakFarmerPieceGetter")
@@ -419,7 +409,7 @@ impl<FarmIndex, CacheIndex, PV, NC> fmt::Debug
     }
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+impl<FarmIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, PV, NC> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -433,24 +423,22 @@ impl<FarmIndex, CacheIndex, PV, NC> Clone for WeakFarmerPieceGetter<FarmIndex, C
 /// self-referential data structure, so we can move both together, while still implementing `Stream`
 /// trait as necessary.
 #[ouroboros::self_referencing]
-struct StreamWithPieceGetter<FarmIndex, CacheIndex, PV, NC>
+struct StreamWithPieceGetter<FarmIndex, PV, NC>
 where
     FarmIndex: 'static,
-    CacheIndex: 'static,
     PV: 'static,
     NC: 'static,
 {
-    piece_getter: FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>,
+    piece_getter: FarmerPieceGetter<FarmIndex, PV, NC>,
     #[borrows(piece_getter)]
     #[covariant]
     stream:
         Box<dyn Stream<Item = (PieceIndex, anyhow::Result<Option<Piece>>)> + Send + Unpin + 'this>,
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> Stream for StreamWithPieceGetter<FarmIndex, CacheIndex, PV, NC>
+impl<FarmIndex, PV, NC> Stream for StreamWithPieceGetter<FarmIndex, PV, NC>
 where
     FarmIndex: 'static,
-    CacheIndex: 'static,
     PV: 'static,
     NC: 'static,
 {
@@ -463,14 +451,10 @@ where
 }
 
 #[async_trait]
-impl<FarmIndex, CacheIndex, PV, NC> PieceGetter
-    for WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>
+impl<FarmIndex, PV, NC> PieceGetter for WeakFarmerPieceGetter<FarmIndex, PV, NC>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
     PV: PieceValidator + Send + 'static,
     NC: NodeClient,
 {
@@ -514,9 +498,9 @@ where
     }
 }
 
-impl<FarmIndex, CacheIndex, PV, NC> WeakFarmerPieceGetter<FarmIndex, CacheIndex, PV, NC> {
+impl<FarmIndex, PV, NC> WeakFarmerPieceGetter<FarmIndex, PV, NC> {
     /// Try to upgrade to [`FarmerPieceGetter`] if there is at least one other instance of it alive
-    pub fn upgrade(&self) -> Option<FarmerPieceGetter<FarmIndex, CacheIndex, PV, NC>> {
+    pub fn upgrade(&self) -> Option<FarmerPieceGetter<FarmIndex, PV, NC>> {
         Some(FarmerPieceGetter {
             inner: self.inner.upgrade()?,
         })
