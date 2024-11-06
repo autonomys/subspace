@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use domain_runtime_primitives::{Balance, BlockNumber};
-use futures::{SinkExt, StreamExt};
-use sc_client_api::{AuxStore, Backend, BlockchainEvents, ProofProvider};
+use futures::channel::mpsc;
+use futures::{SinkExt, Stream, StreamExt};
+use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction, StorageChanges,
 };
@@ -12,18 +13,14 @@ use sc_network_common::sync::message::{
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
-use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_core::H256;
 use sp_domains::ExecutionReceiptFor;
-use sp_mmr_primitives::MmrApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_service::domains::ConsensusChainSyncParams;
-use subspace_service::mmr_sync;
 use subspace_sync::snap_sync_engine::SnapSyncingEngine;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
@@ -46,10 +43,8 @@ impl<Block: BlockT, CBlock: BlockT> LastDomainBlockReceiptProvider<Block, CBlock
     }
 }
 
-pub struct SyncParams<DomainClient, CClient, Block, CBlock, CNR>
+pub struct SyncParams<DomainClient, Block, CBlock, CNR>
 where
-    CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
     CNR: NetworkRequest + Send + Sync + 'static,
     Block: BlockT,
     CBlock: BlockT,
@@ -58,7 +53,6 @@ where
     pub sync_service: Arc<SyncingService<Block>>,
     pub domain_fork_id: Option<String>,
     pub domain_network_service_handle: NetworkServiceHandle,
-    pub consensus_client: Arc<CClient>,
     pub domain_block_downloader: Arc<dyn BlockDownloader<Block>>,
     pub receipt_provider: Arc<dyn LastDomainBlockReceiptProvider<Block, CBlock>>,
     pub consensus_chain_sync_params: ConsensusChainSyncParams<CBlock, CNR>,
@@ -177,8 +171,8 @@ fn convert_block_number<Block: BlockT>(block_number: NumberFor<Block>) -> u32 {
     block_number
 }
 
-pub(crate) async fn snap_sync<Block, Client, CBlock, CClient, CNR>(
-    sync_params: SyncParams<Client, CClient, Block, CBlock, CNR>,
+pub(crate) async fn snap_sync<Block, Client, CBlock, CNR>(
+    sync_params: SyncParams<Client, Block, CBlock, CNR>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Block: BlockT,
@@ -193,14 +187,6 @@ where
     for<'a> &'a Client: BlockImport<Block>,
     CNR: NetworkRequest + Send + Sync,
     CBlock: BlockT,
-    CClient: ProvideRuntimeApi<CBlock>
-        + HeaderBackend<CBlock>
-        + ProofProvider<CBlock>
-        + BlockchainEvents<CBlock>
-        + Send
-        + Sync
-        + 'static,
-    CClient::Api: MmrApi<CBlock, H256, NumberFor<CBlock>>,
 {
     let execution_receipt_result = sync_params.receipt_provider.get_execution_receipt().await;
     debug!(
@@ -344,24 +330,6 @@ where
         None,
         &last_confirmed_block_receipt,
     )?;
-
-    if let Some(offchain_storage) = sync_params
-        .consensus_chain_sync_params
-        .backend
-        .offchain_storage()
-    {
-        let target_block = Some(consensus_block_number);
-
-        mmr_sync(
-            sync_params.consensus_chain_sync_params.fork_id,
-            Arc::clone(&sync_params.consensus_client),
-            sync_params.consensus_chain_sync_params.network_service,
-            Arc::clone(&sync_params.consensus_chain_sync_params.sync_service),
-            offchain_storage,
-            target_block,
-        )
-        .await?;
-    }
 
     sync_params
         .consensus_chain_sync_params
