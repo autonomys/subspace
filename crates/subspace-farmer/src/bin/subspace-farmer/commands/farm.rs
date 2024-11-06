@@ -232,7 +232,7 @@ pub(crate) struct FarmingArgs {
     no_info: bool,
     /// Endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
-    #[arg(long, aliases = ["metrics-endpoint", "metrics-endpoints"])]
+    #[arg(long)]
     prometheus_listen_on: Vec<SocketAddr>,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving). Defaults to the number of logical CPUs
