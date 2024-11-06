@@ -69,8 +69,6 @@ const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
-type CacheIndex = u8;
-
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
     /// How many sectors a farmer will download concurrently. Limits memory usage of
@@ -424,7 +422,7 @@ where
     let should_start_prometheus_server = !prometheus_listen_on.is_empty();
 
     let (farmer_cache, farmer_cache_worker) =
-        FarmerCache::<CacheIndex>::new(node_client.clone(), peer_id, Some(&mut registry));
+        FarmerCache::new(node_client.clone(), peer_id, Some(&mut registry));
 
     let node_client = CachingProxyNodeClient::new(node_client)
         .await
