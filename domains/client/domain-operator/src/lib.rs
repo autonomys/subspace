@@ -73,7 +73,7 @@ mod domain_worker;
 mod fetch_domain_bootstrap_info;
 mod fraud_proof;
 mod operator;
-mod snap_sync;
+pub mod snap_sync;
 #[cfg(test)]
 mod tests;
 mod utils;
@@ -95,6 +95,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
+use snap_sync::ConsensusChainSyncParams;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
@@ -108,7 +109,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
-use subspace_service::domains::ConsensusChainSyncParams;
 
 /// Sync oracle wrapper.
 ///

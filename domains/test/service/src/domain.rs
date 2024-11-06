@@ -7,6 +7,7 @@ use crate::{
     Sr25519Keyring, UncheckedExtrinsicFor, AUTO_ID_DOMAIN_ID, EVM_DOMAIN_ID,
 };
 use cross_domain_message_gossip::ChainMsg;
+use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::Balance;
@@ -42,7 +43,6 @@ use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Nonce;
-use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{

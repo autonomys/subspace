@@ -18,12 +18,101 @@ use sp_consensus::BlockOrigin;
 use sp_domains::ExecutionReceiptFor;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use subspace_service::domains::ConsensusChainSyncParams;
 use subspace_sync::snap_sync_engine::SnapSyncingEngine;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
+
+/// Notification with number of the block that is about to be imported and acknowledgement sender
+/// that can be used to pause block production if desired.
+#[derive(Debug, Clone)]
+pub struct BlockImportingAcknowledgement<Block>
+where
+    Block: BlockT,
+{
+    /// Block number
+    pub block_number: NumberFor<Block>,
+    /// Sender for pausing the block import when operator is not fast enough to process
+    /// the consensus block.
+    pub acknowledgement_sender: mpsc::Sender<()>,
+}
+
+/// Provides parameters for domain snap sync synchronization with the consensus chain snap sync.
+pub struct ConsensusChainSyncParams<Block, CNR>
+where
+    Block: BlockT,
+    CNR: NetworkRequest + Sync + Send,
+{
+    /// Synchronizes consensus snap sync stages.
+    pub snap_sync_orchestrator: Arc<SnapSyncOrchestrator>,
+    /// Consensus chain fork ID
+    pub fork_id: Option<String>,
+    /// Consensus chain network service
+    pub network_service: CNR,
+    /// Consensus chain sync service
+    pub sync_service: Arc<SyncingService<Block>>,
+    /// Consensus chain block importing stream
+    pub block_importing_notification_stream:
+        Box<dyn Stream<Item = BlockImportingAcknowledgement<Block>> + Sync + Send + Unpin>,
+}
+
+/// Synchronizes consensus and domain chain snap sync.
+pub struct SnapSyncOrchestrator {
+    consensus_snap_sync_target_block_tx: Sender<BlockNumber>,
+    domain_snap_sync_finished: Arc<AtomicBool>,
+}
+
+impl Default for SnapSyncOrchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SnapSyncOrchestrator {
+    /// Constructor
+    pub fn new() -> Self {
+        let (tx, _) = broadcast::channel(1);
+        Self {
+            consensus_snap_sync_target_block_tx: tx,
+            domain_snap_sync_finished: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Unblocks (allows) consensus chain snap sync with the given target block.
+    pub fn unblock_consensus_snap_sync(&self, target_block_number: BlockNumber) {
+        debug!(%target_block_number, "Allowed starting consensus chain snap sync.");
+
+        let target_block_send_result = self
+            .consensus_snap_sync_target_block_tx
+            .send(target_block_number);
+
+        debug!(
+            ?target_block_send_result,
+            "Target block sending result: {target_block_number}"
+        );
+    }
+
+    /// Returns shared variable signaling domain snap sync finished.
+    pub fn domain_snap_sync_finished(&self) -> Arc<AtomicBool> {
+        self.domain_snap_sync_finished.clone()
+    }
+
+    /// Subscribes to a channel to receive target block numbers for consensus chain snap sync.
+    pub fn consensus_snap_sync_target_block_receiver(&self) -> Receiver<BlockNumber> {
+        self.consensus_snap_sync_target_block_tx.subscribe()
+    }
+
+    /// Signal that domain snap sync finished.
+    pub fn mark_domain_snap_sync_finished(&self) {
+        debug!("Signal that domain snap sync finished.");
+        self.domain_snap_sync_finished
+            .store(true, Ordering::Release);
+    }
+}
 
 #[async_trait]
 /// Provides execution receipts for the last confirmed domain block.
@@ -216,9 +305,7 @@ where
 
     let mut block_importing_notification_stream = sync_params
         .consensus_chain_sync_params
-        .subspace_link
-        .block_importing_notification_stream()
-        .subscribe();
+        .block_importing_notification_stream;
 
     let mut consensus_target_block_acknowledgement_sender = None;
     while let Some(mut block_notification) = block_importing_notification_stream.next().await {

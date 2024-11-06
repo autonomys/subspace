@@ -2776,7 +2776,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",

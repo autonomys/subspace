@@ -200,7 +200,6 @@ where
                 domain_client: params.client.clone(),
                 domain_network_service_handle: params.domain_network_service_handle,
                 sync_service: params.sync_service,
-                consensus_client: params.consensus_client.clone(),
                 domain_block_downloader: params.block_downloader.clone(),
                 consensus_chain_sync_params: consensus_sync_params,
                 domain_fork_id: params.domain_fork_id,

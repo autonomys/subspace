@@ -13,7 +13,11 @@ use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::fetch_domain_bootstrap_info;
+use domain_client_operator::snap_sync::{
+    BlockImportingAcknowledgement, ConsensusChainSyncParams, SnapSyncOrchestrator,
+};
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use futures::stream::StreamExt;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
@@ -27,8 +31,6 @@ use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
-use subspace_service::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
-use subspace_service::domains::ConsensusChainSyncParams;
 use tracing::{debug, error, info, info_span, warn};
 
 /// Options for running a node
@@ -128,7 +130,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     };
 
     let mut task_manager = {
-        let mut segment_headers_store = None;
         let subspace_link;
         let consensus_chain_node = {
             let span = info_span!("Consensus");
@@ -150,8 +151,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
             subspace_link = partial_components.other.subspace_link.clone();
 
-            segment_headers_store.replace(partial_components.other.segment_headers_store.clone());
-
             let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
                 partial_components,
@@ -162,7 +161,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     }),
                 true,
                 SlotProportion::new(3f32 / 4f32),
-                snap_sync_orchestrator.clone(),
+                snap_sync_orchestrator
+                    .as_ref()
+                    .map(|orchestrator| orchestrator.consensus_snap_sync_target_block_receiver()),
             );
 
             full_node_fut.await.map_err(|error| {
@@ -316,8 +317,16 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                     fork_id,
                                     network_service: consensus_chain_network_service,
                                     sync_service: consensus_chain_sync_service,
-                                    backend: consensus_chain_node.backend.clone(),
-                                    subspace_link,
+                                    block_importing_notification_stream: Box::new(
+                                        subspace_link
+                                            .block_importing_notification_stream()
+                                            .subscribe()
+                                            .map(|block| BlockImportingAcknowledgement {
+                                                block_number: block.block_number,
+                                                acknowledgement_sender: block
+                                                    .acknowledgement_sender,
+                                            }),
+                                    ),
                                 }
                             });
 

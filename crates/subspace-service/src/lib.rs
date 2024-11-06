@@ -26,7 +26,6 @@
 )]
 
 pub mod config;
-pub mod domains;
 pub mod dsn;
 mod metrics;
 pub(crate) mod mmr;
@@ -37,7 +36,6 @@ pub mod transaction_pool;
 mod utils;
 
 use crate::config::{ChainSyncMode, SubspaceConfiguration, SubspaceNetworking};
-use crate::domains::snap_sync_orchestrator::SnapSyncOrchestrator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::mmr::request_handler::MmrRequestHandler;
@@ -138,6 +136,7 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use tokio::sync::broadcast;
+use tokio::sync::broadcast::Receiver;
 use tracing::{debug, error, info, Instrument};
 pub use utils::wait_for_block_import;
 
@@ -736,7 +735,7 @@ pub async fn new_full<PosTable, RuntimeApi>(
     prometheus_registry: Option<&mut Registry>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
-    snap_sync_orchestrator: Option<Arc<SnapSyncOrchestrator>>,
+    consensus_snap_sync_target_block_receiver: Option<Receiver<BlockNumber>>,
 ) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
@@ -1022,9 +1021,6 @@ where
         config.base.force_authoring,
         Arc::clone(&pause_sync),
         sync_service.clone(),
-        snap_sync_orchestrator
-            .as_ref()
-            .map(|orchestrator| orchestrator.domain_snap_sync_finished()),
     );
 
     let subspace_archiver = tokio::task::block_in_place(|| {
@@ -1080,8 +1076,7 @@ where
         sync_service.clone(),
         network_service_handle,
         subspace_link.erasure_coding().clone(),
-        snap_sync_orchestrator
-            .map(|orchestrator| orchestrator.consensus_snap_sync_target_block_receiver()),
+        consensus_snap_sync_target_block_receiver,
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(

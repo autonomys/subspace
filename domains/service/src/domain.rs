@@ -5,6 +5,7 @@ use crate::{FullBackend, FullClient};
 use cross_domain_message_gossip::ChainMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
+use domain_client_operator::snap_sync::ConsensusChainSyncParams;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::{Block, Header};
 use domain_runtime_primitives::{Balance, Hash};
@@ -52,7 +53,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Nonce;
-use subspace_service::domains::ConsensusChainSyncParams;
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
