@@ -215,8 +215,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                     Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
                 }
 
-                // Copy from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
-                // replaced to `domain_check_weight::CheckWeight`
+                // Copied from [`pallet_ethereum::Call::pre_dispatch_self_contained`] with `frame_system::CheckWeight`
+                // replaced with `domain_check_weight::CheckWeight`
                 if let pallet_ethereum::Call::transact { transaction } = call {
                     if let Err(e) = domain_check_weight::CheckWeight::<Runtime>::do_pre_dispatch(
                         dispatch_info,
