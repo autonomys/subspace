@@ -44,7 +44,7 @@ subspace_subscribeObjectMappings
 Then use those mappings to get object data from the gateway RPCs:
 ```sh
 $ websocat --jsonrpc ws://127.0.0.1:9955
-subspace_fetchObject ["v0": { "objects": [["0000000000000000000000000000000000000000000000000000000000000000", 0, 0]]}]
+subspace_fetchObject {"mappings": {"v0": {"objects": [["0000000000000000000000000000000000000000000000000000000000000000", 0, 0]]}}}
 ```
 
 ```json
