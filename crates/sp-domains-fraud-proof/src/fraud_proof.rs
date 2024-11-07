@@ -222,64 +222,46 @@ impl ExecutionPhase {
 }
 
 /// Error type of fraud proof verification on consensus node.
-#[derive(Debug)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, thiserror::Error)]
 pub enum VerificationError<DomainHash> {
     /// Failed to pass the execution proof check.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to pass the execution proof check")
-    )]
+    #[error("Failed to pass the execution proof check")]
     BadExecutionProof,
     /// The fraud proof prove nothing invalid
-    #[cfg_attr(feature = "thiserror", error("The fraud proof prove nothing invalid"))]
+    #[error("The fraud proof prove nothing invalid")]
     InvalidProof,
     /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
-    #[cfg_attr(
-        feature = "thiserror",
-        error(
-            "Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}"
-        )
-    )]
+    #[error("Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}")]
     InitializeBlockOrApplyExtrinsicDecode(codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
-    #[cfg_attr(
-    feature = "thiserror",
+    #[
     error(
     "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
     )
-    )]
+    ]
     StorageRootDecode(codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to decode the header from verifying `finalize_block`: {0}")
-    )]
+    #[error("Failed to decode the header from verifying `finalize_block`: {0}")]
     HeaderDecode(codec::Error),
-    #[cfg_attr(
-        feature = "thiserror",
-        error("The receipt's execution_trace have less than 2 traces")
-    )]
+    #[error("The receipt's execution_trace have less than 2 traces")]
     InvalidExecutionTrace,
-    #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic trace index"))]
+    #[error("Invalid ApplyExtrinsic trace index")]
     InvalidApplyExtrinsicTraceIndex,
-    #[cfg_attr(feature = "thiserror", error("Invalid longer mismatch trace index"))]
+    #[error("Invalid longer mismatch trace index")]
     InvalidLongerMismatchTraceIndex,
-    #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
+    #[error("Invalid ApplyExtrinsic call data")]
     InvalidApplyExtrinsicCallData,
     /// Invalid bundle digest
-    #[cfg_attr(feature = "thiserror", error("Invalid Bundle Digest"))]
+    #[error("Invalid Bundle Digest")]
     InvalidBundleDigest,
     /// Bundle with requested index not found in execution receipt
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Bundle with requested index not found in execution receipt")
-    )]
+    #[error("Bundle with requested index not found in execution receipt")]
     BundleNotFound,
     /// Invalid bundle entry in bad receipt was expected to be valid but instead found invalid entry
-    #[cfg_attr(
-    feature = "thiserror",
-    error("Unexpected bundle entry at {bundle_index} in bad receipt found: {targeted_entry_bundle:?} with fraud proof's type of proof: {fraud_proof_invalid_type_of_proof:?}")
+    #[error(
+        "Unexpected bundle entry at {bundle_index} in bad receipt found: \
+        {targeted_entry_bundle:?} with fraud proof's type of proof: \
+        {fraud_proof_invalid_type_of_proof:?}"
     )]
     UnexpectedTargetedBundleEntry {
         bundle_index: u32,
@@ -287,61 +269,43 @@ pub enum VerificationError<DomainHash> {
         targeted_entry_bundle: BundleValidity<DomainHash>,
     },
     /// Failed to derive bundle digest
-    #[cfg_attr(feature = "thiserror", error("Failed to derive bundle digest"))]
+    #[error("Failed to derive bundle digest")]
     FailedToDeriveBundleDigest,
     /// The target valid bundle not found from the target bad receipt
-    #[cfg_attr(
-        feature = "thiserror",
-        error("The target valid bundle not found from the target bad receipt")
-    )]
+    #[error("The target valid bundle not found from the target bad receipt")]
     TargetValidBundleNotFound,
     /// Failed to check extrinsics in single context
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to check extrinsics in single context")
-    )]
+    #[error("Failed to check extrinsics in single context")]
     FailedToCheckExtrinsicsInSingleContext,
-    #[cfg_attr(
-        feature = "thiserror",
-        error(
-            "Bad MMR proof, the proof is probably expired or is generated against a different fork"
-        )
+    #[error(
+        "Bad MMR proof, the proof is probably expired or is generated against a different fork"
     )]
     BadMmrProof,
-    #[cfg_attr(feature = "thiserror", error("Unexpected MMR proof"))]
+    #[error("Unexpected MMR proof")]
     UnexpectedMmrProof,
-    #[cfg_attr(feature = "thiserror", error("Failed to verify storage proof"))]
+    #[error("Failed to verify storage proof")]
     StorageProof(storage_proof::VerificationError),
     /// Failed to derive domain inherent extrinsic
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to derive domain inherent extrinsic")
-    )]
+    #[error("Failed to derive domain inherent extrinsic")]
     FailedToDeriveDomainInherentExtrinsic,
     /// Failed to derive domain storage key
-    #[cfg_attr(feature = "thiserror", error("Failed to derive domain storage key"))]
+    #[error("Failed to derive domain storage key")]
     FailedToGetDomainStorageKey,
     /// Unexpected invalid bundle proof data
-    #[cfg_attr(feature = "thiserror", error("Unexpected invalid bundle proof data"))]
+    #[error("Unexpected invalid bundle proof data")]
     UnexpectedInvalidBundleProofData,
     /// Extrinsic with requested index not found in bundle
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Extrinsic with requested index not found in bundle")
-    )]
+    #[error("Extrinsic with requested index not found in bundle")]
     ExtrinsicNotFound,
     /// Failed to get domain runtime call response
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to get domain runtime call response")
-    )]
+    #[error("Failed to get domain runtime call response")]
     FailedToGetDomainRuntimeCallResponse,
     /// Failed to get bundle weight
-    #[cfg_attr(feature = "thiserror", error("Failed to get bundle weight"))]
+    #[error("Failed to get bundle weight")]
     FailedToGetBundleWeight,
-    #[cfg_attr(feature = "thiserror", error("Failed to extract xdm mmr proof"))]
+    #[error("Failed to extract xdm mmr proof")]
     FailedToGetExtractXdmMmrProof,
-    #[cfg_attr(feature = "thiserror", error("Failed to decode xdm mmr proof"))]
+    #[error("Failed to decode xdm mmr proof")]
     FailedToDecodeXdmMmrProof,
 }
 

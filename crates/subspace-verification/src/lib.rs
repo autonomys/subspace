@@ -53,11 +53,10 @@ use subspace_kzg::{Commitment, Kzg, Scalar, Witness};
 use subspace_proof_of_space::Table;
 
 /// Errors encountered by the Subspace consensus primitives.
-#[derive(Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum Error {
     /// Invalid piece offset
-    #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
+    #[error("Piece verification failed")]
     InvalidPieceOffset {
         /// Index of the piece that failed verification
         piece_offset: u16,
@@ -65,7 +64,7 @@ pub enum Error {
         max_pieces_in_sector: u16,
     },
     /// Sector expired
-    #[cfg_attr(feature = "thiserror", error("Sector expired"))]
+    #[error("Sector expired")]
     SectorExpired {
         /// Expiration history size
         expiration_history_size: HistorySize,
@@ -73,15 +72,12 @@ pub enum Error {
         current_history_size: HistorySize,
     },
     /// Piece verification failed
-    #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
+    #[error("Piece verification failed")]
     InvalidPiece,
     /// Solution is outside of challenge range
-    #[cfg_attr(
-        feature = "thiserror",
-        error(
-            "Solution distance {solution_distance} is outside of solution range \
-            {half_solution_range} (half of actual solution range)"
-        )
+    #[error(
+        "Solution distance {solution_distance} is outside of solution range \
+        {half_solution_range} (half of actual solution range)"
     )]
     OutsideSolutionRange {
         /// Half of solution range
@@ -90,19 +86,19 @@ pub enum Error {
         solution_distance: SolutionRange,
     },
     /// Invalid proof of space
-    #[cfg_attr(feature = "thiserror", error("Invalid proof of space"))]
+    #[error("Invalid proof of space")]
     InvalidProofOfSpace,
     /// Invalid audit chunk offset
-    #[cfg_attr(feature = "thiserror", error("Invalid audit chunk offset"))]
+    #[error("Invalid audit chunk offset")]
     InvalidAuditChunkOffset,
     /// Invalid chunk
-    #[cfg_attr(feature = "thiserror", error("Invalid chunk: {0}"))]
+    #[error("Invalid chunk: {0}")]
     InvalidChunk(String),
     /// Invalid chunk witness
-    #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
+    #[error("Invalid chunk witness")]
     InvalidChunkWitness,
     /// Invalid history size
-    #[cfg_attr(feature = "thiserror", error("Invalid history size"))]
+    #[error("Invalid history size")]
     InvalidHistorySize,
 }
 

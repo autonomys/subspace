@@ -214,19 +214,15 @@ pub struct ArchiveBlockOutcome {
 }
 
 /// Archiver instantiation error
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, thiserror::Error)]
 pub enum ArchiverInstantiationError {
     /// Invalid last archived block, its size is the same as encoded block
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Invalid last archived block, its size {0} bytes is the same as encoded block")
-    )]
+    #[error("Invalid last archived block, its size {0} bytes is the same as encoded block")]
     InvalidLastArchivedBlock(BlockNumber),
     /// Invalid block, its size is smaller than already archived number of bytes
-    #[cfg_attr(
-    feature = "thiserror",
-    error("Invalid block, its size {block_bytes} bytes is smaller than already archived {archived_block_bytes} bytes")
+    #[error(
+        "Invalid block, its size {block_bytes} bytes is smaller than already archived \
+        {archived_block_bytes} bytes"
     )]
     InvalidBlockSmallSize {
         /// Full block size

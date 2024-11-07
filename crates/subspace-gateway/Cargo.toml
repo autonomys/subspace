@@ -35,7 +35,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 supports-color = "3.0.1"
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "signal", "macros"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

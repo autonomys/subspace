@@ -45,7 +45,7 @@ subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-codin
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["sync", "time"] }
 tracing = "0.1.40"
 
