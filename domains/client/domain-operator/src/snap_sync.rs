@@ -23,12 +23,11 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use subspace_sync::snap_sync_engine::SnapSyncingEngine;
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
-/// that can be used to pause block production if desired.
+/// that pauses block production until the previous block is acknowledged.
 #[derive(Debug, Clone)]
 pub struct BlockImportingAcknowledgement<Block>
 where
@@ -62,7 +61,7 @@ where
 
 /// Synchronizes consensus and domain chain snap sync.
 pub struct SnapSyncOrchestrator {
-    consensus_snap_sync_target_block_tx: Sender<BlockNumber>,
+    consensus_snap_sync_target_block_tx: broadcast::Sender<BlockNumber>,
     domain_snap_sync_finished: Arc<AtomicBool>,
 }
 
@@ -102,7 +101,7 @@ impl SnapSyncOrchestrator {
     }
 
     /// Subscribes to a channel to receive target block numbers for consensus chain snap sync.
-    pub fn consensus_snap_sync_target_block_receiver(&self) -> Receiver<BlockNumber> {
+    pub fn consensus_snap_sync_target_block_receiver(&self) -> broadcast::Receiver<BlockNumber> {
         self.consensus_snap_sync_target_block_tx.subscribe()
     }
 
