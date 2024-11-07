@@ -366,37 +366,42 @@ pub enum CreateObjectMappings {
     /// Start creating object mappings from this block number.
     Block(BlockNumber),
 
+    /// Start creating object mappings from the locally archived tip.
+    Continue,
+
     /// Don't create object mappings.
     #[default]
     Disabled,
 }
 
 impl CreateObjectMappings {
-    /// Returns true if object mappings will be created from a past or future block.
-    pub fn is_enabled(&self) -> bool {
-        matches!(self, CreateObjectMappings::Block(_))
-    }
-
-    /// The block number to start creating object mappings from.
-    pub fn block(&self) -> Option<BlockNumber> {
+    /// The fixed block number to start creating object mappings from.
+    /// If there is no fixed block number, or mappings are disabled, returns None.
+    fn block(&self) -> Option<BlockNumber> {
         match self {
             CreateObjectMappings::Block(block) => Some(*block),
+            CreateObjectMappings::Continue => None,
             CreateObjectMappings::Disabled => None,
         }
     }
 
     /// Returns true if object mappings will be created from a past or future block.
     pub fn is_enabled(&self) -> bool {
-        matches!(self, CreateObjectMappings::Block(_))
+        !matches!(self, CreateObjectMappings::Disabled)
     }
 
     /// Does the supplied block number need object mappings?
     pub fn is_enabled_for_block(&self, block: BlockNumber) -> bool {
-        let Some(target_block) = self.block() else {
+        if !self.is_enabled() {
             return false;
-        };
+        }
 
-        block >= target_block
+        if let Some(target_block) = self.block() {
+            return block >= target_block;
+        }
+
+        // We're continuing where we left off, so all blocks get mappings.
+        true
     }
 }
 
@@ -599,6 +604,7 @@ where
 
     let mut best_block_to_archive = best_block_number.saturating_sub(confirmation_depth_k);
     // Choose a lower block number if we want to get mappings from that specific block.
+    // If we are continuing from where we left off, we don't need to change the block number to archive.
     // If there is no path to this block from the tip due to snap sync, we'll start archiving from
     // an earlier segment, then start mapping again once archiving reaches this block.
     if let Some(block_number) = create_object_mappings.block() {

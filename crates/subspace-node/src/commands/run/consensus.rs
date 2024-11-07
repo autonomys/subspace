@@ -309,6 +309,9 @@ pub enum CreateObjectMappingConfig {
     /// Start creating object mappings from this block number.
     Block(BlockNumber),
 
+    /// Start creating object mappings from the locally archived tip.
+    Continue,
+
     /// Don't create object mappings.
     #[default]
     Disabled,
@@ -318,6 +321,7 @@ impl From<CreateObjectMappingConfig> for CreateObjectMappings {
     fn from(config: CreateObjectMappingConfig) -> Self {
         match config {
             CreateObjectMappingConfig::Block(block) => CreateObjectMappings::Block(block),
+            CreateObjectMappingConfig::Continue => CreateObjectMappings::Continue,
             CreateObjectMappingConfig::Disabled => CreateObjectMappings::Disabled,
         }
     }
@@ -329,6 +333,7 @@ impl FromStr for CreateObjectMappingConfig {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
             "disabled" => Ok(Self::Disabled),
+            "continue" => Ok(Self::Continue),
             block => block.parse().map(Self::Block).map_err(|_| {
                 "Unsupported create object mappings setting: use a block number, or 'disabled'"
                     .to_string()
@@ -341,6 +346,7 @@ impl fmt::Display for CreateObjectMappingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Block(block) => write!(f, "{}", block),
+            Self::Continue => f.write_str("continue"),
             Self::Disabled => f.write_str("disabled"),
         }
     }
@@ -433,8 +439,9 @@ pub(super) struct ConsensusChainOptions {
     #[arg(long)]
     force_authoring: bool,
 
-    /// Create object mappings from the supplied block number, or genesis if no block number is
-    /// specified. By default, mappings are disabled.
+    /// Create object mappings from the locally archived tip using `continue`, or from the supplied
+    /// block number. Creates mappings from genesis if no block number is specified. By default,
+    /// mappings are disabled.
     ///
     /// --dev mode enables mappings from genesis automatically, unless another height is supplied.
     /// Use `disabled` to disable mappings in --dev mode.
