@@ -1,4 +1,4 @@
-# This Dockerfile supports both native building and cross-compilation to aarch64 on x86-64
+# This Dockerfile supports both native building and cross-compilation to x86-64, aarch64 and riscv64
 FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
 ARG RUSTC_VERSION=nightly-2024-10-22
@@ -44,6 +44,14 @@ RUN \
     ; fi
 
 RUN \
+    if [ $BUILDARCH != "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          g++-x86-64-linux-gnu \
+          gcc-x86-64-linux-gnu \
+          libc6-dev-amd64-cross \
+    ; fi
+
+RUN \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
     /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
@@ -58,35 +66,33 @@ COPY test /code/test
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
-# CUDA toolchain, including support for cross-compilation to aarch64 on x86-64
+# CUDA toolchain, including support for cross-compilation from x86-64 to aarch64, but NOT from aarch64 to x86-64
 RUN \
-    if [ $BUILDARCH = "amd64" ] || [ $BUILDARCH = "arm64" ]; then \
-      if [ $TARGETARCH = "amd64" ] || [ $TARGETARCH = "arm64" ]; then \
-        CUDA_ARCH=$(echo $BUILDARCH | sed "s/amd64/x86_64/g") && \
-        curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/cuda-keyring_1.1-1_all.deb && \
-        dpkg -i cuda-keyring_1.1-1_all.deb && \
+    if [ "$BUILDARCH/$TARGETARCH" = "amd64/amd64" ] || [ "$BUILDARCH/$TARGETARCH" = "amd64/arm64" ] || [ "$BUILDARCH/$TARGETARCH" = "arm64/arm64" ]; then \
+      CUDA_ARCH=$(echo $BUILDARCH | sed "s/amd64/x86_64/g") && \
+      curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/cuda-keyring_1.1-1_all.deb && \
+      dpkg -i cuda-keyring_1.1-1_all.deb && \
+      echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/ /" | tee /etc/apt/sources.list.d/cuda-ubuntu2204-$CUDA_ARCH.list && \
+      curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/cuda-ubuntu2204.pin && \
+      mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-minimal-build-12-4 && \
+      echo "/usr/local/cuda/lib64" > /etc/ld.so.conf.d/cuda.conf && \
+      if [ "$BUILDARCH/$TARGETARCH" = "amd64/arm64" ]; then \
+        CUDA_ARCH="cross-linux-aarch64" && \
         echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/ /" | tee /etc/apt/sources.list.d/cuda-ubuntu2204-$CUDA_ARCH.list && \
         curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/cuda-ubuntu2204.pin && \
-        mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
+        mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600-cross-aarch64 && \
         apt-get update && \
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-minimal-build-12-4 && \
-        echo "/usr/local/cuda/lib64" > /etc/ld.so.conf.d/cuda.conf && \
-        if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
-          CUDA_ARCH="cross-linux-aarch64" && \
-          echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/ /" | tee /etc/apt/sources.list.d/cuda-ubuntu2204-$CUDA_ARCH.list && \
-          curl -OL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/$CUDA_ARCH/cuda-ubuntu2204.pin && \
-          mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600-cross-aarch64 && \
-          apt-get update && \
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-cross-aarch64-12-4 \
-        ; fi && \
-        ldconfig \
-      ; fi \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cuda-cross-aarch64-12-4 \
+      ; fi && \
+      ldconfig \
     ; fi
 
 # ROCm is only used on x86-64 since they don't have other packages
 ARG ROCM_VERSION=6.2.2
 RUN \
-    if [ $BUILDARCH = "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
+    if [ "$BUILDARCH/$TARGETARCH" = "amd64/amd64" ]; then \
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gpg && \
       mkdir -p --mode=0755 /etc/apt/keyrings && \
       curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg && \
@@ -119,6 +125,9 @@ RUN \
         # Default build is for Skylake
         *) export RUSTFLAGS="-C target-cpu=skylake" ;; \
       esac \
+    ; fi && \
+    if [ $BUILDARCH != "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
+      export RUSTFLAGS="$RUSTFLAGS -C linker=x86_64-linux-gnu-gcc" \
     ; fi && \
     export PATH=/usr/local/cuda/bin${PATH:+:${PATH}} && \
     RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \

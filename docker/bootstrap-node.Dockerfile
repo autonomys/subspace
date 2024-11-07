@@ -1,4 +1,4 @@
-# This Dockerfile supports both native building and cross-compilation to aarch64 on x86-64
+# This Dockerfile supports both native building and cross-compilation to x86-64, aarch64 and riscv64
 FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
 ARG RUSTC_VERSION=nightly-2024-10-22
@@ -44,6 +44,14 @@ RUN \
     ; fi
 
 RUN \
+    if [ $BUILDARCH != "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          g++-x86-64-linux-gnu \
+          gcc-x86-64-linux-gnu \
+          libc6-dev-amd64-cross \
+    ; fi
+
+RUN \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION && \
     /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
@@ -78,6 +86,9 @@ RUN \
         # Default build is for Skylake
         *) export RUSTFLAGS="-C target-cpu=skylake" ;; \
       esac \
+    ; fi && \
+    if [ $BUILDARCH != "amd64" ] && [ $TARGETARCH = "amd64" ]; then \
+      export RUSTFLAGS="$RUSTFLAGS -C linker=x86_64-linux-gnu-gcc" \
     ; fi && \
     RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
