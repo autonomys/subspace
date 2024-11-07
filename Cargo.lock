@@ -962,6 +962,7 @@ dependencies = [
 name = "auto-id-domain-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-check-weight",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
@@ -1009,6 +1010,7 @@ dependencies = [
 name = "auto-id-domain-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-check-weight",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "domain-test-primitives",
@@ -2547,6 +2549,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-check-weight"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-weights",
+]
+
+[[package]]
 name = "domain-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
@@ -2792,6 +2806,7 @@ version = "0.1.0"
 dependencies = [
  "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
+ "domain-check-weight",
  "domain-client-operator",
  "domain-runtime-primitives",
  "domain-service",
@@ -3208,6 +3223,7 @@ dependencies = [
 name = "evm-domain-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-check-weight",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "fp-account",
@@ -3265,6 +3281,7 @@ dependencies = [
 name = "evm-domain-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-check-weight",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "domain-test-primitives",
