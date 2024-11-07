@@ -59,6 +59,7 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
+ARG TARGETVARIANT
 
 RUN \
     if [ $BUILDARCH != "arm64" ] && [ $TARGETARCH = "arm64" ]; then \
@@ -68,7 +69,16 @@ RUN \
       export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
     ; fi && \
     if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = ""]; then \
-      export RUSTFLAGS="-C target-cpu=skylake" \
+      case "$TARGETVARIANT" in \
+        # x86-64-v2 with AES-NI
+        "v2") export RUSTFLAGS="-C target-cpu=x86-64-v2 -C target-feature=+aes" ;; \
+        # x86-64-v3 with AES-NI
+        "v3") export RUSTFLAGS="-C target-cpu=x86-64-v3 -C target-feature=+aes" ;; \
+        # v4 is compiled for Zen 4+
+        "v4") export RUSTFLAGS="-C target-cpu=znver4" ;; \
+        # Default build is for Skylake
+        *) export RUSTFLAGS="-C target-cpu=skylake" ;; \
+      esac \
     ; fi && \
     RUSTC_TARGET_ARCH=$(echo $TARGETARCH | sed "s/amd64/x86_64/g" | sed "s/arm64/aarch64/g" | sed "s/riscv64/riscv64gc/g") && \
     /root/.cargo/bin/cargo -Zgitoxide -Zgit build \
