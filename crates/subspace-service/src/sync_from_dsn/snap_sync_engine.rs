@@ -54,8 +54,7 @@ where
     strategy: StateStrategy<Block>,
     /// Pending responses
     pending_responses: PendingResponses,
-    /// Protocol name used to send out state requests
-    state_request_protocol_name: ProtocolName,
+    block_announces_protocol_name: ProtocolName,
     network_service_handle: &'a NetworkServiceHandle,
 }
 
@@ -74,8 +73,19 @@ where
     where
         Client: HeaderBackend<Block> + ProofProvider<Block> + Send + Sync + 'static,
     {
-        let state_request_protocol_name =
-            ProtocolName::from(generate_protocol_name(client.info().genesis_hash, fork_id));
+        let genesis_hash = client.info().genesis_hash;
+        let block_announces_protocol_name = ProtocolName::from(if let Some(fork_id) = fork_id {
+            format!(
+                "/{}/{}/transactions/1",
+                array_bytes::bytes2hex("", genesis_hash),
+                fork_id
+            )
+        } else {
+            format!(
+                "/{}/transactions/1",
+                array_bytes::bytes2hex("", genesis_hash)
+            )
+        });
 
         // Initialize syncing strategy.
         let strategy = StateStrategy::new(
@@ -89,13 +99,13 @@ where
             None,
             skip_proof,
             vec![current_sync_peer].into_iter(),
-            state_request_protocol_name.clone(),
+            ProtocolName::from(generate_protocol_name(genesis_hash, fork_id)),
         );
 
         Ok(Self {
             strategy,
             pending_responses: PendingResponses::new(),
-            state_request_protocol_name,
+            block_announces_protocol_name,
             network_service_handle,
         })
     }
@@ -189,28 +199,28 @@ where
                         self.network_service_handle
                             .report_peer(peer_id, rep::TIMEOUT);
                         self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                     RequestFailure::Network(OutboundFailure::UnsupportedProtocols) => {
                         self.network_service_handle
                             .report_peer(peer_id, rep::BAD_PROTOCOL);
                         self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                     RequestFailure::Network(OutboundFailure::DialFailure) => {
                         self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                     RequestFailure::Refused => {
                         self.network_service_handle
                             .report_peer(peer_id, rep::REFUSED);
                         self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                     RequestFailure::Network(OutboundFailure::ConnectionClosed)
                     | RequestFailure::NotConnected => {
                         self.network_service_handle
-                            .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                            .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
                     }
                     RequestFailure::UnknownProtocol => {
                         debug_assert!(false, "Block request protocol should always be known.");
@@ -227,7 +237,7 @@ where
             Err(oneshot::Canceled) => {
                 trace!("Request to peer {peer_id:?} failed due to oneshot being canceled.");
                 self.network_service_handle
-                    .disconnect_peer(peer_id, self.state_request_protocol_name.clone());
+                    .disconnect_peer(peer_id, self.block_announces_protocol_name.clone());
             }
         }
     }
