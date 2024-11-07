@@ -4,7 +4,7 @@ use crate::node_client::{NodeClient, RpcNodeClient};
 use anyhow::anyhow;
 use clap::{Parser, ValueHint};
 use subspace_networking::libp2p::kad::Mode;
-use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{construct, Config, KademliaMode, Node, NodeRunner};
 use tracing::{debug, info};
 
@@ -63,11 +63,6 @@ pub async fn configure_network(
         listen_on,
     }: NetworkArgs,
 ) -> anyhow::Result<(Node, NodeRunner<()>, RpcNodeClient)> {
-    // TODO:
-    // - cache known peers on disk
-    // - prometheus telemetry
-    let default_config = Config::<()>::default();
-
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = RpcNodeClient::new(&node_rpc_url)
         .await
@@ -91,8 +86,15 @@ pub async fn configure_network(
     let dsn_protocol_version = hex::encode(farmer_app_info.genesis_hash);
     debug!(?dsn_protocol_version, "Setting DSN protocol version...");
 
+    // TODO:
+    // - use a fixed identity kepair
+    // - cache known peers on disk
+    // - prometheus telemetry
+    let keypair = identity::ed25519::Keypair::generate();
+    let keypair = identity::Keypair::from(keypair);
+    let default_config = Config::new(dsn_protocol_version, keypair, (), None);
+
     let config = Config {
-        protocol_version: dsn_protocol_version,
         bootstrap_addresses: bootstrap_nodes,
         reserved_peers,
         allow_non_global_addresses_in_dht: allow_private_ips,
