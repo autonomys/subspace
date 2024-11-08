@@ -1,5 +1,5 @@
 [package]
-name = "subspace-sync"
+name = "sc-subspace-sync-common"
 version = "0.1.0"
 edition = "2021"
 authors = [

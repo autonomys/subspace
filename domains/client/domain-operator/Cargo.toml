@@ -44,7 +44,7 @@ sp-trie = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d7
 sp-weights = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-subspace-sync = { version = "0.1.0", default-features = false, path = "../../../shared/subspace-sync" }
+sc-subspace-sync-common = { version = "0.1.0", default-features = false, path = "../../../shared/sc-subspace-sync-common" }
 tracing = "0.1.40"
 thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros"] }

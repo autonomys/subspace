@@ -13,6 +13,7 @@ use sc_network_common::sync::message::{
 use sc_network_sync::block_relay_protocol::BlockDownloader;
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
+use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_domains::ExecutionReceiptFor;
@@ -21,7 +22,6 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use subspace_sync::snap_sync_engine::SnapSyncingEngine;
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, Instrument};
