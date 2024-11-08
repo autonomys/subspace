@@ -255,6 +255,8 @@ impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
     }
 }
 
+/// This default can only be used for `dev` networks.
+/// Other networks should use `Config::new()` to apply the correct prefix to the protocol version.
 impl Default for Config<()> {
     #[inline]
     fn default() -> Self {
@@ -275,6 +277,7 @@ where
     LocalRecordProvider: self::LocalRecordProvider,
 {
     /// Creates a new [`Config`].
+    /// Applies a subspace-specific version prefix to the `protocol_version`.
     pub fn new(
         protocol_version: String,
         keypair: identity::Keypair,
