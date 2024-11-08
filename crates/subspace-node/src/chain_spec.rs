@@ -22,7 +22,7 @@ use crate::domain::cli::{GenesisDomain, SpecId};
 use crate::domain::evm_chain_spec::{self};
 use sc_chain_spec::GenericChainSpec;
 use sc_service::ChainType;
-use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
+use sc_subspace_chain_specs::{DEVNET_CHAIN_SPEC, MAINNET_CHAIN_SPEC, TAURUS_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use serde::Deserialize;
 use sp_core::crypto::Ss58Codec;
@@ -31,6 +31,7 @@ use sp_runtime::{BoundedVec, Percent};
 use std::marker::PhantomData;
 use std::num::{NonZeroU128, NonZeroU32};
 use subspace_core_primitives::pot::PotKey;
+use subspace_core_primitives::PublicKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, CouncilConfig, DemocracyConfig, DomainsConfig,
     EnableRewardsAt, HistorySeedingConfig, RewardPoint, RewardsConfig, RuntimeConfigsConfig,
@@ -75,20 +76,20 @@ fn get_genesis_allocations(contents: &str) -> Vec<(AccountId, Balance)> {
         .collect()
 }
 
-pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
+pub fn mainnet_compiled() -> Result<GenericChainSpec, String> {
     Ok(GenericChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Wasm binary must be built for Taurus".to_string())?,
         None,
     )
-    .with_name("Autonomys Taurus Testnet")
+    .with_name("Autonomys Mainnet")
     // ID
-    .with_id("autonomys_taurus")
-    .with_chain_type(ChainType::Custom("Autonomys Taurus Testnet".to_string()))
+    .with_id("autonomys_mainnet")
+    .with_chain_type(ChainType::Custom("Autonomys Mainnet".to_string()))
     .with_telemetry_endpoints(
         TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
             .map_err(|error| error.to_string())?,
     )
-    .with_protocol_id("autonomys-taurus")
+    .with_protocol_id("autonomys-mainnet")
     .with_properties({
         let mut properties = chain_spec_properties();
         properties.insert(
@@ -99,7 +100,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
     })
     .with_genesis_config({
         let sudo_account =
-            AccountId::from_ss58check("5F1XZHUSixAq58W8fstCUNtP1WDGoRpCEuLzGRDmJo32sbGc")
+            AccountId::from_ss58check("5EHHtxGtDEPFX2x2PCVg8uhhg6kDdt9znQLr2oqUA9sYL5n6")
                 .expect("Wrong root account address");
         let history_seeder =
             AccountId::from_ss58check("5EXKjeN6GXua85mHygsS95UwwrnNwTTEbzeAj9nqkXrgqQp6")
@@ -129,7 +130,11 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
             balances,
             GenesisParams {
                 enable_rewards_at: EnableRewardsAt::Manually,
-                allow_authoring_by: AllowAuthoringBy::FirstFarmer,
+                allow_authoring_by: AllowAuthoringBy::RootFarmer(PublicKey::from(
+                    hex_literal::hex!(
+                        "e6a489dab63b650cf475431fc46649f4256167443fea241fca0bb3f86b29837a"
+                    ),
+                )),
                 // TODO: Adjust once we bench PoT on faster hardware
                 // About 1s on 6.2 GHz Raptor Lake CPU (14900KS)
                 pot_slot_iterations: NonZeroU32::new(206_557_520).expect("Not zero; qed"),
@@ -240,10 +245,7 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
                 permissioned_action_allowed_by: PermissionedActionAllowedBy::Accounts(vec![
                     sudo_account.clone(),
                 ]),
-                genesis_domains: vec![
-                    evm_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
-                    auto_id_chain_spec::get_genesis_domain(SpecId::Taurus, sudo_account.clone())?,
-                ],
+                genesis_domains: vec![],
             },
             CouncilDemocracyConfigParams::<BlockNumber>::production_params(),
             council_config,
@@ -252,6 +254,10 @@ pub fn taurus_compiled() -> Result<GenericChainSpec, String> {
         .map_err(|error| format!("Failed to serialize genesis config: {error}"))?
     })
     .build())
+}
+
+pub fn mainnet_config() -> Result<GenericChainSpec, String> {
+    GenericChainSpec::from_json_bytes(MAINNET_CHAIN_SPEC.as_bytes())
 }
 
 pub fn taurus_config() -> Result<GenericChainSpec, String> {

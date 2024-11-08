@@ -79,7 +79,7 @@ pub(in super::super) struct NetworkArgs {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn configure_network<FarmIndex, CacheIndex, NC>(
+pub(in super::super) fn configure_network<FarmIndex, NC>(
     protocol_prefix: String,
     base_path: &Path,
     keypair: Keypair,
@@ -96,15 +96,12 @@ pub(in super::super) fn configure_network<FarmIndex, CacheIndex, NC>(
     }: NetworkArgs,
     weak_plotted_pieces: Weak<AsyncRwLock<PlottedPieces<FarmIndex>>>,
     node_client: NC,
-    farmer_cache: FarmerCache<CacheIndex>,
+    farmer_cache: FarmerCache,
     prometheus_metrics_registry: Option<&mut Registry>,
-) -> Result<(Node, NodeRunner<FarmerCache<CacheIndex>>), anyhow::Error>
+) -> Result<(Node, NodeRunner<FarmerCache>), anyhow::Error>
 where
     FarmIndex: Hash + Eq + Copy + fmt::Debug + Send + Sync + 'static,
     usize: From<FarmIndex>,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
     NC: NodeClientExt + Clone,
 {
     let known_peers_registry = KnownPeersManager::new(KnownPeersManagerConfig {

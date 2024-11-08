@@ -46,7 +46,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 subspace-sync = { version = "0.1.0", default-features = false, path = "../../../shared/subspace-sync" }
 tracing = "0.1.40"
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros"] }
 
 [dev-dependencies]

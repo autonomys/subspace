@@ -1077,6 +1077,8 @@ where
         network_service_handle,
         subspace_link.erasure_coding().clone(),
         consensus_snap_sync_target_block_receiver,
+        backend.offchain_storage(),
+        network_service.clone(),
     );
 
     let (observer, worker) = sync_from_dsn::create_observer_and_worker(

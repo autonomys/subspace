@@ -6,9 +6,7 @@
 //! client implementations designed to work with cluster controller and a service function to drive
 //! the backend part of the controller.
 
-use crate::cluster::cache::{
-    ClusterCacheIndex, ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest,
-};
+use crate::cluster::cache::{ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest};
 use crate::cluster::nats_client::{
     GenericBroadcast, GenericNotification, GenericRequest, GenericStreamRequest, NatsClient,
 };
@@ -608,7 +606,7 @@ pub async fn controller_service<NC, PG>(
     nats_client: &NatsClient,
     node_client: &NC,
     piece_getter: &PG,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
     instance: &str,
     primary_instance: bool,
 ) -> anyhow::Result<()>
@@ -906,7 +904,7 @@ where
 
 async fn find_piece_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
     nats_client
         .request_responder(
@@ -921,7 +919,7 @@ async fn find_piece_responder(
 
 async fn find_pieces_responder(
     nats_client: &NatsClient,
-    farmer_cache: &FarmerCache<ClusterCacheIndex>,
+    farmer_cache: &FarmerCache,
 ) -> anyhow::Result<()> {
     nats_client
         .stream_request_responder(

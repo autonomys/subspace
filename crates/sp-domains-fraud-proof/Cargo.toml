@@ -38,7 +38,7 @@ sp-weights = { default-features = false, git = "https://github.com/subspace/polk
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 trie-db = { version = "0.29.1", default-features = false }
-thiserror = { version = "1.0.64", optional = true }
+thiserror = { version = "2.0.0", default-features = false }
 
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
@@ -98,6 +98,6 @@ std = [
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
     "trie-db/std",
-    "thiserror",
+    "thiserror/std",
 ]
 runtime-benchmarks = []

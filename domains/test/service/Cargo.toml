@@ -12,6 +12,7 @@ include = [
 ]
 
 [dependencies]
+domain-check-weight = { version = "0.1.0", path = "../../../domains/pallets/domain-check-weight" }
 auto-id-domain-test-runtime = { version = "0.1.0", path = "../runtime/auto-id" }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 domain-client-operator = { version = "0.1.0", path = "../../client/domain-operator" }

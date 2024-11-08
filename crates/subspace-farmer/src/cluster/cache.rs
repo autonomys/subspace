@@ -27,9 +27,6 @@ use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 const MIN_CACHE_IDENTIFICATION_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Type alias for cache index used by cluster.
-pub type ClusterCacheIndex = u16;
-
 /// Broadcast with identification details by caches
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct ClusterCacheIdentifyBroadcast {

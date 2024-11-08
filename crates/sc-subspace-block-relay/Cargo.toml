@@ -28,5 +28,5 @@ sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e
 strum_macros = "0.26.4"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 tracing = "0.1.40"

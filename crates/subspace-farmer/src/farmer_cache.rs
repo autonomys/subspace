@@ -25,7 +25,6 @@ use rayon::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::future::join;
-use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
@@ -55,6 +54,7 @@ const IS_PIECE_MAYBE_STORED_TIMEOUT: Duration = Duration::from_millis(100);
 
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
+type CacheIndex = u8;
 
 #[derive(Default, Debug)]
 struct Handlers {
@@ -62,16 +62,12 @@ struct Handlers {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FarmerCacheOffset<CacheIndex> {
+struct FarmerCacheOffset {
     cache_index: CacheIndex,
     piece_offset: PieceCacheOffset,
 }
 
-impl<CacheIndex> FarmerCacheOffset<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCacheOffset {
     fn new(cache_index: CacheIndex, piece_offset: PieceCacheOffset) -> Self {
         Self {
             cache_index,
@@ -121,9 +117,9 @@ impl CacheBackend {
 }
 
 #[derive(Debug)]
-struct CacheState<CacheIndex> {
-    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-    cache_free_offsets: Vec<FarmerCacheOffset<CacheIndex>>,
+struct CacheState {
+    cache_stored_pieces: HashMap<KeyWithDistance, FarmerCacheOffset>,
+    cache_free_offsets: Vec<FarmerCacheOffset>,
     backend: CacheBackend,
 }
 
@@ -140,25 +136,22 @@ enum WorkerCommand {
 /// Farmer cache worker used to drive the farmer cache backend
 #[derive(Debug)]
 #[must_use = "Farmer cache will not work unless its worker is running"]
-pub struct FarmerCacheWorker<NC, CacheIndex>
+pub struct FarmerCacheWorker<NC>
 where
     NC: fmt::Debug,
 {
     peer_id: PeerId,
     node_client: NC,
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<NC, CacheIndex> FarmerCacheWorker<NC, CacheIndex>
+impl<NC> FarmerCacheWorker<NC>
 where
     NC: NodeClient,
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
 {
     /// Run the cache worker with provided piece getter.
     ///
@@ -216,7 +209,7 @@ where
                 }
                 maybe_segment_header = segment_headers_notifications.next().fuse() => {
                     if let Some(segment_header) = maybe_segment_header {
-                        self.process_segment_header(segment_header, &mut last_segment_index_internal).await;
+                        self.process_segment_header(&piece_getter, segment_header, &mut last_segment_index_internal).await;
                     } else {
                         // Keep-up sync only ends with subscription, which lasts for duration of an
                         // instance
@@ -651,11 +644,14 @@ where
         info!("Finished piece cache synchronization");
     }
 
-    async fn process_segment_header(
+    async fn process_segment_header<PG>(
         &self,
+        piece_getter: &PG,
         segment_header: SegmentHeader,
         last_segment_index_internal: &mut SegmentIndex,
-    ) {
+    ) where
+        PG: PieceGetter,
+    {
         let segment_index = segment_header.segment_index();
         debug!(%segment_index, "Starting to process newly archived segment");
 
@@ -685,33 +681,45 @@ where
                         return None;
                     }
 
-                    let maybe_piece = match self.node_client.piece(piece_index).await {
-                        Ok(maybe_piece) => maybe_piece,
+                    let maybe_piece_result =
+                        self.node_client
+                            .piece(piece_index)
+                            .await
+                            .inspect_err(|error| {
+                                debug!(
+                                    %error,
+                                    %segment_index,
+                                    %piece_index,
+                                    "Failed to retrieve piece from node right after archiving"
+                                );
+                            });
+
+                    if let Ok(Some(piece)) = maybe_piece_result {
+                        return Some((piece_index, piece));
+                    }
+
+                    match piece_getter.get_piece(piece_index).await {
+                        Ok(Some(piece)) => Some((piece_index, piece)),
+                        Ok(None) => {
+                            warn!(
+                                %segment_index,
+                                %piece_index,
+                                "Failed to retrieve piece right after archiving"
+                            );
+
+                            None
+                        }
                         Err(error) => {
-                            error!(
+                            warn!(
                                 %error,
                                 %segment_index,
                                 %piece_index,
-                                "Failed to retrieve piece from node right after archiving, \
-                                this should never happen and is an implementation bug"
+                                "Failed to retrieve piece right after archiving"
                             );
 
-                            return None;
+                            None
                         }
-                    };
-
-                    let Some(piece) = maybe_piece else {
-                        error!(
-                            %segment_index,
-                            %piece_index,
-                            "Failed to retrieve piece from node right after archiving, this \
-                            should never happen and is an implementation bug"
-                        );
-
-                        return None;
-                    };
-
-                    Some((piece_index, piece))
+                    }
                 })
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|maybe_piece| async move { maybe_piece })
@@ -723,8 +731,6 @@ where
             self.acknowledge_archived_segment_processing(segment_index)
                 .await;
 
-            // TODO: Would be nice to have concurrency here, but heap is causing a bit of
-            //  difficulties unfortunately
             // Go through potentially matching pieces again now that segment was acknowledged and
             // try to persist them if necessary
             for (piece_index, piece) in pieces_to_maybe_include {
@@ -1020,10 +1026,10 @@ impl PlotCaches {
 /// where piece cache is not enough to store all the pieces on the network, while there is a lot of
 /// space in the plot that is not used by sectors yet and can be leverage as extra caching space.
 #[derive(Debug, Clone)]
-pub struct FarmerCache<CacheIndex> {
+pub struct FarmerCache {
     peer_id: PeerId,
     /// Individual dedicated piece caches
-    piece_caches: Arc<AsyncRwLock<PieceCachesState<CacheIndex>>>,
+    piece_caches: Arc<AsyncRwLock<PieceCachesState>>,
     /// Additional piece caches
     plot_caches: Arc<PlotCaches>,
     handlers: Arc<Handlers>,
@@ -1032,12 +1038,7 @@ pub struct FarmerCache<CacheIndex> {
     metrics: Option<Arc<FarmerCacheMetrics>>,
 }
 
-impl<CacheIndex> FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl FarmerCache {
     /// Create new piece cache instance and corresponding worker.
     ///
     /// NOTE: Returned future is async, but does blocking operations and should be running in
@@ -1046,7 +1047,7 @@ where
         node_client: NC,
         peer_id: PeerId,
         registry: Option<&mut Registry>,
-    ) -> (Self, FarmerCacheWorker<NC, CacheIndex>)
+    ) -> (Self, FarmerCacheWorker<NC>)
     where
         NC: NodeClient,
     {
@@ -1496,7 +1497,7 @@ where
 
     fn find_piece_internal(
         &self,
-        caches: &PieceCachesState<CacheIndex>,
+        caches: &PieceCachesState,
         piece_index: PieceIndex,
     ) -> Option<(PieceCacheId, PieceCacheOffset)> {
         let key = KeyWithDistance::new(self.peer_id, piece_index.to_multihash());
@@ -1562,12 +1563,7 @@ where
     }
 }
 
-impl<CacheIndex> LocalRecordProvider for FarmerCache<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl LocalRecordProvider for FarmerCache {
     fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
         let distance_key = KeyWithDistance::new(self.peer_id, key.clone());
         if self

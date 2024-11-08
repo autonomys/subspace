@@ -65,7 +65,5 @@ pub mod single_disk_farm;
 pub mod thread_pool_manager;
 pub mod utils;
 
-pub use jsonrpsee;
-
 /// Size of the LRU cache for peers.
 pub const KNOWN_PEERS_CACHE_SIZE: u32 = 100;

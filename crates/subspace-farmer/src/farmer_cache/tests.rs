@@ -26,8 +26,6 @@ use subspace_rpc_primitives::{
 };
 use tempfile::tempdir;
 
-type TestCacheIndex = u8;
-
 #[derive(Debug, Clone)]
 struct MockNodeClient {
     current_segment_index: Arc<AtomicU64>,
@@ -206,7 +204,7 @@ async fn basic() {
 
     {
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::<TestCacheIndex>::new(node_client.clone(), public_key.to_peer_id(), None);
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited =
             tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
@@ -406,7 +404,7 @@ async fn basic() {
         pieces.lock().clear();
 
         let (farmer_cache, farmer_cache_worker) =
-            FarmerCache::<TestCacheIndex>::new(node_client.clone(), public_key.to_peer_id(), None);
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
 
         let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
 

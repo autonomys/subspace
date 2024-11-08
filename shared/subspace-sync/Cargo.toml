@@ -14,6 +14,7 @@ include = [
 ]
 
 [dependencies]
+array-bytes = "6.2.3"
 futures = "0.3.31"
 sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
 sc-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }

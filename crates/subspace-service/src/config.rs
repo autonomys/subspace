@@ -1,6 +1,7 @@
 use crate::dsn::DsnConfig;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
 use sc_chain_spec::ChainSpec;
+use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{
     MultiaddrWithPeerId, NetworkBackendType, NetworkConfiguration, NodeKeyConfig, SetConfig,
     SyncMode, TransportConfig, DEFAULT_KADEMLIA_REPLICATION_FACTOR,
@@ -302,8 +303,8 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
-    /// Create object mappings for new blocks, and blocks that have already been archived.
-    pub create_object_mappings: bool,
+    /// Create object mappings from a specified segment index, or disable object mapping creation.
+    pub create_object_mappings: CreateObjectMappings,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
     /// DSN piece getter

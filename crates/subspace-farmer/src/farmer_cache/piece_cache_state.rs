@@ -1,30 +1,23 @@
-use crate::farmer_cache::{CacheBackend, FarmerCacheOffset};
+use crate::farmer_cache::{CacheBackend, CacheIndex, FarmerCacheOffset};
 use std::collections::btree_map::Values;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::fmt;
-use std::hash::Hash;
 use subspace_core_primitives::pieces::PieceIndex;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::KeyWithDistance;
 use tracing::{debug, trace};
 
-#[derive(Debug, Clone)]
-pub(super) struct PieceCachesState<CacheIndex> {
-    stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-    dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
+#[derive(Debug, Default, Clone)]
+pub(super) struct PieceCachesState {
+    stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset>,
+    dangling_free_offsets: VecDeque<FarmerCacheOffset>,
     backends: Vec<CacheBackend>,
 }
 
-impl<CacheIndex> PieceCachesState<CacheIndex>
-where
-    CacheIndex: Hash + Eq + Copy + fmt::Debug + fmt::Display + Send + Sync + 'static,
-    usize: From<CacheIndex>,
-    CacheIndex: TryFrom<usize>,
-{
+impl PieceCachesState {
     pub(super) fn new(
-        stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-        dangling_free_offsets: VecDeque<FarmerCacheOffset<CacheIndex>>,
+        stored_pieces: BTreeMap<KeyWithDistance, FarmerCacheOffset>,
+        dangling_free_offsets: VecDeque<FarmerCacheOffset>,
         backends: Vec<CacheBackend>,
     ) -> Self {
         Self {
@@ -39,7 +32,7 @@ where
             .fold(0usize, |acc, backend| acc + backend.total_capacity as usize)
     }
 
-    pub(super) fn pop_free_offset(&mut self) -> Option<FarmerCacheOffset<CacheIndex>> {
+    pub(super) fn pop_free_offset(&mut self) -> Option<FarmerCacheOffset> {
         match self.dangling_free_offsets.pop_front() {
             Some(free_offset) => {
                 debug!(?free_offset, "Popped dangling free offset");
@@ -71,10 +64,7 @@ where
         }
     }
 
-    pub(super) fn get_stored_piece(
-        &self,
-        key: &KeyWithDistance,
-    ) -> Option<&FarmerCacheOffset<CacheIndex>> {
+    pub(super) fn get_stored_piece(&self, key: &KeyWithDistance) -> Option<&FarmerCacheOffset> {
         self.stored_pieces.get(key)
     }
 
@@ -85,21 +75,19 @@ where
     pub(super) fn push_stored_piece(
         &mut self,
         key: KeyWithDistance,
-        cache_offset: FarmerCacheOffset<CacheIndex>,
-    ) -> Option<FarmerCacheOffset<CacheIndex>> {
+        cache_offset: FarmerCacheOffset,
+    ) -> Option<FarmerCacheOffset> {
         self.stored_pieces.insert(key, cache_offset)
     }
 
-    pub(super) fn stored_pieces_offsets(
-        &self,
-    ) -> Values<'_, KeyWithDistance, FarmerCacheOffset<CacheIndex>> {
+    pub(super) fn stored_pieces_offsets(&self) -> Values<'_, KeyWithDistance, FarmerCacheOffset> {
         self.stored_pieces.values()
     }
 
     pub(super) fn remove_stored_piece(
         &mut self,
         key: &KeyWithDistance,
-    ) -> Option<FarmerCacheOffset<CacheIndex>> {
+    ) -> Option<FarmerCacheOffset> {
         self.stored_pieces.remove(key)
     }
 
@@ -116,7 +104,7 @@ where
             })
     }
 
-    pub(super) fn push_dangling_free_offset(&mut self, offset: FarmerCacheOffset<CacheIndex>) {
+    pub(super) fn push_dangling_free_offset(&mut self, offset: FarmerCacheOffset) {
         trace!(?offset, "Pushing dangling free offset");
         self.dangling_free_offsets.push_back(offset);
     }
@@ -132,8 +120,8 @@ where
     pub(super) fn reuse(
         self,
     ) -> (
-        BTreeMap<KeyWithDistance, FarmerCacheOffset<CacheIndex>>,
-        VecDeque<FarmerCacheOffset<CacheIndex>>,
+        BTreeMap<KeyWithDistance, FarmerCacheOffset>,
+        VecDeque<FarmerCacheOffset>,
     ) {
         let Self {
             mut stored_pieces,
@@ -149,7 +137,7 @@ where
     pub(super) fn should_replace(
         &mut self,
         key: &KeyWithDistance,
-    ) -> Option<(KeyWithDistance, FarmerCacheOffset<CacheIndex>)> {
+    ) -> Option<(KeyWithDistance, FarmerCacheOffset)> {
         if !self.should_include_key_internal(key) {
             return None;
         }
@@ -189,16 +177,6 @@ where
             top_key > key
         } else {
             false
-        }
-    }
-}
-
-impl<CacheIndex> Default for PieceCachesState<CacheIndex> {
-    fn default() -> Self {
-        Self {
-            stored_pieces: BTreeMap::default(),
-            dangling_free_offsets: VecDeque::default(),
-            backends: Vec::default(),
         }
     }
 }
