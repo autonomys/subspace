@@ -1,9 +1,9 @@
 use crate::mmr::sync::mmr_sync;
 use crate::sync_from_dsn::import_blocks::download_and_reconstruct_blocks;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
-use crate::sync_from_dsn::snap_sync_engine::SnapSyncingEngine;
 use crate::sync_from_dsn::DsnSyncPieceGetter;
-use sc_client_api::{AuxStore, ProofProvider};
+use crate::utils::wait_for_block_import;
+use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, IncomingBlock, StateAction,
@@ -14,6 +14,7 @@ use sc_network::service::traits::NetworkService;
 use sc_network::{NetworkBlock, NetworkRequest, PeerId};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::SyncingService;
+use sc_subspace_sync_common::snap_sync_engine::SnapSyncingEngine;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -32,8 +33,9 @@ use subspace_core_primitives::segments::SegmentIndex;
 use subspace_core_primitives::{BlockNumber, PublicKey};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_networking::Node;
+use tokio::sync::broadcast::Receiver;
 use tokio::time::sleep;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 /// Error type for snap sync.
 #[derive(thiserror::Error, Debug)]
@@ -76,6 +78,7 @@ pub(crate) async fn snap_sync<Block, AS, Client, PG, OS>(
     sync_service: Arc<SyncingService<Block>>,
     network_service_handle: NetworkServiceHandle,
     erasure_coding: ErasureCoding,
+    target_block_receiver: Option<Receiver<BlockNumber>>,
     offchain_storage: Option<OS>,
     network_service: Arc<dyn NetworkService>,
 ) -> Result<(), Error>
@@ -86,6 +89,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -101,6 +105,22 @@ where
     if info.best_hash == info.genesis_hash {
         pause_sync.store(true, Ordering::Release);
 
+        let target_block = if let Some(mut target_block_receiver) = target_block_receiver {
+            match target_block_receiver.recv().await {
+                Ok(target_block) => Some(target_block),
+                Err(err) => {
+                    error!(?err, "Snap sync failed: can't obtain target block.");
+                    return Err(Error::Other(
+                        "Snap sync failed: can't obtain target block.".into(),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        debug!("Snap sync target block: {:?}", target_block);
+
         sync(
             &segment_headers_store,
             &node,
@@ -110,7 +130,7 @@ where
             import_queue_service.as_mut(),
             sync_service.clone(),
             &network_service_handle,
-            None,
+            target_block,
             &erasure_coding,
             offchain_storage,
             network_service,
@@ -160,39 +180,46 @@ where
                     "Can't get segment header from the store: {last_segment_index}"
                 ))?;
 
+            let mut target_block_exceeded_last_archived_block = false;
             if target_block > segment_header.last_archived_block().number {
-                return Err(format!(
-                    "Target block is greater than the last archived block. \
-                    Last segment index = {last_segment_index}, target block = {target_block}, \
-                    last block from the segment = {}
+                warn!(
+                   %last_segment_index,
+                   %target_block,
+
+                    "Specified target block is greater than the last archived block. \
+                     Choosing the last archived block (#{}) as target block...
                     ",
                     segment_header.last_archived_block().number
-                )
-                .into());
+                );
+                target_block_exceeded_last_archived_block = true;
             }
 
-            let mut current_segment_index = last_segment_index;
+            if !target_block_exceeded_last_archived_block {
+                let mut current_segment_index = last_segment_index;
 
-            loop {
-                if current_segment_index <= SegmentIndex::ONE {
-                    break;
+                loop {
+                    if current_segment_index <= SegmentIndex::ONE {
+                        break;
+                    }
+
+                    if target_block > segment_header.last_archived_block().number {
+                        current_segment_index += SegmentIndex::ONE;
+                        break;
+                    }
+
+                    current_segment_index -= SegmentIndex::ONE;
+
+                    segment_header = segment_headers_store
+                        .get_segment_header(current_segment_index)
+                        .ok_or(format!(
+                            "Can't get segment header from the store: {last_segment_index}"
+                        ))?;
                 }
 
-                if target_block > segment_header.last_archived_block().number {
-                    current_segment_index += SegmentIndex::ONE;
-                    break;
-                }
-
-                current_segment_index -= SegmentIndex::ONE;
-
-                segment_header = segment_headers_store
-                    .get_segment_header(current_segment_index)
-                    .ok_or(format!(
-                        "Can't get segment header from the store: {last_segment_index}"
-                    ))?;
+                current_segment_index
+            } else {
+                last_segment_index
             }
-
-            current_segment_index
         } else {
             last_segment_index
         }
@@ -275,7 +302,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 /// Synchronize the blockchain to the target_block (approximate value based on the containing
-/// segment) or to the last archived block.
+/// segment) or to the last archived block. Returns false when sync is skipped.
 async fn sync<PG, AS, Block, Client, IQS, OS, NR>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
@@ -298,6 +325,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + BlockImport<Block>
+        + BlockchainEvents<Block>
         + Send
         + Sync
         + 'static,
@@ -416,11 +444,9 @@ where
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
 
-    let mmr_target_block = if let Some(target_block) = target_block {
-        target_block
-    } else {
-        last_block_number
-    };
+    // We sync MMR up to the last block block number. All other MMR-data will be synced after
+    // resuming either DSN-sync or Substrate-sync.
+    let mmr_target_block = last_block_number;
 
     if let Some(offchain_storage) = offchain_storage {
         mmr_sync(
@@ -437,42 +463,6 @@ where
     debug!(info = ?client.info(), "Snap sync finished successfully");
 
     Ok(())
-}
-
-async fn wait_for_block_import<Block, Client>(
-    client: &Client,
-    waiting_block_number: NumberFor<Block>,
-) where
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-{
-    const WAIT_DURATION: Duration = Duration::from_secs(5);
-    const MAX_NO_NEW_IMPORT_ITERATIONS: u32 = 10;
-    let mut current_iteration = 0;
-    let mut last_best_block_number = client.info().best_number;
-    loop {
-        let info = client.info();
-        debug!(%current_iteration, %waiting_block_number, "Waiting client info: {:?}", info);
-
-        tokio::time::sleep(WAIT_DURATION).await;
-
-        if info.best_number >= waiting_block_number {
-            break;
-        }
-
-        if last_best_block_number == info.best_number {
-            current_iteration += 1;
-        } else {
-            current_iteration = 0;
-        }
-
-        if current_iteration >= MAX_NO_NEW_IMPORT_ITERATIONS {
-            debug!(%current_iteration, %waiting_block_number, "Max idle period reached. {:?}", info);
-            break;
-        }
-
-        last_best_block_number = info.best_number;
-    }
 }
 
 async fn sync_segment_headers<AS>(

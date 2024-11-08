@@ -2,7 +2,8 @@ use crate::commands::run::shared::RpcOptions;
 use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
-use domain_client_operator::{BootstrapResult, OperatorStreams};
+use domain_client_operator::snap_sync::ConsensusChainSyncParams;
+use domain_client_operator::{BootstrapResult, DomainChainSyncOracle, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -20,7 +21,7 @@ use sc_cli::{
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
-use sc_network::NetworkPeers;
+use sc_network::{NetworkPeers, NetworkRequest};
 use sc_proof_of_time::source::PotSlotInfo;
 use sc_service::config::KeystoreConfig;
 use sc_service::Configuration;
@@ -130,6 +131,7 @@ pub(super) struct DomainOptions {
     additional_args: Vec<String>,
 }
 
+#[derive(Debug)]
 pub(super) struct DomainConfiguration {
     pub(super) domain_config: Configuration,
     pub(super) domain_id: DomainId,
@@ -153,6 +155,7 @@ pub(super) fn create_domain_configuration(
         keystore_options,
         pool_config,
         additional_args,
+        ..
     } = domain_options;
 
     let domain_id;
@@ -388,11 +391,15 @@ pub(super) struct DomainStartOptions {
     pub(super) gossip_message_sink: TracingUnboundedSender<cross_domain_message_gossip::Message>,
 }
 
-pub(super) async fn run_domain(
+pub(super) async fn run_domain<CNR>(
     bootstrap_result: BootstrapResult<CBlock>,
     domain_configuration: DomainConfiguration,
     domain_start_options: DomainStartOptions,
-) -> Result<(), Error> {
+    consensus_chain_sync_params: Option<ConsensusChainSyncParams<CBlock, CNR>>,
+) -> Result<(), Error>
+where
+    CNR: NetworkRequest + Send + Sync + 'static,
+{
     let BootstrapResult {
         domain_instance_data,
         domain_created_at,
@@ -427,14 +434,15 @@ pub(super) async fn run_domain(
         gossip_message_sink,
     } = domain_start_options;
 
-    let block_importing_notification_stream = block_importing_notification_stream.subscribe().then(
-        |block_importing_notification| async move {
+    let block_importing_notification_stream = block_importing_notification_stream
+        .subscribe()
+        .then(|block_importing_notification| async move {
             (
                 block_importing_notification.block_number,
                 block_importing_notification.acknowledgement_sender,
             )
-        },
-    );
+        })
+        .boxed();
 
     let pot_slot_info_stream = tokio_stream::StreamExt::filter_map(
         tokio_stream::wrappers::BroadcastStream::new(pot_slot_info_stream),
@@ -468,6 +476,13 @@ pub(super) async fn run_domain(
         .chain_constants(consensus_best_hash)
         .map_err(|err| Error::Other(err.to_string()))?;
 
+    let domain_sync_oracle = Arc::new(DomainChainSyncOracle::new(
+        consensus_network_sync_oracle,
+        consensus_chain_sync_params
+            .as_ref()
+            .map(|params| params.snap_sync_orchestrator.domain_snap_sync_finished()),
+    ));
+
     match runtime_type {
         RuntimeType::Evm => {
             let eth_provider = EthProvider::<
@@ -488,7 +503,7 @@ pub(super) async fn run_domain(
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle,
+                domain_sync_oracle,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,
@@ -497,6 +512,7 @@ pub(super) async fn run_domain(
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                consensus_chain_sync_params,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -508,6 +524,7 @@ pub(super) async fn run_domain(
                 _,
                 evm_domain_runtime::RuntimeApi,
                 AccountId20,
+                _,
                 _,
             >(domain_params)
             .await?;
@@ -526,7 +543,7 @@ pub(super) async fn run_domain(
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle,
+                domain_sync_oracle,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,
@@ -535,6 +552,7 @@ pub(super) async fn run_domain(
                 skip_out_of_order_slot: false,
                 maybe_operator_id: operator_id,
                 confirmation_depth_k: chain_constants.confirmation_depth_k(),
+                consensus_chain_sync_params,
             };
 
             let mut domain_node = domain_service::new_full::<
@@ -546,6 +564,7 @@ pub(super) async fn run_domain(
                 _,
                 auto_id_domain_runtime::RuntimeApi,
                 AccountId32,
+                _,
                 _,
             >(domain_params)
             .await?;

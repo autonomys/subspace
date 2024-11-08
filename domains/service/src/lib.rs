@@ -2,6 +2,7 @@
 
 pub mod config;
 mod domain;
+pub mod network;
 pub mod providers;
 pub mod rpc;
 

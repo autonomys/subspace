@@ -235,7 +235,7 @@ where
                 })?;
                 let block_origin = if self
                     .domain_block_processor
-                    .consensus_network_sync_oracle
+                    .domain_sync_oracle
                     .is_major_syncing()
                 {
                     // The domain block is derived from the consensus block, if the consensus chain is

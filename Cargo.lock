@@ -2596,6 +2596,7 @@ dependencies = [
 name = "domain-client-operator"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "auto-id-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-block-builder",
@@ -2620,7 +2621,11 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-domains",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-sync",
  "sc-service",
+ "sc-subspace-sync-common",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -2733,6 +2738,8 @@ dependencies = [
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
+ "array-bytes",
+ "async-channel 1.9.0",
  "async-trait",
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
@@ -2786,6 +2793,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "thiserror 1.0.64",
  "tokio",
  "tracing",
 ]
@@ -2842,6 +2850,7 @@ dependencies = [
  "sp-session",
  "sp-transaction-pool",
  "subspace-runtime-primitives",
+ "subspace-service",
  "subspace-test-client",
  "subspace-test-service",
  "substrate-frame-rpc-system",
@@ -10722,6 +10731,21 @@ name = "sc-subspace-chain-specs"
 version = "0.1.0"
 
 [[package]]
+name = "sc-subspace-sync-common"
+version = "0.1.0"
+dependencies = [
+ "array-bytes",
+ "futures",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-network",
+ "sc-network-sync",
+ "sp-blockchain",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "sc-sysinfo"
 version = "38.0.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=5871818e1d736f1843eb9078f886290695165c42#5871818e1d736f1843eb9078f886290695165c42"
@@ -13070,6 +13094,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-service",
  "sc-subspace-block-relay",
+ "sc-subspace-sync-common",
  "sc-sysinfo",
  "sc-telemetry",
  "sc-tracing",
