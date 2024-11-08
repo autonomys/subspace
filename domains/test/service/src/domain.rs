@@ -206,7 +206,7 @@ where
             consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                 mock_consensus_node.transaction_pool.clone(),
             ),
-            consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
+            domain_sync_oracle: mock_consensus_node.sync_service.clone(),
             consensus_network: mock_consensus_node.network_service.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,

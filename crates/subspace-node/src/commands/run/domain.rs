@@ -3,7 +3,7 @@ use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
 use domain_client_operator::snap_sync::ConsensusChainSyncParams;
-use domain_client_operator::{BootstrapResult, ConsensusChainSyncOracleWrapper, OperatorStreams};
+use domain_client_operator::{BootstrapResult, DomainChainSyncOracle, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -476,7 +476,7 @@ where
         .chain_constants(consensus_best_hash)
         .map_err(|err| Error::Other(err.to_string()))?;
 
-    let consensus_network_sync_oracle_wrapper = Arc::new(ConsensusChainSyncOracleWrapper::new(
+    let domain_sync_oracle = Arc::new(DomainChainSyncOracle::new(
         consensus_network_sync_oracle,
         consensus_chain_sync_params
             .as_ref()
@@ -503,7 +503,7 @@ where
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle: consensus_network_sync_oracle_wrapper,
+                domain_sync_oracle,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,
@@ -543,7 +543,7 @@ where
                 consensus_client,
                 consensus_offchain_tx_pool_factory,
                 consensus_network,
-                consensus_network_sync_oracle: consensus_network_sync_oracle_wrapper,
+                domain_sync_oracle,
                 operator_streams,
                 gossip_message_sink,
                 domain_message_receiver,

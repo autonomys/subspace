@@ -110,12 +110,12 @@ use std::sync::Arc;
 use subspace_core_primitives::pot::PotOutput;
 use subspace_runtime_primitives::Balance;
 
-/// Sync oracle wrapper.
+/// Domain sync oracle.
 ///
 /// Sync oracle wrapper checks whether domain snap sync is finished in addition to the underlying
 /// sync oracle.
 #[derive(Debug, Clone)]
-pub struct ConsensusChainSyncOracleWrapper<SO>
+pub struct DomainChainSyncOracle<SO>
 where
     SO: SyncOracle + Send + Sync,
 {
@@ -123,7 +123,7 @@ where
     inner: SO,
 }
 
-impl<SO> SyncOracle for ConsensusChainSyncOracleWrapper<SO>
+impl<SO> SyncOracle for DomainChainSyncOracle<SO>
 where
     SO: SyncOracle + Send + Sync,
 {
@@ -141,7 +141,7 @@ where
     }
 }
 
-impl<SO> ConsensusChainSyncOracleWrapper<SO>
+impl<SO> DomainChainSyncOracle<SO>
 where
     SO: SyncOracle + Send + Sync,
 {
@@ -216,7 +216,7 @@ pub struct OperatorParams<
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
     pub transaction_pool: Arc<TransactionPool>,
     pub backend: Arc<Backend>,

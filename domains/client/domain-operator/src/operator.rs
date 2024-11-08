@@ -168,7 +168,7 @@ where
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
-            consensus_network_sync_oracle: params.consensus_network_sync_oracle.clone(),
+            domain_sync_oracle: params.domain_sync_oracle.clone(),
         };
 
         let receipts_checker = ReceiptsChecker {
@@ -176,7 +176,7 @@ where
             client: params.client.clone(),
             consensus_client: params.consensus_client.clone(),
             fraud_proof_generator: fraud_proof_generator.clone(),
-            consensus_network_sync_oracle: params.consensus_network_sync_oracle,
+            domain_sync_oracle: params.domain_sync_oracle,
             consensus_offchain_tx_pool_factory: params.consensus_offchain_tx_pool_factory.clone(),
         };
 

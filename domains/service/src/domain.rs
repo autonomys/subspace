@@ -274,7 +274,7 @@ where
     pub consensus_client: Arc<CClient>,
     pub consensus_network: Arc<dyn NetworkPeers + Send + Sync>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub domain_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
     pub domain_message_receiver: TracingUnboundedReceiver<ChainMsg>,
@@ -374,7 +374,7 @@ where
         domain_created_at,
         consensus_client,
         consensus_offchain_tx_pool_factory,
-        consensus_network_sync_oracle,
+        domain_sync_oracle,
         consensus_network,
         operator_streams,
         gossip_message_sink,
@@ -525,7 +525,7 @@ where
             domain_created_at,
             consensus_client: consensus_client.clone(),
             consensus_offchain_tx_pool_factory,
-            consensus_network_sync_oracle: consensus_network_sync_oracle.clone(),
+            domain_sync_oracle: domain_sync_oracle.clone(),
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
@@ -557,7 +557,7 @@ where
             confirmation_depth_k,
             // domain relayer will use consensus chain sync oracle instead of domain sync oracle
             // since domain sync oracle will always return `synced` due to force sync being set.
-            consensus_network_sync_oracle.clone(),
+            domain_sync_oracle.clone(),
             gossip_message_sink.clone(),
         );
 
@@ -569,7 +569,7 @@ where
                 client.clone(),
                 // domain will use consensus chain sync oracle instead of domain sync oracle
                 // since domain sync oracle will always return `synced` due to force sync being set.
-                consensus_network_sync_oracle.clone(),
+                domain_sync_oracle.clone(),
                 gossip_message_sink,
             );
 
@@ -598,7 +598,7 @@ where
         consensus_network,
         domain_message_receiver,
         code_executor.clone(),
-        consensus_network_sync_oracle,
+        domain_sync_oracle,
     );
 
     spawn_essential.spawn_essential_blocking(
