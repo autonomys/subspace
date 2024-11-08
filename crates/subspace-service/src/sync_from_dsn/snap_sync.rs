@@ -517,8 +517,8 @@ where
 {
     let block_number = *header.number();
 
-    const STATE_SYNC_RETRIES: u32 = 5;
-    const LOOP_PAUSE: Duration = Duration::from_secs(20);
+    const STATE_SYNC_RETRIES: u32 = 10;
+    const LOOP_PAUSE: Duration = Duration::from_secs(10);
 
     for attempt in 1..=STATE_SYNC_RETRIES {
         debug!(%attempt, "Starting state sync...");
