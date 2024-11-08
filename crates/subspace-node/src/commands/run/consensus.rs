@@ -7,6 +7,7 @@ use sc_cli::{
     generate_node_name, Cors, NodeKeyParams, NodeKeyType, RpcMethods, TelemetryParams,
     TransactionPoolParams, RPC_DEFAULT_PORT,
 };
+use sc_consensus_subspace::archiver::CreateObjectMappings;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, Role, SetConfig};
 use sc_service::{BlocksPruning, Configuration, PruningMode};
 use sc_storage_monitor::StorageMonitorParams;
@@ -302,6 +303,57 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
+/// Whether to create object mappings.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum CreateObjectMappingConfig {
+    /// Start creating object mappings from this block number.
+    ///
+    /// This can be lower than the latest archived block.
+    Block(BlockNumber),
+
+    /// Create object mappings as archiving is happening.
+    Yes,
+
+    /// Don't create object mappings.
+    #[default]
+    No,
+}
+
+impl From<CreateObjectMappingConfig> for CreateObjectMappings {
+    fn from(config: CreateObjectMappingConfig) -> Self {
+        match config {
+            CreateObjectMappingConfig::Block(block) => CreateObjectMappings::Block(block),
+            CreateObjectMappingConfig::Yes => CreateObjectMappings::Yes,
+            CreateObjectMappingConfig::No => CreateObjectMappings::No,
+        }
+    }
+}
+
+impl FromStr for CreateObjectMappingConfig {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "no" => Ok(Self::No),
+            "yes" => Ok(Self::Yes),
+            block => block.parse().map(Self::Block).map_err(|_| {
+                "Unsupported create object mappings setting: use `yes`, `no` or a block number"
+                    .to_string()
+            }),
+        }
+    }
+}
+
+impl fmt::Display for CreateObjectMappingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Block(block) => write!(f, "{}", block),
+            Self::Yes => f.write_str("yes"),
+            Self::No => f.write_str("no"),
+        }
+    }
+}
+
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub(super) struct ConsensusChainOptions {
@@ -389,12 +441,16 @@ pub(super) struct ConsensusChainOptions {
     #[arg(long)]
     force_authoring: bool,
 
-    /// Create object mappings for new blocks, and blocks that have already been archived.
-    /// By default, mappings are not created for any blocks.
+    /// Create object mappings during archiving.
     ///
-    /// --dev mode enables this option automatically.
+    /// Can be set to `no` (default), `yes` (creates object mappings as archiving is happening) or
+    /// block number from which to continue creating object mappings.
+    ///
+    /// --dev mode enables mappings from genesis automatically, unless the value is supplied
+    /// explicitly.
+    /// Use `no` to disable mappings in --dev mode.
     #[arg(long)]
-    create_object_mappings: bool,
+    create_object_mappings: Option<CreateObjectMappingConfig>,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long)]
@@ -474,9 +530,12 @@ pub(super) fn create_consensus_chain_configuration(
             tmp = true;
             force_synced = true;
             force_authoring = true;
-            create_object_mappings = true;
             network_options.allow_private_ips = true;
             timekeeper_options.timekeeper = true;
+
+            if create_object_mappings.is_none() {
+                create_object_mappings = Some(CreateObjectMappingConfig::Block(0));
+            }
 
             if sync.is_none() {
                 sync.replace(ChainSyncMode::Full);
@@ -689,7 +748,7 @@ pub(super) fn create_consensus_chain_configuration(
             base: consensus_chain_config,
             // Domain node needs slots notifications for bundle production.
             force_new_slot_notifications: domains_enabled,
-            create_object_mappings,
+            create_object_mappings: create_object_mappings.unwrap_or_default().into(),
             subspace_networking: SubspaceNetworking::Create { config: dsn_config },
             dsn_piece_getter: None,
             sync,
