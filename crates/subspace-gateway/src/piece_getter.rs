@@ -9,6 +9,9 @@ use subspace_data_retrieval::piece_getter::{BoxError, ObjectPieceGetter};
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
 
+/// The maximum number of peer-to-peer walking rounds for L1 archival storage.
+const MAX_RANDOM_WALK_ROUNDS: usize = 15;
+
 /// Wrapper type for PieceProvider, so it can implement ObjectPieceGetter.
 pub struct DsnPieceGetter<PV: PieceValidator>(pub PieceProvider<PV>);
 
@@ -62,7 +65,9 @@ where
             }
         }
 
-        Ok(None)
+        Ok(self
+            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
+            .await)
     }
 }
 
