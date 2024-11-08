@@ -444,11 +444,9 @@ where
     // TODO: Replace this hack with actual watching of block import
     wait_for_block_import(client.as_ref(), last_block_number.into()).await;
 
-    let mmr_target_block = if let Some(target_block) = target_block {
-        target_block
-    } else {
-        last_block_number
-    };
+    // We sync MMR up to the last block block number. All other MMR-data will be synced after
+    // resuming either DSN-sync or Substrate-sync.
+    let mmr_target_block = last_block_number;
 
     if let Some(offchain_storage) = offchain_storage {
         mmr_sync(
