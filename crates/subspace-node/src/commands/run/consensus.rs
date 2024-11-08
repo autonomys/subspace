@@ -303,26 +303,28 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
-/// When to start creating object mappings.
+/// Whether to create object mappings.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum CreateObjectMappingConfig {
     /// Start creating object mappings from this block number.
+    ///
+    /// This can be lower than the latest archived block.
     Block(BlockNumber),
 
-    /// Start creating object mappings from the locally archived tip.
-    Continue,
+    /// Create object mappings as archiving is happening.
+    Yes,
 
     /// Don't create object mappings.
     #[default]
-    Disabled,
+    No,
 }
 
 impl From<CreateObjectMappingConfig> for CreateObjectMappings {
     fn from(config: CreateObjectMappingConfig) -> Self {
         match config {
             CreateObjectMappingConfig::Block(block) => CreateObjectMappings::Block(block),
-            CreateObjectMappingConfig::Continue => CreateObjectMappings::Continue,
-            CreateObjectMappingConfig::Disabled => CreateObjectMappings::Disabled,
+            CreateObjectMappingConfig::Yes => CreateObjectMappings::Yes,
+            CreateObjectMappingConfig::No => CreateObjectMappings::No,
         }
     }
 }
@@ -332,10 +334,10 @@ impl FromStr for CreateObjectMappingConfig {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
-            "disabled" => Ok(Self::Disabled),
-            "continue" => Ok(Self::Continue),
+            "no" => Ok(Self::No),
+            "yes" => Ok(Self::Yes),
             block => block.parse().map(Self::Block).map_err(|_| {
-                "Unsupported create object mappings setting: use a block number, or 'disabled'"
+                "Unsupported create object mappings setting: use `yes`, `no` or a block number"
                     .to_string()
             }),
         }
@@ -346,8 +348,8 @@ impl fmt::Display for CreateObjectMappingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Block(block) => write!(f, "{}", block),
-            Self::Continue => f.write_str("continue"),
-            Self::Disabled => f.write_str("disabled"),
+            Self::Yes => f.write_str("yes"),
+            Self::No => f.write_str("no"),
         }
     }
 }
@@ -439,12 +441,14 @@ pub(super) struct ConsensusChainOptions {
     #[arg(long)]
     force_authoring: bool,
 
-    /// Create object mappings from the locally archived tip using `continue`, or from the supplied
-    /// block number. Creates mappings from genesis if no block number is specified. By default,
-    /// mappings are disabled.
+    /// Create object mappings during archiving.
     ///
-    /// --dev mode enables mappings from genesis automatically, unless another height is supplied.
-    /// Use `disabled` to disable mappings in --dev mode.
+    /// Can be set to `no` (default), `yes` (creates object mappings as archiving is happening) or
+    /// block number from which to continue creating object mappings.
+    ///
+    /// --dev mode enables mappings from genesis automatically, unless the value is supplied
+    /// explicitly.
+    /// Use `no` to disable mappings in --dev mode.
     #[arg(long)]
     create_object_mappings: Option<CreateObjectMappingConfig>,
 

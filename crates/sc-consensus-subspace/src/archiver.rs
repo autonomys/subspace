@@ -360,18 +360,20 @@ pub struct ObjectMappingNotification {
     // TODO: add an acknowledgement_sender for backpressure if needed
 }
 
-/// When to start creating object mappings.
+/// Whether to create object mappings.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum CreateObjectMappings {
     /// Start creating object mappings from this block number.
+    ///
+    /// This can be lower than the latest archived block.
     Block(BlockNumber),
 
-    /// Start creating object mappings from the locally archived tip.
-    Continue,
+    /// Create object mappings as archiving is happening.
+    Yes,
 
     /// Don't create object mappings.
     #[default]
-    Disabled,
+    No,
 }
 
 impl CreateObjectMappings {
@@ -380,14 +382,14 @@ impl CreateObjectMappings {
     fn block(&self) -> Option<BlockNumber> {
         match self {
             CreateObjectMappings::Block(block) => Some(*block),
-            CreateObjectMappings::Continue => None,
-            CreateObjectMappings::Disabled => None,
+            CreateObjectMappings::Yes => None,
+            CreateObjectMappings::No => None,
         }
     }
 
     /// Returns true if object mappings will be created from a past or future block.
     pub fn is_enabled(&self) -> bool {
-        !matches!(self, CreateObjectMappings::Disabled)
+        !matches!(self, CreateObjectMappings::No)
     }
 
     /// Does the supplied block number need object mappings?
