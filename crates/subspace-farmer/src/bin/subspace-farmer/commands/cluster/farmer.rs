@@ -100,12 +100,13 @@ pub(super) struct FarmerArgs {
     farming_thread_pool_size: Option<NonZeroUsize>,
     /// How many sectors a will be plotted concurrently per farm.
     ///
-    /// Defaults to 4, but can be decreased if there is a large number of farms available to
-    /// decrease peak memory usage, especially with slow disks.
+    /// Defaults to 2, but can be decreased if there is a large number of farms available to
+    /// decrease peak memory usage, especially with slow disks, or slightly increased to utilize all
+    /// compute available in case of a single farm.
     ///
     /// Increasing this value is not recommended and can result in excessive RAM usage due to more
     /// sectors being stuck in-flight if writes to farm disk are too slow.
-    #[arg(long, default_value = "4")]
+    #[arg(long, default_value = "2")]
     max_plotting_sectors_per_farm: NonZeroUsize,
     /// Disable farm locking, for example if file system doesn't support it
     #[arg(long)]
