@@ -88,7 +88,7 @@ struct CpuPlottingOptions {
 #[derive(Debug, Parser)]
 struct CudaPlottingOptions {
     /// How many sectors farmer will download concurrently during plotting with CUDA GPUs.
-    /// Limits memory usage of the plotting process. Defaults to the number of CUDA GPUs + 1,
+    /// Limits memory usage of the plotting process. Defaults to the number of CUDA GPUs * 3,
     /// to download future sectors ahead of time.
     ///
     /// Increasing this value will cause higher memory usage.
@@ -105,8 +105,8 @@ struct CudaPlottingOptions {
 #[cfg(feature = "rocm")]
 #[derive(Debug, Parser)]
 struct RocmPlottingOptions {
-    /// How many sectors the farmer will download concurrently during plotting with ROCm GPUs.
-    /// Limits memory usage of the plotting process. Defaults to number of ROCm GPUs + 1,
+    /// How many sectors farmer will download concurrently during plotting with ROCm GPUs.
+    /// Limits memory usage of the plotting process. Defaults to the number of ROCm GPUs * 3,
     /// to download future sectors ahead of time.
     ///
     /// Increasing this value will cause higher memory usage.
@@ -388,7 +388,7 @@ where
     let cuda_downloading_semaphore = Arc::new(Semaphore::new(
         cuda_sector_downloading_concurrency
             .map(|cuda_sector_downloading_concurrency| cuda_sector_downloading_concurrency.get())
-            .unwrap_or(cuda_devices.len() + 1),
+            .unwrap_or(cuda_devices.len() * 3),
     ));
 
     Ok(Some(
@@ -470,7 +470,7 @@ where
     let rocm_downloading_semaphore = Arc::new(Semaphore::new(
         rocm_sector_downloading_concurrency
             .map(|rocm_sector_downloading_concurrency| rocm_sector_downloading_concurrency.get())
-            .unwrap_or(rocm_devices.len() + 1),
+            .unwrap_or(rocm_devices.len() * 3),
     ));
 
     Ok(Some(
