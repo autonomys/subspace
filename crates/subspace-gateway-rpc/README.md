@@ -72,9 +72,9 @@ For example, the [`reconnecting-websocket` library](https://github.com/joewalnes
 #### Live Mappings Only
 
 If the client is only interested in live updates, and can tolerate missing some mappings, the node
-can use snap sync, and launch with `--create-object-mappings continue`:
+can use snap sync, and launch with `--create-object-mappings yes`:
 ```sh
-$ subspace-node --create-object-mappings continue --sync snap ...
+$ subspace-node --create-object-mappings yes --sync snap ...
 $ websocat --jsonrpc ws://127.0.0.1:9944
 subspace_subscribeObjectMappings
 ```
