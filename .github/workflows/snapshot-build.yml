@@ -18,17 +18,24 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  container-linux:
+  # This will build container images and then extract executables out of them
+  ubuntu:
     runs-on: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
     permissions:
       contents: write
       packages: write
     strategy:
       matrix:
-        image:
-          - farmer
-          - node
-          - bootstrap-node
+        build:
+          - image: farmer
+            base-artifact: subspace-farmer
+            upload-executables: true
+          - image: node
+            base-artifact: subspace-node
+            upload-executables: true
+          - image: bootstrap-node
+            base-artifact: subspace-bootstrap-node
+            upload-executables: false
       fail-fast: false
 
     steps:
@@ -50,7 +57,7 @@ jobs:
         uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.5.1
         with:
           images: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.build.image }}
           tags: |
             type=ref,event=tag
             type=ref,event=branch
@@ -59,10 +66,10 @@ jobs:
             latest=false
             suffix=
 
-      - name: Build and push ${{ matrix.image }} image
+      - name: Build and push ${{ matrix.build.image }} image
         uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
         with:
-          file: docker/${{ matrix.image }}.Dockerfile
+          file: docker/${{ matrix.build.image }}.Dockerfile
           # TODO: Add `linux/riscv64` once https://github.com/paritytech/polkadot-sdk/issues/5996 is resolved and ring
           #  0.16.x is no longer in dependencies
           # TODO: Add linux/amd64/v4 when runner supports it
@@ -78,24 +85,45 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: trivy-scan-dispatch
-          client-payload: '{"image": "ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:sha-${{ github.sha }}"}'
+          client-payload: '{"image": "${{ fromJSON(steps.meta.outputs.json).tags[0] }}"}'
+
+      - name: Prepare executables for uploading
+        run: |
+          mkdir executables
+          cd executables
+          IMAGE="${{ fromJSON(steps.meta.outputs.json).tags[0] }}"
+          ARTIFACT="${{ matrix.build.base-artifact }}"
+          
+          docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-${{ github.ref_name }}
+          docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-${{ github.ref_name }}
+          if [ "${{ matrix.build.image }}" == "farmer" ]; then
+            docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-skylake-${{ github.ref_name }}
+            docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-v2-${{ github.ref_name }}
+          fi
+          docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-${{ github.ref_name }}
+        if: matrix.build.upload-executables
+
+      - name: Upload node and farmer executables to artifacts
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3
+        with:
+          name: executables-ubuntu-${{ matrix.build.image }}-${{ github.ref_name }}
+          path: |
+            executables/*
+          if-no-files-found: error
+        if: matrix.build.upload-executables
+
+      - name: Upload node and farmer executables to assets
+        uses: alexellis/upload-assets@13926a61cdb2cb35f5fdef1c06b8b591523236d3 # 0.4.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["executables/*"]'
+        if: matrix.build.upload-executables && github.event_name == 'push' && github.ref_type == 'tag'
 
   executables:
     strategy:
       matrix:
         build:
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
-            target: x86_64-unknown-linux-gnu
-            suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
-            rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
-            target: x86_64-unknown-linux-gnu
-            suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2"
-          - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "ubuntu-22.04-x86-64"]' || '"ubuntu-22.04"') }}
-            target: aarch64-unknown-linux-gnu
-            suffix: ubuntu-aarch64-${{ github.ref_name }}
-            rustflags: "-C linker=aarch64-linux-gnu-gcc"
           - os: ${{ fromJson(github.repository_owner == 'autonomys' && '["self-hosted", "macos-14-arm64"]' || '"macos-14"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
@@ -145,24 +173,13 @@ jobs:
         run: brew install automake
         if: runner.os == 'macOS'
 
-      - name: AArch64 cross-compile packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            g++-aarch64-linux-gnu \
-            gcc-aarch64-linux-gnu \
-            libc6-dev-arm64-cross
-
-          echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
-        if: matrix.build.target == 'aarch64-unknown-linux-gnu'
-
       - name: CUDA toolchain
         uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf # v0.2.16
         with:
           cuda: '12.4.1'
           method: network
           sub-packages: '["nvcc", "cudart"]'
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+        if: runner.os == 'Windows'
 
       - name: Configure ROCm cache (Windows)
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
@@ -171,20 +188,6 @@ jobs:
           path: C:\Program Files\AMD\ROCm
           key: ${{ runner.os }}-rocm
         if: runner.os == 'Windows'
-
-      - name: ROCm toolchain
-        run: |
-          ROCM_VERSION=6.2.2
-          sudo mkdir -p --mode=0755 /etc/apt/keyrings
-          curl -L https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-          echo -e "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600" | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
-          sudo apt-get update
-          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends rocm-hip-runtime-dev
-          echo "/opt/rocm/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf > /dev/null
-          sudo ldconfig
-        # TODO: ROCm packages are only available for x86-64 for now
-        if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
 
       - name: ROCm toolchain
         run: |
@@ -219,18 +222,11 @@ jobs:
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm.exe
         if: runner.os == 'Windows' && startsWith(matrix.build.target, 'x86_64')
 
-      # ROCm can't be enabled together with CUDA for now
-      - name: Build farmer (ROCm, Ubuntu)
-        run: |
-          cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features rocm
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm
-        if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
-
       - name: Build farmer
         run: |
           cargo -Zgitoxide -Zgit build --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features cuda
         # TODO: We don't configure CUDA for cross-compilation purposes, hence only x86-64 for now
-        if: (runner.os == 'Linux' || runner.os == 'Windows') && startsWith(matrix.build.target, 'x86_64')
+        if: runner.os == 'Windows' && startsWith(matrix.build.target, 'x86_64')
 
       - name: Build node
         run: |
@@ -278,18 +274,6 @@ jobs:
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.repository_owner != 'autonomys' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
-
-      - name: Prepare executables for uploading (Ubuntu)
-        run: |
-          mkdir executables
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
-        if: runner.os == 'Linux'
-
-      - name: Prepare executables for uploading (Ubuntu, ROCm)
-        run: |
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-rocm executables/subspace-farmer-rocm-${{ matrix.build.suffix }}
-        if: runner.os == 'Linux' && startsWith(matrix.build.target, 'x86_64')
 
       - name: Prepare executables for uploading (macOS)
         run: |

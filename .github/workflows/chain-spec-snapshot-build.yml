@@ -28,8 +28,8 @@ jobs:
 
       - name: Generate testnet chain specifications
         run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain mainnet-compiled --disable-default-bootnode > chain-spec-mainnet.json
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain mainnet-compiled --disable-default-bootnode --raw > chain-spec-raw-mainnet.json
+          docker run --rm -u root ${{ steps.build.outputs.imageid }} build-spec --chain mainnet-compiled --disable-default-bootnode > chain-spec-mainnet.json
+          docker run --rm -u root ${{ steps.build.outputs.imageid }} build-spec --chain mainnet-compiled --disable-default-bootnode --raw > chain-spec-raw-mainnet.json
 
       - name: Upload chain specifications to artifacts
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.1.3

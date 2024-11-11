@@ -33,7 +33,7 @@ jobs:
       - name: Extract runtime
         run: |
           SPEC_VERSION=$(sed -nr 's/.*spec_version: ([0-9]+),/\1/p' crates/subspace-runtime/src/lib.rs)
-          docker run --rm -u root ${{ steps.build.outputs.digest }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
+          docker run --rm -u root ${{ steps.build.outputs.imageid }} > subspace_runtime-$SPEC_VERSION.compact.compressed.wasm
           echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
 
       - name: Upload runtime to artifacts
