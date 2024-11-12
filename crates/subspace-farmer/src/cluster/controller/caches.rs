@@ -5,7 +5,11 @@
 //! cache addition and removal, tries to reduce number of reinitializations that result in potential
 //! piece cache sync, etc.
 
-use crate::commands::cluster::cache::CACHE_IDENTIFICATION_BROADCAST_INTERVAL;
+use crate::cluster::cache::{ClusterCacheIdentifyBroadcast, ClusterPieceCache};
+use crate::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
+use crate::cluster::nats_client::NatsClient;
+use crate::farm::{PieceCache, PieceCacheId};
+use crate::farmer_cache::FarmerCache;
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use futures::future::FusedFuture;
@@ -15,11 +19,6 @@ use std::future::{ready, Future};
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_farmer::cluster::cache::{ClusterCacheIdentifyBroadcast, ClusterPieceCache};
-use subspace_farmer::cluster::controller::ClusterControllerCacheIdentifyBroadcast;
-use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::farm::{PieceCache, PieceCacheId};
-use subspace_farmer::farmer_cache::FarmerCache;
 use tokio::time::MissedTickBehavior;
 use tracing::{info, trace, warn};
 
@@ -32,12 +31,20 @@ struct KnownCache {
     piece_cache: Arc<ClusterPieceCache>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct KnownCaches {
+    identification_broadcast_interval: Duration,
     known_caches: Vec<KnownCache>,
 }
 
 impl KnownCaches {
+    fn new(identification_broadcast_interval: Duration) -> Self {
+        Self {
+            identification_broadcast_interval,
+            known_caches: Vec::new(),
+        }
+    }
+
     fn get_all(&self) -> Vec<Arc<dyn PieceCache>> {
         self.known_caches
             .iter()
@@ -78,17 +85,19 @@ impl KnownCaches {
 
     fn remove_expired(&mut self) -> impl Iterator<Item = KnownCache> + '_ {
         self.known_caches.extract_if(|known_cache| {
-            known_cache.last_identification.elapsed() > CACHE_IDENTIFICATION_BROADCAST_INTERVAL * 2
+            known_cache.last_identification.elapsed() > self.identification_broadcast_interval * 2
         })
     }
 }
 
-pub(super) async fn maintain_caches(
+/// Utility function for maintaining caches by controller in a cluster environment
+pub async fn maintain_caches(
     cache_group: &str,
     nats_client: &NatsClient,
     farmer_cache: FarmerCache,
+    identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
-    let mut known_caches = KnownCaches::default();
+    let mut known_caches = KnownCaches::new(identification_broadcast_interval);
 
     let mut scheduled_reinitialization_for = None;
     // Farm that is being added/removed right now (if any)
@@ -110,8 +119,8 @@ pub(super) async fn maintain_caches(
 
     let mut cache_identify_subscription = cache_identify_subscription.fuse();
     let mut cache_pruning_interval = tokio::time::interval_at(
-        (Instant::now() + CACHE_IDENTIFICATION_BROADCAST_INTERVAL * 2).into(),
-        CACHE_IDENTIFICATION_BROADCAST_INTERVAL * 2,
+        (Instant::now() + identification_broadcast_interval * 2).into(),
+        identification_broadcast_interval * 2,
     );
     cache_pruning_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 

@@ -69,6 +69,8 @@ const MAX_SPACE_PLEDGED_FOR_PLOT_CACHE_ON_WINDOWS: u64 = 7 * 1024 * 1024 * 1024 
 const FARM_ERROR_PRINT_INTERVAL: Duration = Duration::from_secs(30);
 const PLOTTING_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
+type FarmIndex = u8;
+
 #[derive(Debug, Parser)]
 struct CpuPlottingOptions {
     /// How many sectors a farmer will download concurrently. Limits memory usage of
@@ -757,7 +759,7 @@ where
 
     info!("Finished collecting already plotted pieces successfully");
 
-    let mut farms_stream = (0u8..)
+    let mut farms_stream = (FarmIndex::MIN..)
         .zip(farms)
         .map(|(farm_index, farm)| {
             let plotted_pieces = Arc::clone(&plotted_pieces);

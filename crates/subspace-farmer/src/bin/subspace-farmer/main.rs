@@ -1,10 +1,4 @@
-#![feature(
-    duration_constructors,
-    extract_if,
-    hash_extract_if,
-    let_chains,
-    type_changing_struct_update
-)]
+#![feature(duration_constructors, type_changing_struct_update)]
 
 mod commands;
 mod utils;

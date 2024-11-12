@@ -6,6 +6,9 @@
 //! client implementations designed to work with cluster controller and a service function to drive
 //! the backend part of the controller.
 
+pub mod caches;
+pub mod farms;
+
 use crate::cluster::cache::{ClusterCacheReadPieceRequest, ClusterCacheReadPiecesRequest};
 use crate::cluster::nats_client::{
     GenericBroadcast, GenericNotification, GenericRequest, GenericStreamRequest, NatsClient,
