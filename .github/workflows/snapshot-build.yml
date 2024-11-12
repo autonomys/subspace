@@ -74,6 +74,7 @@ jobs:
           #  0.16.x is no longer in dependencies
           # TODO: Add linux/amd64/v4 when runner supports it
           platforms: linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/arm64
+          pull: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
