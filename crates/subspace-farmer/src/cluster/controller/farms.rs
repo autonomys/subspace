@@ -4,7 +4,11 @@
 //! about which pieces are plotted in which sectors of which farm up to date. Implementation
 //! automatically handles dynamic farm addition and removal, etc.
 
-use crate::commands::cluster::farmer::FARMER_IDENTIFICATION_BROADCAST_INTERVAL;
+use crate::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
+use crate::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBroadcast};
+use crate::cluster::nats_client::NatsClient;
+use crate::farm::plotted_pieces::PlottedPieces;
+use crate::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use anyhow::anyhow;
 use async_lock::RwLock as AsyncRwLock;
 use futures::channel::oneshot;
@@ -18,14 +22,9 @@ use std::future::{ready, Future};
 use std::mem;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::hashes::Blake3Hash;
 use subspace_core_primitives::sectors::SectorIndex;
-use subspace_farmer::cluster::controller::ClusterControllerFarmerIdentifyBroadcast;
-use subspace_farmer::cluster::farmer::{ClusterFarm, ClusterFarmerIdentifyFarmBroadcast};
-use subspace_farmer::cluster::nats_client::NatsClient;
-use subspace_farmer::farm::plotted_pieces::PlottedPieces;
-use subspace_farmer::farm::{Farm, FarmId, SectorPlottingDetails, SectorUpdate};
 use tokio::task;
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, warn};
@@ -33,7 +32,8 @@ use tracing::{error, info, trace, warn};
 type AddRemoveFuture<'a> =
     Pin<Box<dyn Future<Output = Option<(FarmIndex, oneshot::Receiver<()>, ClusterFarm)>> + 'a>>;
 
-pub(super) type FarmIndex = u16;
+/// Number of farms in a cluster is currently limited to 2^16
+pub type FarmIndex = u16;
 
 #[derive(Debug)]
 struct KnownFarm {
@@ -55,12 +55,20 @@ enum KnownFarmInsertResult {
     NotInserted,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct KnownFarms {
+    identification_broadcast_interval: Duration,
     known_farms: HashMap<FarmIndex, KnownFarm>,
 }
 
 impl KnownFarms {
+    fn new(identification_broadcast_interval: Duration) -> Self {
+        Self {
+            identification_broadcast_interval,
+            known_farms: HashMap::new(),
+        }
+    }
+
     fn insert_or_update(
         &mut self,
         farm_id: FarmId,
@@ -117,7 +125,7 @@ impl KnownFarms {
 
     fn remove_expired(&mut self) -> impl Iterator<Item = (FarmIndex, KnownFarm)> + '_ {
         self.known_farms.extract_if(|_farm_index, known_farm| {
-            known_farm.last_identification.elapsed() > FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2
+            known_farm.last_identification.elapsed() > self.identification_broadcast_interval * 2
         })
     }
 
@@ -126,18 +134,20 @@ impl KnownFarms {
     }
 }
 
-pub(super) async fn maintain_farms(
+/// Utility function for maintaining farms by controller in a cluster environment
+pub async fn maintain_farms(
     instance: &str,
     nats_client: &NatsClient,
     plotted_pieces: &Arc<AsyncRwLock<PlottedPieces<FarmIndex>>>,
+    identification_broadcast_interval: Duration,
 ) -> anyhow::Result<()> {
-    let mut known_farms = KnownFarms::default();
+    let mut known_farms = KnownFarms::new(identification_broadcast_interval);
 
     // Futures that need to be processed sequentially in order to add/remove farms, if farm was
     // added, future will resolve with `Some`, `None` if removed
-    let mut farms_to_add_remove = VecDeque::<AddRemoveFuture>::new();
+    let mut farms_to_add_remove = VecDeque::<AddRemoveFuture<'_>>::new();
     // Farm that is being added/removed right now (if any)
-    let mut farm_add_remove_in_progress = (Box::pin(ready(None)) as AddRemoveFuture).fuse();
+    let mut farm_add_remove_in_progress = (Box::pin(ready(None)) as AddRemoveFuture<'_>).fuse();
     // Initialize with pending future so it never ends
     let mut farms = FuturesUnordered::new();
 
@@ -158,8 +168,8 @@ pub(super) async fn maintain_farms(
 
     let mut farmer_identify_subscription = farmer_identify_subscription.fuse();
     let mut farm_pruning_interval = tokio::time::interval_at(
-        (Instant::now() + FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2).into(),
-        FARMER_IDENTIFICATION_BROADCAST_INTERVAL * 2,
+        (Instant::now() + identification_broadcast_interval * 2).into(),
+        identification_broadcast_interval * 2,
     );
     farm_pruning_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
