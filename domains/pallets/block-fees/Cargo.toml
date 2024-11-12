@@ -15,14 +15,14 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
-frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
+frame-support = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+frame-system = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 scale-info = { version = "2.11.2", default-features = false, features = ["derive"] }
 sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees", default-features = false }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
-sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "5871818e1d736f1843eb9078f886290695165c42" }
+sp-runtime = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
+sp-std = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "94a1a8143a89bbe9f938c1939ff68abc1519a305" }
 
 [features]
 default = ["std"]
