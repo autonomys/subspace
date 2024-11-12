@@ -32,6 +32,9 @@ pub enum IdentityError {
     /// I/O error occurred
     #[error("Identity I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Invalid contents
+    #[error("Invalid contents")]
+    InvalidContents,
     /// Decoding error
     #[error("Decoding error: {0}")]
     Decoding(#[from] parity_scale_codec::Error),
@@ -95,6 +98,10 @@ impl Identity {
             let IdentityFileContents { entropy } =
                 IdentityFileContents::decode(&mut bytes.as_ref())?;
 
+            if entropy.len() != ENTROPY_LENGTH {
+                return Err(IdentityError::InvalidContents);
+            }
+
             Ok(Some(Self {
                 keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
                 entropy: Zeroizing::new(entropy),
@@ -111,29 +118,6 @@ impl Identity {
         let identity_file = base_directory.as_ref().join(Self::FILE_NAME);
         debug!("Generating new keypair");
         let entropy = rand::random::<[u8; ENTROPY_LENGTH]>().to_vec();
-
-        let identity_file_contents = IdentityFileContents { entropy };
-        fs::write(identity_file, identity_file_contents.encode())?;
-
-        let IdentityFileContents { entropy } = identity_file_contents;
-
-        Ok(Self {
-            keypair: Zeroizing::new(keypair_from_entropy(&entropy)),
-            entropy: Zeroizing::new(entropy),
-            substrate_ctx: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        })
-    }
-
-    /// Create identity from given entropy, overrides identity that might already exist.
-    ///
-    /// Primarily used for testing.
-    #[doc(hidden)]
-    pub fn from_entropy<B: AsRef<Path>>(
-        base_directory: B,
-        entropy: Vec<u8>,
-    ) -> Result<Self, IdentityError> {
-        let identity_file = base_directory.as_ref().join(Self::FILE_NAME);
-        debug!("Creating identity from provided entropy");
 
         let identity_file_contents = IdentityFileContents { entropy };
         fs::write(identity_file, identity_file_contents.encode())?;
