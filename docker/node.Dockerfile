@@ -79,7 +79,7 @@ RUN \
     if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = ""]; then \
       case "$TARGETVARIANT" in \
         # x86-64-v2 with AES-NI
-        "v2") export RUSTFLAGS="-C target-cpu=x86-64-v2 -C target-feature=+aes" ;; \
+        "v2") export RUSTFLAGS="-C target-cpu=x86-64-v2" ;; \
         # x86-64-v3 with AES-NI
         "v3") export RUSTFLAGS="-C target-cpu=x86-64-v3 -C target-feature=+aes" ;; \
         # v4 is compiled for Zen 4+
