@@ -106,9 +106,13 @@ jobs:
           ARTIFACT="${{ matrix.build.base-artifact }}"
           
           docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-skylake-${{ github.ref_name }}
+          # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
+          docker pull --platform linux/amd64/v2 $IMAGE
           docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-x86_64-v2-${{ github.ref_name }}
           if [ "${{ matrix.build.image }}" == "farmer" ]; then
             docker run --rm --platform linux/amd64 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-skylake-${{ github.ref_name }}
+            # TODO: Pull is a workaround for https://github.com/moby/moby/issues/48197#issuecomment-2472265028
+            docker pull --platform linux/amd64/v2 $IMAGE
             docker run --rm --platform linux/amd64/v2 --entrypoint /bin/cat $IMAGE /$ARTIFACT-rocm > $ARTIFACT-rocm-ubuntu-x86_64-v2-${{ github.ref_name }}
           fi
           docker run --rm --platform linux/arm64 --entrypoint /bin/cat $IMAGE /$ARTIFACT > $ARTIFACT-ubuntu-aarch64-${{ github.ref_name }}
