@@ -75,7 +75,7 @@ RUN \
     if [ $BUILDARCH != "riscv64" ] && [ $TARGETARCH = "riscv64" ]; then \
       export RUSTFLAGS="$RUSTFLAGS -C linker=riscv64-linux-gnu-gcc" \
     ; fi && \
-    if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = ""]; then \
+    if [ $TARGETARCH = "amd64" ] && [ "$RUSTFLAGS" = "" ]; then \
       case "$TARGETVARIANT" in \
         # x86-64-v2 with AES-NI
         "v2") export RUSTFLAGS="-C target-cpu=x86-64-v2" ;; \
