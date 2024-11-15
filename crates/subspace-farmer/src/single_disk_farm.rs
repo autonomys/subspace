@@ -58,7 +58,7 @@ use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::Write;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr;
@@ -899,9 +899,7 @@ impl SingleDiskFarm {
 
             SingleDiskPieceCache::new(
                 id,
-                if piece_cache_capacity == 0 {
-                    None
-                } else {
+                if let Some(piece_cache_capacity) = NonZeroU32::new(piece_cache_capacity) {
                     Some(task::block_in_place(|| {
                         if let Some(registry) = registry {
                             DiskPieceCache::open(
@@ -914,6 +912,8 @@ impl SingleDiskFarm {
                             DiskPieceCache::open(&directory, piece_cache_capacity, Some(id), None)
                         }
                     })?)
+                } else {
+                    None
                 },
             )
         };
@@ -2298,7 +2298,7 @@ impl SingleDiskFarm {
         let _ = cache_file.advise_sequential_access();
 
         let cache_size = match cache_file.size() {
-            Ok(metadata_size) => metadata_size,
+            Ok(cache_size) => cache_size,
             Err(error) => {
                 return Err(SingleDiskFarmScrubError::FailedToDetermineFileSize { file, error });
             }

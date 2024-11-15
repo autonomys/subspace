@@ -1,6 +1,7 @@
 use crate::disk_piece_cache::{DiskPieceCache, DiskPieceCacheError, PieceCacheOffset};
 use rand::prelude::*;
 use std::assert_matches::assert_matches;
+use std::num::NonZeroU32;
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tempfile::tempdir;
 
@@ -8,7 +9,8 @@ use tempfile::tempdir;
 fn basic() {
     let path = tempdir().unwrap();
     {
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
+        let disk_piece_cache =
+            DiskPieceCache::open(path.as_ref(), NonZeroU32::new(2).unwrap(), None, None).unwrap();
 
         // Initially empty
         assert_eq!(
@@ -115,7 +117,8 @@ fn basic() {
 
     // Reopening works
     {
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
+        let disk_piece_cache =
+            DiskPieceCache::open(path.as_ref(), NonZeroU32::new(2).unwrap(), None, None).unwrap();
         // Two pieces stored
         assert_eq!(
             disk_piece_cache
@@ -130,7 +133,8 @@ fn basic() {
     {
         DiskPieceCache::wipe(path.as_ref()).unwrap();
 
-        let disk_piece_cache = DiskPieceCache::open(path.as_ref(), 2, None, None).unwrap();
+        let disk_piece_cache =
+            DiskPieceCache::open(path.as_ref(), NonZeroU32::new(2).unwrap(), None, None).unwrap();
         // Wiped successfully
         assert_eq!(
             disk_piece_cache

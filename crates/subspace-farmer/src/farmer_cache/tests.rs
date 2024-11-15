@@ -8,7 +8,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use std::collections::HashMap;
-use std::num::NonZeroU64;
+use std::num::{NonZeroU32, NonZeroU64};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -226,8 +226,24 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path1.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path2.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
                 ],
                 vec![],
             )
@@ -426,8 +442,24 @@ async fn basic() {
         farmer_cache
             .replace_backing_caches(
                 vec![
-                    Arc::new(DiskPieceCache::open(path1.as_ref(), 1, None, None).unwrap()),
-                    Arc::new(DiskPieceCache::open(path2.as_ref(), 1, None, None).unwrap()),
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path1.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path2.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
                 ],
                 vec![],
             )

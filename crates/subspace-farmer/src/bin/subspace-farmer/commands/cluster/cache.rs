@@ -6,7 +6,7 @@ use futures::StreamExt;
 use prometheus_client::registry::Registry;
 use std::fs;
 use std::future::Future;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -160,19 +160,30 @@ pub(super) async fn cache(
     let caches = disk_caches
         .iter()
         .map(|disk_cache| {
-            DiskPieceCache::open(
-                &disk_cache.directory,
+            let capacity =
                 u32::try_from(disk_cache.allocated_space / DiskPieceCache::element_size() as u64)
-                    .unwrap_or(u32::MAX),
-                None,
-                Some(registry),
-            )
-            .map_err(|error| {
+                    .map_err(|error| {
+                    anyhow!(
+                        "Unsupported cache #1 size {} at {}: {error}",
+                        disk_cache.allocated_space,
+                        disk_cache.directory.display()
+                    )
+                })?;
+            let capacity = NonZeroU32::try_from(capacity).map_err(|error| {
                 anyhow!(
-                    "Failed to open piece cache at {}: {error}",
+                    "Unsupported cache #2 size {} at {}: {error}",
+                    disk_cache.allocated_space,
                     disk_cache.directory.display()
                 )
-            })
+            })?;
+            DiskPieceCache::open(&disk_cache.directory, capacity, None, Some(registry)).map_err(
+                |error| {
+                    anyhow!(
+                        "Failed to open piece cache at {}: {error}",
+                        disk_cache.directory.display()
+                    )
+                },
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
 
