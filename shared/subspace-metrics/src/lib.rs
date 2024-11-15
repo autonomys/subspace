@@ -46,7 +46,9 @@ async fn metrics(registry: Data<RegistryAdapter>) -> Result<HttpResponse, Box<dy
         }
     }
 
-    let resp = HttpResponse::build(StatusCode::OK).body(encoded_metrics);
+    let resp = HttpResponse::build(StatusCode::OK)
+        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+        .body(encoded_metrics);
 
     Ok(resp)
 }
