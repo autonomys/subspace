@@ -537,14 +537,17 @@ where
         let downloaded_pieces_count = AtomicUsize::new(0);
         let caches = Mutex::new(caches);
         self.handlers.progress.call_simple(&0.0);
+        let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
 
         let downloading_pieces_stream =
-            stream::iter(piece_indices_to_store.into_iter().map(|piece_indices| {
+            stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
                 let downloaded_pieces_count = &downloaded_pieces_count;
                 let caches = &caches;
 
                 async move {
-                    let mut pieces_stream = match piece_getter.get_pieces(piece_indices).await {
+                    debug!(%batch, num_pieces = %piece_indices.len(), "Downloading pieces");
+
+                    let pieces_stream = match piece_getter.get_pieces(piece_indices).await {
                         Ok(pieces_stream) => pieces_stream,
                         Err(error) => {
                             error!(
@@ -554,8 +557,11 @@ where
                             return;
                         }
                     };
+                    let mut pieces_stream = pieces_stream.enumerate();
 
-                    while let Some((piece_index, result)) = pieces_stream.next().await {
+                    while let Some((index, (piece_index, result))) = pieces_stream.next().await {
+                        debug!(%batch, %index, %piece_index, "Downloaded piece");
+
                         let piece = match result {
                             Ok(Some(piece)) => {
                                 trace!(%piece_index, "Downloaded piece successfully");
