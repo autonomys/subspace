@@ -410,7 +410,11 @@ where
             match maybe_cache {
                 Ok(cache) => {
                     let backend = cache.backend;
-                    stored_pieces.extend(cache.cache_stored_pieces.into_iter());
+                    for (key, cache_offset) in cache.cache_stored_pieces {
+                        if let Some(old_cache_offset) = stored_pieces.insert(key, cache_offset) {
+                            dangling_free_offsets.push_front(old_cache_offset);
+                        }
+                    }
                     dangling_free_offsets.extend(
                         cache.cache_free_offsets.into_iter().filter(|free_offset| {
                             free_offset.piece_offset.0 < backend.used_capacity

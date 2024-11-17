@@ -276,7 +276,7 @@ async fn basic() {
         // Update current segment header such that we keep-up after initial sync is triggered
         current_segment_index.store(1, Ordering::Release);
 
-        // Send segment headers receiver such that keep-up sync can start not
+        // Send segment headers receiver such that keep-up sync can start now
         let (mut archived_segment_headers_sender, archived_segment_headers_receiver) =
             mpsc::channel(0);
         archived_segment_headers_stream_request_receiver
@@ -287,7 +287,8 @@ async fn basic() {
             .unwrap();
 
         // Send segment header with the same segment index as "current", so it will have no
-        // side-effects, but acknowledgement will indicate that keep-up after initial sync has finished
+        // side effects, but acknowledgement will indicate that keep-up after initial sync has
+        // finished
         {
             let segment_header = SegmentHeader::V0 {
                 segment_index: SegmentIndex::ONE,
@@ -344,8 +345,8 @@ async fn basic() {
             }
         }
 
-        // Send two more segment headers (one is not enough because for above peer ID there are no pieces for it to
-        // store)
+        // Send two more segment headers (one is not enough because for above peer ID there are no
+        // pieces for it to store)
         for segment_index in [2, 3] {
             let segment_header = SegmentHeader::V0 {
                 segment_index: SegmentIndex::from(segment_index),
@@ -472,6 +473,164 @@ async fn basic() {
         // Same state as before, no pieces should be requested during initialization
         assert_eq!(pieces.lock().len(), 0);
 
+        let (mut archived_segment_headers_sender, archived_segment_headers_receiver) =
+            mpsc::channel(0);
+        archived_segment_headers_stream_request_receiver
+            .next()
+            .await
+            .unwrap()
+            .send(archived_segment_headers_receiver)
+            .unwrap();
+        // Make worker exit
+        archived_segment_headers_sender.close().await.unwrap();
+
+        farmer_cache_worker_exited.await.unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn duplicate_indices() {
+    let current_segment_index = Arc::new(AtomicU64::new(0));
+    let pieces = Arc::default();
+    let (
+        archived_segment_headers_stream_request_sender,
+        mut archived_segment_headers_stream_request_receiver,
+    ) = mpsc::channel(0);
+    let (acknowledge_archived_segment_header_sender, _acknowledge_archived_segment_header_receiver) =
+        mpsc::channel(0);
+
+    let node_client = MockNodeClient {
+        current_segment_index: Arc::clone(&current_segment_index),
+        pieces: Arc::clone(&pieces),
+        archived_segment_headers_stream_request_sender,
+        acknowledge_archived_segment_header_sender,
+    };
+    let piece_getter = MockPieceGetter {
+        pieces: Arc::clone(&pieces),
+    };
+    let public_key =
+        identity::PublicKey::from(identity::ed25519::PublicKey::try_from_bytes(&[42; 32]).unwrap());
+    let path1 = tempdir().unwrap();
+    let path2 = tempdir().unwrap();
+
+    // Initialize both disk caches with the same exact contents
+    for path in [path1.as_ref(), path2.as_ref()] {
+        let (farmer_cache, farmer_cache_worker) =
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
+
+        let farmer_cache_worker_exited =
+            tokio::spawn(farmer_cache_worker.run(piece_getter.clone()));
+
+        let (sender, receiver) = oneshot::channel();
+        farmer_cache
+            .on_sync_progress(Arc::new({
+                let sender = Mutex::new(Some(sender));
+
+                move |progress| {
+                    if *progress == 100.0 {
+                        if let Some(sender) = sender.lock().take() {
+                            sender.send(()).unwrap();
+                        }
+                    }
+                }
+            }))
+            .detach();
+        farmer_cache
+            .replace_backing_caches(
+                vec![Arc::new(
+                    DiskPieceCache::open(path, NonZeroU32::new(1).unwrap(), None, None).unwrap(),
+                )],
+                vec![],
+            )
+            .await;
+
+        // Wait for piece cache to be initialized
+        receiver.await.unwrap();
+
+        drop(farmer_cache);
+
+        // Make worker exit
+        let (mut archived_segment_headers_sender, archived_segment_headers_receiver) =
+            mpsc::channel(0);
+        archived_segment_headers_stream_request_receiver
+            .next()
+            .await
+            .unwrap()
+            .send(archived_segment_headers_receiver)
+            .unwrap();
+        // Make worker exit
+        archived_segment_headers_sender.close().await.unwrap();
+
+        farmer_cache_worker_exited.await.unwrap();
+    }
+
+    {
+        // Clear requested pieces
+        pieces.lock().clear();
+
+        let (farmer_cache, farmer_cache_worker) =
+            FarmerCache::new(node_client.clone(), public_key.to_peer_id(), None);
+
+        let farmer_cache_worker_exited = tokio::spawn(farmer_cache_worker.run(piece_getter));
+
+        let (sender, receiver) = oneshot::channel();
+        farmer_cache
+            .on_sync_progress(Arc::new({
+                let sender = Mutex::new(Some(sender));
+
+                move |progress| {
+                    if *progress == 100.0 {
+                        if let Some(sender) = sender.lock().take() {
+                            sender.send(()).unwrap();
+                        }
+                    }
+                }
+            }))
+            .detach();
+
+        // Reopen with the same backing caches
+        farmer_cache
+            .replace_backing_caches(
+                vec![
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path1.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
+                    Arc::new(
+                        DiskPieceCache::open(
+                            path2.as_ref(),
+                            NonZeroU32::new(1).unwrap(),
+                            None,
+                            None,
+                        )
+                        .unwrap(),
+                    ),
+                ],
+                vec![],
+            )
+            .await;
+
+        // Wait for piece cache to be initialized
+        receiver.await.unwrap();
+
+        // One piece must be requested
+        let requested_pieces = pieces.lock().keys().copied().collect::<Vec<_>>();
+        assert_eq!(requested_pieces.len(), 1);
+
+        // Must have stored requested piece
+        farmer_cache
+            .get_piece(requested_pieces[0].to_multihash())
+            .await
+            .unwrap();
+
+        drop(farmer_cache);
+
+        // Make worker exit
         let (mut archived_segment_headers_sender, archived_segment_headers_receiver) =
             mpsc::channel(0);
         archived_segment_headers_stream_request_receiver
