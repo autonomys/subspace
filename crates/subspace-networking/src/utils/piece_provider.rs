@@ -647,6 +647,10 @@ where
                     if let Some(peers) = pieces_to_download.get_mut(&piece_index) {
                         peers.extend(Vec::from(closest_peers));
                     }
+
+                    // No need to ask this peer again if they didn't have the piece we expected, or
+                    // they claimed to have earlier
+                    continue;
                 }
             }
 
