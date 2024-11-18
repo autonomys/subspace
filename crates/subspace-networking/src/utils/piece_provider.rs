@@ -29,7 +29,7 @@ use std::task::{Context, Poll};
 use std::{fmt, iter, mem};
 use subspace_core_primitives::pieces::{Piece, PieceIndex};
 use tokio_stream::StreamMap;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace, warn, Instrument};
 
 /// Validates piece against using its commitment.
 #[async_trait]
@@ -493,18 +493,38 @@ async fn get_from_cache_inner<PV, PieceIndices>(
     PV: PieceValidator,
     PieceIndices: Iterator<Item = PieceIndex>,
 {
-    // Download from connected peers first
-    let pieces_to_download =
-        download_cached_pieces_from_connected_peers(piece_indices, node, piece_validator, &results)
-            .await;
+    let download_id = random::<u64>();
 
-    if pieces_to_download.is_empty() {
-        return;
-    }
-
-    // Download from iteratively closer peers according to Kademlia rules
-    download_cached_pieces_from_closest_peers(pieces_to_download, node, piece_validator, &results)
+    // TODO: It'd be nice to combine downloading from connected peers with downloading from closest
+    //  peers concurrently
+    let fut = async move {
+        // Download from connected peers first
+        let pieces_to_download = download_cached_pieces_from_connected_peers(
+            piece_indices,
+            node,
+            piece_validator,
+            &results,
+        )
         .await;
+
+        if pieces_to_download.is_empty() {
+            debug!("Done");
+            return;
+        }
+
+        // Download from iteratively closer peers according to Kademlia rules
+        download_cached_pieces_from_closest_peers(
+            pieces_to_download,
+            node,
+            piece_validator,
+            &results,
+        )
+        .await;
+
+        debug!("Done #2");
+    };
+
+    fut.instrument(tracing::info_span!("", %download_id)).await;
 }
 
 /// Takes pieces to download as an input, sends results with pieces that were downloaded
@@ -528,15 +548,24 @@ where
     let mut pieces_to_download = piece_indices
         .map(|piece_index| (piece_index, HashMap::new()))
         .collect::<HashMap<PieceIndex, HashMap<PeerId, Vec<Multiaddr>>>>();
+
+    debug!(num_pieces = %pieces_to_download.len(), "Starting");
+
     let mut checked_connected_peers = HashSet::new();
 
     // The loop is in order to check peers that might be connected after the initial loop has
     // started.
     loop {
         let Ok(connected_peers) = node.connected_peers().await else {
+            trace!("Connected peers error");
             break;
         };
 
+        debug!(
+            connected_peers = %connected_peers.len(),
+            pieces_to_download = %pieces_to_download.len(),
+            "Loop"
+        );
         if connected_peers.is_empty() || pieces_to_download.is_empty() {
             break;
         }
@@ -589,6 +618,7 @@ where
                 mut cached_pieces,
                 not_cached_pieces,
             } = result;
+            trace!(%piece_index, %peer_id, result = %result.is_some(), "Piece response");
 
             let Some(result) = result else {
                 // Downloading failed, ignore peer
@@ -597,6 +627,8 @@ where
 
             match result {
                 PieceResult::Piece(piece) => {
+                    trace!(%piece_index, %peer_id, "Got piece");
+
                     // Downloaded successfully
                     pieces_to_download.remove(&piece_index);
 
@@ -609,10 +641,16 @@ where
                     }
                 }
                 PieceResult::ClosestPeers(closest_peers) => {
+                    trace!(%piece_index, %peer_id, "Got closest peers");
+
                     // Store closer peers in case piece index was not downloaded yet
                     if let Some(peers) = pieces_to_download.get_mut(&piece_index) {
                         peers.extend(Vec::from(closest_peers));
                     }
+
+                    // No need to ask this peer again if they didn't have the piece we expected, or
+                    // they claimed to have earlier
+                    continue;
                 }
             }
 
@@ -639,8 +677,10 @@ where
 
             let piece_index_to_download_next =
                 if let Some(piece_index) = maybe_piece_index_to_download_next {
+                    trace!(%piece_index, %peer_id, "Next piece to download from peer");
                     piece_index
                 } else {
+                    trace!(%peer_id, "Peer doesn't have anything else");
                     // Nothing left to do with this peer
                     continue;
                 };
@@ -680,6 +720,7 @@ where
         }
 
         if pieces_to_download.len() == num_pieces {
+            debug!(%num_pieces, "Finished downloading from connected peers");
             // Nothing was downloaded, we're done here
             break;
         }

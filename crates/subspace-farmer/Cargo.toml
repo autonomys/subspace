@@ -46,7 +46,6 @@ pin-project = "1.1.5"
 prometheus-client = "0.22.3"
 rand = "0.8.5"
 rayon = "1.10.0"
-schnellru = "0.2.3"
 schnorrkel = "0.11.4"
 serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.128"
@@ -67,7 +66,7 @@ supports-color = { version = "3.0.1", optional = true }
 tempfile = "3.13.0"
 thiserror = "2.0.0"
 thread-priority = "1.1.0"
-tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1.16", features = ["sync"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }

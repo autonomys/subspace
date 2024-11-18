@@ -38,6 +38,7 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{KeyWithDistance, LocalRecordProvider};
 use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
 use tokio::task::{block_in_place, yield_now};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
@@ -410,7 +411,11 @@ where
             match maybe_cache {
                 Ok(cache) => {
                     let backend = cache.backend;
-                    stored_pieces.extend(cache.cache_stored_pieces.into_iter());
+                    for (key, cache_offset) in cache.cache_stored_pieces {
+                        if let Some(old_cache_offset) = stored_pieces.insert(key, cache_offset) {
+                            dangling_free_offsets.push_front(old_cache_offset);
+                        }
+                    }
                     dangling_free_offsets.extend(
                         cache.cache_free_offsets.into_iter().filter(|free_offset| {
                             free_offset.piece_offset.0 < backend.used_capacity
@@ -533,14 +538,23 @@ where
         let downloaded_pieces_count = AtomicUsize::new(0);
         let caches = Mutex::new(caches);
         self.handlers.progress.call_simple(&0.0);
+        let piece_indices_to_store = piece_indices_to_store.into_iter().enumerate();
+
+        let downloading_semaphore = &Semaphore::new(SYNC_BATCH_SIZE * SYNC_CONCURRENT_BATCHES);
 
         let downloading_pieces_stream =
-            stream::iter(piece_indices_to_store.into_iter().map(|piece_indices| {
+            stream::iter(piece_indices_to_store.map(|(batch, piece_indices)| {
                 let downloaded_pieces_count = &downloaded_pieces_count;
                 let caches = &caches;
 
                 async move {
-                    let mut pieces_stream = match piece_getter.get_pieces(piece_indices).await {
+                    let mut permit = downloading_semaphore
+                        .acquire_many(SYNC_BATCH_SIZE as u32)
+                        .await
+                        .expect("Semaphore is never closed; qed");
+                    debug!(%batch, num_pieces = %piece_indices.len(), "Downloading pieces");
+
+                    let pieces_stream = match piece_getter.get_pieces(piece_indices).await {
                         Ok(pieces_stream) => pieces_stream,
                         Err(error) => {
                             error!(
@@ -550,8 +564,11 @@ where
                             return;
                         }
                     };
+                    let mut pieces_stream = pieces_stream.enumerate();
 
-                    while let Some((piece_index, result)) = pieces_stream.next().await {
+                    while let Some((index, (piece_index, result))) = pieces_stream.next().await {
+                        debug!(%batch, %index, %piece_index, "Downloaded piece");
+
                         let piece = match result {
                             Ok(Some(piece)) => {
                                 trace!(%piece_index, "Downloaded piece successfully");
@@ -570,6 +587,8 @@ where
                                 continue;
                             }
                         };
+                        // Release slot for future batches
+                        permit.split(1);
 
                         let (offset, maybe_backend) = {
                             let mut caches = caches.lock();
@@ -629,10 +648,13 @@ where
                     }
                 }
             }));
+
         // Download several batches concurrently to make sure slow tail of one is compensated by
         // another
         downloading_pieces_stream
-            .buffer_unordered(SYNC_CONCURRENT_BATCHES)
+            // This allows to schedule new batch while previous batches partially completed, but
+            // avoids excessive memory usage like when all futures are created upfront
+            .buffer_unordered(SYNC_CONCURRENT_BATCHES * 2)
             // Simply drain everything
             .for_each(|()| async {})
             .await;

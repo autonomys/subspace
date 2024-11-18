@@ -15,6 +15,7 @@ use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -51,9 +52,6 @@ pub enum DiskPieceCacheError {
         /// Max offset
         max: u32,
     },
-    /// Cache size has zero capacity, this is not supported, cache size needs to be larger
-    #[error("Cache size has zero capacity, this is not supported, cache size needs to be larger")]
-    ZeroCapacity,
     /// Checksum mismatch
     #[error("Checksum mismatch")]
     ChecksumMismatch,
@@ -235,14 +233,11 @@ impl DiskPieceCache {
     /// Open cache, capacity is measured in elements of [`DiskPieceCache::element_size()`] size
     pub fn open(
         directory: &Path,
-        capacity: u32,
+        capacity: NonZeroU32,
         id: Option<PieceCacheId>,
         registry: Option<&mut Registry>,
     ) -> Result<Self, DiskPieceCacheError> {
-        if capacity == 0 {
-            return Err(DiskPieceCacheError::ZeroCapacity);
-        }
-
+        let capacity = capacity.get();
         let files = FilePool::open(&directory.join(Self::FILE_NAME))?;
 
         let expected_size = u64::from(Self::element_size()) * u64::from(capacity);

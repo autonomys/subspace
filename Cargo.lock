@@ -12609,7 +12609,6 @@ dependencies = [
  "prometheus-client 0.22.3",
  "rand",
  "rayon",
- "schnellru",
  "schnorrkel",
  "serde",
  "serde_json",
