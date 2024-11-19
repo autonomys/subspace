@@ -125,6 +125,14 @@ impl PieceIndex {
         (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
     }
 
+    /// Position of a source piece in the source pieces for a segment.
+    /// Panics if the piece is not a source piece.
+    #[inline]
+    pub const fn source_position(&self) -> u32 {
+        assert!(self.is_source());
+        self.position() / (Self::source_ratio() as u32)
+    }
+
     /// Is this piece index a source piece?
     #[inline]
     pub const fn is_source(&self) -> bool {
