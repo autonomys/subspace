@@ -5,12 +5,12 @@
 *                                 @nazar-pc @rg3l3dr
 
 /crates                           @nazar-pc @rg3l3dr
-/crates/pallet-*                  @nazar-pc @rg3l3dr @NingLin-P
-/crates/sp-*                      @nazar-pc @rg3l3dr @NingLin-P
+/crates/pallet-*                  @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
+/crates/sp-*                      @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
 /crates/subspace-archiving        @shamil-gadelshin @nazar-pc @rg3l3dr
 /crates/subspace-farmer           @nazar-pc @shamil-gadelshin @rg3l3dr
 /crates/subspace-networking       @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-runtime*         @nazar-pc @rg3l3dr
-/crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr
+/crates/subspace-runtime*         @vedhavyas @nazar-pc @rg3l3dr
+/crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr @vedhavyas
 /crates/substrate                 @nazar-pc @rg3l3dr
-/domains                          @NingLin-P @nazar-pc @rg3l3dr
+/domains                          @vedhavyas @NingLin-P @nazar-pc @rg3l3dr
