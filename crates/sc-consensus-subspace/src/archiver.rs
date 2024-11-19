@@ -445,10 +445,12 @@ where
             // blocks in existence than is currently imported)
             continue;
         };
-
-        let last_archived_block = client
-            .block(last_archived_block_hash)?
-            .expect("Last archived block must always be retrievable; qed");
+        let Some(last_archived_block) = client.block(last_archived_block_hash)? else {
+            // This block is not in our chain yet.
+            // Currently this only happens when we overwrite the best block number to generate
+            // earlier object mappings.
+            continue;
+        };
 
         // If we're starting mapping creation at this block, return its mappings.
         let block_object_mappings = if create_object_mappings {
