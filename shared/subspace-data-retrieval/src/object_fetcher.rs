@@ -239,7 +239,7 @@ impl ObjectFetcher {
         //
         // The last 2 bytes might contain padding if a piece is the last piece in the segment.
         let before_last_two_bytes = piece_offset as usize <= RawRecord::SIZE - 1 - 2;
-        let piece_position_in_segment = piece_index.position();
+        let piece_position_in_segment = piece_index.source_position();
         let data_shards = RecordedHistorySegment::NUM_RAW_RECORDS as u32;
         let last_data_piece_in_segment = piece_position_in_segment >= data_shards - 1;
 
@@ -261,7 +261,11 @@ impl ObjectFetcher {
         //
         // The last 2 bytes might contain padding if a piece is the last piece in the segment.
         let bytes_available_in_segment =
-            (data_shards - piece_position_in_segment) * RawRecord::SIZE as u32 - piece_offset - 2;
+            (data_shards - piece_position_in_segment) * RawRecord::SIZE as u32 - piece_offset;
+        let Some(bytes_available_in_segment) = bytes_available_in_segment.checked_sub(2) else {
+            // We need to reconstruct the full segment and discard padding before reading the length.
+            return Ok(None);
+        };
 
         // Data from pieces that were already read, starting with piece at index `piece_index`
         let mut read_records_data = Vec::<u8>::with_capacity(RawRecord::SIZE * 2);
@@ -374,7 +378,7 @@ impl ObjectFetcher {
         piece_offset: u32,
     ) -> Result<Vec<u8>, Error> {
         let mut segment_index = piece_index.segment_index();
-        let piece_position_in_segment = piece_index.position();
+        let piece_position_in_segment = piece_index.source_position();
         // Used to access the data after it is converted to raw bytes
         let offset_in_segment =
             piece_position_in_segment as usize * RawRecord::SIZE + piece_offset as usize;
