@@ -519,7 +519,6 @@ pub(super) fn create_consensus_chain_configuration(
 
     let transaction_pool;
     let rpc_cors;
-
     // Development mode handling is limited to this section
     {
         if dev {

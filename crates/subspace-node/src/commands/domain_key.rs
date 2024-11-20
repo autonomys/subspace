@@ -1,6 +1,4 @@
-use crate::commands::shared::{
-    derive_keypair, init_logger, store_key_in_keystore, KeystoreOptions,
-};
+use crate::commands::shared::{derive_keypair, store_key_in_keystore, KeystoreOptions};
 use bip39::Mnemonic;
 use clap::Parser;
 use sc_cli::{Error, KeystoreParams};
@@ -9,6 +7,7 @@ use sp_core::crypto::{ExposeSecret, SecretString};
 use sp_core::Pair;
 use sp_domains::DomainId;
 use std::path::PathBuf;
+use subspace_logging::init_logger;
 use tracing::{info, warn};
 
 /// Options for creating domain key
@@ -27,7 +26,6 @@ pub struct CreateDomainKeyOptions {
 
 pub fn create_domain_key(options: CreateDomainKeyOptions) -> Result<(), Error> {
     init_logger();
-
     let CreateDomainKeyOptions {
         base_path,
         domain_id,
@@ -95,7 +93,6 @@ pub struct InsertDomainKeyOptions {
 
 pub fn insert_domain_key(options: InsertDomainKeyOptions) -> Result<(), Error> {
     init_logger();
-
     let InsertDomainKeyOptions {
         base_path,
         domain_id,

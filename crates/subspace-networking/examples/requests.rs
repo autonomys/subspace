@@ -4,6 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_logging::init_logger;
 use subspace_networking::protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
@@ -24,7 +25,7 @@ struct ExampleResponse;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    init_logger();
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],

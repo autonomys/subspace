@@ -12618,6 +12618,7 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-farmer-components",
  "subspace-kzg",
+ "subspace-logging",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -12632,7 +12633,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "tracing-subscriber",
  "ulid",
  "zeroize",
 ]
@@ -12688,6 +12688,7 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-gateway-rpc",
  "subspace-kzg",
+ "subspace-logging",
  "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-verification",
@@ -12695,7 +12696,6 @@ dependencies = [
  "thiserror 2.0.0",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -12726,6 +12726,15 @@ dependencies = [
  "static_assertions",
  "subspace-core-primitives",
  "tracing",
+]
+
+[[package]]
+name = "subspace-logging"
+version = "0.0.1"
+dependencies = [
+ "supports-color",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -12834,12 +12843,12 @@ dependencies = [
  "serde",
  "serde_json",
  "subspace-core-primitives",
+ "subspace-logging",
  "subspace-metrics",
  "thiserror 2.0.0",
  "tokio",
  "tokio-stream",
  "tracing",
- "tracing-subscriber",
  "unsigned-varint 0.8.0",
  "void",
 ]
@@ -12899,6 +12908,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "subspace-core-primitives",
+ "subspace-logging",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -12913,7 +12923,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

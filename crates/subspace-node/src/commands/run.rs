@@ -8,7 +8,6 @@ use crate::commands::run::consensus::{
 use crate::commands::run::domain::{
     create_domain_configuration, run_domain, DomainOptions, DomainStartOptions,
 };
-use crate::commands::shared::init_logger;
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
@@ -28,6 +27,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
 use std::sync::Arc;
+use subspace_logging::init_logger;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::ChainSyncMode;
@@ -76,7 +76,6 @@ fn raise_fd_limit() {
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     init_logger();
     raise_fd_limit();
-
     let signals = Signals::capture()?;
 
     let RunOptions {

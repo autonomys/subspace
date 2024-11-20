@@ -55,6 +55,7 @@ subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-codin
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-kzg = { version = "0.1.0", path = "../../shared/subspace-kzg" }
+subspace-logging = { version = "0.0.1", path = "../../shared/subspace-logging" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics", optional = true }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
@@ -69,7 +70,6 @@ thread-priority = "1.1.0"
 tokio = { version = "1.40.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1.16", features = ["sync"] }
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }
 ulid = { version = "1.1.3", features = ["serde"] }
 zeroize = "1.8.1"
 
@@ -97,5 +97,4 @@ binary = [
     "dep:mimalloc",
     "dep:subspace-metrics",
     "dep:supports-color",
-    "dep:tracing-subscriber",
 ]

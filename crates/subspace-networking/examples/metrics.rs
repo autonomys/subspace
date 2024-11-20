@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_logging::init_logger;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::{Config, Node};
 use tokio::signal;
@@ -15,7 +16,7 @@ use tracing::{error, info};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    init_logger();
     let mut metric_registry = Registry::default();
     let metrics = Metrics::new(&mut metric_registry);
 
