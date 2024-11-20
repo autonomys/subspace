@@ -38,7 +38,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             .map_err(|error| anyhow::anyhow!("Failed to convert pieces in sector: {error}"))?;
         let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 
-        self.thread_pool.install(|| {
+        {
             let iter = Mutex::new(
                 (PieceOffset::ZERO..)
                     .zip(records.iter_mut())
@@ -46,7 +46,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             );
             let plotting_error = Mutex::new(None::<String>);
 
-            rayon::scope(|scope| {
+            self.thread_pool.scope(|scope| {
                 scope.spawn_broadcast(|_scope, _ctx| loop {
                     // Take mutex briefly to make sure encoding is allowed right now
                     self.global_mutex.lock_blocking();
@@ -79,9 +79,7 @@ impl RecordsEncoder for CudaRecordsEncoder {
             if let Some(error) = plotting_error {
                 return Err(anyhow::Error::msg(error));
             }
-
-            Ok(())
-        })?;
+        }
 
         Ok(sector_contents_map)
     }
