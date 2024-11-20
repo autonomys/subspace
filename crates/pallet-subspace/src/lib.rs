@@ -1116,10 +1116,6 @@ impl<T: Config> Pallet<T> {
     fn do_enable_rewards_at(
         enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
     ) -> DispatchResult {
-        if EnableRewards::<T>::get().is_some() {
-            return Err(Error::<T>::RewardsAlreadyEnabled.into());
-        }
-
         match enable_rewards_at {
             EnableRewardsAt::Height(block_number) => {
                 // Enable rewards at a particular block height (default to the next block after
