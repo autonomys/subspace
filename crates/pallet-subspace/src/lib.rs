@@ -371,8 +371,6 @@ pub mod pallet {
     pub enum Error<T> {
         /// Solution range adjustment already enabled.
         SolutionRangeAdjustmentAlreadyEnabled,
-        /// Rewards already active.
-        RewardsAlreadyEnabled,
         /// Iterations are not multiple of number of checkpoints times two
         NotMultipleOfCheckpoints,
         /// Proof of time slot iterations must increase as hardware improves
