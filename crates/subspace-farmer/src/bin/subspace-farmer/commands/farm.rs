@@ -1072,10 +1072,7 @@ where
             cuda_devices
                 .into_iter()
                 .map(|cuda_device| CudaRecordsEncoder::new(cuda_device, Arc::clone(&global_mutex)))
-                .collect::<Result<_, _>>()
-                .map_err(|error| {
-                    anyhow::anyhow!("Failed to create CUDA records encoder: {error}")
-                })?,
+                .collect(),
             global_mutex,
             kzg,
             erasure_coding,
@@ -1154,10 +1151,7 @@ where
             rocm_devices
                 .into_iter()
                 .map(|rocm_device| RocmRecordsEncoder::new(rocm_device, Arc::clone(&global_mutex)))
-                .collect::<Result<_, _>>()
-                .map_err(|error| {
-                    anyhow::anyhow!("Failed to create ROCm records encoder: {error}")
-                })?,
+                .collect(),
             global_mutex,
             kzg,
             erasure_coding,
