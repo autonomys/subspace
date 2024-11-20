@@ -3,7 +3,8 @@
 use crate::plotter::gpu::GpuRecordsEncoder;
 use async_lock::Mutex as AsyncMutex;
 use parking_lot::Mutex;
-use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::{current_thread_index, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::pieces::{PieceOffset, Record};
@@ -93,8 +94,25 @@ impl RocmRecordsEncoder {
         global_mutex: Arc<AsyncMutex<()>>,
     ) -> Result<Self, ThreadPoolBuildError> {
         let id = rocm_device.id();
+        let thread_name = move |thread_index| format!("rocm-{id}.{thread_index}");
+        // TODO: remove this panic handler when rayon logs panic_info
+        // https://github.com/rayon-rs/rayon/issues/1208
+        let panic_handler = move |panic_info| {
+            if let Some(index) = current_thread_index() {
+                eprintln!("panic on thread {}: {:?}", thread_name(index), panic_info);
+            } else {
+                // We want to guarantee exit, rather than panicking in a panic handler.
+                eprintln!(
+                    "rayon panic handler called on non-rayon thread: {:?}",
+                    panic_info
+                );
+            }
+            exit(1);
+        };
+
         let thread_pool = ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("rocm-{id}.{thread_index}"))
+            .thread_name(thread_name)
+            .panic_handler(panic_handler)
             // Make sure there is overlap between records, so GPU is almost always busy
             .num_threads(2)
             .build()?;
