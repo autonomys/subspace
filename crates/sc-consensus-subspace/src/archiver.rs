@@ -73,6 +73,7 @@ use sp_runtime::traits::{
 use sp_runtime::Justifications;
 use std::error::Error;
 use std::future::Future;
+use std::num::NonZeroU32;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -365,8 +366,13 @@ pub struct ObjectMappingNotification {
 pub enum CreateObjectMappings {
     /// Start creating object mappings from this block number.
     ///
-    /// This can be lower than the latest archived block.
-    Block(BlockNumber),
+    /// This can be lower than the latest archived block, but must be greater than genesis.
+    ///
+    /// The genesis block doesn't have mappings, so starting mappings at genesis is pointless.
+    /// The archiver will fail if it can't get the data for this block, but snap sync doesn't store
+    /// the genesis data on disk.  So avoiding genesis also avoids this error.
+    /// <https://github.com/paritytech/polkadot-sdk/issues/5366>
+    Block(NonZeroU32),
 
     /// Create object mappings as archiving is happening.
     Yes,
@@ -377,11 +383,14 @@ pub enum CreateObjectMappings {
 }
 
 impl CreateObjectMappings {
+    /// The minimum mapping block number.
+    pub const MIN_BLOCK: CreateObjectMappings = CreateObjectMappings::Block(NonZeroU32::MIN);
+
     /// The fixed block number to start creating object mappings from.
     /// If there is no fixed block number, or mappings are disabled, returns None.
     fn block(&self) -> Option<BlockNumber> {
         match self {
-            CreateObjectMappings::Block(block) => Some(*block),
+            CreateObjectMappings::Block(block) => Some(block.get()),
             CreateObjectMappings::Yes => None,
             CreateObjectMappings::No => None,
         }

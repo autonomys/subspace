@@ -15,6 +15,7 @@ use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::BlockNumber;
@@ -308,10 +309,17 @@ struct TimekeeperOptions {
 pub enum CreateObjectMappingConfig {
     /// Start creating object mappings from this block number.
     ///
-    /// This can be lower than the latest archived block.
-    Block(BlockNumber),
+    /// This can be lower than the latest archived block, but must be greater than genesis.
+    ///
+    /// The genesis block doesn't have mappings, so starting mappings at genesis is pointless.
+    /// The archiver will fail if it can't get the data for this block, and snap sync doesn't store
+    /// the genesis data on disk. So avoiding genesis also avoids this error.
+    /// <https://github.com/paritytech/polkadot-sdk/issues/5366>
+    Block(NonZeroU32),
 
     /// Create object mappings as archiving is happening.
+    /// This continues from the last archived segment, but mappings that were in the channel or RPC
+    /// segment when the node shut down can be lost.
     Yes,
 
     /// Don't create object mappings.
@@ -337,7 +345,7 @@ impl FromStr for CreateObjectMappingConfig {
             "no" => Ok(Self::No),
             "yes" => Ok(Self::Yes),
             block => block.parse().map(Self::Block).map_err(|_| {
-                "Unsupported create object mappings setting: use `yes`, `no` or a block number"
+                "Unsupported create object mappings setting: use `yes`, `no` or a non-zero block number"
                     .to_string()
             }),
         }
@@ -352,6 +360,12 @@ impl fmt::Display for CreateObjectMappingConfig {
             Self::No => f.write_str("no"),
         }
     }
+}
+
+impl CreateObjectMappingConfig {
+    /// The minimum mapping block number.
+    pub const MIN_BLOCK: CreateObjectMappingConfig =
+        CreateObjectMappingConfig::Block(NonZeroU32::MIN);
 }
 
 /// Options for running a node
@@ -443,10 +457,10 @@ pub(super) struct ConsensusChainOptions {
 
     /// Create object mappings during archiving.
     ///
-    /// Can be set to `no` (default), `yes` (creates object mappings as archiving is happening) or
-    /// block number from which to continue creating object mappings.
+    /// Can be set to `no` (default), `yes` (creates object mappings as archiving is happening), or
+    /// a non-zero block number where the node starts creating object mappings.
     ///
-    /// --dev mode enables mappings from genesis automatically, unless the value is supplied
+    /// --dev mode enables mappings from the first block automatically, unless a value is supplied
     /// explicitly.
     /// Use `no` to disable mappings in --dev mode.
     #[arg(long)]
@@ -534,7 +548,7 @@ pub(super) fn create_consensus_chain_configuration(
             timekeeper_options.timekeeper = true;
 
             if create_object_mappings.is_none() {
-                create_object_mappings = Some(CreateObjectMappingConfig::Block(0));
+                create_object_mappings = Some(CreateObjectMappingConfig::MIN_BLOCK);
             }
 
             if sync.is_none() {
