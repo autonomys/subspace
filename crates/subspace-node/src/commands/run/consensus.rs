@@ -362,12 +362,6 @@ impl fmt::Display for CreateObjectMappingConfig {
     }
 }
 
-impl CreateObjectMappingConfig {
-    /// The minimum mapping block number.
-    pub const MIN_BLOCK: CreateObjectMappingConfig =
-        CreateObjectMappingConfig::Block(NonZeroU32::MIN);
-}
-
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub(super) struct ConsensusChainOptions {
@@ -548,7 +542,7 @@ pub(super) fn create_consensus_chain_configuration(
             timekeeper_options.timekeeper = true;
 
             if create_object_mappings.is_none() {
-                create_object_mappings = Some(CreateObjectMappingConfig::MIN_BLOCK);
+                create_object_mappings = Some(CreateObjectMappingConfig::Block(NonZeroU32::MIN));
             }
 
             if sync.is_none() {

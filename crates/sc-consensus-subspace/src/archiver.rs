@@ -383,9 +383,6 @@ pub enum CreateObjectMappings {
 }
 
 impl CreateObjectMappings {
-    /// The minimum mapping block number.
-    pub const MIN_BLOCK: CreateObjectMappings = CreateObjectMappings::Block(NonZeroU32::MIN);
-
     /// The fixed block number to start creating object mappings from.
     /// If there is no fixed block number, or mappings are disabled, returns None.
     fn block(&self) -> Option<BlockNumber> {
